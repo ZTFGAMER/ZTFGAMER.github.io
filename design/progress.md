@@ -318,6 +318,10 @@
     - 原因：`DragController.isSqueezePlanVisible` 校验 move 可见性时未排除“正在移动的 blocker 自身”，导致悬停校验误判失败
     - 修复：`src/grid/DragController.ts` 中可见性校验改为 `canPlaceInVisibleCols(..., excludeId=move.instanceId)`
     - 结果：悬停阶段即可正确提交挤出，不再延迟到拖拽结束
+  - 仓库托管（本轮新增）：
+    - 初始化本地 Git 仓库（`main`）并补充 `.gitignore`（忽略 `node_modules/`、`dist/`、`*.tsbuildinfo`、`.DS_Store`、`.claude/`）
+    - 创建首个提交：`aaf8a01 chore: initialize bigbazzar project`
+    - 在 GHE 创建远程仓库并推送：`https://habby.ghe.com/zhengtengfei-161/bigbazzar`（`main` 已跟踪 `origin/main`）
 
 **进程1 挤出机制重构（DragController 大改）**
 
@@ -397,6 +401,17 @@
 - 回归验证（本次对话）：
   - 复跑 `npm test`：81/81 全通过
   - 复跑 `npm run build`：构建通过（保留既有 chunk size warning，无新增编译错误）
+
+### 本次对话追加总结（用户最新验收反馈）
+
+- NotebookLM 连通性确认：主程与设计师 notebook 均可访问（列表可读），当前未设置 active notebook。
+- 修复“商店小型拖到战斗区误转背包”问题：购买落战斗区改为优先走统一挤出并优先 local 重排。
+- 修复“战斗区小型上下互挤失效”与“只能挤一次”问题：
+  - 挤出计算传入 `dragOrigItem` 作为原位覆盖，避免 DRAG 已从 system 移除后丢失原位；
+  - 每次提交挤出后更新拖拽锚点，支持持续来回互挤。
+- 交互颜色规范更新：换位/挤出路径统一黄色高亮（普通可放置维持原规则）。
+- 背包规则补充：1x1 拖到 1x2/2x2 且不能立即合法换位时，强制红色并禁止挤出/换位。
+- 当前状态：阶段 2 仍在验收优化；自动化测试维持全绿（Vitest 81/81）。
 
 ---
 
