@@ -1,0 +1,203 @@
+[
+  {
+    "id": 1,
+    "name": "sell_min_days_by_rarity",
+    "desc": "出售不同品质物品的最小天数",
+    "desc_en": "Minimum days to sell items by rarity",
+    "value": [
+      1,
+      2,
+      5,
+      8
+    ],
+    "note": "对应青铜、白银、黄金、钻石品质"
+  },
+  {
+    "id": 2,
+    "name": "daily_gold",
+    "desc": "每天获得的金币数量",
+    "desc_en": "Daily gold amount",
+    "value": 15
+  },
+  {
+    "id": 3,
+    "name": "shop_refresh_prices",
+    "desc": "商店刷新价格",
+    "desc_en": "Shop refresh prices",
+    "value": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "note": "每次刷新的价格递增"
+  },
+  {
+    "id": 4,
+    "name": "daily_battle_area_slots",
+    "desc": "每天的战斗区域格数",
+    "desc_en": "Daily battle area slots",
+    "value": [
+      4,
+      6,
+      8,
+      10
+    ],
+    "note": "随天数增加"
+  },
+  {
+    "id": 5,
+    "name": "shop_item_count",
+    "desc": "商店显示物品数量",
+    "desc_en": "Shop item display count",
+    "value": 3
+  },
+  {
+    "id": 6,
+    "name": "backpack_slots",
+    "desc": "背包格数",
+    "desc_en": "Backpack slots",
+    "value": 10
+  },
+  {
+    "id": 7,
+    "name": "daily_health",
+    "desc": "每天的生命值",
+    "desc_en": "Daily health",
+    "value": [
+      300,
+      600,
+      900,
+      1200,
+      1500,
+      2000,
+      2500,
+      3000,
+      3500,
+      4000,
+      5000,
+      6000,
+      7000,
+      8000,
+      9000,
+      10000
+    ],
+    "note": "按天数递增"
+  },
+  {
+    "id": 8,
+    "name": "small_item_prices",
+    "desc": "小型物品不同品质的价格",
+    "desc_en": "Small item prices by rarity",
+    "value": [
+      2,
+      4,
+      8,
+      16
+    ],
+    "note": "对应青铜、白银、黄金、钻石品质"
+  },
+  {
+    "id": 9,
+    "name": "medium_item_prices",
+    "desc": "中型物品不同品质的价格",
+    "desc_en": "Medium item prices by rarity",
+    "value": [
+      4,
+      8,
+      16,
+      32
+    ],
+    "note": "对应青铜、白银、黄金、钻石品质"
+  },
+  {
+    "id": 10,
+    "name": "large_item_prices",
+    "desc": "大型物品不同品质的价格",
+    "desc_en": "Large item prices by rarity",
+    "value": [
+      6,
+      12,
+      24,
+      48
+    ],
+    "note": "对应青铜、白银、黄金、钻石品质"
+  },
+  {
+    "id": 11,
+    "name": "sell_price_ratio",
+    "desc": "出售价格折损",
+    "desc_en": "Sell price ratio",
+    "value": 0.5,
+    "value_display": "50%",
+    "note": "出售价格为购买价格的50%"
+  },
+  {
+    "id": 12,
+    "name": "item_visual_scale",
+    "desc": "装备显示缩放",
+    "desc_en": "Item visual scale",
+    "value": 0.8333333333,
+    "note": "全局装备图标/底板缩放系数（5/6），用于商店/背包/战斗区一致缩放"
+  },
+  {
+    "id": 13,
+    "name": "text_sizes",
+    "desc": "游戏内文本字号配置",
+    "desc_en": "In-game text size configuration",
+    "value": {
+      "gridZoneLabel": 22,
+      "shopButtonLabel": 22,
+      "sellButtonSubPrice": 16,
+      "refreshCost": 18,
+      "gold": 20,
+      "dayDebugArrow": 22,
+      "dayDebugLabel": 18,
+      "shopItemName": 16,
+      "shopItemPrice": 15,
+      "shopItemBought": 24,
+      "itemInfoName": 22,
+      "itemInfoTier": 14,
+      "itemInfoPrice": 20,
+      "itemInfoDesc": 16,
+      "synthTitle": 36,
+      "synthName": 24
+    },
+    "note": "统一管理游戏内文本字号，禁止硬编码"
+  },
+  {
+    "id": 14,
+    "name": "shop_tier_chances_by_day",
+    "desc": "商店按天数的品质概率（青铜/白银/黄金/钻石）",
+    "desc_en": "Shop tier chances by day (Bronze/Silver/Gold/Diamond)",
+    "value": [
+      [100, 0, 0, 0],
+      [90, 10, 0, 0],
+      [80, 20, 0, 0],
+      [70, 30, 0, 0],
+      [55, 40, 5, 0],
+      [40, 50, 10, 0],
+      [30, 50, 20, 0],
+      [25, 45, 30, 0],
+      [10, 40, 40, 10],
+      [0, 30, 50, 20],
+      [0, 30, 50, 20],
+      [0, 30, 50, 20],
+      [0, 30, 50, 20],
+      [0, 30, 50, 20],
+      [0, 30, 50, 20],
+      [0, 30, 50, 20],
+      [0, 30, 50, 20],
+      [0, 30, 50, 20],
+      [0, 30, 50, 20],
+      [0, 30, 50, 20]
+    ],
+    "note": "Day1~Day20 品质概率；超过 20 天沿用 Day20"
+  }
+]
