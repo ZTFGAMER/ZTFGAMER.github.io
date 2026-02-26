@@ -7,10 +7,40 @@ ROOT_DIR="$(cd "${IOS_DIR}/.." && pwd)"
 PROJECT_NAME="BigBazzar"
 SCHEME="BigBazzar"
 XCODEPROJ="${IOS_DIR}/${PROJECT_NAME}.xcodeproj"
+DERIVED_DATA_DIR="${IOS_DIR}/.derivedData"
 
 echo "[iOS] Step 1/4 生成 Web 资源"
 cd "$ROOT_DIR"
 npm run build:ios-web
+
+echo "[iOS] Step 1.5/4 兼容 file:// 加载（移除 module crossorigin）"
+python3 - <<'PY'
+from pathlib import Path
+index = Path('dist-ios/index.html')
+text = index.read_text(encoding='utf-8')
+text = text.replace(' crossorigin', '')
+index.write_text(text, encoding='utf-8')
+print('patched', index)
+PY
+
+echo "[iOS] Step 1.6/4 转换 iOS 图标资源为 PNG（规避部分 WEBP 解码失败）"
+python3 - <<'PY'
+from pathlib import Path
+from PIL import Image
+
+src_dir = Path('resource/itemicon/vanessa')
+dst_dir = Path('dist-ios/resource/itemicon/vanessa')
+dst_dir.mkdir(parents=True, exist_ok=True)
+
+count = 0
+for p in src_dir.glob('*.webp'):
+    out = dst_dir / (p.stem + '.png')
+    with Image.open(p) as im:
+        im.convert('RGBA').save(out, format='PNG')
+    count += 1
+
+print(f'converted {count} icons to PNG')
+PY
 
 echo "[iOS] Step 2/4 生成 Xcode 工程"
 cd "$IOS_DIR"
@@ -37,14 +67,19 @@ if [ "$ACTION" = "simulator" ]; then
     -scheme "$SCHEME" \
     -destination "id=$SIMULATOR_ID" \
     -configuration Release \
+    -derivedDataPath "$DERIVED_DATA_DIR" \
     clean build
 
-  APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "${PROJECT_NAME}.app" | head -1)
-  if [ -n "$APP_PATH" ]; then
+  APP_PATH="${DERIVED_DATA_DIR}/Build/Products/Release-iphonesimulator/${PROJECT_NAME}.app"
+  if [ -d "$APP_PATH" ]; then
     xcrun simctl boot "$SIMULATOR_ID" 2>/dev/null || true
-    xcrun simctl install "$SIMULATOR_ID" "$APP_PATH"
     BUNDLE_ID=$(defaults read "$APP_PATH/Info.plist" CFBundleIdentifier)
+    xcrun simctl uninstall "$SIMULATOR_ID" "$BUNDLE_ID" 2>/dev/null || true
+    xcrun simctl install "$SIMULATOR_ID" "$APP_PATH"
     xcrun simctl launch "$SIMULATOR_ID" "$BUNDLE_ID"
+  else
+    echo "未找到构建产物: $APP_PATH"
+    exit 1
   fi
   echo "[iOS] Step 4/4 完成：Simulator 构建并启动"
   exit 0
@@ -66,6 +101,7 @@ if [ "$ACTION" = "archive" ]; then
     -configuration Release \
     -destination "generic/platform=iOS" \
     -archivePath "$ARCHIVE_PATH" \
+    -derivedDataPath "$DERIVED_DATA_DIR" \
     CODE_SIGN_STYLE=Automatic \
     $TEAM_ARG \
     archive

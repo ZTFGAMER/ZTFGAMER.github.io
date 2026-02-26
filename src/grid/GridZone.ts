@@ -17,6 +17,7 @@ import {
 } from 'pixi.js'
 import type { ItemSizeNorm, PlacedItem } from './GridSystem'
 import { getAllItems, getConfig as getGameConfig } from '@/core/DataLoader'
+import { getItemIconUrl } from '@/core/assetPath'
 
 export const CELL_SIZE = 128
 
@@ -337,7 +338,7 @@ export class GridZone extends Container {
     defId:      string,
     node:       ItemNode,
   ): Promise<void> {
-    const url = `/resource/itemicon/vanessa/${defId}.webp`
+    const url = getItemIconUrl(defId)
     try {
       const tex = await Assets.load<Texture>(url)
       if (!this.nodes.has(instanceId)) return
@@ -346,8 +347,8 @@ export class GridZone extends Container {
       sp.alpha   = 1
       node.bg.alpha = 0.6
       this.applyNodeVisualLayout(node)
-    } catch {
-      // 图片加载失败：保持占位色块
+    } catch (err) {
+      console.warn('[GridZone] 图标加载失败', url, err)
     }
   }
 

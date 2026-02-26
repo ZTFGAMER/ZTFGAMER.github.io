@@ -1,3 +1,5 @@
+import projectDebugDefaults from '../../data/debug_defaults.json'
+
 // ============================================================
 // debugConfig — 可运行时调整的调试参数
 // 存储：localStorage（key 前缀 bigbazzar_cfg_）
@@ -484,6 +486,14 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
   },
 }
 
+const _projectDefaults = projectDebugDefaults as Record<string, number>
+for (const [key, val] of Object.entries(_projectDefaults)) {
+  const def = CONFIG_DEFS[key]
+  if (!def) continue
+  if (!Number.isFinite(val)) continue
+  def.defaultValue = Math.max(def.min, Math.min(def.max, Number(val)))
+}
+
 // ---- 读写 ----
 
 /** 读取配置值（localStorage > 默认值） */
@@ -522,6 +532,23 @@ export function resetConfig(key: string): void {
 /** 重置所有参数到默认值 */
 export function resetAllConfig(): void {
   for (const key of Object.keys(CONFIG_DEFS)) resetConfig(key)
+}
+
+export function clearStoredConfig(): void {
+  const keys: string[] = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i)
+    if (k && k.startsWith(STORAGE_PREFIX)) keys.push(k)
+  }
+  for (const k of keys) localStorage.removeItem(k)
+}
+
+export function getConfigSnapshot(): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const key of Object.keys(CONFIG_DEFS)) {
+    out[key] = getConfig(key)
+  }
+  return out
 }
 
 // ---- 订阅（供游戏侧调用）----

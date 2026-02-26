@@ -13,6 +13,7 @@ import type { ShopSlot } from './ShopManager'
 import { normalizeSize } from '@/items/ItemDef'
 import { CELL_SIZE }     from '@/grid/GridZone'
 import { getConfig as getGameConfig } from '@/core/DataLoader'
+import { getItemIconUrl } from '@/core/assetPath'
 
 // ---- 布局常量 ----
 const CARDS_Y  = 8
@@ -209,11 +210,13 @@ export class ShopPanelView extends Container {
     iconSprite.alpha  = 0
     card.addChild(iconSprite)
 
-    const url = `/resource/itemicon/vanessa/${slot.item.id}.webp`
+    const url = getItemIconUrl(slot.item.id)
     Assets.load<Texture>(url).then(tex => {
       iconSprite.texture = tex
       iconSprite.alpha   = bought ? 0.4 : (canAfford ? 1 : 0.55)
-    }).catch(() => { /* 加载失败保持占位 */ })
+    }).catch((err) => {
+      console.warn('[ShopPanelView] 图标加载失败', url, err)
+    })
 
     // ---- 物品名称 ----
     const nameText = new Text({

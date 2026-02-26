@@ -6,3 +6,4 @@ dist-ios/
 .claude/
 ios/build/
 ios/*.xcodeproj/
+ios/.derivedData/

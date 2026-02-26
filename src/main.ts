@@ -9,17 +9,38 @@ import { ShopScene }    from '@/scenes/ShopScene'
 import { BattleScene }  from '@/scenes/BattleScene'
 import { validateData } from '@/core/DataLoader'
 import { setApp }       from '@/core/AppContext'
+import { clearStoredConfig } from '@/config/debugConfig'
 
 // 基准分辨率（单格 128px × 5列 = 640，等比对应 390×844 物理屏）
 const BASE_W = 640
 const BASE_H = 1384
 
+function showFatalError(message: string): void {
+  const body = document.body
+  if (!body) return
+  body.innerHTML = ''
+  const box = document.createElement('pre')
+  box.style.whiteSpace = 'pre-wrap'
+  box.style.padding = '16px'
+  box.style.color = '#ffb4b4'
+  box.style.background = '#190f16'
+  box.style.fontSize = '14px'
+  box.style.lineHeight = '1.4'
+  box.textContent = `启动失败\n${message}`
+  body.appendChild(box)
+}
+
 async function bootstrap(): Promise<void> {
+  if (window.location.protocol === 'app:') {
+    clearStoredConfig()
+  }
+
   // 1. 验证数据完整性
   const { ok, report } = validateData()
   console.log('\n=== 数据验证 ===\n' + report)
   if (!ok) {
     console.error('数据验证失败，游戏无法启动')
+    showFatalError(report)
     return
   }
 
@@ -70,4 +91,8 @@ async function bootstrap(): Promise<void> {
   console.log('   当前场景:', SceneManager.currentName())
 }
 
-bootstrap().catch(console.error)
+bootstrap().catch((err) => {
+  const msg = err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err)
+  console.error(err)
+  showFatalError(msg)
+})

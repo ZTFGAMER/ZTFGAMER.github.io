@@ -3,7 +3,7 @@
 // 每个参数一行：标签 | 滑块 | 当前值 | 单位 | 数字输入 | 重置
 // ============================================================
 
-import { getConfig, setConfig, resetConfig, CONFIG_DEFS, onConfigChange } from '@/config/debugConfig'
+import { getConfig, setConfig, resetConfig, CONFIG_DEFS, onConfigChange, getConfigSnapshot } from '@/config/debugConfig'
 
 const LAYOUT_POSITION_KEYS = [
   'shopAreaX',
@@ -160,6 +160,27 @@ function updateUIFromExternal(key: string, value: number): void {
   if (valEl)  valEl.textContent = String(value)
 }
 
+function buildSnapshotJson(): string {
+  return JSON.stringify(getConfigSnapshot(), null, 2)
+}
+
+async function copySnapshotToClipboard(): Promise<void> {
+  const text = buildSnapshotJson()
+  await navigator.clipboard.writeText(text)
+}
+
+function downloadSnapshotFile(): void {
+  const blob = new Blob([buildSnapshotJson() + '\n'], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'debug_defaults.json'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 // ---- 主入口 ----
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -180,6 +201,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
   onConfigChange((key, value) => {
     updateUIFromExternal(key, value)
+  })
+
+  const btnCopy = document.getElementById('btn-copy-config') as HTMLButtonElement | null
+  btnCopy?.addEventListener('click', async () => {
+    try {
+      await copySnapshotToClipboard()
+      const badge = document.getElementById('sync-badge')!
+      badge.textContent = '📋 已复制配置 JSON'
+      badge.style.opacity = '1'
+      setTimeout(() => { badge.style.opacity = '0' }, 2000)
+    } catch {
+      alert('复制失败，请使用“下载默认值”按钮')
+    }
+  })
+
+  const btnDownload = document.getElementById('btn-download-defaults') as HTMLButtonElement | null
+  btnDownload?.addEventListener('click', () => {
+    downloadSnapshotFile()
+    const badge = document.getElementById('sync-badge')!
+    badge.textContent = '💾 已下载 debug_defaults.json'
+    badge.style.opacity = '1'
+    setTimeout(() => { badge.style.opacity = '0' }, 2200)
   })
 
   const badge = document.getElementById('sync-badge')!

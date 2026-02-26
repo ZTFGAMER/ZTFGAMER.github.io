@@ -445,6 +445,64 @@
     - 补齐 iOS 上传校验项：新增 `Assets.xcassets/AppIcon.appiconset` + `ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon`，并将 `TARGETED_DEVICE_FAMILY` 调整为 `1`（iPhone）
     - 重新归档与导出后上传成功：`ios/build/export-testflight/BigBazzar.ipa`
     - Delivery UUID：`6bde46b3-f1b1-4f02-9d93-691e3f120eb7`
+  - iOS 黑屏排查（本轮）：
+    - 现象：启动后显示 `dist-ios/index.html 未找到`，包体仅约 220KB
+    - 结论：归档时未携带 Web 静态资源（仅壳工程），常见于未先执行 `npm run build:ios-web` 或资源路径在 bundle 中被扁平化
+    - 修复：`ios/BigBazzar/WebView.swift` 增加双路径加载（优先 `dist-ios/index.html`，其次 `index.html`）
+    - 本机验证：`./ios/build.sh simulator` 重新生成并构建成功（`BUILD SUCCEEDED`）
+  - iOS 资源拷贝修复（本轮）：
+    - 根因确认：Xcode 产物中最初仅有壳文件，不含 `dist-ios/`，导致运行时找不到 `index.html`
+    - 修复：`ios/project.yml` 新增 postBuildScript，将 `${SRCROOT}/../dist-ios` 显式复制到 app bundle 的 `dist-ios/`
+    - 本机验证：Simulator 产物目录已包含 `BigBazzar.app/dist-ios/`，黑屏根因已解除
+  - iOS 黑屏二次定位（本轮）：
+    - 新发现：旧 `build.sh` 会从全局 DerivedData 随机取 `BigBazzar.app` 安装，容易装到旧壳包
+    - 修复：`ios/build.sh` 改为固定使用 `ios/.derivedData` 构建与安装，并在安装前先卸载旧 bundle
+    - 新发现：运行期图标路径原本使用绝对 `/resource/...`，在 `file://` 下会失效
+    - 修复：新增 `src/core/assetPath.ts`，在 `file://` 场景自动切到相对路径；替换 `GridZone/ShopPanelView/SellPopup/ShopScene` 的图片加载入口
+    - 资源补齐：`ios/project.yml` 的 postBuildScript 现同时复制 `dist-ios/` 与 `resource/` 到 app bundle
+    - 验证：固定构建产物 `ios/.derivedData/Build/Products/Release-iphonesimulator/BigBazzar.app` 已包含 `dist-ios/` 与 `resource/`
+  - iOS 黑屏三次定位（本轮）：
+    - 修正资源路径：新增 `src/core/assetPath.ts`，`file://` 场景下图片路径由绝对 `/resource/...` 切换为相对路径（`../resource/...` 或 `./resource/...`）
+    - 接入点：`src/grid/GridZone.ts`、`src/shop/ShopPanelView.ts`、`src/shop/SellPopup.ts`、`src/scenes/ShopScene.ts`
+    - 规避旧静态资源污染：`ios/project.yml` 在 `sources` 中排除 `ios/BigBazzar/dist-ios/**`，仅保留 postBuild 拷贝链路
+    - 启动可视化报错：`src/main.ts` 增加 `showFatalError`，启动异常将直接显示在页面，便于真机/模拟器排查
+    - 验证：`npm test` 84/84 通过；`./ios/build.sh simulator` 构建并启动通过
+  - iOS Xcode 联调增强（本轮）：
+    - `ios/BigBazzar/WebView.swift` 注入 JS Bridge：采集 `window.error`、`unhandledrejection`、`console.log/warn/error` 到 Xcode 控制台（前缀 `[WKBridge]`）
+    - 启用 `WKWebView.isInspectable`（iOS 16.4+）以支持 Safari Web Inspector 联调
+  - iOS 黑屏四次定位（本轮）：
+    - 假设命中 `file://` + `type=module crossorigin` 兼容问题，`ios/build.sh` 在生成 `dist-ios` 后自动移除 `index.html` 中 `crossorigin`
+    - `WebView` 在 `didFinish` 后新增页面快照日志（脚本列表、`#app` 子节点数、是否出现 `canvas`），用于快速判定“HTML加载成功但 JS 未执行”
+  - iOS 黑屏五次定位（本轮）：
+    - 从日志确认 `didFinish/readyState=complete` 但 `hasCanvas=false`，定位到 `app://` 自定义协议下绝对路径资源解析错误
+    - 修复：`LocalSchemeHandler` 解析 URL 时纳入 `host`（`app://resource/...` 与 `app://dist-ios/...` 均正确映射）
+    - 修复：`src/core/assetPath.ts` 增加 `app:` 协议适配，图片路径改为 `app://resource/...`
+  - iOS 图片与调参默认值治理（本轮）：
+    - `ios/build.sh` 新增 Step 1.6：将 `resource/itemicon/vanessa/*.webp` 自动转为 `dist-ios/resource/itemicon/vanessa/*.png`（避免 WKWebView 对部分 WEBP 解码失败）
+    - `src/core/assetPath.ts`：`app:` 协议改走 `app://dist-ios/resource/.../*.png`，Web 端继续走 `*.webp`
+    - 新增项目级调参默认值文件：`data/debug_defaults.json`
+    - `src/config/debugConfig.ts`：启动时读取 `data/debug_defaults.json` 覆盖 `CONFIG_DEFS.defaultValue`，并新增 `getConfigSnapshot()`
+    - `debug.html` + `src/debug/debugPage.ts`：新增“复制配置”“保存为默认值”按钮，支持一键导出当前在线调参为 `debug_defaults.json`
+    - 回归验证：`npm test` 84/84 通过；`./ios/build.sh simulator` 构建通过
+  - 调参固化（本轮）：
+    - 已读取你下载的 `~/Downloads/debug_defaults.json` 并写回项目 `data/debug_defaults.json`
+    - 后续启动会默认使用这套初始调参值（若设备已有 localStorage 旧值，仍会优先命中缓存）
+  - 调参与图片继续收口（本轮）：
+    - `src/config/debugConfig.ts` 新增 `clearStoredConfig()`，清理 `bigbazzar_cfg_*` 本地缓存
+    - `src/main.ts`：`app://` 启动时先清理调参缓存，确保读取 `data/debug_defaults.json` 作为本次初始值
+    - `ios/BigBazzar/WebView.swift`：`LocalSchemeHandler` 增加资源请求日志（`[WK][asset]`）与缺失日志（`[WK][asset-missing]`），便于 Xcode 定位图片链路
+    - 回归：`npm test` 84/84 通过；`./ios/build.sh simulator` 重新构建并安装完成
+  - iOS 图片显示定位增强（本轮）：
+    - `ios/BigBazzar/WebView.swift`：自定义协议响应改为 `HTTPURLResponse(200)`，附 `Content-Type` 与 `Access-Control-Allow-Origin`，二进制资源不再携带文本编码
+    - `src/grid/GridZone.ts`、`src/shop/ShopPanelView.ts`、`src/shop/SellPopup.ts`、`src/scenes/ShopScene.ts`：图标加载失败不再静默，统一输出 `console.warn`（含 URL/物品 id）
+    - 回归：`npm test` 84/84 通过；`./ios/build.sh simulator` 已重建最新包
+  - 结果确认（本轮）：
+    - Xcode 联调日志显示：`hasCanvas=true`、资源请求命中 `dist-ios/resource/...png`，图片已恢复显示
+    - 在线调参默认值已按 `data/debug_defaults.json` 生效
+  - TestFlight 更新（本轮）：
+    - 初次上传被拒（`cfBundleVersion=1` 已存在）
+    - `ios/project.yml` 将 `CURRENT_PROJECT_VERSION` 升为 `2`
+    - 重新归档/导出/上传成功：Delivery UUID `3f45d9df-2ac5-4bd2-9a23-419db46ec08f`
 
 ---
 

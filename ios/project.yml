@@ -8,7 +8,7 @@ options:
 settings:
   base:
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "2"
     PRODUCT_BUNDLE_IDENTIFIER: com.zhengtengfei.BigBazzar
 
 targets:
@@ -18,10 +18,29 @@ targets:
 
     sources:
       - path: BigBazzar
+        excludes:
+          - dist-ios/**
 
-    resources:
-      - path: ../dist-ios
-        type: folder
+    postBuildScripts:
+      - name: Copy Web Dist
+        script: |
+          set -e
+          SRC_DIST="${SRCROOT}/../dist-ios"
+          SRC_RESOURCE="${SRCROOT}/../resource"
+          DST_DIR="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/dist-ios"
+          DST_RESOURCE_DIR="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/resource"
+          if [ ! -f "${SRC_DIST}/index.html" ]; then
+            echo "error: dist-ios/index.html 不存在，请先执行 npm run build:ios-web"
+            exit 1
+          fi
+          rm -rf "${DST_DIR}"
+          mkdir -p "${DST_DIR}"
+          cp -R "${SRC_DIST}/." "${DST_DIR}/"
+          if [ -d "${SRC_RESOURCE}" ]; then
+            rm -rf "${DST_RESOURCE_DIR}"
+            mkdir -p "${DST_RESOURCE_DIR}"
+            cp -R "${SRC_RESOURCE}/." "${DST_RESOURCE_DIR}/"
+          fi
 
     info:
       path: BigBazzar/Info.plist

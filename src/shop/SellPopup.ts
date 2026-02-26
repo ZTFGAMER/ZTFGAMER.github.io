@@ -11,6 +11,7 @@ import type { ItemDef } from '@/items/ItemDef'
 import { getConfig as getGameConfig } from '@/core/DataLoader'
 import { normalizeSize } from '@/items/ItemDef'
 import { CELL_SIZE } from '@/grid/GridZone'
+import { getItemIconUrl } from '@/core/assetPath'
 
 const DEFAULT_POPUP_W = 400
 const POPUP_MIN_H = 240
@@ -294,12 +295,14 @@ export class SellPopup extends Container {
     this.applyPanelPosition()
 
     // 异步加载图标
-    const url = `/resource/itemicon/vanessa/${item.id}.webp`
+    const url = getItemIconUrl(item.id)
     this.iconSp.alpha = 0
     Assets.load<Texture>(url).then(tex => {
       this.iconSp.texture = tex
       this.iconSp.alpha   = 1
-    }).catch(() => {})
+    }).catch((err) => {
+      console.warn('[SellPopup] 图标加载失败', url, err)
+    })
 
     this.visible = true
   }

@@ -21,6 +21,7 @@ import { ShopManager, type TierKey } from '@/shop/ShopManager'
 import { ShopPanelView }     from '@/shop/ShopPanelView'
 import { SellPopup }         from '@/shop/SellPopup'
 import { getConfig as getDebugCfg, onConfigChange as onDebugCfgChange } from '@/config/debugConfig'
+import { getItemIconUrl } from '@/core/assetPath'
 import {
   Container, Graphics, Text, Sprite,
   Assets, Texture, Rectangle, Ticker,
@@ -409,9 +410,9 @@ async function playSynthesisAnimation(stage: Container, slot: { item: { id: stri
 
   stage.addChild(layer)
 
-  Assets.load<Texture>(`/resource/itemicon/vanessa/${slot.item.id}.webp`)
+  Assets.load<Texture>(getItemIconUrl(slot.item.id))
     .then((tex) => { sp.texture = tex; sp.alpha = 1 })
-    .catch(() => {})
+    .catch((err) => { console.warn('[ShopScene] 合成图标加载失败', slot.item.id, err) })
 
   const target = getSynthesisFlyTarget(result)
   const startX = iconWrap.x
@@ -1075,9 +1076,9 @@ function startShopDrag(
   sp.width = iconW - 10; sp.height = iconH - 10
   sp.x = 5; sp.y = 5; sp.alpha = 0
   floater.addChild(sp)
-  Assets.load<Texture>(`/resource/itemicon/vanessa/${slot.item.id}.webp`)
+  Assets.load<Texture>(getItemIconUrl(slot.item.id))
     .then(tex => { sp.texture = tex; sp.alpha = 0.9 })
-    .catch(() => {})
+    .catch((err) => { console.warn('[ShopScene] 拖拽浮层图标加载失败', slot.item.id, err) })
 
   const offsetY = getDebugCfg('dragYOffset')
   const s = visScale * 1.06
