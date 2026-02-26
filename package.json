@@ -1,1 +1,23 @@
-{"name":"bigbazzar","private":true,"version":"0.1.0","type":"module","scripts":{"dev":"vite","build":"tsc -b && vite build","preview":"vite preview","test":"vitest run","test:watch":"vitest"},"devDependencies":{"typescript":"~5.8.3","vite":"^6.3.1","vitest":"^3.1.1","@types/node":"^22.0.0"},"dependencies":{"pixi.js":"^8.9.2"}}
+{
+  "name": "bigbazzar",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:ios-web": "tsc -b && vite build --base ./ --outDir dist-ios",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.3",
+    "vite": "^6.3.1",
+    "vitest": "^3.1.1",
+    "@types/node": "^22.0.0"
+  },
+  "dependencies": {
+    "pixi.js": "^8.9.2"
+  }
+}

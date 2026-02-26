@@ -1,0 +1,55 @@
+name: BigBazzar
+options:
+  bundleIdPrefix: com.zhengtengfei
+  deploymentTarget:
+    iOS: "15.0"
+  developmentLanguage: zh-Hans
+
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    PRODUCT_BUNDLE_IDENTIFIER: com.zhengtengfei.BigBazzar
+
+targets:
+  BigBazzar:
+    type: application
+    platform: iOS
+
+    sources:
+      - path: BigBazzar
+
+    resources:
+      - path: ../dist-ios
+        type: folder
+
+    info:
+      path: BigBazzar/Info.plist
+      properties:
+        CFBundleDisplayName: 手机大巴扎
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundlePackageType: APPL
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIStatusBarHidden: true
+        UIViewControllerBasedStatusBarAppearance: false
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        LSApplicationCategoryType: public.app-category.games
+
+    settings:
+      base:
+        INFOPLIST_FILE: BigBazzar/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.zhengtengfei.BigBazzar
+        PRODUCT_NAME: BigBazzar
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1"

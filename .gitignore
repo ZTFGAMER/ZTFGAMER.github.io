@@ -1,5 +1,8 @@
 node_modules/
 dist/
+dist-ios/
 *.tsbuildinfo
 .DS_Store
 .claude/
+ios/build/
+ios/*.xcodeproj/

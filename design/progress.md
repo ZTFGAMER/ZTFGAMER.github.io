@@ -8,17 +8,18 @@
 ## 当前状态
 
 **日期：** 2026-02-26
-**当前阶段：** 阶段 2 商店经济系统（视觉验收优化进行中）
-**整体进度：** ████████████░░ 约 60%
+**当前阶段：** 阶段 3 战斗引擎（准备中，明天开工）
+**整体进度：** ██████████████░░ 约 70%
 
-### 本轮完成要点（进程1挤出机制重构）
-| 模块 | 变更内容 |
-|------|----------|
-| `DragController.ts` | 挤出从"视觉预览可还原"改为"延迟实际提交不可还原" |
-| `DragController.ts` | 新增 `dragOrigItem` 字段，处理 DRAG 不在 system 时的 fallback |
-| `DragController.ts` | `clearSqueezePreview` 简化为仅取消计时器（不再还原物品位置） |
-| `DragController.ts` | `doSnapBack` 支持极端情况：DRAG 原格被占时扫描第一个空格 |
-| 状态 | TypeScript 零报错，Vitest 通过 |
+> 备注：阶段 2 已完成；主程提出的风险与优化项按当前决策延后到最终阶段统一收口（已记录为技术债）。
+
+### 本轮完成要点（阶段2收尾 + 阶段3准备）
+| 模块/主题 | 变更内容 |
+|----------|----------|
+| 阶段状态 | **阶段 2 商店经济系统：用户确认已完成**；下一步进入阶段 3 战斗引擎 |
+| 风险复盘 | 挤出/互换/跨区转移/AutoPack 等多路径已跑通并单测覆盖，但进入战斗阶段需加“Phase+输入锁”避免并发输入污染 |
+| 主程建议 | 战斗引擎保持纯逻辑（CombatEngine）+ 全局阶段机（PhaseManager）+ 渲染编排（CombatScene）；GridSystem 提供 snapshot 导出 |
+| 状态 | TypeScript 零报错；测试与构建保持通过（以最近一次记录为准） |
 
 ---
 
@@ -54,7 +55,7 @@
 | 4b | 所有参数运行时可配置（调试页实时同步） | ✅ | 新增 `src/config/debugConfig.ts`（localStorage+BroadcastChannel），`debug.html` 紧凑调试页（每参数一行36px），参数修改即时同步游戏 |
 | 5 | 1x2/2x2 强制从 row=0 放置 | ✅ | `finalRow = size !== '1x1' ? 0 : cell.row`，tryDrop 和 updateHighlight 均已处理 |
 
-### ✅ 阶段 2：商店经济系统（视觉验收优化进行中）
+### ✅ 阶段 2：商店经济系统（100% 完成，用户确认完成）
 
 - [x] `src/shop/ShopManager.ts`：纯逻辑层
 - [x] `src/shop/ShopPanelView.ts`：视觉验收版重写
@@ -78,9 +79,16 @@
   - 按新验收要求调整：打开背包时隐藏刷新按钮与刷新费用，关闭背包后恢复显示
   - 刷新费用与持有金币文本统一为金币图标 `💰`，并统一黄色显示
   - 修复持有金币动态刷新文案遗留旧图标：`refreshShopUI` 中 `🪙` 已统一替换为 `💰`
-- [x] TypeScript 零报错，Vitest 60/60 通过
+- [x] TypeScript 零报错，Vitest 全绿（最近记录 81/81 或 84/84），build 通过
 
-### ⏸ 阶段 3–6（未开始）
+### ⏳ 阶段 3：战斗引擎（明天开工）
+
+- [ ] CombatEngine（纯逻辑）：回合/Tick、技能结算、伤害、Buff/Debuff
+- [ ] PhaseManager（状态机）：ShopPhase -> CombatPhase -> RewardPhase（含输入锁）
+- [ ] CombatScene（表现层）：监听战斗事件播放动画/飘字
+- [ ] GridSystem 快照接口：`exportSnapshot()` / 战斗实体读取接口（仅可见列）
+
+### ⏸ 阶段 4–6（未开始）
 
 依次为：战斗引擎 → 物品效果 → 关卡进程 → UI 打磨
 
@@ -90,10 +98,11 @@
 
 | 优先级 | 问题 | 说明 |
 |--------|------|------|
-| 🔴 高 | 阶段 2 视觉验收 | 需在浏览器验证商店渲染、购买流程、出售弹窗、装备缩放与布局正确性 |
-| 🟡 中 | 跨区域拖拽移除后重新 addItem 绑定时序 | 跨 zone 移动后 refreshZone 异步调用，极快操作可能短暂失去绑定 |
-| 🟢 低 | 背包满时购买体验 | 目前只是 console.log，后续需 UI 提示 |
-| 🟢 低 | 出售后 GridZone 内物品的 onTap 需重新绑定 | 目前 backpackView.onTap 是全局 hook，无需重绑 |
+| 🟢 低 | 技术债：单一数据源收敛 | 主程建议：将 `instanceToTier` 等运行期状态从场景/UI 剥离，统一到纯逻辑 `GameState/ItemManager`；当前决策延后到最终阶段收口 |
+| 🟢 低 | 技术债：Phase + 输入锁 | 主程建议：CombatPhase 禁用 DragController/商店/挤出；当前决策延后到最终阶段收口 |
+| 🟢 低 | 技术债：AutoPack 性能 | 主程建议：对高频拖拽/悬停调用增加 throttle/debounce 或缓存；延后到最终阶段 |
+| 🟢 低 | 技术债：GridSystem 读取接口梳理 | 主程建议：补齐“仅可见列”的战斗实体读取接口；延后到最终阶段 |
+| 🟢 低 | 技术债：UX 提示补齐 | 主程建议：背包满/无法购买等从 log 升级为最小 UI 反馈；延后到最终阶段 |
 
 ---
 
@@ -137,6 +146,8 @@
 | 2026-02-26 | 交互 | 合成动画节奏与可见性优化：增加停留+飞入可调时长，升级箭头增强对比度与层级 |
 | 2026-02-26 | 拖拽 | 挤出规则改为“悬停即提交”，移除挤出预览与回弹动画逻辑 |
 | 2026-02-26 | 机制 | 挤出限制为区内，不允许战斗区/背包跨区挤出；商店购入战斗区冲突时可替换并转移到背包 |
+| 2026-02-26 | 进度 | 阶段 2 用户确认完成；阶段 3 战斗引擎明天开工（需先完成 P0：数据源收敛 + Phase 输入锁） |
+| 2026-02-26 | 计划 | 主程提出的风险点与优化项（数据源收敛/Phase 输入锁/AutoPack 性能/读取接口/UX 提示）按当前决策延后到最终阶段统一收口 |
 
 ---
 
@@ -402,23 +413,45 @@
   - 复跑 `npm test`：81/81 全通过
   - 复跑 `npm run build`：构建通过（保留既有 chunk size warning，无新增编译错误）
 
-### 本次对话追加总结（用户最新验收反馈）
+### 本次对话追加总结（阶段2收口 + 阶段3计划）
 
-- NotebookLM 连通性确认：主程与设计师 notebook 均可访问（列表可读），当前未设置 active notebook。
-- 修复“商店小型拖到战斗区误转背包”问题：购买落战斗区改为优先走统一挤出并优先 local 重排。
-- 修复“战斗区小型上下互挤失效”与“只能挤一次”问题：
-  - 挤出计算传入 `dragOrigItem` 作为原位覆盖，避免 DRAG 已从 system 移除后丢失原位；
-  - 每次提交挤出后更新拖拽锚点，支持持续来回互挤。
-- 交互颜色规范更新：换位/挤出路径统一黄色高亮（普通可放置维持原规则）。
-- 背包规则补充：1x1 拖到 1x2/2x2 且不能立即合法换位时，强制红色并禁止挤出/换位。
-- 当前状态：阶段 2 仍在验收优化；自动化测试维持全绿（Vitest 81/81）。
+- 进度更新：按用户确认将阶段 2 标记为完成；阶段 3（战斗引擎）明天开工。
+- 遇到的坑/问题（已在阶段2中处理并记录）：可见列误判、商店拖拽未接挤出逻辑、挤出悬停提交时机校验、DRAG 移出 system 导致原位丢失（用 `dragOrigItem` 兜底）、auto-pack 与挤出优先级冲突。
+- 与主程讨论结论（阶段3架构）：CombatEngine（纯逻辑）+ PhaseManager（全局阶段机）+ CombatScene（表现编排）；GridSystem 提供 `exportSnapshot()` 将网格导出为纯数据供战斗计算。
+- 风险与待优化（主程给出的 P0/P1）：
+  - P0：收敛运行期状态为单一数据源（`GameState/ItemManager`），避免战斗读取 UI 中间态；实现 Phase + 输入锁，CombatPhase 禁用拖拽/商店/挤出。
+  - P1：AutoPack 增加节流/缓存；GridSystem 补齐“仅可见列”的战斗实体读取接口；背包满/无法购买补最小 UI 反馈。
+
+### 本次对话追加总结（iOS 打包）
+
+- 方案确认：参考主程 Notebook 建议与 `pokemon-pinyin` 实战，采用 `SwiftUI + WKWebView + XcodeGen` 打包路径。
+- Web 资源改造：`package.json` 新增 `build:ios-web`，以 `vite build --base ./ --outDir dist-ios` 生成 iOS 可加载静态资源。
+- iOS 壳工程新增：
+  - `ios/project.yml`（XcodeGen 配置）
+  - `ios/BigBazzar/BigBazzarApp.swift`
+  - `ios/BigBazzar/ContentView.swift`
+  - `ios/BigBazzar/WebView.swift`（加载 `dist-ios/index.html`）
+  - `ios/BigBazzar/Info.plist`
+  - `ios/build.sh`、`ios/README.md`、`ios/ExportOptions.plist`
+- Git 忽略补充：`.gitignore` 新增 `dist-ios/`、`ios/build/`、`ios/*.xcodeproj/`。
+- 打包结果：
+  - 模拟器构建并启动成功：`./ios/build.sh simulator`
+  - 真机归档成功：`IOS_DEVELOPMENT_TEAM=6P57AJV77Q ./ios/build.sh archive`
+  - IPA 导出成功：`ios/build/export/BigBazzar.ipa`
+  - TestFlight 上传尝试：
+    - 已完成 API Key 鉴权参数准备（Key ID: `6QLQ7HG556`，Issuer ID 已确认）
+    - 上传失败原因为 App Store Connect 尚未存在 `bundleId=com.zhengtengfei.BigBazzar` 的 App 记录（`altool --list-apps --filter-bundle-id` 结果为空）
+  - TestFlight 上传完成（本轮）：
+    - 补齐 iOS 上传校验项：新增 `Assets.xcassets/AppIcon.appiconset` + `ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon`，并将 `TARGETED_DEVICE_FAMILY` 调整为 `1`（iPhone）
+    - 重新归档与导出后上传成功：`ios/build/export-testflight/BigBazzar.ipa`
+    - Delivery UUID：`6bde46b3-f1b1-4f02-9d93-691e3f120eb7`
 
 ---
 
 ## 下一步
 
-1. **浏览器视觉验收（阶段2最终）**
-   - 验证战斗区闪光为黄色且略大于格子边框
-   - 验证拖拽物品始终高于闪光层（闪光不遮挡被拖拽的物品）
-   - 验证挤出机制延迟逻辑（悬停后实际提交、弹回极端情况等）
-2. **阶段 2 全部验收通过后开始阶段 3：战斗引擎**
+1. **阶段 3：战斗引擎骨架**
+   - CombatEngine（纯逻辑）+ CombatScene（表现层）+ 事件流
+   - GridSystem 快照导出（`exportSnapshot()`）与“仅可见列”战斗实体读取接口
+2. **最终阶段技术债收口（暂缓）**
+   - 数据源收敛 / Phase 输入锁 / AutoPack 性能 / GridSystem 读取接口 / UX 提示
