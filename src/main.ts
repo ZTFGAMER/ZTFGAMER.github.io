@@ -10,6 +10,7 @@ import { BattleScene }  from '@/scenes/BattleScene'
 import { validateData } from '@/core/DataLoader'
 import { setApp }       from '@/core/AppContext'
 import { clearStoredConfig } from '@/config/debugConfig'
+import { PhaseManager, type GamePhase } from '@/core/PhaseManager'
 
 // 基准分辨率（单格 128px × 5列 = 640，等比对应 390×844 物理屏）
 const BASE_W = 640
@@ -80,6 +81,20 @@ async function bootstrap(): Promise<void> {
   SceneManager.register(ShopScene)
   SceneManager.register(BattleScene)
   SceneManager.goto('shop')
+
+  if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
+    ;(window as Window & {
+      __setGamePhase?: (phase: GamePhase) => void
+      __getGamePhase?: () => GamePhase
+    }).__setGamePhase = (phase: GamePhase) => {
+      PhaseManager.setPhase(phase)
+      console.log(`[Debug] phase -> ${PhaseManager.getPhase()}`)
+    }
+    ;(window as Window & {
+      __setGamePhase?: (phase: GamePhase) => void
+      __getGamePhase?: () => GamePhase
+    }).__getGamePhase = () => PhaseManager.getPhase()
+  }
 
   // 6. 接入 PixiJS Ticker（取代手写 RAF）
   app.ticker.add((ticker) => {

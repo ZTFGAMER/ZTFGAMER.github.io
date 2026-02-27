@@ -7,12 +7,14 @@
 /** 全局事件类型表 —— 在此处扩展新事件 */
 export type GameEvents = {
   // 战斗事件
-  'battle:item_fire':    { itemId: string; multicast: number };
-  'battle:take_damage':  { targetId: string; amount: number; isCrit: boolean; type: 'normal' | 'burn' | 'poison' };
-  'battle:status_apply': { targetId: string; status: StatusType; duration: number };
+  'battle:item_fire':    { itemId: string; sourceItemId: string; side: 'player' | 'enemy'; multicast: number };
+  'battle:take_damage':  { targetId: string; sourceItemId: string; amount: number; isCrit: boolean; type: 'normal' | 'burn' | 'poison' };
+  'battle:gain_shield':  { targetId: string; sourceItemId: string; amount: number };
+  'battle:heal':         { targetId: string; sourceItemId: string; amount: number; isRegen: boolean };
+  'battle:status_apply': { targetId: string; sourceItemId: string; status: StatusType; amount: number };
   'battle:status_remove':{ targetId: string; status: StatusType };
   'battle:unit_die':     { unitId: string; side: 'player' | 'enemy' };
-  'battle:end':          { winner: 'player' | 'enemy'; blameLog: string[] };
+  'battle:end':          { winner: 'player' | 'enemy' | 'draw'; blameLog: string[] };
 
   // 商店事件
   'shop:item_bought':    { itemId: string; cost: number };
@@ -25,7 +27,7 @@ export type GameEvents = {
   'game:scene_change':   { from: SceneName; to: SceneName };
 };
 
-export type StatusType = 'burn' | 'poison' | 'freeze' | 'haste' | 'slow';
+export type StatusType = 'burn' | 'poison' | 'regen' | 'freeze' | 'haste' | 'slow';
 export type SceneName  = 'shop' | 'battle' | 'result';
 
 type Listener<T> = (payload: T) => void;

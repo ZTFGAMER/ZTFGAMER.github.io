@@ -3,14 +3,14 @@
 // 无 PixiJS 依赖，可独立 Vitest 测试
 // ============================================================
 
-export type ItemSizeNorm = '1x1' | '1x2' | '2x2'
+export type ItemSizeNorm = '1x1' | '2x1' | '3x1'
 
 interface SizeDim { w: number; h: number }
 
 const SIZE_MAP: Record<ItemSizeNorm, SizeDim> = {
   '1x1': { w: 1, h: 1 },
-  '1x2': { w: 1, h: 2 },
-  '2x2': { w: 2, h: 2 },
+  '2x1': { w: 2, h: 1 },
+  '3x1': { w: 3, h: 1 },
 }
 
 export interface PlacedItem {
@@ -21,9 +21,23 @@ export interface PlacedItem {
   row:        number   // 左上角行
 }
 
+export interface CombatEntity {
+  instanceId: string
+  defId: string
+  size: ItemSizeNorm
+  col: number
+  row: number
+}
+
+export interface CombatSnapshot {
+  createdAtMs: number
+  activeColCount: number
+  entities: CombatEntity[]
+}
+
 export class GridSystem {
   readonly cols: number
-  readonly rows: number = 2
+  readonly rows: number = 1
 
   // grid[col][row] = instanceId | null
   private grid: (string | null)[][]
@@ -31,7 +45,7 @@ export class GridSystem {
 
   constructor(cols: number = 5) {
     this.cols = cols
-    this.grid = Array.from({ length: cols }, () => Array<string | null>(2).fill(null))
+    this.grid = Array.from({ length: cols }, () => Array<string | null>(this.rows).fill(null))
   }
 
   // ---- 放置检测 ----
@@ -90,10 +104,32 @@ export class GridSystem {
     return Array.from(this.items.values())
   }
 
-  /**
-   * 获取左右相邻物品 ID（col±1 方向）。
-   * 1x2 / 2x2 跨行，两行都参与计算，结果去重。
-   */
+  getCombatEntities(activeColCount: number): CombatEntity[] {
+    const visibleCols = Math.max(1, Math.min(this.cols, activeColCount))
+    return Array
+      .from(this.items.values())
+      .filter((it) => {
+        const { w } = SIZE_MAP[it.size]
+        return it.col >= 0 && it.col + w <= visibleCols
+      })
+      .map((it) => ({
+        instanceId: it.instanceId,
+        defId: it.defId,
+        size: it.size,
+        col: it.col,
+        row: it.row,
+      }))
+  }
+
+  exportCombatSnapshot(activeColCount: number): CombatSnapshot {
+    return {
+      createdAtMs: Date.now(),
+      activeColCount: Math.max(1, Math.min(this.cols, activeColCount)),
+      entities: this.getCombatEntities(activeColCount).map((it) => ({ ...it })),
+    }
+  }
+
+  /** 获取左右相邻物品 ID（col±1 方向）。 */
   getAdjacentItems(instanceId: string): string[] {
     const item = this.items.get(instanceId)
     if (!item) return []

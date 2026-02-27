@@ -39,6 +39,7 @@ function extractConfig(entries: ConfigEntry[]): GameConfig {
     itemVisualScale:    get<number>('item_visual_scale'),
     shopTierChancesByDay:get<number[][]>('shop_tier_chances_by_day'),
     textSizes:          get<GameConfig['textSizes']>('text_sizes'),
+    combatRuntime:      get<GameConfig['combatRuntime']>('combat_runtime'),
   }
 }
 
@@ -96,15 +97,15 @@ export function validateData(): { ok: boolean; report: string } {
     lines.push(`✅ vanessa_items.json 读取成功`)
     lines.push(`   - 总物品数: ${items.length}`)
 
-    const sizes = { '1x1': 0, '1x2': 0, '2x2': 0, other: 0 }
+    const sizes = { '1x1': 0, '2x1': 0, '3x1': 0, other: 0 }
     for (const item of items) {
       const s = item.size.toLowerCase()
       if      (s.includes('small'))  sizes['1x1']++
-      else if (s.includes('medium')) sizes['1x2']++
-      else if (s.includes('large'))  sizes['2x2']++
+      else if (s.includes('medium')) sizes['2x1']++
+      else if (s.includes('large'))  sizes['3x1']++
       else                           sizes['other']++
     }
-    lines.push(`   - 小型(1x1): ${sizes['1x1']}  中型(1x2): ${sizes['1x2']}  大型(2x2): ${sizes['2x2']}`)
+    lines.push(`   - 小型(1x1): ${sizes['1x1']}  中型(2x1): ${sizes['2x1']}  大型(3x1): ${sizes['3x1']}`)
 
     // 检查必填字段
     const missing = items.filter(i => !i.id || !i.name_cn || !i.size)

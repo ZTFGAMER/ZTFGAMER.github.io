@@ -226,8 +226,8 @@ export class SellPopup extends Container {
     const cfg = getGameConfig()
     const visualScale = cfg.itemVisualScale
     const size = normalizeSize(item.size)
-    const iconW = (size === '2x2' ? CELL_SIZE * 2 : CELL_SIZE) * visualScale
-    const iconH = ((size === '1x2' || size === '2x2') ? CELL_SIZE * 2 : CELL_SIZE) * visualScale
+    const iconW = (size === '1x1' ? CELL_SIZE : size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3) * visualScale
+    const iconH = (CELL_SIZE * 2) * visualScale
     this.currentMinH = size === '1x1' ? this.minHSmall : this.minH
 
     const pad = 16

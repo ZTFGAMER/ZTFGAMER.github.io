@@ -51,9 +51,10 @@ function areaOf(size: ItemSizeNorm): number {
   return w * h
 }
 
-function canPlaceRaw(vg: VirtualGrid, col: number, row: number, size: ItemSizeNorm, maxCols = 5): boolean {
+function canPlaceRaw(vg: VirtualGrid, col: number, row: number, size: ItemSizeNorm, maxCols = 6): boolean {
   const { w, h } = VSIZE_MAP[size]
-  if (col < 0 || row < 0 || col + w > maxCols || row + h > 2) return false
+  const maxRows = vg.grid[0]?.length ?? 1
+  if (col < 0 || row < 0 || col + w > maxCols || row + h > maxRows) return false
   for (let c = col; c < col + w; c++)
     for (let r = row; r < row + h; r++)
       if (vg.grid[c][r] !== null) return false
@@ -66,7 +67,7 @@ function attemptRelocateBlockersAnyLayout(
   targetCol: number,
   targetRow: number,
   draggedSize: ItemSizeNorm,
-  maxCols = 5,
+  maxCols = 6,
 ): Move[] | null {
   if (blockerIds.size === 0) return []
 
@@ -81,9 +82,10 @@ function attemptRelocateBlockersAnyLayout(
 
   // 预占拖拽物目标区域，确保 blocker 不会回填到目标覆盖区
   const { w: dw, h: dh } = VSIZE_MAP[draggedSize]
+  const maxRows = vg.grid[0]?.length ?? 1
   for (let c = targetCol; c < targetCol + dw; c++) {
     for (let r = targetRow; r < targetRow + dh; r++) {
-      if (c < 0 || c >= maxCols || r < 0 || r >= 2) return null
+      if (c < 0 || c >= maxCols || r < 0 || r >= maxRows) return null
       if (vg.grid[c][r] !== null) return null
       vg.grid[c][r] = '__TARGET__'
     }
@@ -99,7 +101,7 @@ function attemptRelocateBlockersAnyLayout(
     const candidates: CellPos[] = []
     // 优先原位（若不与 target 重叠）
     candidates.push({ col: item.col, row: item.row })
-    for (let r = 0; r < 2; r++) {
+      for (let r = 0; r < 1; r++) {
       for (let c = 0; c < maxCols; c++) {
         if (c === item.col && r === item.row) continue
         candidates.push({ col: c, row: r })
@@ -119,6 +121,57 @@ function attemptRelocateBlockersAnyLayout(
 
   if (!dfs(0)) return null
   return blockers.map(b => moves.get(b.instanceId)!).filter(m => !!m)
+}
+
+function canPackBlockersIntoFootprint(
+  baseVg: VirtualGrid,
+  blockerIds: Set<string>,
+  footprintCol: number,
+  footprintRow: number,
+  footprintSize: ItemSizeNorm,
+  draggedId: string,
+): Move[] | null {
+  if (blockerIds.size === 0) return []
+
+  const vg = baseVg.clone()
+  const blockers = [...blockerIds]
+    .map((id) => vg.getItem(id))
+    .filter((it): it is PlacedItem => !!it)
+    .sort((a, b) => getCellArea(b.size) - getCellArea(a.size))
+
+  for (const blocker of blockers) vg.remove(blocker.instanceId)
+
+  const moves: Move[] = []
+  const dfs = (idx: number): boolean => {
+    if (idx >= blockers.length) return true
+    const blocker = blockers[idx]!
+    const candidates = enumerateFootprintPlacements(footprintCol, footprintRow, footprintSize, blocker.size)
+    for (const pos of candidates) {
+      if (!vg.canPlaceExcluding(pos.col, pos.row, blocker.size, draggedId)) continue
+      if (!vg.place(pos.col, pos.row, blocker.size, blocker.defId, blocker.instanceId)) continue
+      moves.push({ instanceId: blocker.instanceId, newCol: pos.col, newRow: pos.row })
+      if (dfs(idx + 1)) return true
+      moves.pop()
+      vg.remove(blocker.instanceId)
+    }
+    return false
+  }
+
+  if (!dfs(0)) return null
+  return moves
+}
+
+function footprintsOverlap(
+  aCol: number,
+  aRow: number,
+  aSize: ItemSizeNorm,
+  bCol: number,
+  bRow: number,
+  bSize: ItemSizeNorm,
+): boolean {
+  const a = VSIZE_MAP[aSize]
+  const b = VSIZE_MAP[bSize]
+  return aCol < bCol + b.w && aCol + a.w > bCol && aRow < bRow + b.h && aRow + a.h > bRow
 }
 
 // ---- 辅助：检测物品是否仍与目标区域重叠 ----
@@ -174,7 +227,7 @@ function trySmallVerticalDiagonal(
   ]
 
   for (const c of candidates) {
-    if (c.col < 0 || c.col >= 5) continue
+    if (c.col < 0 || c.col >= 6) continue
     if (baseVg.canPlaceExcluding(c.col, c.row, '1x1', draggedId)) {
       return [{ instanceId: blockerId, newCol: c.col, newRow: c.row }]
     }
@@ -189,12 +242,12 @@ function trySingleBigSideAwarePush(
   draggedSize: ItemSizeNorm,
   draggedId: string,
 ): Move[] | null | undefined {
-  if (draggedSize !== '1x1' && draggedSize !== '1x2') return undefined
+  if (draggedSize !== '1x1' && draggedSize !== '2x1') return undefined
   if (blockerIds.size !== 1) return undefined
 
   const blockerId = [...blockerIds][0]!
   const blocker = baseVg.getItem(blockerId)
-  if (!blocker || blocker.size !== '2x2') return undefined
+  if (!blocker || blocker.size !== '3x1') return undefined
 
   const leftCol = blocker.col
   const rightCol = blocker.col + 1
@@ -223,7 +276,7 @@ function canPlaceInVisibleColsOnVirtual(
   const { w, h } = VSIZE_MAP[size]
   if (col < 0 || row < 0) return false
   if (col + w > activeColCount) return false
-  if (row + h > 2) return false
+  if (row + h > 1) return false
   return vg.canPlaceExcluding(col, row, size, excludeId)
 }
 
@@ -235,7 +288,7 @@ function findFirstVisiblePlace(
 ): { col: number; row: number } | null {
   const { w, h } = VSIZE_MAP[size]
   const maxCol = activeColCount - w
-  const maxRow = 2 - h
+  const maxRow = 1 - h
   if (maxCol < 0 || maxRow < 0) return null
   for (let r = 0; r <= maxRow; r++) {
     for (let c = 0; c <= maxCol; c++) {
@@ -308,7 +361,7 @@ function pushToIdeal(
   const { w, h } = VSIZE_MAP[item.size]
 
   // 越界检测
-  if (idealCol < 0 || idealCol + w > 5) return false
+    if (idealCol < 0 || idealCol + w > 6) return false
 
   // 收集目标位置上的冲突物品（排除自身和 dragged）
   const conflicts = new Set<string>()
@@ -432,10 +485,26 @@ export function trySqueezePlace(
   const swap = trySmallVerticalSwap(baseVg, draggedOrigin, blockerIds)
   if (swap) return { moves: swap }
 
-  // 特例：小/中拖到大型(2x2)左/右半区时，仅允许把大型推向对侧 1 列。
+  // 特例：小/中拖到大型(3x1)左/右半区时，仅允许把大型推向对侧 1 列。
   const sideAwareBig = trySingleBigSideAwarePush(baseVg, blockerIds, targetCol, draggedSize, draggedId)
   if (sideAwareBig) return { moves: sideAwareBig }
   if (sideAwareBig === null) return null
+
+  // 优先尝试把 blocker 填入拖拽物来源 footprint（玩家体感：向右拖时右侧优先回填左侧空位）
+  if (
+    draggedOrigin
+    && !footprintsOverlap(draggedOrigin.col, draggedOrigin.row, draggedOrigin.size, targetCol, targetRow, draggedSize)
+  ) {
+    const originPack = canPackBlockersIntoFootprint(
+      baseVg,
+      blockerIds,
+      draggedOrigin.col,
+      draggedOrigin.row,
+      draggedOrigin.size,
+      draggedId,
+    )
+    if (originPack) return { moves: originPack }
+  }
 
   // 构建 BlockerInfo（就近方向）
   const blockers: BlockerInfo[] = [...blockerIds].map(id => {
@@ -501,7 +570,7 @@ export function planUnifiedSqueeze(
         move.newCol < 0
         || move.newRow < 0
         || move.newCol + w > targetZone.activeColCount
-        || move.newRow + h > 2
+        || move.newRow + h > 1
       ) {
         visible = false
         break
@@ -566,7 +635,7 @@ export function planCrossZoneSwap(
   const { w: fw, h: fh } = VSIZE_MAP[footprintSize]
   if (footprintCol < 0 || footprintRow < 0) return null
   if (footprintCol + fw > homeZone.activeColCount) return null
-  if (footprintRow + fh > 2) return null
+  if (footprintRow + fh > 1) return null
 
   const blockerIds = collectTargetBlockerIds(targetVg, targetCol, targetRow, draggedSize)
   if (blockerIds.length === 0) return null

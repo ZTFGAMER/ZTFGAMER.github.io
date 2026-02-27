@@ -11,14 +11,14 @@ import {
 } from 'pixi.js'
 import type { ShopSlot } from './ShopManager'
 import { normalizeSize } from '@/items/ItemDef'
-import { CELL_SIZE }     from '@/grid/GridZone'
+import { CELL_SIZE, CELL_HEIGHT } from '@/grid/GridZone'
 import { getConfig as getGameConfig } from '@/core/DataLoader'
 import { getItemIconUrl } from '@/core/assetPath'
 
 // ---- 布局常量 ----
 const CARDS_Y  = 8
-const SLOT_W   = CELL_SIZE * 2   // 每个商店槽位固定 2 格宽，保证 2x2 不溢出
-const ICON_AREA_H = CELL_SIZE * 2
+const ICON_AREA_H = CELL_HEIGHT
+const CARD_GAP_MAX = 4
 
 // 统一底部区域（名称 + 价格）
 const BOTTOM_H = 72
@@ -147,18 +147,26 @@ export class ShopPanelView extends Container {
     const scale = getGameConfig().itemVisualScale
     this.content.scale.set(scale)
 
-    // 固定槽位位置（不随物品尺寸变化而“向中心靠拢”）
-    // 3 槽总宽 = 6 格 = 768；缩放 5/6 后刚好 640
-    this.content.x = 0
+    const widths = pool.map((slot) => {
+      const size = normalizeSize(slot.item.size)
+      const wCells = size === '1x1' ? 1 : size === '2x1' ? 2 : 3
+      return wCells * CELL_SIZE
+    })
+    const widthSum = widths.reduce((a, b) => a + b, 0)
+    const gapCount = Math.max(0, pool.length - 1)
+    const availableGap = gapCount > 0 ? Math.floor((640 / scale - widthSum) / gapCount) : 0
+    const gap = Math.max(0, Math.min(CARD_GAP_MAX, availableGap))
+    const totalW = widthSum + gapCount * gap
+    this.content.x = (640 - totalW * scale) / 2
     this.content.y = CARDS_Y / scale
 
+    let cursorX = 0
     for (let i = 0; i < pool.length; i++) {
       const slot = pool[i]!
       const card = this._buildCard(slot, i, gold)
-
-      // 固定 3 槽：每槽 2 格宽
-      card.x = i * SLOT_W
+      card.x = cursorX
       card.y = 0
+      cursorX += widths[i]! + gap
 
       this.content.addChild(card)
       this.cards.push(card)
@@ -174,29 +182,34 @@ export class ShopPanelView extends Container {
 
     // ---- 物品图标区（实际格子尺寸）----
     const size  = normalizeSize(slot.item.size)
-    const wCells = size === '2x2' ? 2 : 1
-    const hCells = (size === '1x2' || size === '2x2') ? 2 : 1
+    const wCells = size === '1x1' ? 1 : size === '2x1' ? 2 : 3
+    const hCells = 1
     const iconW  = wCells * CELL_SIZE
-    const iconH  = hCells * CELL_SIZE
+    const iconH  = hCells * CELL_HEIGHT
 
-    const tileW = SLOT_W
+    const tileW = iconW
     const tileH = ICON_AREA_H + BOTTOM_H
 
-    // 图标在槽位内水平居中（1 格宽物品不会贴左）
-    const iconX = (tileW - iconW) / 2
-    // 小型物品在 2 格高区域内向下对齐（更“稳”一些）；中/大型 iconH=ICON_AREA_H 则 iconY=0
-    const iconY = Math.max(0, ICON_AREA_H - iconH)
+    const iconX = 0
+    const iconY = 0
 
     // 点击/拖拽命中区域：与物品图标宽度一致（从图标顶部延伸至卡片底部，含名称/价格区）
     card.hitArea = new Rectangle(iconX, iconY, iconW, tileH - iconY)
 
     // 图标背景（与背包一致）+ 品质外框
     const iconBg = new Graphics()
-    iconBg.roundRect(iconX + 3, iconY + 3, iconW - 6, iconH - 6, this.cornerRadius)
+    const frameInset = Math.max(3, 2 + Math.ceil(this.tierBorderWidth / 2))
+    const frameW = Math.max(1, iconW - frameInset * 2)
+    const frameH = Math.max(1, iconH - frameInset * 2)
+    const frameRadius = Math.max(0, this.cornerRadius - Math.floor(frameInset / 2))
+    iconBg.roundRect(iconX + frameInset, iconY + frameInset, frameW, frameH, frameRadius)
     iconBg.fill({ color: 0x2a2a3e, alpha: 0.85 })
     iconBg.stroke({ color: tierColor, width: this.tierBorderWidth, alpha: bought ? 0.55 : 0.98 })
     if (tier === 'Diamond') {
-      iconBg.roundRect(iconX + 10, iconY + 10, iconW - 20, iconH - 20, Math.max(0, this.cornerRadius - 3))
+      const innerInset = frameInset + this.tierBorderWidth + 1
+      const innerW = Math.max(1, iconW - innerInset * 2)
+      const innerH = Math.max(1, iconH - innerInset * 2)
+      iconBg.roundRect(iconX + innerInset, iconY + innerInset, innerW, innerH, Math.max(0, frameRadius - 2))
       iconBg.stroke({ color: 0xe8fbff, width: 2, alpha: bought ? 0.45 : 0.92 })
     }
     card.addChild(iconBg)
@@ -264,7 +277,7 @@ export class ShopPanelView extends Container {
     // ---- 已购遮罩 ----
     if (bought) {
       const overlay = new Graphics()
-      overlay.roundRect(iconX + 2, iconY + 2, iconW - 4, iconH - 4, this.cornerRadius)
+      overlay.roundRect(iconX + frameInset, iconY + frameInset, frameW, frameH, frameRadius)
       overlay.fill({ color: 0x000000, alpha: 0.42 })
       card.addChild(overlay)
 
@@ -308,7 +321,7 @@ export class ShopPanelView extends Container {
     // ---- 交互：拖拽开始 ----
     if (!bought) {
       card.eventMode = 'static'
-      card.cursor    = canAfford ? 'grab' : 'default'
+      card.cursor    = canAfford ? 'grab' : 'pointer'
 
       let pressedId = -1
       let pressX = 0
@@ -316,7 +329,6 @@ export class ShopPanelView extends Container {
       let dragging = false
 
       card.on('pointerdown', (e: FederatedPointerEvent) => {
-        if (!canAfford) return
         e.stopPropagation()
         pressedId = e.pointerId
         pressX = e.globalX

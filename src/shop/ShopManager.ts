@@ -41,7 +41,6 @@ export class ShopManager {
 
   private config:   GameConfig
   private allItems: ItemDef[]
-  private ownedTierByDef = new Map<string, TierKey>()
 
   constructor(config: GameConfig, allItems: ItemDef[], day = 1) {
     this.config    = config
@@ -61,7 +60,7 @@ export class ShopManager {
     const idx     = tierIdx < 0 ? 0 : tierIdx
     const size    = normalizeSize(item.size)
     if (size === '1x1') return this.config.smallItemPrices[idx]  ?? 2
-    if (size === '1x2') return this.config.mediumItemPrices[idx] ?? 4
+    if (size === '2x1') return this.config.mediumItemPrices[idx] ?? 4
     return                     this.config.largeItemPrices[idx]  ?? 6
   }
 
@@ -131,16 +130,24 @@ export class ShopManager {
     this.pool = this.rollPool()
   }
 
-  /** 同步当前已持有装备品质，用于商店刷新过滤规则 */
+  /** 兼容调用链：当前版本刷新不再按已持有品质过滤 */
   setOwnedTiers(map: Map<string, TierKey>): void {
-    this.ownedTierByDef = new Map(map)
+    void map
   }
 
   // ---- 卡池滚动 ----
 
+  private getShopWidthCells(item: ItemDef): number {
+    const size = normalizeSize(item.size)
+    if (size === '1x1') return 1
+    if (size === '2x1') return 2
+    return 3
+  }
+
   private rollPool(): ShopSlot[] {
     const slots: ShopSlot[]  = []
     const usedItemIds        = new Set<string>()
+    let usedWidthCells = 0
 
     // 构建当天品质权重（青铜/白银/黄金/钻石）
     const chances = this.config.shopTierChancesByDay
@@ -160,16 +167,13 @@ export class ShopManager {
       Diamond: [],
     }
     for (const item of this.allItems) {
-      const ownedTier = this.ownedTierByDef.get(item.id)
-      if (ownedTier === 'Diamond') continue
       for (const tier of parseAvailableTiers(item.available_tiers)) {
-        if (ownedTier && TIER_ORDER.indexOf(tier) < TIER_ORDER.indexOf(ownedTier)) continue
         candidatesByTier[tier].push(item)
       }
     }
 
-    const pickTier = (): TierKey | null => {
-      const available = TIER_ORDER.filter((tier) => (tierWeights[tier] ?? 0) > 0 && candidatesByTier[tier].length > 0)
+    const pickTier = (feasibleByTier: Record<TierKey, ItemDef[]>): TierKey | null => {
+      const available = TIER_ORDER.filter((tier) => (tierWeights[tier] ?? 0) > 0 && feasibleByTier[tier].length > 0)
       if (available.length === 0) return null
       const total = available.reduce((acc, tier) => acc + (tierWeights[tier] ?? 0), 0)
       if (total <= 0) return null
@@ -184,16 +188,33 @@ export class ShopManager {
     let attempts = 0
     while (slots.length < 3 && attempts < 5000) {
       attempts++
-      const tier = pickTier()
+      const remainSlots = 3 - slots.length
+      const remainWidth = 6 - usedWidthCells
+      const maxWidthForCurrent = remainWidth - (remainSlots - 1)
+      if (maxWidthForCurrent < 1) break
+
+      const feasibleByTier: Record<TierKey, ItemDef[]> = {
+        Bronze: [],
+        Silver: [],
+        Gold: [],
+        Diamond: [],
+      }
+      for (const tier of TIER_ORDER) {
+        const pool = candidatesByTier[tier]
+        feasibleByTier[tier] = pool.filter((it) => !usedItemIds.has(it.id) && this.getShopWidthCells(it) <= maxWidthForCurrent)
+      }
+
+      const tier = pickTier(feasibleByTier)
       if (!tier) break
 
-      const candidates = candidatesByTier[tier]
+      const candidates = feasibleByTier[tier]
       if (!candidates || candidates.length === 0) continue
 
       const item = candidates[Math.floor(Math.random() * candidates.length)]!
       if (usedItemIds.has(item.id)) continue
 
       usedItemIds.add(item.id)
+      usedWidthCells += this.getShopWidthCells(item)
       slots.push({ item, tier, price: this.getItemPrice(item, tier), purchased: false })
     }
 

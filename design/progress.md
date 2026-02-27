@@ -7,19 +7,69 @@
 
 ## 当前状态
 
-**日期：** 2026-02-26
-**当前阶段：** 阶段 3 战斗引擎（准备中，明天开工）
-**整体进度：** ██████████████░░ 约 70%
+**日期：** 2026-02-27
+**当前阶段：** 阶段 3 战斗引擎（可开工）
+**整体进度：** ████████████████░ 约 78%
 
-> 备注：阶段 2 已完成；主程提出的风险与优化项按当前决策延后到最终阶段统一收口（已记录为技术债）。
+> 备注：阶段 2 与阶段 2.5 已完成；已同步主程并确认“可以进入阶段3”。
 
-### 本轮完成要点（阶段2收尾 + 阶段3准备）
+### 本轮完成要点（阶段3 P0 规则对齐）
 | 模块/主题 | 变更内容 |
 |----------|----------|
-| 阶段状态 | **阶段 2 商店经济系统：用户确认已完成**；下一步进入阶段 3 战斗引擎 |
-| 风险复盘 | 挤出/互换/跨区转移/AutoPack 等多路径已跑通并单测覆盖，但进入战斗阶段需加“Phase+输入锁”避免并发输入污染 |
-| 主程建议 | 战斗引擎保持纯逻辑（CombatEngine）+ 全局阶段机（PhaseManager）+ 渲染编排（CombatScene）；GridSystem 提供 snapshot 导出 |
-| 状态 | TypeScript 零报错；测试与构建保持通过（以最近一次记录为准） |
+| 阶段状态 | 已按设计师战斗规范对齐 P0：固定 Tick + CD 读条 + 护盾抵扣 + 超时疲劳 + Draw 判定 |
+| 代码实现 | `CombatEngine` 改为 Hero-vs-Hero（物品作为触发器）；Tick=100ms；超时 40s 后每 1s 触发疲劳真实伤害；同 Tick 双方归零判 Draw |
+| 配置接入 | `data/game_config.json` 新增 `combat_runtime`（tickMs/timeoutMs/fatigueTickMs/fatigueDamagePctPerSec/critMultiplier），并接入 `ItemDef` + `DataLoader` |
+| 稳定性修复 | 修复 battle 往返丢状态：保留并恢复商店运行态（金币/天数/商店池/战斗区与背包摆放/tier） |
+| 战斗可视化 | BattleScene 新增双方英雄血条/护盾条，并新增敌方战斗区显示（与我方战斗区并排展示，含物品读条进度） |
+| 布局对齐 | 我方战斗区改为与商店阶段同坐标/同样式（复用 GridZone 图标渲染）；敌方战斗区独立于上方；CD 覆盖改为“半透明蒙版从下到上揭开” |
+| 可调参数 | 新增战斗 UI 调参项：`enemyBattleZoneY`、`enemyHpBarY`、`playerHpBarY`、`battleHpBarH`、`battleHpBarRadius`、`battleHpBarWidth`（已接入 debug 页面） |
+| 视觉修正 | 敌我生命值文本改为显示在各自血条内部居中（如 `140/300`），移除条外合并文案，提升读条可读性 |
+| 血条表达升级 | 文本改为“当前值优先 + 彩色状态尾缀”（白=血量、黄=护盾、绿=再生、紫=中毒、红=灼烧）；护盾条改为血条上方贴合细条，并按 `shield/maxHp` 左起比例显示（溢出截断满条） |
+| 多段触发 | CombatEngine 新增 multicast 分段命中队列：`xN` 触发会按标准 Tick（100ms）逐段生效，而非同帧一次性结算 |
+| 战斗特效 | 新增开火放缩+黄边闪烁、伤害红色飞点+红色伤害数字、护盾黄色飞点+黄色护盾数字；并新增“伤害数字”调参分组（随机X/上升时长/上升高度/停留/渐隐） |
+| 战斗表现调参重构 | 按需求将放缩、飞点、伤害数字参数统一归入“战斗表现”分类；并新增 `battleProjectileFlyMs`（飞点时长） |
+| 触发细节修正 | 物品放缩锚点改为中心；CD 遮罩随物品放缩同步变化；multicast 多段触发时每段都会触发一次放缩 |
+| 状态机制细化 | 灼烧/中毒/生命回复改为“物品触发时飞点，周期结算不飞点”；灼烧每0.5s结算且优先护盾并对盾减半；中毒每1s无视护盾直伤；生命回复每1s结算；直接治疗可按5%向上取整净化灼烧/中毒层 |
+| 颜色统一 | 灼烧=橙色、中毒=深绿、生命回复/治疗=浅绿；血条文本与跳字增加黑色描边保证可读性 |
+| 跳字规则修正 | 周期结算时：灼烧/中毒伤害与生命回复加血均显示对应颜色跳字（不再仅限敌方） |
+| 玩法数值可调 | 新增“玩法数值”分组并接入战斗引擎覆盖：灼烧/中毒/生命回复结算间隔、灼烧对盾系数、灼烧衰减比例、治疗净化比例 |
+| 阶段3增量 | 已完成“战斗日志面板（最近8条）”与“敌方配置化（按 day 读取配置敌方物品池）”；支持通过 `combat_runtime.enemyByDay` 控制敌方阵容来源 |
+| 回店流程修复 | 修复“回到商店回到 Day1”问题：从战斗返回商店后自动推进到下一天（`setDay(currentDay + 1)`，上限 Day20） |
+| 日志展示调整 | 按验收要求移除战斗内文本日志，改为仅输出控制台 `[BattleLog] ...` |
+| 商店交互修复 | 背包按钮在“打开背包”状态改为黄色高亮（active=`0xffcc44`，inactive 保持蓝色 `0x44aaff`） |
+| 商店交互修复 | 修复按钮字号热更新误用 `container.visible` 作为激活态：背包按钮未打开时保持蓝色，仅打开时显示黄色 |
+| 阶段2合成规则收口 | 合成改为“命中目标才高亮/落手才触发”：仅拖到可合成目标物品时显示黄色，且合成判定优先于挤出并屏蔽挤出 |
+| 阶段2合成补丁 | 修复网格拖拽合成缺失：背包↔背包、背包↔战斗区、战斗区↔战斗区在命中同装备同品质目标时均可合成；命中期间抑制挤出 |
+| 合成表现收口 | 移除合成飞入动画链路；同步删除相关调参项（synthPauseMs/synthFlyMs/synthTitleFontSize/synthNameFontSize）及默认值配置 |
+| 阶段2合成补丁 | 修复“初始背包物品”无品质元数据导致的单向合成异常：预置物品统一写入 Bronze tier，拖拽命中同物品同品质时双向都可合成 |
+| 阶段2合成补丁 | 增加合成吞并淡出可调参数 `synthFadeOutMs`（默认120ms）：命中合成后拖拽物品按配置时长半透消失 |
+| 阶段2合成补丁 | 恢复合成信息层（标题/名称/遮罩/图标）并取消飞入：改为整层按 `synthFadeOutMs` 直接淡出；恢复 `synthTitleFontSize/synthNameFontSize` 字号配置 |
+| 阶段2合成补丁 | 合成动画时序改为“先显示再淡出”：新增 `synthHoldMs` 控制停留时长，`synthFadeOutMs` 控制淡出时长 |
+| 阶段2合成补丁 | 合成信息层图标尺寸改为与物品一致：按 `targetSize × itemVisualScale` 计算展示宽高 |
+| 文档同步 | 已将上述合成表现规则与可调参数同步写入 `design/dev_plan.md`（阶段2-合成表现规范） |
+| 1D网格改造-P0（进行中） | 启动重大重构：尺寸规范切换为 `1x1/2x1/3x1`；`GridSystem/VirtualGrid/AutoPack` 改为单行语义；战斗区/背包基础列数改为 6，按天可见列改为 4/5/6 |
+| 1D网格改造-P0（完成） | `ShopScene/BattleScene/GridZone/DragController` 完成单行与高格适配：格子高宽比改为 1:2、战斗/背包均 `1x6`、拖拽命中与高亮迁移到新尺寸 |
+| 1D网格改造-P0（完成） | 测试体系已迁移到 1D 规则：`GridSystem.test` / `SqueezeLogic.test` 重写，`DataLoader/Combat` 测试同步更新 |
+| 1D网格改造-P1（完成） | 修复战斗区/背包区居中：按可见列宽动态居中（不再受旧 5 列偏移影响） |
+| 1D网格改造-P1（完成） | 商店物品改为“紧贴居中”布局；商店刷新增加总宽约束 `<=6`（杜绝同屏两个大型） |
+| 1D网格改造-P1（完成） | 商店图标高度修正为单格高度（`CELL_HEIGHT`），与新格子纵横比一致 |
+| 1D网格改造-P1（完成） | 修复商店左右溢出：移除卡片间距，三件物品总宽在 `itemVisualScale=5/6` 下严格不超 640 画布 |
+| 1D网格改造-P1（完成） | 商店图标外框改为“向内描边”策略（与背包一致）：按描边宽度动态内缩 frameInset，避免描边外溢出框 |
+| 1D网格改造-P1（完成） | 初始背包预置改为 `2小+1中`（占 4/6）：保留 2 格操作空间，避免开局满包影响拖拽/合成体验 |
+| 1D网格改造-P1（完成） | 敌方生成规则重平衡：按天目标占宽 Day1-2=3、Day3-4=4、Day5+=5（不再直接按可见列数满铺） |
+| 1D网格改造-P1（完成） | 商店/背包背景框改为内容自适应：随真实内容 bounds 动态贴合，避免固定宽高在不同日数/布局下偏大或偏小 |
+| 1D网格改造-P1（完成） | 商店拖拽浮层缩放回归统一比例：取消 `*1.06` 放大，严格使用 `itemVisualScale(5/6)` 保持全界面尺寸一致 |
+| 1D网格改造-P1（完成） | 新增战斗区背景框并改为内容自适应：与商店/背包视觉一致，随 activeColCount 动态贴合 |
+| 1D网格改造-P1（完成） | 修复单行挤出方向异常：新增“优先回填拖拽来源 footprint”规则，解决中型由左向右拖拽时右侧 blocker 未回填左侧空位的问题 |
+| 阶段切换准备 | 已完成 1D 网格与商店交互收口，准备继续推进阶段3战斗实现（规则细化 + 表现联动） |
+| 阶段3规则细化-P1（进行中） | 战斗效果通道拆分：卡牌状态（冻结/减速/加速）与主角状态（伤害/护盾/治疗/灼烧/中毒/再生）分离，卡牌状态改为作用于物品充能层而非英雄层 |
+| 阶段3规则细化-P1（进行中） | `CombatEngine` 新增卡牌状态持续时间（freezeMs/slowMs/hasteMs）与充能修正；`BattleScene` 状态投射支持目标为物品或英雄 |
+| 阶段3规则细化-P1（进行中） | 卡牌控制效果从“仅标签存在即触发”升级为“按技能文案解析规格”执行：支持目标数量（N件/所有）、持续时长（秒）、目标阵营（己方/敌方） |
+| Notebook 回填 | 已将今日实现总结回填至主程 Notebook（`WebJs开发指南`），并上传记录文档 `design/notebook_updates/2026-02-27_webjs_dev_update.md` |
+| 商店刷新规则调整 | 取消按已持有品质过滤：允许刷新同物品其他品质；即使已持有钻石，仍可刷新出同物品钻石 |
+| 背包购入规则调整 | 商店拖到背包按钮不再自动合成/自动整理；仅在背包有可见空位时放入，否则提示背包已满 |
+| 验证方式 | `npm test` 全通过（45/45）；`npm run build` 通过 |
+| Notebook 同步 | 已将今日开发总结写回技术 Notebook「WebJs开发指南」，来源文件：`design/notebook_updates/2026-02-27_webjs_dev_update.md` |
 
 ---
 
@@ -81,12 +131,21 @@
   - 修复持有金币动态刷新文案遗留旧图标：`refreshShopUI` 中 `🪙` 已统一替换为 `💰`
 - [x] TypeScript 零报错，Vitest 全绿（最近记录 81/81 或 84/84），build 通过
 
-### ⏳ 阶段 3：战斗引擎（明天开工）
+### ✅ 阶段 2 验收优化（新增需求，已实现）
 
-- [ ] CombatEngine（纯逻辑）：回合/Tick、技能结算、伤害、Buff/Debuff
-- [ ] PhaseManager（状态机）：ShopPhase -> CombatPhase -> RewardPhase（含输入锁）
-- [ ] CombatScene（表现层）：监听战斗事件播放动画/飘字
-- [ ] GridSystem 快照接口：`exportSnapshot()` / 战斗实体读取接口（仅可见列）
+- [x] 合成触发改为“目标命中式”：仅当可合成商店物品拖到可合成目标物品上时显示黄色，并在落手后才执行合成
+- [x] 背包按钮不再触发直接合成：拖到背包按钮只做放入背包；背包无空位时不可放入
+- [x] 合成判定优先级高于挤出：命中可合成目标时不触发挤出逻辑
+- [x] 商店刷新放开同物品品质限制：允许刷新出已持有物品的其他等级，且即使已持有钻石级也可继续刷新出同物品钻石级
+
+### ⏳ 阶段 3：战斗引擎（进行中）
+
+- [x] P0-1 CombatEngine 骨架（状态机 + Tick 循环 + battle:end 事件）
+- [x] P0-2 快照实体化（BattleSnapshot -> CombatUnit）
+- [x] P0-3 Shop -> Battle -> Shop 最小闭环（含回到商店按钮）
+- [x] P0-4 规则对齐：100ms Tick、CD 读条、伤害流水线（基础/暴击/护盾/生命）、超时疲劳、Draw
+- [ ] P1-1 基础技能/伤害规则细化（从占位伤害升级为可配置规则）
+- [ ] P1-2 胜负结算与表现层事件联动（动画/飘字）
 
 ### ⏸ 阶段 4–6（未开始）
 
@@ -98,11 +157,10 @@
 
 | 优先级 | 问题 | 说明 |
 |--------|------|------|
-| 🟢 低 | 技术债：单一数据源收敛 | 主程建议：将 `instanceToTier` 等运行期状态从场景/UI 剥离，统一到纯逻辑 `GameState/ItemManager`；当前决策延后到最终阶段收口 |
-| 🟢 低 | 技术债：Phase + 输入锁 | 主程建议：CombatPhase 禁用 DragController/商店/挤出；当前决策延后到最终阶段收口 |
-| 🟢 低 | 技术债：AutoPack 性能 | 主程建议：对高频拖拽/悬停调用增加 throttle/debounce 或缓存；延后到最终阶段 |
-| 🟢 低 | 技术债：GridSystem 读取接口梳理 | 主程建议：补齐“仅可见列”的战斗实体读取接口；延后到最终阶段 |
-| 🟢 低 | 技术债：UX 提示补齐 | 主程建议：背包满/无法购买等从 log 升级为最小 UI 反馈；延后到最终阶段 |
+| 🔴 高 | P0 战斗规则仍为占位实现 | 当前 CombatEngine 使用占位伤害模型（用于跑通闭环），需替换为正式技能/目标选择规则 |
+| 🟡 中 | 1D 网格体验待实机验收 | 规则迁移与自动化已通过，但需你实机确认拖拽手感、挤出反馈与布局观感 |
+| 🟡 中 | BattleScene 仍为调试表现 | 仅显示文本与返回按钮，尚未接入正式战斗表现层与动画事件消费 |
+| 🟡 中 | 敌方生成为临时规则 | 敌方单位目前按 day/列数临时生成，后续需接入关卡数据配置 |
 
 ---
 
@@ -147,7 +205,13 @@
 | 2026-02-26 | 拖拽 | 挤出规则改为“悬停即提交”，移除挤出预览与回弹动画逻辑 |
 | 2026-02-26 | 机制 | 挤出限制为区内，不允许战斗区/背包跨区挤出；商店购入战斗区冲突时可替换并转移到背包 |
 | 2026-02-26 | 进度 | 阶段 2 用户确认完成；阶段 3 战斗引擎明天开工（需先完成 P0：数据源收敛 + Phase 输入锁） |
-| 2026-02-26 | 计划 | 主程提出的风险点与优化项（数据源收敛/Phase 输入锁/AutoPack 性能/读取接口/UX 提示）按当前决策延后到最终阶段统一收口 |
+| 2026-02-26 | 计划 | 主程提出的战斗前置风险项调整为“阶段2.5加固”：Phase 输入锁 + 战斗快照边界 + 可见域读取 + AutoPack 节流/缓存 + 最小 UX 提示 |
+| 2026-02-27 | 架构 | 输入锁先于战斗实现：以 `PhaseManager` 为单一 phase 来源，Shop 交互统一走 phase guard；DragController 增加可开关能力 |
+| 2026-02-27 | 调试 | 在无战斗逻辑阶段开放 DEV 控制台接口 `__setGamePhase/__getGamePhase`，用于输入锁验收 |
+| 2026-02-27 | 主程确认 | 已同步阶段2.5完成情况；主程结论：**可进入阶段3**。阶段3首批里程碑：P0（战斗状态机/快照实体化/核心循环），P1（基础攻击伤害/死亡退场/胜负判定/战斗事件总线） |
+| 2026-02-27 | 阶段3-P0 | 新增 `CombatEngine` 并接入 `BattleScene`；Shop 点击“战斗”先生成快照再切场景，先打通最小战斗闭环 |
+| 2026-02-27 | 主程Review | 阶段3-P0 首版评审通过：允许继续 P1。P0 无阻塞必改项；建议项：Tick 频率配置化、BattleScene 调试显示与正式表现层进一步解耦 |
+| 2026-02-27 | 阶段3规则 | 依据设计稿对齐 P0：固定 Tick=100ms；Draw 不扣血（仅无胜场）；burn/poison/regen 每秒环境结算后置到 P1 |
 
 ---
 
@@ -503,13 +567,178 @@
     - 初次上传被拒（`cfBundleVersion=1` 已存在）
     - `ios/project.yml` 将 `CURRENT_PROJECT_VERSION` 升为 `2`
     - 重新归档/导出/上传成功：Delivery UUID `3f45d9df-2ac5-4bd2-9a23-419db46ec08f`
+  - 文档沉淀（本轮）：
+    - 新增 `design/ios_packaging_postmortem.md`，系统总结 iOS 打包全流程问题、根因、修复映射、标准命令、发包验收清单与 Skill 化方案
+  - Skill 落地（本轮）：
+    - 新建独立纯净目录：`~/.claude/skills/ios-web-packager/`
+    - 新增 `SKILL.md`（触发词、流程说明）
+    - 新增可编辑网页：`web/config-editor.html`（必填校验，不满足则不给执行配置）
+    - 新增配置模板：`config/packaging.config.template.json`
+    - 新增执行脚本：`scripts/validate_config.py` + `scripts/run_packaging.py`
+    - 目标：跨项目复用 Web->iOS 打包/导出/上传流程，避免再次手工排坑
+  - Skill 交互体验升级（本轮）：
+    - 新增一键交互流：`~/.claude/skills/ios-web-packager/scripts/assistant_flow.py`
+    - 流程支持：自动生成默认配置 -> 自动打开网页 -> 自动采用 Downloads 最新配置 -> 自动校验 -> 询问执行步骤并自动执行
+    - `run_packaging.py` 支持 `--step` 分步执行（all/build/xcodegen/archive/export/upload）
+    - 新增 `adopt_downloaded_config.py` 自动搬运下载配置，降低“手动拷贝到指定目录”的复杂度
+  - Skill 实战验证（本轮）：
+    - 在 `~/Documents/web_ai_game/test2048` 从零创建 Web 版 2048（含 UI、键盘/触摸操作、资源图）并补齐 iOS 壳工程
+    - 使用 `ios-web-packager` 配置与执行脚本完成打包验证：`validate_config -> run_packaging(all/export)`
+    - 产物输出：`~/Documents/web_ai_game/test2048/ios/build/export-testflight/Test2048.ipa`
+  - Test2048 发布推进（本轮）：
+    - 已尝试上传 TestFlight，但被 ASC 拒绝：`Cannot determine the Apple ID from Bundle ID 'com.zhengtengfei.Test2048'`（说明 App Store Connect 尚未创建该 App 记录）
+    - 已完成 GHE 仓库初始化与推送：`https://habby.ghe.com/zhengtengfei-161/test2048`，提交 `25bd4cb`
+  - Test2048 发布收口（本轮）：
+    - ASC App 创建后首次上传失败（缺少 `CFBundleIconName` 与 iPhone 120x120 图标）
+    - 修复：补齐 `ios/Test2048/Assets.xcassets/AppIcon.appiconset` 全套图标 + `CFBundleIconName/CFBundleIcons`（`ios/project.yml`）
+    - 重新 xcodegen + archive + export 后上传成功：Delivery UUID `2ab139fc-f230-4e36-be05-327fd6f0d2de`
+    - 修复已提交并推送到 GHE：`b7a0577 fix: add required iOS app icon metadata for TestFlight`
+  - Skill/经验回传（本轮）：
+    - `ios-web-packager` 新增经验文档：`~/.claude/skills/ios-web-packager/TROUBLESHOOTING.md`
+    - 已回传主程 Notebook：`iOS Web Packager Skill 与实战经验沉淀（2026-02-27）`（source id: `6b916b42-53c1-4fa1-a3a8-bd0c65576aa5`）
+
+---
+
+## 本次对话完成内容（阶段2.5 输入锁）
+
+- 新增 `src/core/PhaseManager.ts`：提供 `getPhase/setPhase/setPhaseByScene/onChange/isShopInputEnabled`。
+- 新增 `src/core/PhaseManager.test.ts`：覆盖默认阶段、事件触发、重复设置去重、场景映射。
+- `src/scenes/SceneManager.ts`：`goto()` 时同步 phase（shop->SHOP，battle->COMBAT，result->REWARD）。
+- `src/grid/DragController.ts`：新增 `setEnabled/isEnabled`，禁用时会清高亮并终止当前拖拽链路。
+- `src/scenes/ShopScene.ts`：
+  - 接入 `PhaseManager` 监听并应用输入锁；
+  - 商店拖拽/网格点击/背包按钮/刷新/出售/Day 调试入口均加 phase guard；
+  - phase 锁定时强制清理拖拽浮层与高亮，避免残留状态；
+  - 新增“战斗/商店”切换按钮（phase toggle），在 COMBAT 时按钮文案自动切换为“商店”。
+- 战斗态展示规则（本轮新增）：隐藏商店面板、背包面板、背包/刷新/出售按钮、金币与刷新费用、小地图、Day 调试控件，仅保留战斗区与 phase toggle 按钮。
+- phase toggle 按钮样式调整：由圆形改为圆角矩形（宽约为普通圆按钮 2 倍、高度与圆按钮直径一致），满足战斗态主操作按钮识别需求。
+- 阶段2.5-#1（战斗快照边界）已完成：
+  - `GridSystem` 新增 `getCombatEntities(activeColCount)` 与 `exportCombatSnapshot(activeColCount)`；
+  - `ShopScene` 在 phase 切换到 COMBAT 时生成并缓存 `BattleSnapshotBundle(day/activeColCount/createdAtMs/entities+tier)`，切回 SHOP 或 onExit 清空；
+  - `BattleScene` 临时接入快照读取日志，验证链路可用。
+- 阶段2.5-#2（仅可见列读取）已完成：
+  - 战斗实体导出统一基于 `activeColCount` 过滤（含 2x2 跨边界排除）；
+  - 补充 GridSystem 单测覆盖可见列过滤与快照隔离性。
+- 阶段2.5-#3（AutoPack 节流/缓存）已完成：
+  - `ShopScene` 新增 AutoPack 结果缓存（签名=背包状态+incoming/transfer 载荷+可见列）与节流窗口；
+  - 缓存命中返回深拷贝，防止外部修改污染缓存；
+  - 新增调参项 `autoPackThrottleMs`（默认 50ms）并接入调试页；
+  - 在背包重排/转移落地与场景退出时清理缓存，避免陈旧条目累积。
+- 阶段2.5-#4（最小 UX 提示）已完成：
+  - `ShopScene` 新增轻量 toast 提示层（短时显示）；
+  - 覆盖路径：金币不足无法购买、金币不足无法刷新、背包已满无法购买、背包已满无法转移；
+  - COMBAT 阶段自动隐藏提示层，避免遮挡战斗视图。
+- 阶段2.5-#4 验收修正（本轮）：
+  - 修复 toast 层级问题：展示时强制置顶，避免被 UI 覆盖导致“看不到提示”；
+  - 修复“金币不足时无法点卡片看详情”：商店卡片改为“可点击查看详情但不可拖拽购买”（不可负担时禁用拖拽阈值触发，保留 tap）。
+  - 新增 Debug 配置分组“Toast 显示”（checkbox）：支持总开关与四类失败提示独立开关（金币不足-购买、金币不足-刷新、背包满-购买、背包满-转移）。
+- 调试工具链优化（本轮）：
+  - `保存为默认值` 支持自动写入项目文件：debug 页点击后优先调用本地 dev 接口写入 `data/debug_defaults.json`；
+  - 当接口不可用时自动回退为下载 `debug_defaults.json`（手动替换）；
+  - Vite 新增 `__debug/save-defaults` 开发期中间件（仅 dev server 生效）。
+- 阶段3-P0 验收问题修复（本轮）：
+  - 修复“BattleScene 读取不到快照”：Shop->Battle 切场景时不再在 Shop onExit 清空 battle snapshot；
+  - 修复“回到商店后重置初始状态”：新增 Shop 运行态保存/恢复（金币、天数、商店池、战斗区/背包区摆放、实例 tier），实现 battle 往返不丢进度。
+- 调参项补齐（本轮新增）：
+  - `data/game_config.json` 的 `text_sizes` 新增 `phaseButtonLabel`；
+  - `src/config/debugConfig.ts` 新增 `phaseBtnX/phaseBtnY/phaseButtonLabelFontSize`；
+  - `src/debug/debugPage.ts` 已将上述键归入“界面位置/字体大小”分组。
+- `src/main.ts`：DEV 环境注入 `window.__setGamePhase(phase)` / `window.__getGamePhase()` 便于在无战斗逻辑下验收输入锁。
+
+**本次验证结果**
+
+- `npm test` 通过（91/91）
+- `npm run build` 通过（保留既有 chunk size warning）
+
+### 本次对话追加（设计师 Notebook 敌方阵容查询）
+
+- 已按“设计师=NotebookLM”约定，查询设计师 Notebook（`auto-battler-design-lab`）并拉取敌方阵容建议。
+- 覆盖区间：Day1-3、Day4-7、Day8-12、Day13-20；已获取每个区间的候选阵容及物品中文名+数量。
+- 本次查询未发生超时；可继续按需求二次追问（如“每个区间仅保留 1 套标准阵容”或“按掉落池可实现性过滤”）。
+- 阶段状态不变：仍处于阶段 3 战斗引擎（进行中），本次为设计数据检索支持。
+
+### 本次对话追加（Vanessa 物品库约束池）
+
+- 已使用设计师 Notebook（`auto-battler-design-lab`）按要求产出 4 个区间池：Day1-3、Day4-7、Day8-12、Day13-20。
+- 输出格式按 pool 提供，内容仅保留中文物品名，不包含其他英雄名或抽象敌人命名。
+- 已对返回物品名执行 `data/vanessa_items.json` 存在性校验，当前结果全部命中（missing=0）。
+
+---
+
+### 本次对话追加（图标切图产物验收辅助）
+
+- 已对 `~/Downloads/icon` 目录的 38 张图标产物做尺寸巡检，当前尺寸分布与预期规格一致（128x256 / 256x256 / 384x256）。
+- 新增 `~/Downloads/icon/_manifest.json`：记录每张图标文件名、宽高与占位标记，便于后续程序化校验。
+- 新增 `~/Downloads/icon/_review_sheet.png`：4 列总览审图图，便于快速人工验收命名与裁切边界。
+- `活体甲壳.png` 维持占位标记（placeholder=true），待你确认真实源图后替换。
+
+### 本次对话追加（图标两步法重导出）
+
+- 按你的新规则改为两步产物：
+  - 第一步：仅做“完整物件截取（去透明边）”，不做目标分辨率约束。
+  - 第二步：基于第一步结果做“等比缩放 + 空白补齐”到目标分辨率（保持宽高比不变）。
+- 输出目录：
+  - `~/Downloads/icon_step1_raw`（第一步原始截取）
+  - `~/Downloads/icon_step2_target`（第二步目标尺寸）
+- 两个目录均包含：
+  - 37 张图标 PNG（排除了 `_review_sheet.png` 这类非图标辅助文件）
+  - `_manifest.json`（记录 step1 尺寸、目标尺寸、fit 后尺寸、四边补白像素）
+- 新增两份审图图：
+  - `~/Downloads/icon_step1_raw/_review_step1.png`
+  - `~/Downloads/icon_step2_target/_review_step2.png`
+- 修复：针对你反馈“第一步下半部分被截掉”，已改为直接基于原始大图 `20260227-173602.png` 重新做完整物件提取（不再从旧裁切结果二次处理）。
+- 提取策略更新：先识别主连通域（37 个主物件）并聚合附近小碎片，得到完整包围框后再输出第一步；第二步再执行等比缩放+透明补齐到目标尺寸。
+- 已重新生成上述两个目录与审图图，请以新的 `~/Downloads/icon_step1_raw/_review_step1.png` 复核是否仍有截断。
+
+### 本次对话追加（审图图去中文）
+
+- 按需求将审图图片中的中文名称全部移除，改为英文编号标签（`Item 01...`）+ 尺寸文本。
+- 已更新：
+  - `~/Downloads/icon_step1_raw/_review_step1.png`
+  - `~/Downloads/icon_step2_target/_review_step2.png`
+  - `~/Downloads/icon/_review_sheet.png`
+
+### 本次对话追加（切图时去除源图中文碎片）
+
+- 按反馈修正切图识别逻辑：提取时仅使用源图的“图标行”区间（排除文字行区间），避免把中文标注碎片并入物件。
+- 行区间自动识别结果：`(2-135) (170-335) (353-479) (526-647) (688-813) (858-1016)`。
+- 已据此重新生成：
+  - `~/Downloads/icon_step1_raw`（完整物件截取，中文碎片已去除）
+  - `~/Downloads/icon_step2_target`（等比缩放+透明补齐）
+- 审图图已同步刷新为最新结果：
+  - `~/Downloads/icon_step1_raw/_review_step1.png`
+  - `~/Downloads/icon_step2_target/_review_step2.png`
+
+### 本次对话追加（中文残留二次清洗）
+
+- 根据你指出的残留样例，新增“底部文字残留”清洗规则：
+  - 对每张 step1 图做连通域分析，保留主图标连通域；
+  - 删除位于主图标下沿附近、低高度的小连通域（典型中文描边文本特征）；
+  - 再由清洗后的 step1 重新生成 step2（等比缩放 + 透明补齐）。
+- 自动复检结果：`icon_step1_raw` 已无“主图标下方小文字连通域”残留告警。
+- 审图图再次刷新：
+  - `~/Downloads/icon_step1_raw/_review_step1.png`
+  - `~/Downloads/icon_step2_target/_review_step2.png`
+
+### 本次对话追加（命名与内容错位修复）
+
+- 重新基于源图做组件提取并改为 38 个独立图标候选（阈值 `area>=2500`，避免文字碎片并拆开误合并项）。
+- 使用旧命名产物做视觉相似度一对一匹配（Hungarian 分配）重建名称映射，避免“按字典序硬对位”导致的错名。
+- 将未命名剩余组件补齐为 `粘液球.png`，并按目标规则输出两步结果：
+  - `~/Downloads/icon_step1_raw`（原始完整截取）
+  - `~/Downloads/icon_step2_target`（等比缩放 + 透明补齐）
+- 两目录均已更新 `_manifest.json`（含 `component_index/source_bbox/match_similarity`），并刷新审图图。
 
 ---
 
 ## 下一步
 
-1. **阶段 3：战斗引擎骨架**
+1. **阶段 2.5：输入锁回归验收（你验收）**
+   - 使用 `__setGamePhase('COMBAT')` 验证：拖拽/购买/出售/Day 调试均不可改状态，且商店相关 UI 已隐藏
+   - 使用 `__setGamePhase('SHOP')` 验证：上述交互全部恢复
+   - 验证 phase toggle 按钮文案切换正确（SHOP=战斗，COMBAT=商店）
+   - 验证锁定期间无拖拽浮层残留、无高亮残留、无“锁住后无法恢复”
+2. **阶段 2.5：剩余加固项**
+   - 已清空（阶段2.5 全部完成）
+3. **阶段 3：战斗引擎骨架**
    - CombatEngine（纯逻辑）+ CombatScene（表现层）+ 事件流
-   - GridSystem 快照导出（`exportSnapshot()`）与“仅可见列”战斗实体读取接口
-2. **最终阶段技术债收口（暂缓）**
-   - 数据源收敛 / Phase 输入锁 / AutoPack 性能 / GridSystem 读取接口 / UX 提示

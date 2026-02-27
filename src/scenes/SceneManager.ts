@@ -4,6 +4,7 @@
 // ============================================================
 
 import { EventBus, type SceneName } from '@/core/EventBus'
+import { PhaseManager } from '@/core/PhaseManager'
 
 export interface Scene {
   name:    SceneName
@@ -30,6 +31,7 @@ class SceneManagerImpl {
     const next = this.registry.get(name)
     if (!next) throw new Error(`[SceneManager] Scene not registered: ${name}`)
 
+    PhaseManager.setPhaseByScene(name)
     this.current = next
     this.current.onEnter()
 

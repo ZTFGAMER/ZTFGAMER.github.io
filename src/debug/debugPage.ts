@@ -10,6 +10,12 @@ const LAYOUT_POSITION_KEYS = [
   'shopAreaY',
   'battleZoneX',
   'battleZoneY',
+  'enemyBattleZoneY',
+  'enemyHpBarY',
+  'playerHpBarY',
+  'battleHpBarH',
+  'battleHpBarRadius',
+  'battleHpBarWidth',
   'backpackZoneX',
   'backpackZoneY',
   'backpackBtnX',
@@ -18,6 +24,8 @@ const LAYOUT_POSITION_KEYS = [
   'sellBtnY',
   'refreshBtnX',
   'refreshBtnY',
+  'phaseBtnX',
+  'phaseBtnY',
   'goldTextCenterX',
   'goldTextY',
   'dayDebugX',
@@ -38,6 +46,8 @@ const LAYOUT_POSITION_KEYS = [
 const LAYOUT_FONT_KEYS = [
   'gridZoneLabelFontSize',
   'shopButtonLabelFontSize',
+  'phaseButtonLabelFontSize',
+  'battleHpTextFontSize',
   'sellButtonSubPriceFontSize',
   'refreshCostFontSize',
   'goldFontSize',
@@ -55,7 +65,32 @@ const LAYOUT_FONT_KEYS = [
 ]
 
 const LAYOUT_KEYS = [...LAYOUT_POSITION_KEYS, ...LAYOUT_FONT_KEYS]
-const DRAG_KEYS = Object.keys(CONFIG_DEFS).filter((key) => !LAYOUT_KEYS.includes(key))
+const TOAST_KEYS = [
+  'toastEnabled',
+  'toastShowNoGoldBuy',
+  'toastShowNoGoldRefresh',
+  'toastShowBackpackFullBuy',
+  'toastShowBackpackFullTransfer',
+]
+const BATTLE_VFX_KEYS = [
+  'battleFirePulseScaleMax',
+  'battleFirePulseMs',
+  'battleProjectileFlyMs',
+  'battleDamageFloatRandomX',
+  'battleDamageFloatRiseMs',
+  'battleDamageFloatRiseY',
+  'battleDamageFloatHoldMs',
+  'battleDamageFloatFadeMs',
+]
+const GAMEPLAY_KEYS = [
+  'gameplayBurnTickMs',
+  'gameplayPoisonTickMs',
+  'gameplayRegenTickMs',
+  'gameplayBurnShieldFactor',
+  'gameplayBurnDecayPct',
+  'gameplayHealCleansePct',
+]
+const DRAG_KEYS = Object.keys(CONFIG_DEFS).filter((key) => !LAYOUT_KEYS.includes(key) && !TOAST_KEYS.includes(key) && !BATTLE_VFX_KEYS.includes(key) && !GAMEPLAY_KEYS.includes(key))
 
 // ---- 渲染参数行 ----
 
@@ -137,6 +172,59 @@ function buildParamRow(key: string, sectionId: string): void {
   ;(row as any)._key      = key
 }
 
+function buildCheckboxRow(key: string, sectionId: string): void {
+  const def = CONFIG_DEFS[key]!
+  const value = getConfig(key)
+  const section = document.getElementById(sectionId)!
+
+  const row = document.createElement('div')
+  row.className = 'param-row'
+
+  const label = document.createElement('span')
+  label.className = 'param-label'
+  label.textContent = def.labelCn
+  label.title = `${def.description}`
+
+  const toggle = document.createElement('input')
+  toggle.type = 'checkbox'
+  toggle.id = `chk-${key}`
+  toggle.checked = value >= 0.5
+
+  const state = document.createElement('span')
+  state.className = 'param-value'
+  state.id = `chk-val-${key}`
+  state.textContent = toggle.checked ? '开' : '关'
+
+  const unit = document.createElement('span')
+  unit.className = 'param-unit'
+  unit.textContent = ''
+
+  const spacer = document.createElement('span')
+  spacer.style.width = '52px'
+  spacer.style.flexShrink = '0'
+
+  const resetBtn = document.createElement('button')
+  resetBtn.className = 'btn-reset'
+  resetBtn.textContent = '↩'
+  resetBtn.title = `重置为默认值 ${def.defaultValue ? '开' : '关'}`
+
+  row.append(label, toggle, state, unit, spacer, resetBtn)
+  section.appendChild(row)
+
+  const applyChecked = (checked: boolean): void => {
+    toggle.checked = checked
+    state.textContent = checked ? '开' : '关'
+    setConfig(key, checked ? 1 : 0)
+    flashSyncBadge()
+  }
+
+  toggle.addEventListener('change', () => applyChecked(toggle.checked))
+  resetBtn.addEventListener('click', () => {
+    resetConfig(key)
+    applyChecked(!!CONFIG_DEFS[key]!.defaultValue)
+  })
+}
+
 // ---- 同步徽章 ----
 
 let flashTimeout: ReturnType<typeof setTimeout> | null = null
@@ -158,6 +246,10 @@ function updateUIFromExternal(key: string, value: number): void {
   if (slider) slider.value      = String(value)
   if (num)    num.value         = String(value)
   if (valEl)  valEl.textContent = String(value)
+  const chk = document.getElementById(`chk-${key}`) as HTMLInputElement | null
+  const chkVal = document.getElementById(`chk-val-${key}`)
+  if (chk) chk.checked = value >= 0.5
+  if (chkVal) chkVal.textContent = value >= 0.5 ? '开' : '关'
 }
 
 function buildSnapshotJson(): string {
@@ -181,6 +273,21 @@ function downloadSnapshotFile(): void {
   URL.revokeObjectURL(url)
 }
 
+async function saveSnapshotToProjectDefaults(): Promise<boolean> {
+  try {
+    const resp = await fetch('/__debug/save-defaults', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ snapshot: getConfigSnapshot() }),
+    })
+    if (!resp.ok) return false
+    const data = await resp.json() as { ok?: boolean }
+    return !!data.ok
+  } catch {
+    return false
+  }
+}
+
 // ---- 主入口 ----
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -197,6 +304,21 @@ document.addEventListener('DOMContentLoaded', () => {
   for (const key of DRAG_KEYS) {
     if (!CONFIG_DEFS[key]) continue
     buildParamRow(key, 'params-drag')
+  }
+
+  for (const key of TOAST_KEYS) {
+    if (!CONFIG_DEFS[key]) continue
+    buildCheckboxRow(key, 'params-toast')
+  }
+
+  for (const key of BATTLE_VFX_KEYS) {
+    if (!CONFIG_DEFS[key]) continue
+    buildParamRow(key, 'params-battle-vfx')
+  }
+
+  for (const key of GAMEPLAY_KEYS) {
+    if (!CONFIG_DEFS[key]) continue
+    buildParamRow(key, 'params-gameplay')
   }
 
   onConfigChange((key, value) => {
@@ -217,12 +339,20 @@ document.addEventListener('DOMContentLoaded', () => {
   })
 
   const btnDownload = document.getElementById('btn-download-defaults') as HTMLButtonElement | null
-  btnDownload?.addEventListener('click', () => {
-    downloadSnapshotFile()
+  btnDownload?.addEventListener('click', async () => {
     const badge = document.getElementById('sync-badge')!
-    badge.textContent = '💾 已下载 debug_defaults.json'
+    const saved = await saveSnapshotToProjectDefaults()
+    if (saved) {
+      badge.textContent = '💾 已写入 data/debug_defaults.json'
+      badge.style.opacity = '1'
+      setTimeout(() => { badge.style.opacity = '0' }, 2200)
+      return
+    }
+
+    downloadSnapshotFile()
+    badge.textContent = '💾 已下载 debug_defaults.json（请手动替换）'
     badge.style.opacity = '1'
-    setTimeout(() => { badge.style.opacity = '0' }, 2200)
+    setTimeout(() => { badge.style.opacity = '0' }, 2400)
   })
 
   const badge = document.getElementById('sync-badge')!

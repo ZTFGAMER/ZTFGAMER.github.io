@@ -9,7 +9,7 @@ export interface SkillText {
 
 export type ItemTier = 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
 export type ItemSizeRaw = 'Small / 小型' | 'Medium / 中型' | 'Large / 大型'
-export type ItemSizeNorm = '1x1' | '1x2' | '2x2'
+export type ItemSizeNorm = '1x1' | '2x1' | '3x1'
 
 export interface ItemDef {
   id:               string
@@ -44,12 +44,12 @@ export interface ItemDef {
   enchantments: Record<string, { name_cn: string; effect_en: string; effect_cn: string }>
 }
 
-/** 将原始 size 字段标准化为 1x1 / 1x2 / 2x2 */
+/** 将原始 size 字段标准化为 1x1 / 2x1 / 3x1 */
 export function normalizeSize(raw: string): ItemSizeNorm {
   const s = raw.toLowerCase()
   if (s.includes('small'))  return '1x1'
-  if (s.includes('medium')) return '1x2'
-  if (s.includes('large'))  return '2x2'
+  if (s.includes('medium')) return '2x1'
+  if (s.includes('large'))  return '3x1'
   throw new Error(`Unknown item size: ${raw}`)
 }
 
@@ -80,6 +80,7 @@ export interface GameConfig {
   textSizes: {
     gridZoneLabel:    number
     shopButtonLabel:  number
+    phaseButtonLabel: number
     sellButtonSubPrice:number
     refreshCost:      number
     gold:             number
@@ -94,5 +95,28 @@ export interface GameConfig {
     itemInfoDesc:     number
     synthTitle:       number
     synthName:        number
+  }
+  combatRuntime: {
+    tickMs: number
+    timeoutMs: number
+    fatigueTickMs: number
+    fatigueDamagePctPerSec: number
+    critMultiplier: number
+    burnTickMs: number
+    poisonTickMs: number
+    regenTickMs: number
+    burnShieldFactor: number
+    burnDecayPct: number
+    healCleansePct: number
+    cardSlowMs?: number
+    cardFreezeMs?: number
+    cardHasteMs?: number
+    cardSlowFactor?: number
+    cardHasteFactor?: number
+    enemyByDay?: Array<{
+      dayStart: number
+      dayEnd: number
+      itemNames: string[]
+    }>
   }
 }

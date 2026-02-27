@@ -20,7 +20,7 @@ import { Container } from 'pixi.js'
 import type { FederatedPointerEvent } from 'pixi.js'
 import type { GridSystem }     from './GridSystem'
 import type { GridZone }       from './GridZone'
-import { CELL_SIZE }           from './GridZone'
+import { CELL_SIZE, CELL_HEIGHT } from './GridZone'
 import type { ItemSizeNorm }   from './GridSystem'
 import { getConfig } from '@/config/debugConfig'
 import { trySqueezePlace, planUnifiedSqueeze, planCrossZoneSwap } from './SqueezeLogic'
@@ -31,15 +31,15 @@ const SWAP_HIGHLIGHT_COLOR = 0xffcc44
 // ---- 内部工具 ----
 
 function getSizePx(size: ItemSizeNorm): { pw: number; ph: number } {
-  if (size === '1x1') return { pw: CELL_SIZE,     ph: CELL_SIZE     }
-  if (size === '1x2') return { pw: CELL_SIZE,     ph: CELL_SIZE * 2 }
-  return                     { pw: CELL_SIZE * 2, ph: CELL_SIZE * 2 }
+  if (size === '1x1') return { pw: CELL_SIZE,     ph: CELL_HEIGHT }
+  if (size === '2x1') return { pw: CELL_SIZE * 2, ph: CELL_HEIGHT }
+  return                     { pw: CELL_SIZE * 3, ph: CELL_HEIGHT }
 }
 
 function getSizeCellDim(size: ItemSizeNorm): { w: number; h: number } {
   if (size === '1x1') return { w: 1, h: 1 }
-  if (size === '1x2') return { w: 1, h: 2 }
-  return { w: 2, h: 2 }
+  if (size === '2x1') return { w: 2, h: 1 }
+  return { w: 3, h: 1 }
 }
 
 interface ZonePair {
@@ -67,10 +67,12 @@ export interface SpecialDropPayload {
 // ============================================================
 export class DragController {
   private pairs: ZonePair[] = []
+  private enabled = true
   onDragStart: (instanceId: string) => void = () => {}
   onDragMove:  (payload: DragMovePayload) => void = () => {}
   onSpecialDrop: (payload: SpecialDropPayload) => boolean = () => false
   onDragEnd:   ()               => void = () => {}
+  private suppressSqueeze = false
 
   /** 顶层拖拽容器：构造时添加到 stage 末尾，确保最高 z-order */
   private dragLayer: Container
@@ -125,9 +127,29 @@ export class DragController {
     view.makeItemsInteractive((id, e) => this.onDown(id, e))
   }
 
+  setEnabled(enabled: boolean): void {
+    if (this.enabled === enabled) return
+    this.enabled = enabled
+    if (!enabled) {
+      this.clearAllHighlight()
+      this.doSnapBack()
+      this.reset()
+    }
+  }
+
+  isEnabled(): boolean {
+    return this.enabled
+  }
+
+  setSqueezeSuppressed(suppressed: boolean): void {
+    this.suppressSqueeze = suppressed
+    if (suppressed) this.clearSqueezePreview()
+  }
+
   // ---- 事件处理 ----
 
   private onDown(instanceId: string, e: FederatedPointerEvent): void {
+    if (!this.enabled) return
     e.stopPropagation()
     this.reset()
     this.activeId = instanceId
@@ -141,6 +163,7 @@ export class DragController {
   }
 
   private onMove(e: FederatedPointerEvent): void {
+    if (!this.enabled) return
     if (!this.activeId) return
     const dx   = e.global.x - this.startX
     const dy   = e.global.y - this.startY
@@ -175,6 +198,7 @@ export class DragController {
   }
 
   private onUp(_e: FederatedPointerEvent): void {
+    if (!this.enabled) return
     if (!this.activeId) return
 
     if (this.isDragging) {
@@ -264,7 +288,7 @@ export class DragController {
     const container = this.dragContainer
 
     // 多行物品（1x2 / 2x2）强制从 row=0 放置
-    const finalRow = item.size !== '1x1' ? 0 : cell.row
+    const finalRow = cell.row
     const canDrop  = this.canPlaceInVisibleCols(targetPair, cell.col, finalRow, item.size, id)
 
     // 无法直接放置时，尝试统一挤出（本区挤出优先，其次跨区域挤出）
@@ -445,6 +469,10 @@ export class DragController {
 
   private updateHighlight(): void {
     if (!this.dragSize || !this.activeId || !this.homeZone || !this.dragContainer || !this.dragOrigItem) return
+    if (this.suppressSqueeze) {
+      this.clearSqueezePreview()
+      return
+    }
     // 优先从 system 读取，fallback 到 dragOrigItem（挤出计时器提交后 DRAG 可能不在 system）
     const item = this.homeZone.system.getItem(this.activeId) ?? { instanceId: this.activeId, ...this.dragOrigItem }
 
@@ -696,6 +724,7 @@ export class DragController {
     this.dragOrigItem   = null
     // squeezePreview 在 tryDrop/doSnapBack 中已清理；此处兜底
     this.squeezePreview = null
+    this.suppressSqueeze = false
     // dragContainer 由 doSnapBack / tryDrop 单独清理
   }
 
@@ -716,7 +745,7 @@ export class DragController {
     const { w, h } = getSizeCellDim(size)
     if (col < 0 || row < 0) return false
     if (col + w > pair.view.activeColCount) return false
-    if (row + h > 2) return false
+    if (row + h > pair.system.rows) return false
     if (excludeId) return pair.system.canPlaceExcluding(col, row, size, excludeId)
     return pair.system.canPlace(col, row, size)
   }

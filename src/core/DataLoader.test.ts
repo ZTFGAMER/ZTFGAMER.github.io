@@ -7,15 +7,14 @@ describe('DataLoader — game_config.json', () => {
     expect(getConfig().dailyGold).toBe(15)
   })
 
-  it('backpackSlots 为 10', () => {
-    expect(getConfig().backpackSlots).toBe(10)
+  it('backpackSlots 为 6', () => {
+    expect(getConfig().backpackSlots).toBe(6)
   })
 
-  it('dailyBattleSlots 有 4 个阶段', () => {
+  it('dailyBattleSlots 按 4/5/6 配置', () => {
     const slots = getConfig().dailyBattleSlots
-    expect(slots).toHaveLength(4)
-    expect(slots[0]).toBe(4)   // 最初 4 格
-    expect(slots[3]).toBe(10)  // 最终 10 格（满 5x2）
+    expect(slots).toHaveLength(3)
+    expect(slots).toEqual([4, 5, 6])
   })
 
   it('shopRefreshPrices 有 10 级递增', () => {
@@ -75,8 +74,8 @@ describe('DataLoader — vanessa_items.json', () => {
     const items = getAllItems()
     const sizes = new Set(items.map(i => normalizeSize(i.size)))
     expect(sizes.has('1x1')).toBe(true)
-    expect(sizes.has('1x2')).toBe(true)
-    // 2x2 可选（数据中可能存在）
+    expect(sizes.has('2x1')).toBe(true)
+    expect(sizes.has('3x1')).toBe(true)
   })
 
   it('cooldown 均为非负数', () => {
@@ -97,8 +96,8 @@ describe('DataLoader — validateData()', () => {
 describe('ItemDef 工具函数', () => {
   it('normalizeSize 正确映射三种尺寸', () => {
     expect(normalizeSize('Small / 小型')).toBe('1x1')
-    expect(normalizeSize('Medium / 中型')).toBe('1x2')
-    expect(normalizeSize('Large / 大型')).toBe('2x2')
+    expect(normalizeSize('Medium / 中型')).toBe('2x1')
+    expect(normalizeSize('Large / 大型')).toBe('3x1')
   })
 
   it('normalizeSize 遇到未知尺寸抛出错误', () => {

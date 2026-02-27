@@ -18,8 +18,8 @@ export interface PackPlacement {
 
 const SIZE_DIM: Record<ItemSizeNorm, { w: number; h: number }> = {
   '1x1': { w: 1, h: 1 },
-  '1x2': { w: 1, h: 2 },
-  '2x2': { w: 2, h: 2 },
+  '2x1': { w: 2, h: 1 },
+  '3x1': { w: 3, h: 1 },
 }
 
 function canPlace(
@@ -57,7 +57,7 @@ function itemOrderScore(item: PackItem): number {
   return area * 10 + h
 }
 
-export function planAutoPack(items: PackItem[], cols: number, rows = 2): PackPlacement[] | null {
+export function planAutoPack(items: PackItem[], cols: number, rows = 1): PackPlacement[] | null {
   const normalized = items.map(i => ({ ...i }))
   const sorted = [...normalized].sort((a, b) => {
     const sa = itemOrderScore(a)

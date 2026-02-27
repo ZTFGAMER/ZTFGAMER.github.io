@@ -6,8 +6,8 @@ import type { GridSystem, ItemSizeNorm, PlacedItem } from './GridSystem'
 
 export const VSIZE_MAP: Record<ItemSizeNorm, { w: number; h: number }> = {
   '1x1': { w: 1, h: 1 },
-  '1x2': { w: 1, h: 2 },
-  '2x2': { w: 2, h: 2 },
+  '2x1': { w: 2, h: 1 },
+  '3x1': { w: 3, h: 1 },
 }
 
 export interface Move {
@@ -22,7 +22,7 @@ export interface SqueezePlan {
 
 // ============================================================
 export class VirtualGrid {
-  readonly cols = 5
+  readonly cols = 6
   // grid[col][row] = instanceId | null
   grid: (string | null)[][]
   items: Map<string, PlacedItem>
@@ -65,7 +65,7 @@ export class VirtualGrid {
   /** 放置物品（不做冲突检测，由调用方保证目标格已清空） */
   place(col: number, row: number, size: ItemSizeNorm, defId: string, instanceId: string): boolean {
     const { w, h } = VSIZE_MAP[size]
-    if (col < 0 || col + w > this.cols || row < 0 || row + h > 2) return false
+    if (col < 0 || col + w > this.cols || row < 0 || row + h > 1) return false
     for (let c = col; c < col + w; c++)
       for (let r = row; r < row + h; r++)
         this.grid[c][r] = instanceId
@@ -76,7 +76,7 @@ export class VirtualGrid {
   /** 检测 col/row 处能否放置 size，排除 excludeId 自身 */
   canPlaceExcluding(col: number, row: number, size: ItemSizeNorm, excludeId: string): boolean {
     const { w, h } = VSIZE_MAP[size]
-    if (col < 0 || col + w > this.cols || row < 0 || row + h > 2) return false
+    if (col < 0 || col + w > this.cols || row < 0 || row + h > 1) return false
     for (let c = col; c < col + w; c++)
       for (let r = row; r < row + h; r++) {
         const cell = this.grid[c][r]

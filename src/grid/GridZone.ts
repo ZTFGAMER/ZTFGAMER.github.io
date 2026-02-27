@@ -20,27 +20,28 @@ import { getAllItems, getConfig as getGameConfig } from '@/core/DataLoader'
 import { getItemIconUrl } from '@/core/assetPath'
 
 export const CELL_SIZE = 128
+export const CELL_HEIGHT = CELL_SIZE * 2
 
 // ---- 尺寸表 ----
 
 const SIZE_PX: Record<ItemSizeNorm, { pw: number; ph: number }> = {
-  '1x1': { pw: CELL_SIZE,     ph: CELL_SIZE     },
-  '1x2': { pw: CELL_SIZE,     ph: CELL_SIZE * 2 },
-  '2x2': { pw: CELL_SIZE * 2, ph: CELL_SIZE * 2 },
+  '1x1': { pw: CELL_SIZE,     ph: CELL_HEIGHT },
+  '2x1': { pw: CELL_SIZE * 2, ph: CELL_HEIGHT },
+  '3x1': { pw: CELL_SIZE * 3, ph: CELL_HEIGHT },
 }
 
 /** 每种尺寸占用的格子数 [cols, rows] */
 const SIZE_DIMS: Record<ItemSizeNorm, [number, number]> = {
   '1x1': [1, 1],
-  '1x2': [1, 2],
-  '2x2': [2, 2],
+  '2x1': [2, 1],
+  '3x1': [3, 1],
 }
 
 // 物品尺寸对应背景色（占位色，后期换真实卡牌背景）
 const SIZE_COLOR: Record<ItemSizeNorm, number> = {
   '1x1': 0x4a6fa5,
-  '1x2': 0x5a8a5a,
-  '2x2': 0x8a5a3a,
+  '2x1': 0x5a8a5a,
+  '3x1': 0x8a5a3a,
 }
 
 const TIER_COLORS: Record<string, number> = {
@@ -89,9 +90,18 @@ interface ItemNode {
   origY:      number
 }
 
+export interface GridItemNodeView {
+  container: Container
+  visual: Container
+  col: number
+  row: number
+  size: ItemSizeNorm
+}
+
 // ============================================================
 export class GridZone extends Container {
   readonly zoneCols:        number
+  readonly zoneRows:        number
   private _activeColCount:  number   // 已解锁的列数（其余显示为暗格）
   get activeColCount(): number { return this._activeColCount }
   autoPackEnabled = false
@@ -121,9 +131,10 @@ export class GridZone extends Container {
   /** Tap 回调，外部设置 */
   onTap: (instanceId: string) => void = () => {}
 
-  constructor(label: string, zoneCols = 5, activeColCount = 5) {
+  constructor(label: string, zoneCols = 6, activeColCount = 6, zoneRows = 1) {
     super()
     this.zoneCols        = zoneCols
+    this.zoneRows        = zoneRows
     this._activeColCount = activeColCount
 
     // 分层：bg → itemLayer → hlOverlay
@@ -155,12 +166,12 @@ export class GridZone extends Container {
     const borderWidth = this.cellBorderWidth
     const inset = Math.max(1, Math.ceil(borderWidth / 2))
     for (let c = 0; c < this._activeColCount; c++) {
-      for (let row = 0; row < 2; row++) {
+      for (let row = 0; row < this.zoneRows; row++) {
         const x = c * CELL_SIZE
-        const y = row * CELL_SIZE
-        g.roundRect(x + inset, y + inset, CELL_SIZE - inset * 2, CELL_SIZE - inset * 2, Math.max(0, radius - inset))
+        const y = row * CELL_HEIGHT
+        g.roundRect(x + inset, y + inset, CELL_SIZE - inset * 2, CELL_HEIGHT - inset * 2, Math.max(0, radius - inset))
         g.fill({ color: 0x2a2a3e })
-        g.roundRect(x, y, CELL_SIZE, CELL_SIZE, radius)
+        g.roundRect(x, y, CELL_SIZE, CELL_HEIGHT, radius)
         g.stroke({ color: 0x4a4a6e, width: borderWidth })
       }
     }
@@ -182,8 +193,8 @@ export class GridZone extends Container {
   pixelToCell(globalX: number, globalY: number): { col: number; row: number } | null {
     const local = this.toLocal({ x: globalX, y: globalY })
     const col   = Math.floor(local.x / CELL_SIZE)
-    const row   = Math.floor(local.y / CELL_SIZE)
-    if (col < 0 || col >= this._activeColCount || row < 0 || row >= 2) return null
+    const row   = Math.floor(local.y / CELL_HEIGHT)
+    if (col < 0 || col >= this._activeColCount || row < 0 || row >= this.zoneRows) return null
     return { col, row }
   }
 
@@ -215,11 +226,10 @@ export class GridZone extends Container {
     size:       ItemSizeNorm,
     dragOffsetY = 0,
   ): { col: number; row: number } | null {
-    const [w, h] = SIZE_DIMS[size]
+    const [w] = SIZE_DIMS[size]
     const { ph } = SIZE_PX[size]
 
-    // X：1x1/1x2 直接用手指位置（= 物品中心）；2x2 用手指 - CELL_SIZE/2（= 物品左1/4）
-    const anchorGx = w === 1 ? globalX : globalX - CELL_SIZE / 2
+    const anchorGx = globalX - ((w - 1) * CELL_SIZE) / 2
 
     // Y：手指视觉中心 Y（含拖拽偏移）
     const anchorGy = globalY + dragOffsetY
@@ -228,21 +238,15 @@ export class GridZone extends Container {
     const col   = Math.floor(local.x / CELL_SIZE)
     if (col < 0 || col + w > this._activeColCount) return null
 
-    if (h > 1) {
-      // 多行物品：强制 row=0，宽松检测视觉中心 Y 在区域内（±ph/2 容差）
-      if (local.y < -(ph / 2) || local.y > CELL_SIZE * 2 + ph / 2) return null
-      return { col, row: 0 }
-    } else {
-      // 1x1：手指所在行 = floor(视觉中心Y / CELL_SIZE)
-      const row = Math.floor(local.y / CELL_SIZE)
-      if (row < 0 || row + 1 > 2) return null
-      return { col, row }
-    }
+    const row = Math.floor(local.y / CELL_HEIGHT)
+    if (row < 0 || row >= this.zoneRows) return null
+    if (local.y < -(ph / 2) || local.y > CELL_HEIGHT * this.zoneRows + ph / 2) return null
+    return { col, row }
   }
 
   /** 格子坐标 → 本区域像素原点（左上角） */
   cellToLocal(col: number, row: number): { x: number; y: number } {
-    return { x: col * CELL_SIZE, y: row * CELL_SIZE }
+    return { x: col * CELL_SIZE, y: row * CELL_HEIGHT }
   }
 
   // ---- 物品 Sprite 管理 ----
@@ -276,10 +280,11 @@ export class GridZone extends Container {
      container.hitArea = new Rectangle(0, 0, pw, ph)
 
      // 视觉层：整体缩放并居中留白
-     const visual = new Container()
+    const visual = new Container()
     visual.scale.set(visualScale)
-    visual.x = (pw - pw * visualScale) / 2
-    visual.y = (ph - ph * visualScale) / 2
+    visual.pivot.set(pw / 2, ph / 2)
+    visual.x = pw / 2
+    visual.y = ph / 2
     container.addChild(visual)
 
     // 占位背景
@@ -634,6 +639,18 @@ export class GridZone extends Container {
       node.container.cursor    = 'pointer'
       node.container.removeAllListeners('pointerdown')
       node.container.on('pointerdown', (e: FederatedPointerEvent) => onDown(id, e))
+    }
+  }
+
+  getNode(instanceId: string): GridItemNodeView | null {
+    const node = this.nodes.get(instanceId)
+    if (!node) return null
+    return {
+      container: node.container,
+      visual: node.visual,
+      col: node.col,
+      row: node.row,
+      size: node.size,
     }
   }
 
