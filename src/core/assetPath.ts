@@ -2,7 +2,7 @@ function getItemIconBasePath(): string {
   const protocol = typeof window !== 'undefined' ? window.location.protocol : ''
   let base = '/resource'
   if (protocol === 'app:') {
-    base = 'app://dist-ios/resource'
+    base = 'app://resource'
   }
   if (protocol === 'file:') {
     const path = typeof window !== 'undefined' ? window.location.pathname : ''
@@ -15,7 +15,7 @@ function getResourceBasePath(): string {
   const protocol = typeof window !== 'undefined' ? window.location.protocol : ''
   let base = '/resource'
   if (protocol === 'app:') {
-    base = 'app://dist-ios/resource'
+    base = 'app://resource'
   }
   if (protocol === 'file:') {
     const path = typeof window !== 'undefined' ? window.location.pathname : ''

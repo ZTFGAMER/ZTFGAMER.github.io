@@ -7,6 +7,12 @@
 
 ## 本次对话追加（2026-02-28，阶段3-P1最小切片开发中）
 
+### 本次对话追加（2026-02-28，iOS 场景图资源路径修复）
+
+- 问题复盘：英雄/敌人/背景图片文件已打入 ipa（`resource/scene/background.png|boss.png|hero.png`），但 iOS `app://` 路径指向了 `dist-ios/resource/...`，与包内真实目录 `resource/...` 不一致，导致运行时 404。
+- 修复：`src/core/assetPath.ts` 将 iOS 协议资源基路径从 `app://dist-ios/resource` 改为 `app://resource`（`getResourceBasePath` 与 `getItemIconBasePath` 同步）。
+- 验证：`npm run build` 通过；后续重新打包 iOS 后即可生效。
+
 ### 本次对话追加（2026-02-28，GHE 上传 + TestFlight 发包）
 
 - GHE：已完成代码上传。
