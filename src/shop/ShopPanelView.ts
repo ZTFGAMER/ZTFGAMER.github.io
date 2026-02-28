@@ -15,6 +15,7 @@ import { CELL_SIZE, CELL_HEIGHT } from '@/grid/GridZone'
 import { getConfig as getGameConfig } from '@/core/DataLoader'
 import { getItemIconUrl } from '@/core/assetPath'
 import { getTierColor } from '@/config/colorPalette'
+import { createItemStatBadges } from '@/ui/itemStatBadges'
 
 // ---- 布局常量 ----
 const CARDS_Y  = 8
@@ -37,13 +38,16 @@ export class ShopPanelView extends Container {
     itemName: getGameConfig().textSizes.shopItemName,
     itemPrice: getGameConfig().textSizes.shopItemPrice,
     itemBought: getGameConfig().textSizes.shopItemBought,
+    itemStatBadge: getGameConfig().textSizes.itemStatBadge,
   }
+  private itemStatBadgeOffsetY = 0
   private upgradeHintSlots = new Set<number>()
   private upgradeHintTick: (() => void) | null = null
   private upgradeHintT = 0
 
   // 内容容器：用于整体缩放（5/6）+ 居中
   private content: Container
+  private itemScale = getGameConfig().itemVisualScale
 
   /** 拖拽开始回调（ShopScene 负责创建浮层和购买逻辑） */
   onDragStart: (slotIndex: number, e: FederatedPointerEvent) => void = () => {}
@@ -94,7 +98,21 @@ export class ShopPanelView extends Container {
   }
 
   setTextSizes(sizes: { itemName: number; itemPrice: number; itemBought: number }): void {
-    this.textSize = sizes
+    this.textSize = { ...this.textSize, ...sizes }
+    if (this.lastPool && this.lastGold !== null) {
+      this._rebuildCards(this.lastPool, this.lastGold)
+    }
+  }
+
+  setStatBadgeFontSize(size: number): void {
+    this.textSize.itemStatBadge = size
+    if (this.lastPool && this.lastGold !== null) {
+      this._rebuildCards(this.lastPool, this.lastGold)
+    }
+  }
+
+  setStatBadgeOffsetY(offsetY: number): void {
+    this.itemStatBadgeOffsetY = offsetY
     if (this.lastPool && this.lastGold !== null) {
       this._rebuildCards(this.lastPool, this.lastGold)
     }
@@ -131,13 +149,20 @@ export class ShopPanelView extends Container {
     }
   }
 
+  setItemScale(scale: number): void {
+    this.itemScale = Math.max(0.5, Math.min(1.2, scale))
+    if (this.lastPool && this.lastGold !== null) {
+      this._rebuildCards(this.lastPool, this.lastGold)
+    }
+  }
+
   // ---- 私有：卡片区 ----
 
   private _rebuildCards(pool: ShopSlot[], gold: number): void {
     for (const c of this.cards) this.content.removeChild(c)
     this.cards = []
 
-    const scale = getGameConfig().itemVisualScale
+    const scale = this.itemScale
     this.content.scale.set(scale)
 
     const widths = pool.map((slot) => {
@@ -206,6 +231,10 @@ export class ShopPanelView extends Container {
       iconBg.stroke({ color: 0xe8fbff, width: 2, alpha: bought ? 0.45 : 0.92 })
     }
     card.addChild(iconBg)
+
+    const statBadges = createItemStatBadges(slot.item, this.textSize.itemStatBadge, Math.max(44, iconW - 8))
+    statBadges.x = iconX + iconW / 2
+    statBadges.y = iconY + this.itemStatBadgeOffsetY
 
     // 图标 Sprite（异步加载）
     const iconSprite = new Sprite(Texture.WHITE)
@@ -311,6 +340,9 @@ export class ShopPanelView extends Container {
     selectedFrame.visible = this.selectedSlot === slotIndex
     card.addChild(selectedFrame)
 
+    // 数值徽标保持在选中框之上
+    card.addChild(statBadges)
+
     // ---- 交互：拖拽开始 ----
     if (!bought) {
       card.eventMode = 'static'
@@ -349,11 +381,6 @@ export class ShopPanelView extends Container {
       card.on('pointerup', onRelease)
       card.on('pointerupoutside', onRelease)
 
-      // 悬停高亮
-      if (canAfford) {
-        card.on('pointerover', () => { card.alpha = 0.85 })
-        card.on('pointerout',  () => { card.alpha = 1 })
-      }
     }
 
     return card

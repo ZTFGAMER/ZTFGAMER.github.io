@@ -155,6 +155,11 @@ function normalizeItem(raw: unknown): ItemDef | null {
     heroes: toSafeString(r.heroes).trim(),
     tags: toSafeString(r.tags).trim(),
     hidden_tags: toSafeString(r.hidden_tags).trim(),
+    icon: toSafeString(r.icon).trim(),
+    attack_style: toSafeString(r.attack_style).trim(),
+    attack_variants: Array.isArray(r.attack_variants)
+      ? r.attack_variants.map(v => toSafeString(v).trim()).filter(Boolean)
+      : [],
 
     cooldown: Math.max(0, toNumber(r.cooldown, 0)),
     cooldown_tiers: toSafeString(r.cooldown_tiers).trim(),

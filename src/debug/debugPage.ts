@@ -10,6 +10,7 @@ const LAYOUT_POSITION_KEYS = [
   'shopAreaY',
   'battleZoneX',
   'battleZoneY',
+  'battleZoneYInBattleOffset',
   'enemyBattleZoneY',
   'enemyHpBarY',
   'playerHpBarY',
@@ -26,6 +27,8 @@ const LAYOUT_POSITION_KEYS = [
   'refreshBtnY',
   'phaseBtnX',
   'phaseBtnY',
+  'battleBackBtnX',
+  'battleBackBtnY',
   'goldTextCenterX',
   'goldTextY',
   'dayDebugX',
@@ -38,6 +41,7 @@ const LAYOUT_POSITION_KEYS = [
   'backpackAreaBgWidth',
   'backpackAreaBgHeight',
   'itemInfoBottomGapToShop',
+  'itemStatBadgeOffsetY',
   'itemInfoWidth',
   'itemInfoMinH',
   'itemInfoMinHSmall',
@@ -51,6 +55,7 @@ const LAYOUT_FONT_KEYS = [
   'battleHpTextFontSize',
   'battleTextFontSizeDamage',
   'battleTextFontSizeCrit',
+  'battleStatusTimerFontSize',
   'sellButtonSubPriceFontSize',
   'refreshCostFontSize',
   'goldFontSize',
@@ -59,6 +64,7 @@ const LAYOUT_FONT_KEYS = [
   'shopItemNameFontSize',
   'shopItemPriceFontSize',
   'shopItemBoughtFontSize',
+  'itemStatBadgeFontSize',
   'itemInfoNameFontSize',
   'itemInfoTierFontSize',
   'itemInfoPriceFontSize',
@@ -70,27 +76,82 @@ const LAYOUT_FONT_KEYS = [
 ]
 
 const LAYOUT_KEYS = [...LAYOUT_POSITION_KEYS, ...LAYOUT_FONT_KEYS]
+const PERSPECTIVE_KEYS = [
+  'shopItemScale',
+  'battleItemScale',
+  'battleItemScaleBackpackOpen',
+  'enemyAreaScale',
+  'enemyHpBarScale',
+]
 const TOAST_KEYS = [
   'toastEnabled',
   'toastShowNoGoldBuy',
   'toastShowNoGoldRefresh',
   'toastShowBackpackFullBuy',
   'toastShowBackpackFullTransfer',
+  'toastShowFatigueStart',
 ]
 const BATTLE_VFX_KEYS = [
   'battleFirePulseScaleMax',
   'battleFirePulseMs',
   'battleProjectileFlyMs',
+  'battleProjectileItemSizePx',
+  'battleProjectileArcHeight',
+  'battleProjectileScaleStart',
+  'battleProjectileScalePeak',
+  'battleProjectileScaleEnd',
+  'battleProjectileScalePeakT',
+  'battleProjectileSpinDegPerSec',
+  'battleStatusTextStrokeWidth',
+  'battleStatusBadgePadX',
+  'battleStatusBadgePadY',
+  'battleStatusBadgeRadius',
+  'battleStatusBadgeMinWidth',
+  'battleStatusBadgeAlpha',
+  'battleStatusHasteYFactor',
+  'battleStatusHasteOffsetY',
+  'battleStatusSlowYFactor',
+  'battleStatusSlowOffsetY',
+  'battleStatusFreezeYFactor',
+  'battleStatusFreezeOffsetY',
+  'battleFreezeOverlayAlpha',
   'battleDamageFloatRandomX',
   'battleDamageFloatRiseMs',
   'battleDamageFloatRiseY',
   'battleDamageFloatHoldMs',
   'battleDamageFloatFadeMs',
+  'battleEnemyPortraitWidthRatio',
+  'battleEnemyPortraitOffsetY',
+  'battleEnemyPortraitHitYFactor',
+  'battleEnemyPortraitHitScaleMax',
+  'battleEnemyPortraitHitPulseMs',
+  'battleEnemyPortraitIdleLoopMs',
+  'battleEnemyPortraitIdleScaleMax',
+  'battleEnemyPortraitFlashMs',
+  'battleEnemyPortraitFlashColor',
+  'battleEnemyPortraitFlashAlpha',
+  'battleEnemyPortraitDeathFadeMs',
+  'battlePlayerPortraitWidthRatio',
+  'battlePlayerPortraitOffsetY',
+  'battlePlayerPortraitHitYFactor',
+  'battlePlayerPortraitHitScaleMax',
+  'battlePlayerPortraitHitPulseMs',
+  'battlePlayerPortraitIdleLoopMs',
+  'battlePlayerPortraitIdleScaleMax',
+  'battlePlayerPortraitFlashMs',
+  'battlePlayerPortraitFlashColor',
+  'battlePlayerPortraitFlashAlpha',
 ]
 const GAMEPLAY_KEYS = [
   'gameplayBurnTickMs',
   'gameplayPoisonTickMs',
   'gameplayRegenTickMs',
+  'gameplayFatigueStartMs',
+  'gameplayFatigueIntervalMs',
+  'gameplayFatigueDamagePctPerInterval',
+  'gameplayFatigueDamageFixedPerInterval',
+  'gameplayFatigueDamagePctRampPerInterval',
+  'gameplayFatigueDamageFixedRampPerInterval',
   'gameplayBurnShieldFactor',
   'gameplayBurnDecayPct',
   'gameplayHealCleansePct',
@@ -121,8 +182,47 @@ const COLOR_KEYS = [
   'battleTextColorBurn',
   'battleTextColorPoison',
   'battleTextColorRegen',
+  'battleEnemyPortraitFlashColor',
 ]
-const DRAG_KEYS = Object.keys(CONFIG_DEFS).filter((key) => !LAYOUT_KEYS.includes(key) && !TOAST_KEYS.includes(key) && !BATTLE_VFX_KEYS.includes(key) && !GAMEPLAY_KEYS.includes(key) && !COLOR_KEYS.includes(key))
+const DRAG_KEYS = Object.keys(CONFIG_DEFS).filter((key) => !LAYOUT_KEYS.includes(key) && !PERSPECTIVE_KEYS.includes(key) && !TOAST_KEYS.includes(key) && !BATTLE_VFX_KEYS.includes(key) && !GAMEPLAY_KEYS.includes(key) && !COLOR_KEYS.includes(key))
+
+function buildSearchText(key: string): string {
+  const def = CONFIG_DEFS[key]
+  if (!def) return key.toLowerCase()
+  return [key, def.labelCn, def.description]
+    .map((s) => String(s || '').toLowerCase())
+    .join(' ')
+}
+
+function applySearchFilter(raw: string): void {
+  const query = raw.trim().toLowerCase()
+  const rows = Array.from(document.querySelectorAll<HTMLElement>('.param-row'))
+  let visibleCount = 0
+
+  for (const row of rows) {
+    const text = row.dataset.searchText || ''
+    const matched = query.length === 0 || text.includes(query)
+    row.style.display = matched ? '' : 'none'
+    if (matched) visibleCount += 1
+  }
+
+  const sections = Array.from(document.querySelectorAll<HTMLElement>('.section-dropdown'))
+  for (const sec of sections) {
+    const secRows = Array.from(sec.querySelectorAll<HTMLElement>('.param-row'))
+    const hasVisible = secRows.some((r) => r.style.display !== 'none')
+    sec.style.display = hasVisible ? '' : 'none'
+    if (query.length > 0 && hasVisible) {
+      ;(sec as HTMLDetailsElement).open = true
+    }
+  }
+
+  const count = document.getElementById('debug-search-count')
+  if (count) {
+    count.textContent = query.length === 0
+      ? '全部显示'
+      : `命中 ${visibleCount}`
+  }
+}
 
 function toHexColor(value: number): string {
   const n = Math.max(0, Math.min(0xffffff, Math.round(value)))
@@ -189,6 +289,7 @@ function buildParamRow(key: string, sectionId: string): void {
 
   row.append(label, slider, valEl, unitEl, num, resetBtn)
   section.appendChild(row)
+  row.dataset.searchText = buildSearchText(key)
 
   // ---- 事件 ----
 
@@ -253,6 +354,7 @@ function buildCheckboxRow(key: string, sectionId: string): void {
 
   row.append(label, toggle, state, unit, spacer, resetBtn)
   section.appendChild(row)
+  row.dataset.searchText = buildSearchText(key)
 
   const applyChecked = (checked: boolean): void => {
     toggle.checked = checked
@@ -310,6 +412,7 @@ function buildColorRow(key: string, sectionId: string): void {
 
   row.append(label, picker, valEl, unitEl, hexInput, resetBtn)
   section.appendChild(row)
+  row.dataset.searchText = buildSearchText(key)
 
   const applyColor = (nextValue: number): void => {
     const clamped = Math.max(def.min, Math.min(def.max, Math.round(nextValue)))
@@ -420,6 +523,11 @@ document.addEventListener('DOMContentLoaded', () => {
     buildParamRow(key, 'params-drag')
   }
 
+  for (const key of PERSPECTIVE_KEYS) {
+    if (!CONFIG_DEFS[key]) continue
+    buildParamRow(key, 'params-perspective')
+  }
+
   for (const key of TOAST_KEYS) {
     if (!CONFIG_DEFS[key]) continue
     buildCheckboxRow(key, 'params-toast')
@@ -477,4 +585,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const badge = document.getElementById('sync-badge')!
   badge.textContent = '🔗 已连接'
   setTimeout(() => { badge.style.opacity = '0' }, 2500)
+
+  const searchInput = document.getElementById('debug-search') as HTMLInputElement | null
+  searchInput?.addEventListener('input', () => {
+    applySearchFilter(searchInput.value)
+  })
+  applySearchFilter(searchInput?.value || '')
 })

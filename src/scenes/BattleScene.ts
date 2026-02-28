@@ -3,21 +3,26 @@ import { getBattleSnapshot } from '@/combat/BattleSnapshotStore'
 import { CombatEngine, setCombatRuntimeOverride, type CombatBoardItem } from '@/combat/CombatEngine'
 import { SceneManager } from '@/scenes/SceneManager'
 import { getApp } from '@/core/AppContext'
-import { Container, Graphics, Text } from 'pixi.js'
+import { Assets, Container, Graphics, Sprite, Texture, Text } from 'pixi.js'
 import { GridZone, CELL_SIZE, CELL_HEIGHT } from '@/grid/GridZone'
 import { getAllItems, getConfig as getGameCfg } from '@/core/DataLoader'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
-import type { ItemSizeNorm } from '@/items/ItemDef'
+import type { ItemDef, ItemSizeNorm } from '@/items/ItemDef'
 import { EventBus } from '@/core/EventBus'
 import { SellPopup } from '@/shop/SellPopup'
 import { getBattleEffectColor, getBattleFloatTextColor, getBattleOrbColor } from '@/config/colorPalette'
+import { getItemIconUrl, getItemIconUrlByName, getSceneImageUrl } from '@/core/assetPath'
 
 const CANVAS_W = 640
+const CANVAS_H = 1384
 
 let root: Container | null = null
 let titleText: Text | null = null
 let statusText: Text | null = null
 let backBtn: Container | null = null
+let speedBtn: Container | null = null
+let speedBtnText: Text | null = null
+let battleEndMask: Graphics | null = null
 let heroHudG: Graphics | null = null
 let enemyHpInfoCon: Container | null = null
 let playerHpInfoCon: Container | null = null
@@ -33,12 +38,44 @@ let offShieldEvent: (() => void) | null = null
 let offHealEvent: (() => void) | null = null
 let offStatusApplyEvent: (() => void) | null = null
 let offStatusRemoveEvent: (() => void) | null = null
+let offFatigueStartEvent: (() => void) | null = null
 let onStageTapHidePopup: (() => void) | null = null
 let itemInfoPopup: SellPopup | null = null
 let selectedItemId: string | null = null
+let fatigueToastCon: Container | null = null
+let fatigueToastBg: Graphics | null = null
+let fatigueToastText: Text | null = null
+let fatigueToastUntilMs = 0
+let enemyBossSprite: Sprite | null = null
+let enemyBossFlashSprite: Sprite | null = null
+let enemyBossBaseScale = 1
+let enemyBossHitElapsedMs = -1
+let enemyBossDeathElapsedMs = -1
+let enemyBossIdleElapsedMs = 0
+let playerHeroSprite: Sprite | null = null
+let playerHeroFlashSprite: Sprite | null = null
+let playerHeroBaseScale = 1
+let playerHeroHitElapsedMs = -1
+let playerHeroIdleElapsedMs = 0
+let enemyPresentationVisible = true
+let battleSpeed = 1
+const BATTLE_SPEED_STEPS = [1, 2, 4, 8] as const
 
 type TickAnim = (dtMs: number) => boolean
 const activeFx: TickAnim[] = []
+
+type StatusBadgeFx = {
+  box: Graphics
+  text: Text
+  lastText: string
+}
+
+type StatusFx = {
+  root: Container
+  haste: StatusBadgeFx
+  slow: StatusBadgeFx
+  freeze: StatusBadgeFx
+}
 
 type PulseState = {
   node: ReturnType<GridZone['getNode']>
@@ -48,6 +85,36 @@ type PulseState = {
   maxScale: number
 }
 const pulseStates = new Map<string, PulseState>()
+const pulseDedupAtMs = new Map<string, number>()
+const projectileVariantCursor = new Map<string, number>()
+const projectileTextureCache = new Map<string, Texture>()
+const projectileMissingUrls = new Set<string>()
+const statusFxByKey = new Map<string, StatusFx>()
+let enemyFreezeOverlay: Graphics | null = null
+let playerFreezeOverlay: Graphics | null = null
+let enemyStatusLayer: Container | null = null
+let playerStatusLayer: Container | null = null
+
+function resolveItemSide(sourceItemId: string, preferred?: 'player' | 'enemy'): 'player' | 'enemy' | null {
+  if (preferred === 'player' || preferred === 'enemy') return preferred
+  if (playerZone?.getNode(sourceItemId)) return 'player'
+  if (enemyZone?.getNode(sourceItemId)) return 'enemy'
+  return null
+}
+
+function tryPulseItem(sourceItemId: string, preferredSide?: 'player' | 'enemy'): void {
+  if (!sourceItemId || sourceItemId === 'fatigue' || sourceItemId.startsWith('status_')) return
+  const side = resolveItemSide(sourceItemId, preferredSide)
+  if (!side) return
+
+  const now = Date.now()
+  const dedupMs = Math.max(1, Math.min(80, Math.round(getDebugCfg('battleFirePulseMs') * 0.4)))
+  const lastAt = pulseDedupAtMs.get(sourceItemId) ?? 0
+  if (now - lastAt < dedupMs) return
+
+  pulseDedupAtMs.set(sourceItemId, now)
+  animateItemFirePulse(sourceItemId, side)
+}
 
 function getDayActiveCols(day: number): number {
   const slots = getGameCfg().dailyBattleSlots
@@ -56,9 +123,26 @@ function getDayActiveCols(day: number): number {
   return slots[2] ?? 6
 }
 
-function getZoneX(activeCols: number): number {
-  const s = getGameCfg().itemVisualScale
-  return getDebugCfg('battleZoneX') + (6 - activeCols) / 2 * CELL_SIZE * s
+function getBattleItemScale(): number {
+  return getDebugCfg('battleItemScale')
+}
+
+function getEnemyAreaScale(): number {
+  return getDebugCfg('enemyAreaScale')
+}
+
+function getEnemyHpBarScale(): number {
+  return getDebugCfg('enemyHpBarScale')
+}
+
+function getPlayerZoneX(activeCols: number): number {
+  const s = getBattleItemScale()
+  return getDebugCfg('battleZoneX') + (CANVAS_W - activeCols * CELL_SIZE * s) / 2
+}
+
+function getEnemyZoneX(activeCols: number): number {
+  const s = getEnemyAreaScale()
+  return getDebugCfg('battleZoneX') + (CANVAS_W - activeCols * CELL_SIZE * s) / 2
 }
 
 function sizeToWH(size: ItemSizeNorm): { w: number; h: number } {
@@ -68,11 +152,138 @@ function sizeToWH(size: ItemSizeNorm): { w: number; h: number } {
 }
 
 function getHeroBarCenter(side: 'player' | 'enemy'): { x: number; y: number } {
-  const barW = getDebugCfg('battleHpBarWidth')
-  const barH = getDebugCfg('battleHpBarH')
+  const hpScale = side === 'enemy' ? getEnemyHpBarScale() : 1
+  const barW = getDebugCfg('battleHpBarWidth') * hpScale
+  const barH = getDebugCfg('battleHpBarH') * hpScale
   const x = (CANVAS_W - barW) / 2 + barW / 2
   const y = (side === 'enemy' ? getDebugCfg('enemyHpBarY') : getDebugCfg('playerHpBarY')) + barH / 2
   return { x, y }
+}
+
+function getEnemyPortraitHitPoint(): { x: number; y: number } | null {
+  if (!enemyBossSprite || !enemyBossSprite.visible) return null
+  const yFactor = Math.max(0, Math.min(1, getDebugCfg('battleEnemyPortraitHitYFactor')))
+  const top = enemyBossSprite.y - enemyBossSprite.height
+  return {
+    x: enemyBossSprite.x,
+    y: top + enemyBossSprite.height * yFactor,
+  }
+}
+
+function triggerEnemyPortraitHitFx(): void {
+  if (!enemyBossSprite || !enemyBossSprite.visible) return
+  enemyBossHitElapsedMs = 0
+}
+
+function getPlayerPortraitHitPoint(): { x: number; y: number } | null {
+  if (!playerHeroSprite || !playerHeroSprite.visible) return null
+  const yFactor = Math.max(0, Math.min(1, getDebugCfg('battlePlayerPortraitHitYFactor')))
+  const top = playerHeroSprite.y - playerHeroSprite.height
+  return {
+    x: playerHeroSprite.x,
+    y: top + playerHeroSprite.height * yFactor,
+  }
+}
+
+function triggerPlayerPortraitHitFx(): void {
+  if (!playerHeroSprite || !playerHeroSprite.visible) return
+  playerHeroHitElapsedMs = 0
+}
+
+function tickPlayerPortraitFx(dtMs: number): void {
+  if (!playerHeroSprite || !playerHeroSprite.visible) return
+
+  const loopMs = Math.max(1, getDebugCfg('battlePlayerPortraitIdleLoopMs'))
+  playerHeroIdleElapsedMs = (playerHeroIdleElapsedMs + dtMs) % loopMs
+  const loopP = playerHeroIdleElapsedMs / loopMs
+  const loopWave = (Math.sin(loopP * Math.PI * 2 - Math.PI / 2) + 1) / 2
+  const idleScaleMax = Math.max(1, getDebugCfg('battlePlayerPortraitIdleScaleMax'))
+  const idleScale = 1 + (idleScaleMax - 1) * loopWave
+
+  if (playerHeroHitElapsedMs < 0) {
+    playerHeroSprite.scale.set(playerHeroBaseScale * idleScale)
+    if (playerHeroFlashSprite) playerHeroFlashSprite.alpha = 0
+    return
+  }
+
+  const hitMs = Math.max(1, getDebugCfg('battlePlayerPortraitHitPulseMs'))
+  playerHeroHitElapsedMs += dtMs
+  const p = Math.max(0, Math.min(1, playerHeroHitElapsedMs / hitMs))
+  const pulse = Math.sin(Math.PI * p)
+  const maxScale = Math.max(1, getDebugCfg('battlePlayerPortraitHitScaleMax'))
+  playerHeroSprite.scale.set(playerHeroBaseScale * idleScale * (1 + (maxScale - 1) * pulse))
+  if (playerHeroFlashSprite) {
+    const flashMs = Math.max(1, getDebugCfg('battlePlayerPortraitFlashMs'))
+    const flashP = Math.max(0, Math.min(1, playerHeroHitElapsedMs / flashMs))
+    playerHeroFlashSprite.visible = true
+    playerHeroFlashSprite.tint = Math.max(0, Math.min(0xffffff, Math.round(getDebugCfg('battlePlayerPortraitFlashColor'))))
+    playerHeroFlashSprite.alpha = Math.max(0, getDebugCfg('battlePlayerPortraitFlashAlpha') * (1 - flashP))
+    playerHeroFlashSprite.scale.copyFrom(playerHeroSprite.scale)
+    playerHeroFlashSprite.x = playerHeroSprite.x
+    playerHeroFlashSprite.y = playerHeroSprite.y
+  }
+
+  if (p >= 1) {
+    playerHeroHitElapsedMs = -1
+    playerHeroSprite.scale.set(playerHeroBaseScale * idleScale)
+    if (playerHeroFlashSprite) playerHeroFlashSprite.alpha = 0
+  }
+}
+
+function tickEnemyPortraitFx(dtMs: number): void {
+  if (!enemyBossSprite || !enemyBossSprite.visible) return
+
+  const loopMs = Math.max(1, getDebugCfg('battleEnemyPortraitIdleLoopMs'))
+  enemyBossIdleElapsedMs = (enemyBossIdleElapsedMs + dtMs) % loopMs
+  const loopP = enemyBossIdleElapsedMs / loopMs
+  const loopWave = (Math.sin(loopP * Math.PI * 2 - Math.PI / 2) + 1) / 2
+  const idleScaleMax = Math.max(1, getDebugCfg('battleEnemyPortraitIdleScaleMax'))
+  const idleScale = 1 + (idleScaleMax - 1) * loopWave
+
+  if (enemyBossDeathElapsedMs >= 0) {
+    const deathMs = Math.max(1, getDebugCfg('battleEnemyPortraitDeathFadeMs'))
+    enemyBossDeathElapsedMs += dtMs
+    const p = Math.max(0, Math.min(1, enemyBossDeathElapsedMs / deathMs))
+    enemyBossSprite.alpha = 1 - p
+    if (enemyBossFlashSprite) enemyBossFlashSprite.alpha = 0
+    enemyBossSprite.scale.set(enemyBossBaseScale * idleScale * (1 - 0.08 * p))
+    if (p >= 1) {
+      enemyBossSprite.visible = false
+      enemyBossSprite.alpha = 1
+      enemyBossSprite.scale.set(enemyBossBaseScale)
+      enemyBossDeathElapsedMs = -1
+    }
+    return
+  }
+
+  if (enemyBossHitElapsedMs < 0) {
+    enemyBossSprite.scale.set(enemyBossBaseScale * idleScale)
+    if (enemyBossFlashSprite) enemyBossFlashSprite.alpha = 0
+    return
+  }
+
+  const hitMs = Math.max(1, getDebugCfg('battleEnemyPortraitHitPulseMs'))
+  enemyBossHitElapsedMs += dtMs
+  const p = Math.max(0, Math.min(1, enemyBossHitElapsedMs / hitMs))
+  const pulse = Math.sin(Math.PI * p)
+  const maxScale = Math.max(1, getDebugCfg('battleEnemyPortraitHitScaleMax'))
+  enemyBossSprite.scale.set(enemyBossBaseScale * idleScale * (1 + (maxScale - 1) * pulse))
+  if (enemyBossFlashSprite) {
+    const flashMs = Math.max(1, getDebugCfg('battleEnemyPortraitFlashMs'))
+    const flashP = Math.max(0, Math.min(1, enemyBossHitElapsedMs / flashMs))
+    enemyBossFlashSprite.visible = true
+    enemyBossFlashSprite.tint = Math.max(0, Math.min(0xffffff, Math.round(getDebugCfg('battleEnemyPortraitFlashColor'))))
+    enemyBossFlashSprite.alpha = Math.max(0, getDebugCfg('battleEnemyPortraitFlashAlpha') * (1 - flashP))
+    enemyBossFlashSprite.scale.copyFrom(enemyBossSprite.scale)
+    enemyBossFlashSprite.x = enemyBossSprite.x
+    enemyBossFlashSprite.y = enemyBossSprite.y
+  }
+
+  if (p >= 1) {
+    enemyBossHitElapsedMs = -1
+    enemyBossSprite.scale.set(enemyBossBaseScale * idleScale)
+    if (enemyBossFlashSprite) enemyBossFlashSprite.alpha = 0
+  }
 }
 
 function getItemCenterById(sourceItemId: string, side: 'player' | 'enemy'): { x: number; y: number } | null {
@@ -92,6 +303,220 @@ function getItemCenterAnySide(sourceItemId: string): { pos: { x: number; y: numb
   if (p) return { pos: p, side: 'player' }
   const e = getItemCenterById(sourceItemId, 'enemy')
   if (e) return { pos: e, side: 'enemy' }
+  return null
+}
+
+const ITEM_BY_ID = new Map(getAllItems().map((it) => [it.id, it] as const))
+
+function getDefBySourceInstance(sourceItemId: string): ItemDef | null {
+  if (!engine) return null
+  const board = engine.getBoardState()
+  const hit = board.items.find((it) => it.id === sourceItemId)
+  if (!hit) return null
+  return ITEM_BY_ID.get(hit.defId) ?? null
+}
+
+function isFlyableProjectile(def: ItemDef | null): boolean {
+  if (!def) return false
+  const style = def.attack_style ?? ''
+  if (!style || style.includes('不飞行')) return false
+  return style.includes('飞行')
+}
+
+function collectProjectileIconUrls(def: ItemDef, sourceItemId?: string): string[] {
+  const out: string[] = []
+  let stems = (def.attack_variants ?? []).filter(Boolean)
+  if (stems.length === 0 && def.icon) {
+    stems = [`${def.icon}_a`, `${def.icon}_a2`]
+  }
+  if (stems.length > 0) {
+    const key = sourceItemId || def.id
+    const cursor = projectileVariantCursor.get(key) ?? 0
+    const idx = ((cursor % stems.length) + stems.length) % stems.length
+    projectileVariantCursor.set(key, cursor + 1)
+
+    const first = stems[idx]
+    if (first) out.push(getItemIconUrlByName(first))
+    for (let i = 0; i < stems.length; i++) {
+      if (i !== idx) out.push(getItemIconUrlByName(stems[i]!))
+    }
+  }
+  out.push(getItemIconUrl(def.id))
+  return Array.from(new Set(out))
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t
+}
+
+function makeStatusBadge(): StatusBadgeFx {
+  const box = new Graphics()
+  const text = new Text({
+    text: '',
+    style: {
+      fontSize: 16,
+      fill: 0xffffff,
+      fontFamily: 'Arial',
+      fontWeight: 'bold',
+      stroke: { color: 0x000000, width: 3 },
+    },
+  })
+  box.visible = false
+  text.visible = false
+  return { box, text, lastText: '' }
+}
+
+function formatStatusSec(ms: number): string {
+  return (Math.max(0, ms) / 1000).toFixed(1)
+}
+
+function ensureStatusFx(key: string, zone: GridZone, instanceId: string, statusLayer: Container): StatusFx | null {
+  const existing = statusFxByKey.get(key)
+  if (existing) return existing
+  const node = zone.getNode(instanceId)
+  if (!node) return null
+
+  const root = new Container()
+  root.zIndex = 80
+  const haste = makeStatusBadge()
+  const slow = makeStatusBadge()
+  const freeze = makeStatusBadge()
+
+  root.addChild(haste.box, haste.text)
+  root.addChild(slow.box, slow.text)
+  root.addChild(freeze.box, freeze.text)
+  statusLayer.addChild(root)
+
+  const fx: StatusFx = { root, haste, slow, freeze }
+  statusFxByKey.set(key, fx)
+  return fx
+}
+
+function drawStatusBadge(
+  badge: StatusBadgeFx,
+  textValue: string,
+  color: number,
+  centerX: number,
+  centerY: number,
+  fontSize: number,
+): void {
+  if (!textValue) {
+    badge.box.visible = false
+    badge.text.visible = false
+    badge.lastText = ''
+    return
+  }
+
+  if (badge.lastText !== textValue) {
+    badge.text.text = textValue
+    badge.lastText = textValue
+  }
+  badge.text.style.fontSize = fontSize
+  badge.text.style.stroke = { color: 0x000000, width: Math.max(1, getDebugCfg('battleStatusTextStrokeWidth')), join: 'round' }
+
+  const padX = getDebugCfg('battleStatusBadgePadX')
+  const padY = getDebugCfg('battleStatusBadgePadY')
+  const radius = getDebugCfg('battleStatusBadgeRadius')
+  const w = Math.max(getDebugCfg('battleStatusBadgeMinWidth'), badge.text.width + padX * 2)
+  const h = badge.text.height + padY * 2
+  const x = centerX - w / 2
+  const y = centerY - h / 2
+
+  badge.box.clear()
+  badge.box.roundRect(x, y, w, h, radius)
+  badge.box.fill({ color, alpha: getDebugCfg('battleStatusBadgeAlpha') })
+  badge.box.stroke({ color: 0xffffff, width: 1, alpha: 0.32 })
+  badge.box.visible = true
+
+  badge.text.x = centerX - badge.text.width / 2
+  badge.text.y = centerY - badge.text.height / 2
+  badge.text.visible = true
+}
+
+function updateZoneStatusFx(
+  zone: GridZone,
+  zoneKey: 'player' | 'enemy',
+  items: CombatBoardItem[],
+  runtimeById: Map<string, ReturnType<CombatEngine['getRuntimeState']>[number]>,
+  freezeOverlay: Graphics,
+  statusLayer: Container,
+): void {
+  const activeKeys = new Set<string>()
+  // 状态计时字号跟随战斗区缩放（敌方区域缩放时同步变大/变小）
+  const fontSize = Math.max(8, getDebugCfg('battleStatusTimerFontSize'))
+  freezeOverlay.clear()
+
+  for (const it of items) {
+    const key = `${zoneKey}:${it.id}`
+    activeKeys.add(key)
+    const fx = ensureStatusFx(key, zone, it.id, statusLayer)
+    const node = zone.getNode(it.id)
+    if (!fx || !node) continue
+
+    const rt = runtimeById.get(it.id)
+    const hasteMs = rt?.hasteMs ?? 0
+    const slowMs = rt?.slowMs ?? 0
+    const freezeMs = rt?.freezeMs ?? 0
+
+    const { w: gw, h: gh } = sizeToWH(it.size)
+    const w = gw * CELL_SIZE
+    const h = gh * CELL_HEIGHT
+    const x = node.container.x
+    const y = node.container.y
+    const scale = pulseStates.get(it.id)?.node?.visual.scale.x ?? 1
+    const cx = x + w / 2
+    const cy = y + h / 2
+
+    const baseHasteY = y + h * getDebugCfg('battleStatusHasteYFactor') + getDebugCfg('battleStatusHasteOffsetY')
+    const baseSlowY = y + h * getDebugCfg('battleStatusSlowYFactor') + getDebugCfg('battleStatusSlowOffsetY')
+    const baseFreezeY = y + h * getDebugCfg('battleStatusFreezeYFactor') + getDebugCfg('battleStatusFreezeOffsetY')
+
+    const hasteY = cy + (baseHasteY - cy) * scale
+    const slowY = cy + (baseSlowY - cy) * scale
+    const freezeY = cy + (baseFreezeY - cy) * scale
+
+    fx.root.x = 0
+    fx.root.y = 0
+
+    drawStatusBadge(fx.haste, hasteMs > 0 ? formatStatusSec(hasteMs) : '', getBattleOrbColor('haste'), cx, hasteY, fontSize)
+    drawStatusBadge(fx.slow, slowMs > 0 ? formatStatusSec(slowMs) : '', getBattleOrbColor('slow'), cx, slowY, fontSize)
+    drawStatusBadge(fx.freeze, freezeMs > 0 ? formatStatusSec(freezeMs) : '', getBattleOrbColor('freeze'), cx, freezeY, fontSize)
+
+    if (freezeMs > 0) {
+      const r = Math.max(4, getDebugCfg('gridItemCornerRadius') - 1)
+      const sx = cx + (x - cx) * scale
+      const sy = cy + (y - cy) * scale
+      const sw = w * scale
+      const sh = h * scale
+      freezeOverlay.roundRect(sx, sy, sw, sh, r)
+      freezeOverlay.fill({ color: 0xeef5ff, alpha: getDebugCfg('battleFreezeOverlayAlpha') })
+      freezeOverlay.stroke({ color: 0xffffff, width: 1, alpha: 0.35 })
+    }
+  }
+
+  for (const [key, fx] of statusFxByKey) {
+    if (!key.startsWith(`${zoneKey}:`)) continue
+    if (activeKeys.has(key)) continue
+    if (fx.root.parent) fx.root.parent.removeChild(fx.root)
+    fx.root.destroy({ children: true })
+    statusFxByKey.delete(key)
+  }
+}
+
+async function resolveProjectileTexture(urls: string[]): Promise<Texture | null> {
+  for (const url of urls) {
+    if (projectileMissingUrls.has(url)) continue
+    const cached = projectileTextureCache.get(url)
+    if (cached) return cached
+    try {
+      const tex = await Assets.load<Texture>(url)
+      projectileTextureCache.set(url, tex)
+      return tex
+    } catch {
+      projectileMissingUrls.add(url)
+      // continue fallback url list
+    }
+  }
   return null
 }
 
@@ -149,25 +574,77 @@ function tickPulseStates(dtMs: number): void {
   }
 }
 
-function spawnProjectile(from: { x: number; y: number }, to: { x: number; y: number }, color: number, onHit?: () => void): void {
+function spawnProjectile(from: { x: number; y: number }, to: { x: number; y: number }, color: number, onHit?: () => void, sourceItemId?: string): void {
   if (!fxLayer) return
-  const dot = new Graphics()
-  dot.circle(0, 0, 5)
-  dot.fill({ color, alpha: 0.95 })
-  dot.x = from.x
-  dot.y = from.y
-  fxLayer.addChild(dot)
+
+  const useItemSprite = true
+  const sourceDef = sourceItemId ? getDefBySourceInstance(sourceItemId) : null
+  const useSprite = useItemSprite && isFlyableProjectile(sourceDef)
+
+  let visual: Graphics | Sprite
+  let spinRadPerSec = 0
+  let lockFacingRad: number | null = null
+  if (useSprite && sourceDef) {
+    const sprite = new Sprite(Texture.WHITE)
+    sprite.anchor.set(0.5)
+    sprite.x = from.x
+    sprite.y = from.y
+    const px = Math.max(8, getDebugCfg('battleProjectileItemSizePx'))
+    sprite.width = px
+    sprite.height = px
+    fxLayer.addChild(sprite)
+    visual = sprite
+
+    const attackStyle = sourceDef.attack_style ?? ''
+    if (attackStyle.includes('旋转')) {
+      spinRadPerSec = Math.abs(getDebugCfg('battleProjectileSpinDegPerSec')) * Math.PI / 180
+    } else if (attackStyle.includes('直线')) {
+      // 资源默认朝上；Pixi 0 弧度朝右，需补 +90° 对齐前向
+      lockFacingRad = Math.atan2(to.y - from.y, to.x - from.x) + Math.PI / 2
+    }
+
+    const urls = collectProjectileIconUrls(sourceDef, sourceItemId)
+    ;(async () => {
+      const tex = await resolveProjectileTexture(urls)
+      if (tex) sprite.texture = tex
+    })()
+  } else {
+    const dot = new Graphics()
+    dot.circle(0, 0, 5)
+    dot.fill({ color, alpha: 0.95 })
+    dot.x = from.x
+    dot.y = from.y
+    fxLayer.addChild(dot)
+    visual = dot
+  }
 
   const duration = getDebugCfg('battleProjectileFlyMs')
+  const arcH = getDebugCfg('battleProjectileArcHeight')
+  const scaleStart = useSprite ? getDebugCfg('battleProjectileScaleStart') : 1
+  const scalePeak = useSprite ? getDebugCfg('battleProjectileScalePeak') : 1
+  const scaleEnd = useSprite ? getDebugCfg('battleProjectileScaleEnd') : 1
+  const peakT = Math.max(0.05, Math.min(0.95, getDebugCfg('battleProjectileScalePeakT')))
   let t = 0
   activeFx.push((dtMs) => {
     t += dtMs
     const p = Math.min(1, t / duration)
-    dot.x = from.x + (to.x - from.x) * p
-    dot.y = from.y + (to.y - from.y) * p
+    visual.x = from.x + (to.x - from.x) * p
+    visual.y = from.y + (to.y - from.y) * p - arcH * 4 * p * (1 - p)
+
+    const k = p <= peakT
+      ? lerp(scaleStart, scalePeak, p / peakT)
+      : lerp(scalePeak, scaleEnd, (p - peakT) / (1 - peakT))
+    visual.scale.set(k)
+    if (spinRadPerSec > 0) {
+      // 向左旋转
+      visual.rotation -= spinRadPerSec * (dtMs / 1000)
+    } else if (lockFacingRad !== null) {
+      visual.rotation = lockFacingRad
+    }
+
     if (p >= 1) {
-      if (dot.parent) dot.parent.removeChild(dot)
-      dot.destroy()
+      if (visual.parent) visual.parent.removeChild(visual)
+      visual.destroy()
       onHit?.()
       return false
     }
@@ -221,9 +698,7 @@ function makeBackButton(): Container {
   const bg = new Graphics()
   const w = 208
   const h = 104
-  const x = (CANVAS_W - w) / 2
-  const y = 1200
-  bg.roundRect(x, y, w, h, 18)
+  bg.roundRect(-w / 2, -h / 2, w, h, 18)
   bg.stroke({ color: 0xffcc44, width: 3 })
   bg.fill({ color: 0x3f3322, alpha: 0.9 })
   con.addChild(bg)
@@ -232,13 +707,48 @@ function makeBackButton(): Container {
     text: '回到商店',
     style: { fontSize: getDebugCfg('battleBackButtonLabelFontSize'), fill: 0xffcc44, fontFamily: 'Arial', fontWeight: 'bold' },
   })
-  txt.x = 320 - txt.width / 2
-  txt.y = y + (h - txt.height) / 2
+  txt.anchor.set(0.5)
+  txt.x = 0
+  txt.y = 0
   con.addChild(txt)
+  con.x = getDebugCfg('battleBackBtnX')
+  con.y = getDebugCfg('battleBackBtnY')
   con.eventMode = 'static'
   con.cursor = 'pointer'
   con.on('pointerdown', () => {
     SceneManager.goto('shop')
+  })
+  return con
+}
+
+function makeSpeedButton(): Container {
+  const con = new Container()
+  const bg = new Graphics()
+  const w = 116
+  const h = 58
+  bg.roundRect(-w / 2, -h / 2, w, h, 14)
+  bg.stroke({ color: 0x96b2ff, width: 2, alpha: 0.95 })
+  bg.fill({ color: 0x1f2945, alpha: 0.9 })
+  con.addChild(bg)
+
+  speedBtnText = new Text({
+    text: 'x1',
+    style: { fontSize: 26, fill: 0xd9e4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  speedBtnText.anchor.set(0.5)
+  con.addChild(speedBtnText)
+
+  con.x = CANVAS_W - 84
+  con.y = 84
+  con.zIndex = 185
+  con.eventMode = 'static'
+  con.cursor = 'pointer'
+  con.on('pointerdown', () => {
+    const idx = BATTLE_SPEED_STEPS.indexOf(battleSpeed as (typeof BATTLE_SPEED_STEPS)[number])
+    const next = BATTLE_SPEED_STEPS[(idx + 1) % BATTLE_SPEED_STEPS.length] ?? 1
+    battleSpeed = next
+    if (speedBtnText) speedBtnText.text = `x${battleSpeed}`
+    pushBattleLog(`战斗倍速切换 x${battleSpeed}`)
   })
   return con
 }
@@ -277,13 +787,15 @@ function drawHeroBars(
   if (!heroHudG || !enemyHpInfoCon || !playerHpInfoCon) return
   const yEnemy = getDebugCfg('enemyHpBarY')
   const yPlayer = getDebugCfg('playerHpBarY')
-  const barH = getDebugCfg('battleHpBarH')
+  const baseBarH = getDebugCfg('battleHpBarH')
   const barR = getDebugCfg('battleHpBarRadius')
-  const barW = getDebugCfg('battleHpBarWidth')
-  const fontSize = getDebugCfg('battleHpTextFontSize')
-  const x = (CANVAS_W - barW) / 2
+  const baseBarW = getDebugCfg('battleHpBarWidth')
+  const baseFontSize = getDebugCfg('battleHpTextFontSize')
 
-  const drawOne = (y: number, hp: number, maxHp: number, shield: number, hpColor: number) => {
+  const drawOne = (y: number, hp: number, maxHp: number, shield: number, hpColor: number, areaScale: number) => {
+    const barW = baseBarW * areaScale
+    const barH = baseBarH * areaScale
+    const x = (CANVAS_W - barW) / 2
     const ratio = maxHp > 0 ? Math.max(0, Math.min(1, hp / maxHp)) : 0
     heroHudG!.roundRect(x, y, barW, barH, barR)
     heroHudG!.fill({ color: 0x1f2436, alpha: 0.95 })
@@ -303,8 +815,11 @@ function drawHeroBars(
   }
 
   heroHudG.clear()
-  drawOne(yEnemy, enemy.hp, enemy.maxHp, enemy.shield, getBattleEffectColor('hpBar'))
-  drawOne(yPlayer, player.hp, player.maxHp, player.shield, getBattleEffectColor('hpBar'))
+  const enemyHpScale = getEnemyHpBarScale()
+  if (enemyPresentationVisible) {
+    drawOne(yEnemy, enemy.hp, enemy.maxHp, enemy.shield, getBattleEffectColor('hpBar'), enemyHpScale)
+  }
+  drawOne(yPlayer, player.hp, player.maxHp, player.shield, getBattleEffectColor('hpBar'), 1)
 
   const enemyParts: Array<{ text: string; color: number }> = [{ text: `${enemy.hp}`, color: getBattleEffectColor('hpText') }]
   if (enemy.shield > 0) enemyParts.push({ text: `${enemy.shield}`, color: getBattleEffectColor('shield') })
@@ -318,15 +833,20 @@ function drawHeroBars(
   if (player.poison > 0) playerParts.push({ text: `${player.poison}`, color: getBattleEffectColor('poison') })
   if (player.burn > 0) playerParts.push({ text: `${player.burn}`, color: getBattleEffectColor('burn') })
 
-  drawInfoText(enemyHpInfoCon, x + barW / 2, yEnemy + barH / 2, enemyParts, fontSize)
-  drawInfoText(playerHpInfoCon, x + barW / 2, yPlayer + barH / 2, playerParts, fontSize)
+  enemyHpInfoCon.visible = enemyPresentationVisible
+  if (enemyPresentationVisible) {
+    drawInfoText(enemyHpInfoCon, CANVAS_W / 2, yEnemy + (baseBarH * enemyHpScale) / 2, enemyParts, baseFontSize * enemyHpScale)
+  }
+  drawInfoText(playerHpInfoCon, CANVAS_W / 2, yPlayer + baseBarH / 2, playerParts, baseFontSize)
 }
 
 function applyZoneVisualStyle(zone: GridZone): void {
   zone.setTierBorderWidth(getDebugCfg('tierBorderWidth'))
   zone.setCornerRadius(getDebugCfg('gridItemCornerRadius'))
   zone.setCellBorderWidth(getDebugCfg('gridCellBorderWidth'))
-  zone.setLabelFontSize(getDebugCfg('gridZoneLabelFontSize'))
+  zone.setLabelVisible(false)
+  zone.setStatBadgeFontSize(getDebugCfg('itemStatBadgeFontSize'))
+  zone.setStatBadgeOffsetY(getDebugCfg('itemStatBadgeOffsetY'))
 }
 
 async function mountZoneItems(zone: GridZone, items: CombatBoardItem[]): Promise<void> {
@@ -335,7 +855,12 @@ async function mountZoneItems(zone: GridZone, items: CombatBoardItem[]): Promise
   }
 }
 
-function drawCooldownOverlay(zone: GridZone, overlay: Graphics, items: CombatBoardItem[]): void {
+function drawCooldownOverlay(
+  zone: GridZone,
+  overlay: Graphics,
+  items: CombatBoardItem[],
+  runtimeChargePercentById: Map<string, number>,
+): void {
   overlay.clear()
   for (const it of items) {
     const { w, h } = sizeToWH(it.size)
@@ -344,7 +869,8 @@ function drawCooldownOverlay(zone: GridZone, overlay: Graphics, items: CombatBoa
     const pos = zone.cellToLocal(it.col, it.row)
     const inset = Math.max(2, getDebugCfg('tierBorderWidth') + 2)
     const fullH = Math.max(1, ph - inset * 2)
-    const coverRatio = Math.max(0, Math.min(1, 1 - it.chargeRatio))
+    const chargePercent = runtimeChargePercentById.get(it.id) ?? it.chargeRatio
+    const coverRatio = Math.max(0, Math.min(1, 1 - chargePercent))
     const coverH = Math.round(fullH * coverRatio)
     if (coverH <= 0) continue
 
@@ -364,17 +890,60 @@ function drawCooldownOverlay(zone: GridZone, overlay: Graphics, items: CombatBoa
 }
 
 function applyLayout(activeCols: number): void {
-  const s = getGameCfg().itemVisualScale
-  const x = getZoneX(activeCols)
+  const playerScale = getBattleItemScale()
+  const enemyScale = getEnemyAreaScale()
   if (enemyZone) {
-    enemyZone.scale.set(s)
-    enemyZone.x = x
+    enemyZone.scale.set(enemyScale)
+    enemyZone.x = getEnemyZoneX(activeCols)
     enemyZone.y = getDebugCfg('enemyBattleZoneY')
   }
   if (playerZone) {
-    playerZone.scale.set(s)
-    playerZone.x = x
-    playerZone.y = getDebugCfg('battleZoneY')
+    playerZone.scale.set(playerScale)
+    playerZone.x = getPlayerZoneX(activeCols)
+    playerZone.y = getDebugCfg('battleZoneY') + getDebugCfg('battleZoneYInBattleOffset') + (CELL_HEIGHT * (1 - playerScale)) / 2
+  }
+  if (enemyBossSprite) {
+    const widthRatio = Math.max(0.2, getDebugCfg('battleEnemyPortraitWidthRatio'))
+    const offsetY = getDebugCfg('battleEnemyPortraitOffsetY')
+    enemyBossSprite.x = CANVAS_W / 2
+    const topY = getDebugCfg('enemyHpBarY') + getDebugCfg('battleHpBarH') * getEnemyHpBarScale() + offsetY
+    const tex = enemyBossSprite.texture
+    if (tex?.width) {
+      const targetW = CANVAS_W * widthRatio
+      enemyBossBaseScale = targetW / Math.max(1, tex.width)
+      if (enemyBossHitElapsedMs < 0 && enemyBossDeathElapsedMs < 0) {
+        enemyBossSprite.scale.set(enemyBossBaseScale)
+      }
+    }
+    enemyBossSprite.y = topY + enemyBossSprite.height
+  }
+  if (enemyBossFlashSprite && enemyBossSprite) {
+    enemyBossFlashSprite.x = enemyBossSprite.x
+    enemyBossFlashSprite.y = enemyBossSprite.y
+    if (enemyBossHitElapsedMs < 0 && enemyBossDeathElapsedMs < 0) {
+      enemyBossFlashSprite.scale.copyFrom(enemyBossSprite.scale)
+    }
+  }
+
+  if (playerHeroSprite) {
+    playerHeroSprite.x = CANVAS_W / 2
+    const tex = playerHeroSprite.texture
+    if (tex?.width) {
+      const targetW = CANVAS_W * Math.max(0.2, getDebugCfg('battlePlayerPortraitWidthRatio'))
+      playerHeroBaseScale = targetW / Math.max(1, tex.width)
+      if (playerHeroHitElapsedMs < 0) {
+        playerHeroSprite.scale.set(playerHeroBaseScale)
+      }
+    }
+    const offsetY = getDebugCfg('battlePlayerPortraitOffsetY')
+    playerHeroSprite.y = CANVAS_H + offsetY
+  }
+  if (playerHeroFlashSprite && playerHeroSprite) {
+    playerHeroFlashSprite.x = playerHeroSprite.x
+    playerHeroFlashSprite.y = playerHeroSprite.y
+    if (playerHeroHitElapsedMs < 0) {
+      playerHeroFlashSprite.scale.copyFrom(playerHeroSprite.scale)
+    }
   }
 }
 
@@ -382,8 +951,32 @@ function pushBattleLog(line: string): void {
   console.log(`[BattleLog] ${line}`)
 }
 
+function showFatigueToast(message: string, durationMs = 1300): void {
+  if (!fatigueToastCon || !fatigueToastBg || !fatigueToastText) return
+  fatigueToastText.text = message
+  fatigueToastText.style.fill = 0xfff1a8
+  fatigueToastText.x = (CANVAS_W - fatigueToastText.width) / 2
+  fatigueToastText.y = 260
+
+  const padX = 16
+  const padY = 10
+  const bgX = fatigueToastText.x - padX
+  const bgY = fatigueToastText.y - padY
+  const bgW = fatigueToastText.width + padX * 2
+  const bgH = fatigueToastText.height + padY * 2
+
+  fatigueToastBg.clear()
+  fatigueToastBg.roundRect(bgX, bgY, bgW, bgH, 12)
+  fatigueToastBg.fill({ color: 0x392516, alpha: 0.9 })
+  fatigueToastBg.stroke({ color: 0xffcc44, width: 2, alpha: 0.92 })
+
+  fatigueToastCon.visible = true
+  fatigueToastCon.alpha = 1
+  fatigueToastUntilMs = Date.now() + Math.max(100, durationMs)
+}
+
 function getBattleInfoPanelCenterY(): number {
-  const top = getDebugCfg('enemyHpBarY') + getDebugCfg('battleHpBarH') + 24
+  const top = getDebugCfg('enemyHpBarY') + getDebugCfg('battleHpBarH') * getEnemyHpBarScale() + 24
   const bottom = getDebugCfg('playerHpBarY') - 24
   return (top + bottom) / 2
 }
@@ -427,6 +1020,7 @@ export const BattleScene: Scene = {
   async onEnter() {
     const { stage } = getApp()
     const snapshot = getBattleSnapshot()
+    battleSpeed = 1
     root = new Container()
     root.sortableChildren = true
     stage.addChild(root)
@@ -442,6 +1036,70 @@ export const BattleScene: Scene = {
     heroHudG = new Graphics()
     heroHudG.zIndex = 40
     root.addChild(heroHudG)
+
+    enemyBossSprite = new Sprite(Texture.WHITE)
+    enemyBossSprite.anchor.set(0.5, 1)
+    enemyBossSprite.zIndex = 30
+    enemyBossSprite.eventMode = 'none'
+    enemyBossSprite.visible = true
+    root.addChild(enemyBossSprite)
+
+    enemyBossFlashSprite = new Sprite(Texture.WHITE)
+    enemyBossFlashSprite.anchor.set(0.5, 1)
+    enemyBossFlashSprite.zIndex = 31
+    enemyBossFlashSprite.eventMode = 'none'
+    enemyBossFlashSprite.visible = true
+    enemyBossFlashSprite.tint = 0xffffff
+    enemyBossFlashSprite.blendMode = 'add'
+    enemyBossFlashSprite.alpha = 0
+    root.addChild(enemyBossFlashSprite)
+
+    playerHeroSprite = new Sprite(Texture.WHITE)
+    playerHeroSprite.anchor.set(0.5, 1)
+    playerHeroSprite.zIndex = 10
+    playerHeroSprite.eventMode = 'none'
+    playerHeroSprite.visible = true
+    root.addChild(playerHeroSprite)
+
+    playerHeroFlashSprite = new Sprite(Texture.WHITE)
+    playerHeroFlashSprite.anchor.set(0.5, 1)
+    playerHeroFlashSprite.zIndex = 11
+    playerHeroFlashSprite.eventMode = 'none'
+    playerHeroFlashSprite.visible = true
+    playerHeroFlashSprite.tint = 0xffffff
+    playerHeroFlashSprite.blendMode = 'add'
+    playerHeroFlashSprite.alpha = 0
+    root.addChild(playerHeroFlashSprite)
+
+    try {
+      const tex = await Assets.load<Texture>(getSceneImageUrl('boss.png'))
+      if (enemyBossSprite) {
+        enemyBossSprite.texture = tex
+      }
+      if (enemyBossFlashSprite) {
+        enemyBossFlashSprite.texture = tex
+      }
+    enemyBossDeathElapsedMs = -1
+    enemyBossHitElapsedMs = -1
+    enemyBossIdleElapsedMs = 0
+    } catch (err) {
+      console.warn('[BattleScene] 敌人立绘加载失败', err)
+      if (enemyBossSprite) enemyBossSprite.visible = false
+      if (enemyBossFlashSprite) enemyBossFlashSprite.visible = false
+    }
+    enemyPresentationVisible = true
+
+    try {
+      const tex = await Assets.load<Texture>(getSceneImageUrl('hero.png'))
+      if (playerHeroSprite) playerHeroSprite.texture = tex
+      if (playerHeroFlashSprite) playerHeroFlashSprite.texture = tex
+      playerHeroHitElapsedMs = -1
+      playerHeroIdleElapsedMs = 0
+    } catch (err) {
+      console.warn('[BattleScene] 英雄立绘加载失败', err)
+      if (playerHeroSprite) playerHeroSprite.visible = false
+      if (playerHeroFlashSprite) playerHeroFlashSprite.visible = false
+    }
     enemyHpInfoCon = new Container()
     playerHpInfoCon = new Container()
     enemyHpInfoCon.zIndex = 41
@@ -466,12 +1124,42 @@ export const BattleScene: Scene = {
     playerCdOverlay = new Graphics()
     enemyCdOverlay.eventMode = 'none'
     playerCdOverlay.eventMode = 'none'
+    enemyFreezeOverlay = new Graphics()
+    playerFreezeOverlay = new Graphics()
+    enemyFreezeOverlay.eventMode = 'none'
+    playerFreezeOverlay.eventMode = 'none'
+    enemyStatusLayer = new Container()
+    playerStatusLayer = new Container()
+    enemyStatusLayer.eventMode = 'none'
+    playerStatusLayer.eventMode = 'none'
     enemyZone.addChild(enemyCdOverlay)
     playerZone.addChild(playerCdOverlay)
+
+    // CD 遮罩应在物品角标下方
+    enemyZone.bringStatBadgesToFront()
+    playerZone.bringStatBadgesToFront()
+
+    enemyZone.addChild(enemyFreezeOverlay)
+    playerZone.addChild(playerFreezeOverlay)
+    enemyZone.addChild(enemyStatusLayer)
+    playerZone.addChild(playerStatusLayer)
 
     fxLayer = new Container()
     fxLayer.zIndex = 60
     root.addChild(fxLayer)
+
+    fatigueToastCon = new Container()
+    fatigueToastCon.zIndex = 90
+    fatigueToastCon.visible = false
+    fatigueToastCon.eventMode = 'none'
+    fatigueToastBg = new Graphics()
+    fatigueToastText = new Text({
+      text: '',
+      style: { fontSize: 28, fill: 0xfff1a8, fontFamily: 'Arial', fontWeight: 'bold', stroke: { color: 0x000000, width: 3 } },
+    })
+    fatigueToastCon.addChild(fatigueToastBg)
+    fatigueToastCon.addChild(fatigueToastText)
+    root.addChild(fatigueToastCon)
 
     itemInfoPopup = new SellPopup(CANVAS_W, 1384)
     itemInfoPopup.zIndex = 55
@@ -486,7 +1174,18 @@ export const BattleScene: Scene = {
     statusText.y = 1140
     root.addChild(statusText)
 
+    battleEndMask = new Graphics()
+    battleEndMask.zIndex = 180
+    battleEndMask.eventMode = 'static'
+    battleEndMask.visible = false
+    root.addChild(battleEndMask)
+
+    speedBtn = makeSpeedButton()
+    root.addChild(speedBtn)
+
     backBtn = makeBackButton()
+    backBtn.zIndex = 190
+    backBtn.visible = false
     root.addChild(backBtn)
 
     engine = new CombatEngine()
@@ -494,6 +1193,12 @@ export const BattleScene: Scene = {
       burnTickMs: getDebugCfg('gameplayBurnTickMs'),
       poisonTickMs: getDebugCfg('gameplayPoisonTickMs'),
       regenTickMs: getDebugCfg('gameplayRegenTickMs'),
+      fatigueStartMs: getDebugCfg('gameplayFatigueStartMs'),
+      fatigueIntervalMs: getDebugCfg('gameplayFatigueIntervalMs'),
+      fatigueDamagePctPerInterval: getDebugCfg('gameplayFatigueDamagePctPerInterval'),
+      fatigueDamageFixedPerInterval: getDebugCfg('gameplayFatigueDamageFixedPerInterval'),
+      fatigueDamagePctRampPerInterval: getDebugCfg('gameplayFatigueDamagePctRampPerInterval'),
+      fatigueDamageFixedRampPerInterval: getDebugCfg('gameplayFatigueDamageFixedRampPerInterval'),
       burnShieldFactor: getDebugCfg('gameplayBurnShieldFactor'),
       burnDecayPct: getDebugCfg('gameplayBurnDecayPct'),
       healCleansePct: getDebugCfg('gameplayHealCleansePct'),
@@ -525,7 +1230,7 @@ export const BattleScene: Scene = {
     stage.on('pointerdown', onStageTapHidePopup)
 
     offFireEvent = EventBus.on('battle:item_fire', (e) => {
-      animateItemFirePulse(e.sourceItemId, e.side)
+      tryPulseItem(e.sourceItemId, e.side)
       pushBattleLog(`开火 ${e.side === 'player' ? '我方' : '敌方'} ${e.itemId} x${e.multicast}`)
     })
     offDamageEvent = EventBus.on('battle:take_damage', (e) => {
@@ -533,11 +1238,19 @@ export const BattleScene: Scene = {
       const fromSide = e.sourceSide === 'player' || e.sourceSide === 'enemy'
         ? e.sourceSide
         : (side === 'enemy' ? 'player' : 'enemy')
+      const enemyAttackToPlayer = side === 'player' && fromSide === 'enemy'
       const from = (e.sourceItemId === 'fatigue' || e.sourceItemId.startsWith('status_'))
         ? getHeroBarCenter(fromSide)
         : (getItemCenterById(e.sourceItemId, fromSide) ?? getHeroBarCenter(fromSide))
       const to = getHeroBarCenter(side)
+      const projectileTarget = side === 'enemy'
+        ? (getEnemyPortraitHitPoint() ?? to)
+        : enemyAttackToPlayer
+          ? (getPlayerPortraitHitPoint() ?? to)
+          : to
+      const damageShown = e.type === 'normal' ? (e.finalDamage ?? e.amount) : e.amount
       const bulletColor = e.type === 'burn' ? getBattleOrbColor('burn') : e.type === 'poison' ? getBattleOrbColor('poison') : getBattleOrbColor('hp')
+      const isFatigueDamage = e.sourceItemId === 'fatigue'
       const isCritDamage = e.type === 'normal' && e.isCrit
       const textColor = e.type === 'burn'
         ? getBattleFloatTextColor('burn')
@@ -547,44 +1260,59 @@ export const BattleScene: Scene = {
             ? getBattleFloatTextColor('crit')
             : getBattleFloatTextColor('damage')
       const textSize = isCritDamage ? getDebugCfg('battleTextFontSizeCrit') : getDebugCfg('battleTextFontSizeDamage')
-      if (e.sourceItemId.startsWith('status_')) {
-        spawnFloatingNumber(to, `-${e.amount}`, textColor, textSize)
-        pushBattleLog(`结算 ${e.type} ${side === 'enemy' ? '敌方' : '我方'} ${e.amount}`)
+      if (e.sourceItemId.startsWith('status_') || isFatigueDamage) {
+        if (enemyAttackToPlayer) triggerPlayerPortraitHitFx()
+        spawnFloatingNumber(to, `-${damageShown}`, textColor, textSize)
+        pushBattleLog(`结算 ${e.type} ${side === 'enemy' ? '敌方' : '我方'} ${damageShown}`)
       } else {
-        spawnProjectile(from, to, bulletColor, () => {
-          if (side === 'enemy') spawnFloatingNumber(to, `-${e.amount}`, textColor, textSize)
-        })
-        pushBattleLog(`伤害 ${side === 'enemy' ? '敌方' : '我方'} ${e.amount}`)
+        spawnProjectile(from, projectileTarget, bulletColor, () => {
+          if (side === 'enemy') {
+            triggerEnemyPortraitHitFx()
+            spawnFloatingNumber(projectileTarget, `-${damageShown}`, textColor, textSize)
+          } else if (enemyAttackToPlayer) {
+            triggerPlayerPortraitHitFx()
+          }
+        }, e.sourceItemId)
+        pushBattleLog(`伤害 ${side === 'enemy' ? '敌方' : '我方'} ${damageShown}`)
       }
     })
     offShieldEvent = EventBus.on('battle:gain_shield', (e) => {
       const side = e.targetSide ?? (e.targetId === 'hero_enemy' ? 'enemy' : 'player')
       const from = getItemCenterById(e.sourceItemId, side) ?? getHeroBarCenter(side)
       const to = getHeroBarCenter(side)
+      const projectileTarget = side === 'enemy' ? (getEnemyPortraitHitPoint() ?? to) : to
       const shieldColor = getBattleFloatTextColor('shield')
       const shieldOrbColor = getBattleOrbColor('shield')
-      spawnProjectile(from, to, shieldOrbColor, () => {
-        if (side === 'enemy') spawnFloatingNumber(to, `+${e.amount}`, shieldColor)
-      })
+      spawnProjectile(from, projectileTarget, shieldOrbColor, () => {
+        if (side === 'enemy') {
+          triggerEnemyPortraitHitFx()
+          spawnFloatingNumber(projectileTarget, `+${e.amount}`, shieldColor)
+        }
+      }, e.sourceItemId)
       pushBattleLog(`护盾 ${side === 'enemy' ? '敌方' : '我方'} ${e.amount}`)
     })
     offHealEvent = EventBus.on('battle:heal', (e) => {
       const side = e.targetSide ?? (e.targetId === 'hero_enemy' ? 'enemy' : 'player')
       const from = e.sourceItemId.startsWith('status_') ? getHeroBarCenter(side) : (getItemCenterById(e.sourceItemId, side) ?? getHeroBarCenter(side))
       const to = getHeroBarCenter(side)
+      const projectileTarget = side === 'enemy' ? (getEnemyPortraitHitPoint() ?? to) : to
       if (e.sourceItemId.startsWith('status_')) {
         spawnFloatingNumber(to, `+${e.amount}`, getBattleFloatTextColor('regen'))
         pushBattleLog(`回复 ${side === 'enemy' ? '敌方' : '我方'} ${e.amount}`)
       } else {
         const regenColor = getBattleFloatTextColor('regen')
         const regenOrbColor = getBattleOrbColor('regen')
-        spawnProjectile(from, to, regenOrbColor, () => {
-          if (side === 'enemy') spawnFloatingNumber(to, `+${e.amount}`, regenColor)
-        })
+        spawnProjectile(from, projectileTarget, regenOrbColor, () => {
+          if (side === 'enemy') {
+            triggerEnemyPortraitHitFx()
+            spawnFloatingNumber(projectileTarget, `+${e.amount}`, regenColor)
+          }
+        }, e.sourceItemId)
         pushBattleLog(`治疗 ${side === 'enemy' ? '敌方' : '我方'} ${e.amount}`)
       }
     })
     offStatusApplyEvent = EventBus.on('battle:status_apply', (e) => {
+      tryPulseItem(e.sourceItemId, e.sourceSide === 'player' || e.sourceSide === 'enemy' ? e.sourceSide : undefined)
       const fromResolved = e.sourceSide === 'player' || e.sourceSide === 'enemy'
         ? getItemCenterById(e.sourceItemId, e.sourceSide)
         : getItemCenterAnySide(e.sourceItemId)?.pos
@@ -598,7 +1326,9 @@ export const BattleScene: Scene = {
         ?? (targetIsHero ? (e.targetId === 'hero_enemy' ? 'enemy' : 'player') : 'enemy')
       const from = fromResolved ?? getHeroBarCenter(targetSide === 'enemy' ? 'player' : 'enemy')
       const to = targetIsHero
-        ? getHeroBarCenter(targetSide)
+        ? (targetSide === 'enemy'
+            ? (getEnemyPortraitHitPoint() ?? getHeroBarCenter(targetSide))
+            : (getPlayerPortraitHitPoint() ?? getHeroBarCenter(targetSide)))
         : (targetResolved ?? getHeroBarCenter(targetSide))
       const color =
         e.status === 'burn' ? getBattleOrbColor('burn')
@@ -607,12 +1337,19 @@ export const BattleScene: Scene = {
               : e.status === 'slow' ? getBattleOrbColor('slow')
                 : e.status === 'haste' ? getBattleOrbColor('haste')
                   : getBattleOrbColor('regen')
-      spawnProjectile(from, to, color)
+      spawnProjectile(from, to, color, () => {
+        if (targetIsHero && targetSide === 'enemy') triggerEnemyPortraitHitFx()
+        if (targetIsHero && targetSide === 'player') triggerPlayerPortraitHitFx()
+      }, e.sourceItemId)
       pushBattleLog(`施加 ${e.status} ${targetSide === 'enemy' ? '敌方' : '我方'} +${e.amount}`)
     })
     offStatusRemoveEvent = EventBus.on('battle:status_remove', (e) => {
       const side = e.targetSide ?? (e.targetId === 'hero_enemy' ? 'enemy' : 'player')
       pushBattleLog(`移除 ${e.status} ${side === 'enemy' ? '敌方' : '我方'}`)
+    })
+    offFatigueStartEvent = EventBus.on('battle:fatigue_start', () => {
+      if (getDebugCfg('toastEnabled') < 0.5 || getDebugCfg('toastShowFatigueStart') < 0.5) return
+      showFatigueToast('加时赛风暴来袭')
     })
     pushBattleLog('战斗开始')
   },
@@ -628,6 +1365,9 @@ export const BattleScene: Scene = {
     titleText = null
     statusText = null
     backBtn = null
+    speedBtn = null
+    speedBtnText = null
+    battleEndMask = null
     heroHudG = null
     enemyHpInfoCon = null
     playerHpInfoCon = null
@@ -635,6 +1375,10 @@ export const BattleScene: Scene = {
     playerZone = null
     enemyCdOverlay = null
     playerCdOverlay = null
+    enemyFreezeOverlay = null
+    playerFreezeOverlay = null
+    enemyStatusLayer = null
+    playerStatusLayer = null
     fxLayer = null
     offFireEvent?.(); offFireEvent = null
     offDamageEvent?.(); offDamageEvent = null
@@ -642,8 +1386,26 @@ export const BattleScene: Scene = {
     offHealEvent?.(); offHealEvent = null
     offStatusApplyEvent?.(); offStatusApplyEvent = null
     offStatusRemoveEvent?.(); offStatusRemoveEvent = null
+    offFatigueStartEvent?.(); offFatigueStartEvent = null
     itemInfoPopup = null
     selectedItemId = null
+    fatigueToastCon = null
+    fatigueToastBg = null
+    fatigueToastText = null
+    fatigueToastUntilMs = 0
+    enemyBossSprite = null
+    enemyBossFlashSprite = null
+    enemyBossBaseScale = 1
+    enemyBossHitElapsedMs = -1
+    enemyBossDeathElapsedMs = -1
+    enemyBossIdleElapsedMs = 0
+    enemyPresentationVisible = true
+    playerHeroSprite = null
+    playerHeroFlashSprite = null
+    playerHeroBaseScale = 1
+    playerHeroHitElapsedMs = -1
+    playerHeroIdleElapsedMs = 0
+    battleSpeed = 1
     activeFx.length = 0
     for (const [, st] of pulseStates) {
       st.node?.visual.scale.set(1)
@@ -651,13 +1413,28 @@ export const BattleScene: Scene = {
       st.flash.destroy()
     }
     pulseStates.clear()
+    pulseDedupAtMs.clear()
+    projectileVariantCursor.clear()
+    for (const [, fx] of statusFxByKey) {
+      if (fx.root.parent) fx.root.parent.removeChild(fx.root)
+      fx.root.destroy({ children: true })
+    }
+    statusFxByKey.clear()
     engine = null
     console.log('[BattleScene] 离开战斗场景')
   },
   update(dt: number) {
-    if (!engine || !enemyZone || !playerZone || !enemyCdOverlay || !playerCdOverlay) return
-    engine.update(dt)
+    if (!engine || !enemyZone || !playerZone || !enemyCdOverlay || !playerCdOverlay || !enemyFreezeOverlay || !playerFreezeOverlay || !enemyStatusLayer || !playerStatusLayer) return
+    const speed = Math.max(1, battleSpeed)
+    const simDt = dt * speed
+    engine.update(simDt)
+    enemyPresentationVisible = !engine.isFinished()
+    enemyZone.visible = enemyPresentationVisible
+    if (enemyBossSprite) enemyBossSprite.visible = enemyPresentationVisible
+    if (enemyBossFlashSprite) enemyBossFlashSprite.visible = enemyPresentationVisible
     const board = engine.getBoardState()
+    const runtime = engine.getRuntimeState()
+    const runtimeChargePercentById = new Map(runtime.map((it) => [it.id, it.chargePercent]))
     const activeCols = getDayActiveCols((getBattleSnapshot()?.day ?? 1))
     enemyZone.setActiveColCount(activeCols)
     playerZone.setActiveColCount(activeCols)
@@ -667,13 +1444,18 @@ export const BattleScene: Scene = {
 
     const playerItems = board.items.filter((it) => it.side === 'player')
     const enemyItems = board.items.filter((it) => it.side === 'enemy')
-    drawCooldownOverlay(playerZone, playerCdOverlay, playerItems)
-    drawCooldownOverlay(enemyZone, enemyCdOverlay, enemyItems)
+    drawCooldownOverlay(playerZone, playerCdOverlay, playerItems, runtimeChargePercentById)
+    drawCooldownOverlay(enemyZone, enemyCdOverlay, enemyItems, runtimeChargePercentById)
+    const runtimeById = new Map(runtime.map((it) => [it.id, it]))
+    updateZoneStatusFx(playerZone, 'player', playerItems, runtimeById, playerFreezeOverlay, playerStatusLayer)
+    updateZoneStatusFx(enemyZone, 'enemy', enemyItems, runtimeById, enemyFreezeOverlay, enemyStatusLayer)
 
     drawHeroBars(board.player, board.enemy)
 
-    const dtMs = dt * 1000
+    const dtMs = simDt * 1000
     tickPulseStates(dtMs)
+    tickEnemyPortraitFx(dtMs)
+    tickPlayerPortraitFx(dtMs)
     for (let i = activeFx.length - 1; i >= 0; i--) {
       if (!activeFx[i]!(dtMs)) activeFx.splice(i, 1)
     }
@@ -683,11 +1465,42 @@ export const BattleScene: Scene = {
       statusText.text = `phase:${engine.getPhase()}  ticks:${s.tickIndex}  fatigue:${s.inFatigue ? 'on' : 'off'}`
     }
 
+    if (battleEndMask) {
+      if (engine.isFinished()) {
+        battleEndMask.visible = true
+        battleEndMask.clear()
+        battleEndMask.rect(0, 0, CANVAS_W, CANVAS_H)
+        battleEndMask.fill({ color: 0x000000, alpha: 0.45 })
+      } else if (battleEndMask.visible) {
+        battleEndMask.visible = false
+      }
+    }
+
+    if (speedBtn) {
+      speedBtn.visible = !engine.isFinished()
+      if (speedBtnText) speedBtnText.text = `x${battleSpeed}`
+    }
+
+    if (backBtn) {
+      backBtn.x = getDebugCfg('battleBackBtnX')
+      backBtn.y = getDebugCfg('battleBackBtnY')
+      backBtn.visible = engine.isFinished()
+    }
+
+    if (fatigueToastCon?.visible) {
+      const remain = fatigueToastUntilMs - Date.now()
+      if (remain <= 0) {
+        fatigueToastCon.visible = false
+      } else if (remain < 220) {
+        fatigueToastCon.alpha = remain / 220
+      }
+    }
+
     if (itemInfoPopup?.visible) {
       itemInfoPopup.setCenterY(getBattleInfoPanelCenterY())
       if (selectedItemId) {
-        const boardItem = board.items.find((it) => it.id === selectedItemId)
-        if (!boardItem) clearBattleItemSelection()
+        const runtimeHit = runtime.find((it) => it.id === selectedItemId)
+        if (!runtimeHit) clearBattleItemSelection()
       }
     }
   },

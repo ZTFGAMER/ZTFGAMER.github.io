@@ -60,6 +60,37 @@
     }
     .btn-save:hover { background: #1f4738; }
 
+    .search-bar {
+      max-width: 600px;
+      padding: 8px 16px;
+      border-bottom: 1px solid #1e1e30;
+      background: #111126;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      position: sticky;
+      top: 47px;
+      z-index: 90;
+    }
+    .search-input {
+      flex: 1;
+      background: #1e1e30;
+      color: #eee;
+      border: 1px solid #3a3a5a;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 12px;
+      outline: none;
+    }
+    .search-input:focus { border-color: #5577ff; }
+    .search-count {
+      flex-shrink: 0;
+      font-size: 11px;
+      color: #99a6ff;
+      min-width: 78px;
+      text-align: right;
+    }
+
     /* ---- Dropdown section ---- */
     .section-dropdown {
       max-width: 600px;
@@ -257,6 +288,11 @@
     </div>
   </div>
 
+  <div class="search-bar">
+    <input id="debug-search" class="search-input" type="text" placeholder="搜索参数（中文/English/key）" />
+    <span id="debug-search-count" class="search-count">全部显示</span>
+  </div>
+
   <details class="section-dropdown" id="dropdown-position" open>
     <summary>界面位置</summary>
     <div id="params-position"></div>
@@ -270,6 +306,11 @@
   <details class="section-dropdown" id="dropdown-drag" open>
     <summary>拖拽参数</summary>
     <div id="params-drag"></div>
+  </details>
+
+  <details class="section-dropdown" id="dropdown-perspective" open>
+    <summary>近大远小设置</summary>
+    <div id="params-perspective"></div>
   </details>
 
   <details class="section-dropdown" id="dropdown-toast" open>

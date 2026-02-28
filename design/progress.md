@@ -7,6 +7,23 @@
 
 ## 本次对话追加（2026-02-28，阶段3-P1最小切片开发中）
 
+### 本次对话追加（2026-02-28，阶段3-P1 技能语义补齐第3批）
+
+- `src/combat/CombatEngine.ts`：继续补齐技能文案语义，新增以下战斗内规则：
+  - 控制目标模式新增 `left`，支持“加速左侧物品X秒”按左侧紧邻目标选择。
+  - 新增“使用相邻物品时，造成X灼烧”触发链：相邻物品触发时可对敌方英雄叠加灼烧。
+  - 新增“冻结敌方时，相邻攻击物品+X伤害（本场战斗内）”触发链：冻结触发后给相邻攻击物品叠加临时伤害。
+  - 新增“并使目标身上的剧毒层数翻倍”处理：中毒命中后额外叠加同量剧毒层数。
+- `src/combat/CombatEngine.test.ts`：本轮未新增稳定回归用例（尝试添加数据驱动回归后发现当前数据集存在触发不稳定，已回退，避免引入波动测试）。
+- 回归验证：`npm test` 通过（53/53）；`npm run build` 通过（保留 chunk size warning）。
+- 下一步计划：继续按技能文案补齐剩余“条件触发型”规则（例如护盾物品/灼烧物品被动增益、相邻剧毒增益等），并优先补可稳定复现的单测样例后再并入主分支。
+
+### 本次对话追加（2026-02-28，总结回填与Notebook同步）
+
+- 已按要求完成本轮总结回填（process）：本文件已记录“技能语义补齐第3批”的实现、验证结果与下一步计划。
+- 已写回主程 Notebook（NotebookLM：`WebJs开发指南`，id=`9baa2b32-22e4-4896-92bf-ced78ca0d148`）。
+- Notebook 新增来源：`2026-02-28_阶段3P1_技能语义补齐第3批`（source id=`4f2bae08-de43-443e-bb1a-cb6f4354258c`）。
+
 - 已开始按主程确认方案落地 P1 最小切片：
   - `src/combat/CombatEngine.ts`：新增 `start(snapshot, { enemyDisabled })` 测试开关；控制类状态过期时发出 `battle:status_remove`；状态周期结算改为基于 Tick 序号（按 `tickMs` 推导 burn/poison/regen 触发节拍）；同 Tick 内顺序调整为“触发队列后结算状态，再结算命中队列”。
   - `src/core/EventBus.ts`：战斗事件 payload 补充 `targetType/targetSide/sourceType/sourceSide`（可选字段），用于明确引擎->表现层目标边界。
@@ -48,6 +65,211 @@
 - 关键修复点：偏移改为“先转本地坐标，再按格宽偏移”计算，避免缩放场景下全局坐标直接减像素带来的误差。
 - `src/grid/DragController.ts` 同步移除临时 top-left 优先分支，回归统一锚点判定链路，避免与 `pixelToCellForItem` 双轨冲突。
 - 回归验证：`npm test` 通过（50/50）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，阶段3-P1 运行时分层最小切片）
+
+- 已与主程确认可直接实施（NotebookLM 对话：`cd99d1da-61b7-40ca-b727-0783fe5f0920`）：采用 `baseStats + runtime` 分层，战斗内状态不回写 `ItemDef/GridItem`。
+- `src/combat/CombatEngine.ts`：
+  - 物品运行时字段收口到 `runtime`（`currentChargeMs`、`executeCount`、`tempDamageBonus`、`modifiers.freeze/slow/haste`）。
+  - 基础面板收口到 `baseStats`（`cooldown/damage/heal/shield/burn/poison/regen/crit/multicast`），结算按 `baseStats + runtime` 计算。
+  - 新增 `getRuntimeState()`，返回表现层友好的运行时快照（含 `chargePercent` 与控制状态时长）。
+  - 直伤事件补充 `baseDamage/finalDamage`（`battle:take_damage`），用于后续表现与调试展示。
+- `src/core/EventBus.ts`：扩展 `battle:take_damage` 事件类型，新增 `baseDamage`、`finalDamage` 可选字段。
+- `src/combat/CombatEngine.test.ts`：新增用例覆盖 `getRuntimeState()` 与直伤事件 payload 扩展字段。
+- 回归验证：`npm test` 通过（52/52）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，阶段3-P1 目标选择细化 + 表现层对齐）
+
+- `src/combat/CombatEngine.ts`：控制目标选择新增模式解析与执行（`leftmost/adjacent/random/fastest`），并保持同 tick 稳定可复现（random 采用确定性洗牌）。
+- `src/combat/CombatEngine.ts`：控制目标筛选支持按源物品邻接关系（footprint 邻接）与“最快充能剩余”排序。
+- `src/scenes/BattleScene.ts`：CD 遮罩优先读取 `engine.getRuntimeState()` 的 `chargePercent`，逐步去耦为 runtime 驱动；普通伤害飘字改为优先显示 `finalDamage`。
+- 回归验证：`npm test` 通过（52/52）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，统一物品卡面数值徽标）
+
+- 已与设计师规范对齐（NotebookLM 对话：`52c6cc97-4456-41f9-8e11-773e626874ff`）：卡牌顶部仅显示 `伤害/护盾/回血/灼烧/中毒`，白字黑描边，按属性色底框，0 值隐藏。
+- `src/ui/itemStatBadges.ts`：新增统一徽标组件，支持顺序固定（伤害→护盾→回血→灼烧→中毒）、多属性自动换行并向上生长。
+- `src/grid/GridZone.ts`：背包/战斗区/战斗中物品统一接入顶部数值徽标；新增 `setStatBadgeFontSize()` 便于调试页实时调字号。
+- `src/shop/ShopPanelView.ts`：商店物品卡同样接入顶部数值徽标，保证商店与网格区一致展示口径。
+- 字号配置同步：
+  - `data/game_config.json` 的 `text_sizes` 新增 `itemStatBadge`
+  - `src/config/debugConfig.ts` 新增 `itemStatBadgeFontSize`
+  - `src/debug/debugPage.ts` 字体大小分组新增 `itemStatBadgeFontSize`
+  - `data/debug_defaults.json` 同步默认值
+- 回归验证：`npm test` 通过（52/52）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，商店/背包徽标一致性与可配偏移）
+
+- 修复商店与背包/战斗区的徽标视觉不一致：`src/shop/ShopPanelView.ts` 的徽标字号改为按商店内容缩放自动反算，确保与 GridZone 视觉尺寸一致。
+- 新增徽标整体 Y 偏移配置：
+  - `src/config/debugConfig.ts` 新增 `itemStatBadgeOffsetY`
+  - `data/debug_defaults.json` 新增默认值
+  - `src/debug/debugPage.ts` 纳入布局分组调试
+  - `src/scenes/ShopScene.ts` 与 `src/scenes/BattleScene.ts` 同步接入该配置
+  - `src/grid/GridZone.ts`、`src/shop/ShopPanelView.ts` 增加对应 setter 实时生效
+- 回归验证：`npm test` 通过（52/52）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，拖拽态徽标隐藏与描边优化）
+
+- `src/grid/GridZone.ts`：拖拽时隐藏顶部数值徽标，放置/回弹后恢复显示，避免拖动过程中出现悬浮数值标签。
+- `src/ui/itemStatBadges.ts`：优化徽标样式，增大内边距并减小文字描边宽度，去除“框外黑边”观感。
+- 回归验证：`npm test` 通过（52/52）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，徽标层级高于战斗 CD 遮罩）
+
+- `src/grid/GridZone.ts`：新增独立 `badgeLayer`，将物品顶部数值徽标从物品视觉层剥离到独立层；补齐位置同步（静态摆放、吸附、挤出动画、预览动画、回弹）。
+- `src/grid/GridZone.ts`：新增 `bringStatBadgesToFront()`，用于外部场景在添加覆盖层后将徽标层提升到最上层。
+- `src/scenes/BattleScene.ts`：战斗 CD 遮罩创建后调用 `bringStatBadgesToFront()`，确保徽标显示在 CD 遮罩上方。
+- 回归验证：`npm test` 通过（52/52）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，徽标颜色改走战斗色配置）
+
+- `src/ui/itemStatBadges.ts`：徽标底色改为读取调试配置色值，确保与战斗色体系一致：
+  - 护盾 -> `battleColorShield`
+  - 回复 -> `battleColorRegen`
+  - 灼烧 -> `battleColorBurn`
+  - 中毒 -> `battleColorPoison`
+  - 伤害 -> `battleOrbColorHp`
+- `src/ui/itemStatBadges.ts`：色块新增黑色外描边（2px），满足“色块黑描边”视觉要求。
+- `src/scenes/ShopScene.ts`：监听战斗色配置项变化时触发布局重建，保证商店视图可实时同步徽标颜色。
+- 回归验证：`npm test` 通过（52/52）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，徽标文字描边加强）
+
+- `src/ui/itemStatBadges.ts`：将徽标文字黑描边宽度由 1 调整为 2，保证在高亮背景和特效下可读性。
+- 回归验证：`npm test` 通过（52/52）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，商店选中框层级下沉）
+
+- `src/shop/ShopPanelView.ts`：调整子节点层级，确保商店选中框位于顶部数值徽标下层（被徽标遮挡），避免选中描边压到数值块。
+- 回归验证：`npm test` 通过（52/52）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，多重触发数值显示）
+
+- 已按主程确认口径实现（NotebookLM 对话：`9e4a93a7-bd88-4ffc-9733-be4eb34fed32`）：当 `multicast > 1` 时，五类顶部数值统一显示 `值xN`（如 `5x2`），`N=1` 不显示 `x1`。
+- `src/ui/itemStatBadges.ts`：新增 `toBadgeText()`，将徽标文本格式统一为 `baseValue` 或 `baseValuexmulticast`。
+- 回归验证：`npm test` 通过（53/53）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，商店按下暗闪去除）
+
+- `src/shop/ShopPanelView.ts`：移除商店卡牌的 `pointerover/pointerout` alpha 变暗逻辑，按下/悬停不再出现整体变暗闪动。
+- 回归验证：`npm test` 通过（53/53）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，全局背景与战斗敌人立绘）
+
+- 资源拷贝：将下载目录素材复制到项目资源目录 `resource/scene/background.png` 与 `resource/scene/boss.png`。
+- `src/core/assetPath.ts`：新增 `getSceneImageUrl()`，统一场景图资源路径（兼容 web/app/file 协议）。
+- `src/main.ts`：新增全局常驻背景图层，启动后加载 `background.png` 并铺满设计分辨率；跨场景始终显示。
+- `src/scenes/BattleScene.ts`：新增敌人立绘精灵，加载 `boss.png` 并放在敌方血条下方居中；仅战斗进行中显示，战斗结束（`engine.isFinished()`）自动隐藏。
+- 回归验证：`npm test` 通过（53/53）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，近大远小分层缩放与拖拽统一 100%）
+
+- 新增可配置缩放参数（调试配置）：
+  - `shopItemScale`（商店物品缩放，默认 0.9）
+  - `battleItemScale`（我方战斗区/背包物品缩放，默认 1.0）
+  - `enemyAreaScale`（敌方血条+敌方战斗区缩放，默认 0.8）
+- `src/scenes/ShopScene.ts`：
+  - 商店区缩放改走 `shopItemScale`
+  - 战斗区/背包缩放改走 `battleItemScale`
+  - 战斗区居中计算改按新的缩放值
+  - 商店拖拽浮层改为固定 100% 缩放
+- `src/shop/ShopPanelView.ts`：新增 `setItemScale()`，商店卡面按配置重建缩放。
+- `src/scenes/BattleScene.ts`：
+  - 我方战斗区缩放改为 `battleItemScale`
+  - 敌方战斗区缩放改为 `battleItemScale * enemyAreaScale`
+  - 敌方血条宽高与文字按 `enemyAreaScale` 缩放
+  - 敌人立绘与信息面板锚点同步按敌方缩放修正
+- `src/grid/GridZone.ts`：网格拖拽从各区域抬起时统一为 100% 大小（不再继承区域缩放或额外放大）。
+- 配置同步：`src/config/debugConfig.ts`、`data/debug_defaults.json` 已新增并提供默认值。
+- 回归验证：`npm test` 通过（53/53）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，调参页搜索）
+
+- `debug.html`：新增调参搜索栏（置于顶部，支持实时输入），并显示命中数量。
+- `src/debug/debugPage.ts`：新增参数搜索过滤逻辑，支持按中文标签、英文 key、描述文本检索；未命中的参数行与分组自动隐藏，命中分组自动展开。
+- 回归验证：`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，近大远小分组与缩放行为修正）
+
+- 调参页分组：将 `shopItemScale/battleItemScale/enemyAreaScale` 单独归类到“近大远小设置”。
+- 修复商店缩小时文字变大的问题：
+  - `src/scenes/ShopScene.ts`：移除商店标题/数值徽标字号对 `shopItemScale` 的反向除法。
+  - `src/shop/ShopPanelView.ts`：移除数值徽标字号对内容缩放的反向除法。
+  - 结论：缩小商店时，物品与其文字会一起缩小，不再反向变大。
+- 修复战斗区/敌方区不居中：`src/scenes/ShopScene.ts` 与 `src/scenes/BattleScene.ts` 的区域 X 计算改为“按当前缩放后宽度居中”。
+- 我方战斗区关联 UI 同步缩放：`src/scenes/ShopScene.ts` 中金币文本按 `battleItemScale` 同步缩放显示。
+- 回归验证：`npm test` 通过（53/53）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，敌方血条取消缩放）
+
+- 根据验收反馈，`enemyAreaScale` 仅作用于敌方战斗区（含物品），不再作用于敌方血条与血条文字。
+- `src/scenes/BattleScene.ts`：
+  - 敌方/我方血条统一使用原始 `battleHpBarWidth/battleHpBarH` 绘制；敌方数值文字不再随 `enemyAreaScale` 变化。
+  - 敌人立绘与战斗信息面板锚点改回按未缩放血条高度定位，避免额外叠加缩放。
+- 回归验证：`npm test` 通过（53/53）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，去除战斗区标签文案）
+
+- `src/grid/GridZone.ts`：新增 `setLabelVisible()`，支持按区域控制标签显隐。
+- `src/scenes/BattleScene.ts`：我方“战斗区”与敌方“敌方战斗区”标签统一隐藏。
+- `src/scenes/ShopScene.ts`：商店场景中的“战斗区”标签隐藏（保留其他区域标签）。
+- 回归验证：`npm test` 通过（53/53）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，分离敌方数值缩放与背包打开缩放）
+
+- 新增近大远小参数：
+  - `battleItemScaleBackpackOpen`：背包打开时我方战斗区及关联信息缩放
+  - `enemyHpBarScale`：敌方血条与血条文字独立缩放
+- `src/config/debugConfig.ts`、`data/debug_defaults.json`、`src/debug/debugPage.ts` 已同步接入，均归类到“近大远小设置”。
+- 敌方数值徽标与敌方战斗区比例一致：
+  - `src/scenes/BattleScene.ts` 去除顶部数值徽标字号/偏移对 `zone.scale` 的反向除法。
+  - 结果：敌方战斗区缩小后，顶部数值也按同等比例缩小。
+- 背包打开时我方缩放：
+  - `src/scenes/ShopScene.ts` 中 `battleItemScale` 改为按 `showingBackpack` 在 `battleItemScale` 与 `battleItemScaleBackpackOpen` 之间切换。
+- 回归验证：`npm test` 通过（53/53）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，战斗中下方英雄立绘与受击反馈）
+
+- 资源拷贝：新增 `resource/scene/hero.png`（来自下载目录）。
+- `src/scenes/BattleScene.ts`：
+  - 新增下方英雄立绘（底部贴边显示，层级低于战斗区与血条，可被遮挡）。
+  - 新增英雄受击反馈（闪白 + 缩放 pulse），效果参数复用敌方立绘受击参数。
+  - 敌方攻击命中我方英雄时，投射物目标改为英雄立绘命中点（无立绘时回退到血条中心）。
+  - 我方/敌方英雄目标状态投射统一支持命中立绘点并触发对应受击反馈。
+- 回归验证：`npm test` 通过（53/53）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，我方立绘参数独立可配）
+
+- 按验收要求补齐“我方立绘”独立参数集（与敌方同口径）：
+  - `battlePlayerPortraitWidthRatio`
+  - `battlePlayerPortraitOffsetY`
+  - `battlePlayerPortraitHitYFactor`
+  - `battlePlayerPortraitHitScaleMax`
+  - `battlePlayerPortraitHitPulseMs`
+  - `battlePlayerPortraitIdleLoopMs`
+  - `battlePlayerPortraitIdleScaleMax`
+  - `battlePlayerPortraitFlashMs`
+  - `battlePlayerPortraitFlashColor`
+  - `battlePlayerPortraitFlashAlpha`
+- `src/scenes/BattleScene.ts`：我方立绘宽度/位置、命中点、受击缩放、闪白、呼吸循环均改为读取我方参数，不再复用敌方参数。
+- 调参页接入：`src/debug/debugPage.ts` 的“战斗表现”分组已纳入我方立绘参数。
+- 配置与默认值同步：`src/config/debugConfig.ts`、`data/debug_defaults.json`。
+- 回归验证：`npm test` 通过（53/53）；`npm run build` 通过。
+
+### 本次对话总结（P1 验收前收口）
+
+- 已完成战斗/商店核心体验收口：战斗中物品详情、CD 遮罩点击穿透、CD 遮罩层级与形态、数值徽标统一、拖拽锚点与中/大型判定修复、商店按下暗闪去除。
+- 已完成 P1 关键技术推进：`CombatEngine` 引入 `baseStats + runtime` 分层、`getRuntimeState()` 输出、事件边界字段补齐（含 `baseDamage/finalDamage`）、控制目标模式细化（leftmost/adjacent/random/fastest）。
+- 已完成近大远小配置化：新增“近大远小设置”分组与多参数（商店/我方/敌方/背包打开/敌方血条），并修复缩放导致字号反向变大的问题。
+- 已完成场景美术接入：全局背景常驻、战斗敌方立绘、战斗下方我方立绘（受击闪白/放缩/命中点），并新增我方立绘独立可调参数全集。
+- 战斗结束表现调整：敌方立绘、敌方血条、敌方战斗区物品在战斗结束统一隐藏。
+- 当前状态：`npm test` 53/53 通过，`npm run build` 通过；阶段3-P1 代码侧已基本就绪，等待你统一验收与优化意见回收。
+
+### 本次对话追加（2026-02-28，我方立绘宽度比例上限提升）
+
+- `src/config/debugConfig.ts`：`battlePlayerPortraitWidthRatio` 上限由 `1` 提升到 `2`，支持最多 2 倍宽度比例调节。
+- 回归验证：`npm run build` 通过。
 
 ## 当前状态
 
@@ -917,6 +1139,37 @@
 - 按需求将护盾条高度从细条改为与血条等高；仍保持半透明覆盖显示。
 - 变更文件：`src/scenes/BattleScene.ts`。
 
+### 本次对话追加（所有物品触发均执行放缩）
+
+- 按主程方案补齐触发范围：除开火外，`battle:status_apply`（含加速/减速/冻结等控制效果）也会触发来源物品放缩。
+- 新增统一入口 `tryPulseItem()`：自动解析来源物品所在阵营并执行 `animateItemFirePulse`；过滤 `fatigue/status_*` 等非物品来源。
+- 增加短窗口去重（基于 `battleFirePulseMs` 派生阈值），避免同一物品在相邻事件（如开火+状态施加）中重复闪烁。
+- 变更文件：`src/scenes/BattleScene.ts`；回归：`npm test` 通过（50/50）。
+
+### 本次对话追加（购买替换进背包高亮改绿）
+
+- 修复商店购买拖到战斗区时的高亮语义：当落点属于“可替换并回背包”路径时，不再显示黄色升级高亮，改为绿色可放置高亮。
+- 同步修复落点判定：在 `onShopDragMove` 与 `onShopDragEnd` 两处都屏蔽该场景下的合成优先级，确保视觉与实际行为一致。
+- 变更文件：`src/scenes/ShopScene.ts`。
+
+### 本次对话追加（被顶回背包飞入小黄格动画）
+
+- 新增“战斗区物品被顶回背包”过渡动画：物品图标从战斗区飞向背包下方小地图目标格，过程中沿弧线移动并逐步缩小。
+- 终点过渡为小黄格：动画后段图标淡出、小黄格淡入，落点短暂保留后消失，与小地图占用态自然衔接。
+- 动画触发位置：`applyBackpackPlanWithTransferred` 在完成转移后调用，按每个被转移物品的目标背包格播放。
+- 变更文件：`src/scenes/ShopScene.ts`；回归：`npm test` 通过（52/52），`npm run build` 通过。
+
+### 本次对话追加（顶回背包动画参数接入拖拽参数）
+
+- 按需求将“被顶回背包飞入小黄格”动画参数全部接入 Debug 拖拽参数分组（自动归入拖拽参数）：
+  - `transferToBackpackAnimMs`
+  - `transferToBackpackArcY`
+  - `transferToBackpackIconScale`
+  - `transferToBackpackMorphStartPct`
+  - `transferToBackpackHoldMs`
+- 同步默认值写入 `data/debug_defaults.json`，并替换 `ShopScene` 中对应硬编码值为配置读取。
+- 变更文件：`src/config/debugConfig.ts`、`data/debug_defaults.json`、`src/scenes/ShopScene.ts`。
+
 ### 本次对话追加（物品面板 CD 与按品质描述）
 
 - 已按主程确认方案实现：物品信息面板显示冷却，并将技能描述从“全档位串”改为“当前品质档位值”。
@@ -957,6 +1210,295 @@
 - 按需求将左侧图标边框同步缩小为 `2/3`，与图标尺度一致。
 - 布局改为从左上角开始展示：左侧图标框顶对齐到面板上边距，移除左列上方空白行。
 - 变更文件：`src/shop/SellPopup.ts`；回归：`npm test` 通过（50/50）。
+
+### 本次对话追加（战斗子弹改为可配置图标飞行）
+
+- 按主程确认方案实现：可飞行物品（依据 `attack_style`，如“直线飞行/旋转飞行”）发射时可改为“物品图标子弹”，非飞行物品与状态来源仍走小圆点。
+- 图标来源策略：优先可选 `attack_variants`（或 `icon_a/icon_a2` 推导），失败自动回退物品主图标；已支持向左旋转（仅 `attack_style` 含“旋转”时生效）。
+- 轨迹表现可配置：飞行时长、弧线高度、缩放曲线（起始/峰值/结束/峰值时机）、旋转速度、图标子弹尺寸。
+- 新增战斗表现配置并接入调试页“战斗表现”：
+  - `battleProjectileUseItemSprite`
+  - `battleProjectileUseVariants`
+  - `battleProjectileItemSizePx`
+  - `battleProjectileArcHeight`
+  - `battleProjectileScaleStart`
+  - `battleProjectileScalePeak`
+  - `battleProjectileScaleEnd`
+  - `battleProjectileScalePeakT`
+  - `battleProjectileSpinDegPerSec`
+- 数据层补齐字段：`ItemDef/DataLoader` 新增并透传 `icon`、`attack_style`、`attack_variants`，以支撑子弹贴图与旋转判定。
+- 变更文件：`src/scenes/BattleScene.ts`、`src/config/debugConfig.ts`、`src/debug/debugPage.ts`、`data/debug_defaults.json`、`src/items/ItemDef.ts`、`src/core/DataLoader.ts`、`src/core/assetPath.ts`；回归：`npm test` 通过（52/52），`npm run build` 通过。
+
+### 本次对话追加（特殊攻击图标优先 + 多变体交替发射）
+
+- 对于有 `attack_variants` / `icon_a` / `icon_a2` 的飞行物品，子弹优先使用这些“攻击图标”，不再随机。
+- 当存在多个攻击图标时，按同一物品实例逐次交替发射（round-robin），满足“交替发射”表现；场景退出时清空轮转状态。
+- 变更文件：`src/scenes/BattleScene.ts`；回归：`npm test` 通过（52/52），`npm run build` 通过。
+
+### 本次对话追加（移除两项子弹开关，固定默认逻辑）
+
+- 按需求将“飞行物品改图标子弹”“优先使用_a/_a2贴图”从调试配置中移除，不再暴露给网页调参。
+- 逻辑固定为默认：飞行物品始终使用图标子弹，且优先使用攻击变体图标（含交替发射）。
+- 变更文件：`src/scenes/BattleScene.ts`、`src/config/debugConfig.ts`、`src/debug/debugPage.ts`、`data/debug_defaults.json`；回归：`npm test` 通过（52/52），`npm run build` 通过。
+
+### 本次对话追加（修复变体贴图缺失告警刷屏）
+
+- 修复 Pixi 资源告警：不再调用 `Assets.get(url)` 读取未缓存资源（该调用会在未命中时打印 warning）。
+- 新增子弹贴图缓存与缺失 URL 黑名单：
+  - 命中缓存直接复用；
+  - 404/加载失败 URL 记录到缺失集合，后续不再重复请求与告警。
+- 保留回退链路：变体贴图不存在时自动回退主图标，不影响飞行动画。
+- 变更文件：`src/scenes/BattleScene.ts`；回归：`npm test` 通过（52/52），`npm run build` 通过。
+
+### 本次对话追加（连发飞镖变体资源补齐 + 直线朝向旋转）
+
+- 资源补齐：将 `~/Downloads/newitem/item*_a*.png` 同步复制到 `resource/itemicon/vanessa/`，修复 `item1_a/item1_a2` 等攻击图标缺失导致无法按变体显示的问题。
+- 表现补齐：直线飞行子弹新增“朝向目标点”旋转（发射点→目标点方向锁定）；旋转飞行仍按配置角速度左旋。
+- 变更文件：`resource/itemicon/vanessa/`（新增变体图标）、`src/scenes/BattleScene.ts`；回归：`npm test` 通过（52/52），`npm run build` 通过。
+
+### 本次对话追加（直线飞行朝向前向修正）
+
+- 针对“素材默认朝上”补齐朝向基准：直线飞行角度在发射线方向上额外 `+90°`（`+Math.PI/2`），修复出现左偏 90° 的问题。
+- 变更文件：`src/scenes/BattleScene.ts`；回归：`npm test` 通过（52/52）。
+
+### 本次对话追加（战斗卡牌状态持续时间与冻结遮罩）
+
+- 实现卡牌状态持续时间显示：
+  - 加速（haste）显示在卡牌偏上；
+  - 减速（slow）显示在卡牌偏下；
+  - 冻结（freeze）显示在卡牌中心；
+  - 文案统一 `x.x` 动态更新（按 runtime 毫秒转秒，每帧刷新，带脏检查）。
+- 视觉样式：
+  - 状态底板颜色使用对应小球色（`getBattleOrbColor`）；
+  - 文字白色 + 黑描边；
+  - 冻结时增加整卡偏白遮罩（类似 CD 覆盖效果）。
+- 配置全部接入“战斗表现”分组：
+  - `battleStatusTimerScale`
+  - `battleStatusTextStrokeWidth`
+  - `battleStatusBadgePadX`
+  - `battleStatusBadgePadY`
+  - `battleStatusBadgeRadius`
+  - `battleStatusBadgeMinWidth`
+  - `battleStatusBadgeAlpha`
+  - `battleStatusHasteYFactor`
+  - `battleStatusHasteOffsetY`
+  - `battleStatusSlowYFactor`
+  - `battleStatusSlowOffsetY`
+  - `battleStatusFreezeYFactor`
+  - `battleStatusFreezeOffsetY`
+  - `battleFreezeOverlayAlpha`
+- 变更文件：`src/scenes/BattleScene.ts`、`src/config/debugConfig.ts`、`src/debug/debugPage.ts`、`data/debug_defaults.json`；回归：`npm test` 通过（53/53），`npm run build` 通过。
+
+### 本次对话追加（状态计时字号可配 + 层级与尺寸修复）
+
+- 计时字号改为独立配置 `battleStatusTimerFontSize`（已同步到 `data/game_config.json:text_sizes`、`src/items/ItemDef.ts`、`src/config/debugConfig.ts`、`src/debug/debugPage.ts`“字体大小”分组）。
+- 描边按需求调细：`battleStatusTextStrokeWidth` 默认从 3 降为 2（仍可在“战斗表现”调）。
+- 层级修复：状态数字层（最上） > 冻结遮罩层 > CD 遮罩层，符合验收要求。
+- 冻结遮罩“持续放大”修复：不再用 `node.container.width/height` 回写遮罩尺寸，改为基于物品格尺寸（`size -> CELL_SIZE/CELL_HEIGHT`）计算，避免因 UI 子节点参与包围盒导致的反馈放大。
+- 变更文件：`src/scenes/BattleScene.ts`、`src/config/debugConfig.ts`、`src/debug/debugPage.ts`、`data/game_config.json`、`src/items/ItemDef.ts`、`data/debug_defaults.json`；回归：`npm test` 通过（53/53），`npm run build` 通过。
+
+### 本次对话追加（战斗物品数值标记字号回归）
+
+- 修复战斗场景物品数值标记（红/橙角标）变小：原因是 BattleScene 的 `applyZoneVisualStyle()` 中漏掉了 `setStatBadgeFontSize/setStatBadgeOffsetY`。
+- 已恢复按配置应用：`itemStatBadgeFontSize`、`itemStatBadgeOffsetY`（与商店场景一致，按缩放反算）。
+- 变更文件：`src/scenes/BattleScene.ts`；回归：`npm test` 通过（53/53）。
+
+### 本次对话追加（CD遮罩层级与状态字号一致性）
+
+- CD 遮罩层级调整：通过 `bringStatBadgesToFront()` 确保物品伤害角标在 CD 遮罩上方。
+- 修复“角标 24 与状态计时 24 看起来不一致”：状态计时字号改为按战斗区缩放反算（与角标同口径），避免因 zone scale 导致视觉变小。
+- 顺手修复 BattleScene 误引入的场景资源导入报错（`getSceneImageUrl`）。
+- 变更文件：`src/scenes/BattleScene.ts`；回归：`npm test` 通过（53/53）。
+
+### 本次对话追加（阶段3-P1 卡牌效果细化第一批落地）
+
+- 已按主程确认进入 P1-1 全量补齐路径，并先完成第一批“高收益战斗内效果”实现（非跨系统）：
+  - 伤害公式补齐：
+    - `攻击造成等同于当前自身护盾值的伤害`
+    - `掷出造成目标最大生命值X%伤害`
+    - `相邻物品攻击时，攻击造成X伤害`（邻接被动叠加）
+    - `如果这是你唯一的攻击物品，触发2次`
+  - 触发链补齐：
+    - 控制触发增益（冻结/减速触发后加伤、加灼烧、加剧毒）
+    - `触发加速时，额外造成X伤害`
+    - `飞出时加速相邻物品`
+    - `获得护盾时，加速1件物品`
+  - DOT/HOT 联动补齐：
+    - `造成剧毒时恢复+X生命`
+    - `造成剧毒时灼烧物品+X灼烧`
+    - `造成灼烧时剧毒物品+X剧毒`
+  - 战斗节奏补齐：
+    - `每次使用后自身CD减少1秒（本场战斗内）`
+    - 开场技能触发：`开场时自动触发` 与 `开场时冻结/减速/加速...`
+    - 受击反应：`受到攻击伤害时获得X护盾`
+- 当前仍待下一批补齐（P1-1 未完成）：`相邻物品使用时，加速另一侧...`、`相邻护盾物品...`、永久局外成长/复制/复活等跨系统或高语义效果。
+- 变更文件：`src/combat/CombatEngine.ts`；回归：`npm test` 通过（53/53），`npm run build` 通过。
+
+### 本次对话追加（阶段3-P1 卡牌效果细化第二批推进）
+
+- 继续推进战斗内效果补齐（仍在 P1-1 范围）：
+  - 新增 `相邻物品使用时，加速另一侧的物品`（按触发源相对被动拥有者位置，选另一侧邻接目标）
+  - 新增 `相邻物品攻击造成伤害时，该物品+X伤害（本场战斗内）`
+  - 新增 `相邻护盾物品的获得+X护盾（本场战斗内）`（邻接来源叠加）
+  - 新增 `首次被击败时复活并恢复X生命值`（战斗内一次性复活）
+- 同步战斗时机修正：
+  - 命中造成生命伤害后触发邻接攻击成长
+  - 结算胜负前尝试复活（避免被直接判负）
+- 变更文件：`src/combat/CombatEngine.ts`；回归：`npm test` 通过（53/53），`npm run build` 通过（含 chunk 体积提示，无构建失败）。
+
+### 本次对话追加（商店拖拽合成优先 + 升级预览面板）
+
+- 按主程确认方案修正拖拽优先级：商店物品拖拽命中可合成目标时，合成判定优先于挤出/替换回背包；移除此前对该场景的“屏蔽合成”分支。
+- 详情面板新增升级预览：命中可合成目标时，面板切换为“升级预览”，以 `旧值 -> 新值` 展示所有发生变化的技能数值；未变化项默认隐藏。
+- 冷却也纳入预览：若升级导致冷却变化，显示 `冷却：x.x秒 -> y.y秒`；品质徽标显示 `旧品质→新品质`。
+- 设计确认结果：采用“变化项优先、未变化项隐藏”的低噪音展示策略（移动端可读性优先）。
+- 变更文件：`src/scenes/ShopScene.ts`、`src/shop/SellPopup.ts`；回归：`npm test` 通过（52/52），`npm run build` 通过。
+
+### 本次对话追加（升级预览文案精简）
+
+- 按需求去掉“升级预览”字样：标题恢复为物品名本体（不追加括号文案）。
+- 按需求简化品质徽标：不再显示“青铜→白银”，仅显示目标品质（如“白银”）。
+- 升级描述改为行内差值：由“整句 old -> 整句 new”改为“仅变化数值 old->new”嵌入原句（示例：`攻击造成10->20伤害`）。
+- 变更文件：`src/shop/SellPopup.ts`；回归：`npm test` 通过（52/52），`npm run build` 通过。
+
+### 本次对话追加（超时扣血不中断CD + 扣血参数可配置）
+
+- 按主程方案修复战斗超时逻辑：进入超时扣血（fatigue）后不再冻结 TICK，物品 CD 继续推进并可正常触发攻击/治疗/状态；fatigue 仅作为并行环境伤害通道。
+- Tick 流程调整：每个 `tickMs` 仍执行 `stepOneTick`，同时按独立间隔叠加 fatigue 伤害；新增 `battle:fatigue_start` 与 `battle:fatigue_tick` 事件，便于后续表现层扩展。
+- 参考设计师数值建议并落地为可调参数（放到调试页“玩法数值”）：
+  - `gameplayFatigueStartMs`（默认 25000）
+  - `gameplayFatigueIntervalMs`（默认 1000）
+  - `gameplayFatigueDamagePctPerInterval`（默认 0.02）
+  - `gameplayFatigueDamageFixedPerInterval`（默认 10）
+  - `gameplayFatigueDamagePctRampPerInterval`（默认 0.01）
+  - `gameplayFatigueDamageFixedRampPerInterval`（默认 10）
+- 配置链路同步：`data/game_config.json:combat_runtime`、`src/items/ItemDef.ts` 类型、`src/config/debugConfig.ts`、`data/debug_defaults.json`、`src/debug/debugPage.ts`、`src/scenes/BattleScene.ts` 覆盖到运行时 override。
+- 增加回归用例：`CombatEngine.test.ts` 新增“进入超时扣血后物品CD仍持续并继续触发”。
+- 变更文件：`src/combat/CombatEngine.ts`、`src/combat/CombatEngine.test.ts`、`src/core/EventBus.ts`、`src/scenes/BattleScene.ts`、`src/config/debugConfig.ts`、`src/debug/debugPage.ts`、`data/debug_defaults.json`、`data/game_config.json`、`src/items/ItemDef.ts`；回归：`npm test` 通过（53/53），`npm run build` 通过。
+
+### 本次对话追加（超时扣血改为直接跳字）
+
+- 按需求调整 fatigue 表现：超时扣血不再从对方飞出小球，改为在目标血条处直接掉血跳字。
+- 实现方式：`battle:take_damage` 里当 `sourceItemId === 'fatigue'` 时走与状态伤害同路径，直接 `spawnFloatingNumber`。
+- 变更文件：`src/scenes/BattleScene.ts`；回归：`npm test` 通过（53/53）。
+
+### 本次对话追加（超时扣血先扣盾 + 风暴来袭Toast）
+
+- fatigue 伤害结算调整为“先扣护盾再扣生命”：与普通伤害一致的护盾优先规则，`battle:take_damage` 同步携带 `finalDamage`（真实掉血值）用于跳字。
+- fatigue 开始时增加提示：监听 `battle:fatigue_start`，显示 Toast 文案“加时赛风暴来袭”。
+- Toast 开关接入“Toast 显示”配置：新增 `toastShowFatigueStart`（受总开关 `toastEnabled` 控制）。
+- 变更文件：`src/combat/CombatEngine.ts`、`src/scenes/BattleScene.ts`、`src/config/debugConfig.ts`、`src/debug/debugPage.ts`、`data/debug_defaults.json`；回归：`npm test` 通过（53/53），`npm run build` 通过。
+
+### 本次对话追加（敌方立绘受击目标化 + 受击/死亡表现配置）
+
+- 按主程方案实现：我方打向敌方英雄的飞点终点从血条改为敌方立绘命中点；命中时敌方立绘执行“闪白 + 快速放缩”反馈。
+- 敌方立绘尺寸与布局增强：默认更大，并稳定放置于敌方血条下方；死亡时执行半透淡出后隐藏。
+- 新增“战斗表现”可调参数：
+  - `battleEnemyPortraitWidthRatio`
+  - `battleEnemyPortraitOffsetY`
+  - `battleEnemyPortraitHitYFactor`
+  - `battleEnemyPortraitHitScaleMax`
+  - `battleEnemyPortraitHitPulseMs`
+  - `battleEnemyPortraitFlashAlpha`
+  - `battleEnemyPortraitDeathFadeMs`
+- 同步修正运行时覆盖：`BattleScene` 重新接入 fatigue 相关 gameplay 参数到 `setCombatRuntimeOverride`，确保调试页改动即时生效。
+- 变更文件：`src/scenes/BattleScene.ts`、`src/config/debugConfig.ts`、`src/debug/debugPage.ts`、`data/debug_defaults.json`；回归：`npm test` 通过（53/53），`npm run build` 通过。
+
+### 本次对话追加（修复敌方受击闪白不生效）
+
+- 修复原因：`applyLayout` 每帧重置敌方立绘 scale，覆盖了受击放缩曲线，导致闪白/放缩观感不明显。
+- 修复方案：受击/死亡动画进行中不再被布局层重置；闪白叠层改为 `blendMode='add'` 提升可见度。
+- 变更文件：`src/scenes/BattleScene.ts`；回归：`npm test` 通过（53/53）。
+
+### 本次对话追加（仅直伤触发受击 + 下锚点向上放大）
+
+- 按需求收敛触发条件：敌方立绘受击放缩仅由“直伤命中（normal）”触发；中毒/灼烧与 fatigue 不再触发该抖动反馈。
+- 受击放缩锚点改为下边缘：敌方立绘与闪白层 anchor 改为 `(0.5, 1)`，并将布局 Y 改为“顶部坐标 + 高度”，实现“以下方为锚点向上放大”。
+- 命中点计算同步修正：立绘命中点 Y 基于 `top = y - height` 计算，保证飞点命中位置与新锚点一致。
+- 变更文件：`src/scenes/BattleScene.ts`；回归：`npm test` 通过（53/53）。
+
+### 本次对话追加（DOT施加触发受击 + 立绘默认呼吸 + 闪白可配色）
+
+- 受击触发扩展：除直伤命中外，`status_apply` 的中毒/灼烧施加到敌方英雄时也触发立绘受击放缩；DOT持续结算伤害仍不触发。
+- 新增敌方立绘默认循环放缩（呼吸感）：可配置周期与最大倍率，且与受击/死亡动画叠加兼容。
+- 闪白效果增强并可配置：新增闪白时长与闪白颜色参数，配合现有强度参数；保留 add 混合提升可见度。
+- 新增参数（战斗表现）：
+  - `battleEnemyPortraitIdleLoopMs`
+  - `battleEnemyPortraitIdleScaleMax`
+  - `battleEnemyPortraitFlashMs`
+  - `battleEnemyPortraitFlashColor`
+- 变更文件：`src/scenes/BattleScene.ts`、`src/config/debugConfig.ts`、`src/debug/debugPage.ts`、`data/debug_defaults.json`；回归：`npm test` 通过（53/53），`npm run build` 通过。
+
+### 本次对话追加（所有指向敌方的飞点命中敌人 + 命中时触发受击）
+
+- 飞点目标统一：凡“目标为敌方英雄”的飞行效果，终点统一改为敌方立绘命中点（不再落到敌方血条），覆盖：
+  - 普通伤害飞点
+  - 敌方自身护盾飞点
+  - 治疗飞点（目标为敌方英雄）
+  - 状态施加飞点（含我方投掷的灼烧/中毒）
+- 触发时机修正：敌方立绘闪白与放缩统一改为 `spawnProjectile` 的命中回调触发，确保“到达目标时”才反馈，不提前触发。
+- 保持不变：fatigue 与状态持续结算（非飞点路径）仍不触发飞点命中反馈。
+- 变更文件：`src/scenes/BattleScene.ts`；回归：`npm test` 通过（53/53）。
+
+### 本次对话追加（闪白颜色改为颜色控件显示）
+
+- 修复调试页交互：`battleEnemyPortraitFlashColor` 从“战斗表现数值滑条”迁移到“颜色配置”分组，以 `#RRGGBB` 色盘/文本输入显示，不再展示十进制数值滑条。
+- 变更文件：`src/debug/debugPage.ts`。
+
+### 本次对话追加（状态数字避让与描边增强）
+
+- 按需求下调“加速”状态数字位置，避免与上方数值重叠（默认 `battleStatusHasteYFactor=0.26`、`battleStatusHasteOffsetY=6`）。
+- 强化加速/冻结/减速状态数字的黑色描边效果：描边 join 改为 `round`，默认描边宽度由 2 调整为 3，接近卡牌数值观感。
+- 变更文件：`src/scenes/BattleScene.ts`、`data/debug_defaults.json`；回归：`npm test` 通过（53/53）。
+
+### 本次对话追加（敌方状态计时字号跟随敌区缩放）
+
+- 修复敌方加速/减速/冻结数字不随敌方战斗区缩放的问题：移除对 `battleStatusTimerFontSize` 的 `1/zone.scale` 抵消，改为直接使用配置字号，由战斗区缩放统一控制最终屏幕尺寸。
+- 结果：当敌方战斗区通过 `enemyAreaScale` 放大/缩小时，敌方状态计时数字与卡牌同步放大/缩小。
+- 变更文件：`src/scenes/BattleScene.ts`；回归：`npm test` 通过（53/53）。
+
+### 本次对话追加（背包区下移避免遮挡标题）
+
+- 按需求将背包区整体下移，避免物品与顶部“背包”字样发生遮挡。
+- 默认值调整：`backpackZoneY` 从 `560` 调整为 `588`。
+- 变更文件：`data/debug_defaults.json`。
+
+### 本次对话追加（背包标签与背包区解耦）
+
+- 针对“背包文字跟随背包区一起移动导致仍被遮挡”问题，新增 `GridZone.setLabelGlobalTop()`，支持标签使用全局 Y 对齐。
+- 在 `ShopScene` 中对背包区应用：背包标签固定在背包区上方固定间距（`BACKPACK_LABEL_GLOBAL_Y_GAP=60`），背包网格与物品可继续下移而不压住“背包”字样。
+- 变更文件：`src/grid/GridZone.ts`、`src/scenes/ShopScene.ts`；回归：`npm test` 通过（53/53）。
+
+### 本次对话追加（战斗/商店我方战斗区Y对齐）
+
+- 修复“商店阶段与战斗阶段我方战斗区位置不一致”：`BattleScene` 的我方战斗区 Y 改为与 `ShopScene` 相同的缩放补偿公式。
+- 调整为：`battleZoneY + (CELL_HEIGHT * (1 - playerScale)) / 2`，避免同一配置在两场景落点不同。
+- 变更文件：`src/scenes/BattleScene.ts`。
+
+### 本次对话追加（战斗区额外偏移 + 结束后显示返回按钮）
+
+- 新增“仅战斗场景生效”的我方战斗区附加偏移配置：`battleZoneYInBattleOffset`，用于在 `battleZoneY` 基础上单独微调战斗场景位置。
+- 战斗返回按钮改为“仅战斗结束后显示”：`backBtn.visible = engine.isFinished()`；战斗中隐藏。
+- 新增战斗返回按钮位置配置：`battleBackBtnX`、`battleBackBtnY`，支持调试页单独拖拽定位。
+- 按钮绘制坐标改为局部坐标（容器中心锚点），便于实时应用位置配置。
+- 配置接入文件：`src/config/debugConfig.ts`、`src/debug/debugPage.ts`、`data/debug_defaults.json`；逻辑改动：`src/scenes/BattleScene.ts`。
+- 回归：`npm test` 通过（53/53），`npm run build` 通过。
+
+### 本次对话追加（战斗结束遮罩 + 倍速按钮）
+
+- 战斗结束展示层优化：返回按钮置于最上层（`zIndex=190`），并在其下增加全屏半透明黑色遮罩（`zIndex=180`），只在战斗结束时显示。
+- 新增战斗倍速按钮：战斗中显示，点击循环 `x1/x2/x4/x8`；实际驱动为 `engine.update(dt * speed)`，同时特效/跳字/受击动画按同倍速推进。
+- 倍速重置规则：每次进入战斗场景自动重置为 `x1`。
+- 交互收口：战斗结束后隐藏倍速按钮，仅保留遮罩 + 返回按钮。
+- 变更文件：`src/scenes/BattleScene.ts`；回归：`npm test` 通过（53/53），`npm run build` 通过。
+
+### 本次对话追加（阶段总结回写）
+
+- 已整理本阶段战斗表现与交互改动总结，回写 `design/progress.md` 并同步回传主程 Notebook 供复盘与评审。
+
+### 本次对话追加（总结回传 Notebook）
+
+- 已将本轮 fatigue 相关改动总结回传主程 Notebook，便于后续评审与参数对齐。
 
 ---
 

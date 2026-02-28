@@ -57,7 +57,27 @@ function formatDescByTier(raw: string, tierIndex: number): string {
   return raw.replace(/\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)+/g, (m) => pickTierValue(m, tierIndex))
 }
 
+function formatDescDiffByTier(raw: string, fromTierIndex: number, toTierIndex: number): { text: string; changed: boolean } {
+  let changed = false
+  const text = raw.replace(/\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)+/g, (m) => {
+    const from = pickTierValue(m, fromTierIndex)
+    const to = pickTierValue(m, toTierIndex)
+    if (from !== to) {
+      changed = true
+      return `${from}->${to}`
+    }
+    return to
+  })
+  return { text, changed }
+}
+
 function formatCooldownLine(item: ItemDef, tierIndex: number): string | null {
+  const sec = getCooldownSecText(item, tierIndex)
+  if (!sec) return null
+  return `冷却：${sec}秒`
+}
+
+function getCooldownSecText(item: ItemDef, tierIndex: number): string | null {
   const rawTier = (item.cooldown_tiers ?? '').trim()
 
   let ms = Number.NaN
@@ -70,8 +90,7 @@ function formatCooldownLine(item: ItemDef, tierIndex: number): string | null {
 
   if (!Number.isFinite(ms) || ms <= 0) return null
   const sec = ms / 1000
-  const text = (Math.round(sec * 10) / 10).toFixed(1)
-  return `冷却：${text}秒`
+  return (Math.round(sec * 10) / 10).toFixed(1)
 }
 
 export class SellPopup extends Container {
@@ -100,6 +119,7 @@ export class SellPopup extends Container {
   private lastPrice = 0
   private lastPriceMode: 'sell' | 'buy' | 'none' = 'sell'
   private lastTierOverride: string | undefined = undefined
+  private lastUpgradeFromTier: string | undefined = undefined
   private textSize = { name: 22, tier: 14, cooldown: 16, priceCorner: 20, desc: 16 }
   private cornerRadius = 10
 
@@ -226,7 +246,7 @@ export class SellPopup extends Container {
     this.minH = Math.max(0, height)
     this.currentMinH = this.minH
     if (this.lastItem) {
-      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride)
+      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier)
     } else {
       this.redrawPanel(this.minH)
       this.setAnchor(0, this.anchorY)
@@ -236,7 +256,7 @@ export class SellPopup extends Container {
   setSmallMinHeight(height: number): void {
     this.minHSmall = Math.max(0, height)
     if (this.lastItem) {
-      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride)
+      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier)
     }
   }
 
@@ -256,12 +276,12 @@ export class SellPopup extends Container {
     this.tierBadgeT.style.fontSize = this.textSize.tier
     this.cooldownT.style.fontSize = this.textSize.cooldown
     this.priceT.style.fontSize = this.textSize.priceCorner
-    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride)
+    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier)
   }
 
   setCornerRadius(radius: number): void {
     this.cornerRadius = Math.max(0, radius)
-    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride)
+    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier)
   }
 
   setWidth(width: number): void {
@@ -276,11 +296,12 @@ export class SellPopup extends Container {
   }
 
   /** 展示弹窗（需传入物品信息及出售价格） */
-  show(item: ItemDef, price: number, priceMode: 'sell' | 'buy' | 'none' = 'sell', tierOverride?: string): void {
+  show(item: ItemDef, price: number, priceMode: 'sell' | 'buy' | 'none' = 'sell', tierOverride?: string, upgradeFromTier?: string): void {
     this.lastItem = item
     this.lastPrice = price
     this.lastPriceMode = priceMode
     this.lastTierOverride = tierOverride
+    this.lastUpgradeFromTier = upgradeFromTier
     const cfg = getGameConfig()
     const visualScale = cfg.itemVisualScale
     const size = normalizeSize(item.size)
@@ -299,6 +320,10 @@ export class SellPopup extends Container {
     const tierLabel = TIER_LABELS[tier] ?? '青铜'
     const availableTiers = parseAvailableTiers(item.available_tiers)
     const tierIndex = Math.max(0, availableTiers.indexOf(tier))
+    const fromTier = upgradeFromTier ?? tier
+    const fromTierIndexRaw = availableTiers.indexOf(fromTier)
+    const fromTierIndex = fromTierIndexRaw >= 0 ? fromTierIndexRaw : tierIndex
+    const inUpgradePreview = Boolean(upgradeFromTier && fromTier !== tier)
     // 先更新字体，再计算布局
     this.nameT.style.fontSize  = this.textSize.name
     this.tierBadgeT.style.fontSize = this.textSize.tier
@@ -308,15 +333,33 @@ export class SellPopup extends Container {
     this.nameT.text  = item.name_cn
     this.priceT.text = priceMode === 'none' ? '' : `${priceMode === 'buy' ? '购买价格' : '出售价格'}：💰 ${price}G`
     this.priceT.visible = priceMode !== 'none'
-    const cooldownLine = formatCooldownLine(item, tierIndex)
+    const cooldownLine = (() => {
+      if (!inUpgradePreview) return formatCooldownLine(item, tierIndex)
+      const oldSec = getCooldownSecText(item, fromTierIndex)
+      const newSec = getCooldownSecText(item, tierIndex)
+      if (oldSec && newSec && oldSec !== newSec) return `冷却：${oldSec}秒 -> ${newSec}秒`
+      return formatCooldownLine(item, tierIndex)
+    })()
     this.cooldownT.text = cooldownLine ?? ''
     this.cooldownT.visible = Boolean(cooldownLine)
 
-    const skillLines = item.skills
+    const skillLinesRaw = item.skills
       .map((s) => s.cn?.trim())
-      .filter((s) => Boolean(s))
-      .map((s) => formatDescByTier(s, tierIndex))
-    const descLines = skillLines.length > 0 ? skillLines : ['(暂无文本)']
+      .filter((s): s is string => Boolean(s))
+
+    const descLines = (() => {
+      if (!inUpgradePreview) {
+        const lines = skillLinesRaw.map((s) => formatDescByTier(s, tierIndex))
+        return lines.length > 0 ? lines : ['(暂无文本)']
+      }
+
+      const changed = skillLinesRaw
+        .map((s) => formatDescDiffByTier(s, fromTierIndex, tierIndex))
+        .filter((v) => v.changed)
+        .map((v) => v.text)
+
+      return changed.length > 0 ? changed : ['（当前升级无数值变化）']
+    })()
 
     const frameX = pad
     const frameY = top
@@ -424,6 +467,10 @@ export class SellPopup extends Container {
     })
 
     this.visible = true
+  }
+
+  showUpgradePreview(item: ItemDef, price: number, fromTier: string, toTier: string, priceMode: 'sell' | 'buy' | 'none' = 'buy'): void {
+    this.show(item, price, priceMode, toTier, fromTier)
   }
 
   hide(): void {

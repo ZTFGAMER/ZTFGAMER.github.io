@@ -22,6 +22,9 @@ export interface ItemDef {
   heroes:           string
   tags:             string          // "Aquatic / 水系 | Weapon / 武器" 格式
   hidden_tags:      string
+  icon?:            string
+  attack_style?:    string
+  attack_variants?: string[]
 
   // 基础数值（毫秒 or 百分比 or 整数）
   cooldown:    number
@@ -99,6 +102,7 @@ export interface GameConfig {
     battleBackButtonLabel: number
     battleTextDamage: number
     battleTextCrit: number
+    battleStatusTimer: number
     sellButtonSubPrice:number
     refreshCost:      number
     gold:             number
@@ -107,6 +111,7 @@ export interface GameConfig {
     shopItemName:     number
     shopItemPrice:    number
     shopItemBought:   number
+    itemStatBadge:    number
     itemInfoName:     number
     itemInfoTier:     number
     itemInfoPrice:    number
@@ -118,9 +123,15 @@ export interface GameConfig {
   }
   combatRuntime: {
     tickMs: number
-    timeoutMs: number
-    fatigueTickMs: number
-    fatigueDamagePctPerSec: number
+    fatigueStartMs: number
+    fatigueIntervalMs: number
+    fatigueDamagePctPerInterval: number
+    fatigueDamageFixedPerInterval: number
+    fatigueDamagePctRampPerInterval: number
+    fatigueDamageFixedRampPerInterval: number
+    timeoutMs?: number
+    fatigueTickMs?: number
+    fatigueDamagePctPerSec?: number
     critMultiplier: number
     burnTickMs: number
     poisonTickMs: number

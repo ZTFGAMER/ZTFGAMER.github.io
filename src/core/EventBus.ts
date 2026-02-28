@@ -18,6 +18,8 @@ export type GameEvents = {
     targetSide?: 'player' | 'enemy';
     sourceType?: 'hero' | 'item' | 'system';
     sourceSide?: 'player' | 'enemy' | 'system';
+    baseDamage?: number;
+    finalDamage?: number;
   };
   'battle:gain_shield':  {
     targetId: string;
@@ -54,6 +56,8 @@ export type GameEvents = {
     targetType?: 'hero' | 'item';
     targetSide?: 'player' | 'enemy';
   };
+  'battle:fatigue_start': { elapsedMs: number };
+  'battle:fatigue_tick':  { elapsedMs: number; tick: number; playerDamage: number; enemyDamage: number };
   'battle:unit_die':     { unitId: string; side: 'player' | 'enemy' };
   'battle:end':          { winner: 'player' | 'enemy' | 'draw'; blameLog: string[] };
 

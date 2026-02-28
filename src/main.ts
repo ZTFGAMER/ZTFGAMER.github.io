@@ -3,7 +3,7 @@
 // 初始化 PixiJS → 注册场景 → 启动第一个场景
 // ============================================================
 
-import { Application } from 'pixi.js'
+import { Application, Assets, Sprite, Texture } from 'pixi.js'
 import { SceneManager } from '@/scenes/SceneManager'
 import { ShopScene }    from '@/scenes/ShopScene'
 import { BattleScene }  from '@/scenes/BattleScene'
@@ -12,6 +12,7 @@ import { setApp, setStageLayout } from '@/core/AppContext'
 import { clearStoredConfig } from '@/config/debugConfig'
 import { PhaseManager, type GamePhase } from '@/core/PhaseManager'
 import { Rectangle } from 'pixi.js'
+import { getSceneImageUrl } from '@/core/assetPath'
 
 // 基准分辨率（单格 128px × 5列 = 640，等比对应 390×844 物理屏）
 const BASE_W = 640
@@ -106,6 +107,21 @@ async function bootstrap(): Promise<void> {
   }
   window.addEventListener('resize', resize)
   resize()
+
+  // 全局背景（跨场景常驻）
+  const bgSprite = new Sprite(Texture.WHITE)
+  bgSprite.width = BASE_W
+  bgSprite.height = BASE_H
+  bgSprite.zIndex = -100
+  bgSprite.eventMode = 'none'
+  app.stage.addChildAt(bgSprite, 0)
+  try {
+    const tex = await Assets.load<Texture>(getSceneImageUrl('background.png'))
+    bgSprite.texture = tex
+  } catch (err) {
+    console.warn('[main] 背景图加载失败，使用纯色背景兜底', err)
+    bgSprite.tint = 0x1a1a2e
+  }
 
   // 5. 注册场景 & 启动
   SceneManager.register(ShopScene)

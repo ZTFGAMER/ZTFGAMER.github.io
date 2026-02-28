@@ -19,6 +19,7 @@ import type { ItemSizeNorm, PlacedItem } from './GridSystem'
 import { getAllItems, getConfig as getGameConfig } from '@/core/DataLoader'
 import { getItemIconUrl } from '@/core/assetPath'
 import { getTierColor } from '@/config/colorPalette'
+import { createItemStatBadges } from '@/ui/itemStatBadges'
 
 export const CELL_SIZE = 128
 export const CELL_HEIGHT = CELL_SIZE * 2
@@ -59,6 +60,7 @@ interface ItemNode {
   visual:     Container
   bg:         Graphics
   selectedG:  Graphics
+  statBadges: Container
   upgradeArrow: Graphics
   upgradeBaseY: number
   sprite:     Sprite | null
@@ -92,6 +94,7 @@ export class GridZone extends Container {
   private cellBg:     Graphics   // 静态格子背景
   itemLayer:          Container  // 物品层（DragController 归还物品时需访问）
   private hlOverlay:  Graphics   // 拖拽高亮层
+  private badgeLayer: Container  // 顶部数值徽标层（需高于 CD 遮罩）
   private labelText:  Text
 
   private nodes = new Map<string, ItemNode>()
@@ -99,6 +102,8 @@ export class GridZone extends Container {
   private cornerRadius = 10
   private cellBorderWidth = 1
   private selectedId: string | null = null
+  private statBadgeFontSize = getGameConfig().textSizes.itemStatBadge
+  private statBadgeOffsetY = 0
   private upgradeHintIds = new Set<string>()
   private upgradeHintTick: (() => void) | null = null
   private upgradeHintT = 0
@@ -124,10 +129,12 @@ export class GridZone extends Container {
     this.cellBg    = new Graphics()
     this.itemLayer = new Container()
     this.hlOverlay = new Graphics()
+    this.badgeLayer = new Container()
 
     this.addChild(this.cellBg)
     this.addChild(this.itemLayer)
     this.addChild(this.hlOverlay)
+    this.addChild(this.badgeLayer)
 
     // 区域标签
     this.labelText = new Text({
@@ -293,6 +300,10 @@ export class GridZone extends Container {
     selectedG.visible = false
     visual.addChild(selectedG)
 
+    const statBadges = new Container()
+    statBadges.eventMode = 'none'
+    this.badgeLayer.addChild(statBadges)
+
     const upgradeArrow = new Graphics()
     upgradeArrow.visible = false
     // 2x 放大箭头（40x48）
@@ -319,6 +330,7 @@ export class GridZone extends Container {
       visual,
       bg,
       selectedG,
+      statBadges,
       upgradeArrow,
       upgradeBaseY: 0,
       sprite,
@@ -331,6 +343,7 @@ export class GridZone extends Container {
       origY: oy,
     }
     this.redrawItemBorder(node)
+    this.updateStatBadgePosition(node)
     this.nodes.set(instanceId, node)
 
     this.loadIcon(instanceId, defId, node)
@@ -365,6 +378,8 @@ export class GridZone extends Container {
       node.container.parent?.removeChild(node.container)
     }
     node.container.destroy({ children: true })
+    if (node.statBadges.parent) node.statBadges.parent.removeChild(node.statBadges)
+    node.statBadges.destroy({ children: true })
     if (this.dragNode === node) this.dragNode = null
     if (this.selectedId === instanceId) this.selectedId = null
     this.upgradeHintIds.delete(instanceId)
@@ -391,23 +406,22 @@ export class GridZone extends Container {
     // 拖拽时仅显示图片本体（隐藏边框/底板/选中/升级箭头）
     node.bg.visible = false
     node.selectedG.visible = false
+    node.statBadges.visible = false
     node.upgradeArrow.visible = false
 
-    // 拖拽视觉：放大 + 半透明
-    node.container.scale.set(1.08)
+    // 拖拽视觉：固定 100% 大小 + 半透明
+    node.container.scale.set(1)
     node.container.alpha = 0.88
 
     // stage 坐标（考虑 zone 的缩放；zone 通常直接挂在 stage 下）
     const stageX = this.x + node.container.x * this.scale.x
     const stageY = this.y + node.container.y * this.scale.y
-    const worldScaleX = node.container.scale.x * this.scale.x
-    const worldScaleY = node.container.scale.y * this.scale.y
 
     // 从 itemLayer 摘出（此后由 DragController/dragLayer 管理）
     this.itemLayer.removeChild(node.container)
 
-    // 物品被移入 dragLayer 后不再受 zone 缩放影响，需将缩放烘焙为世界缩放
-    node.container.scale.set(worldScaleX, worldScaleY)
+    // 物品被移入 dragLayer 后固定使用 100%（设计坐标）尺寸
+    node.container.scale.set(1)
 
     return { container: node.container, size: node.size, stageX, stageY }
   }
@@ -426,7 +440,9 @@ export class GridZone extends Container {
     // 恢复静态展示
     node.bg.visible = true
     node.selectedG.visible = this.selectedId === instanceId
+    node.statBadges.visible = true
     node.upgradeArrow.visible = this.upgradeHintIds.has(instanceId)
+    this.updateStatBadgePosition(node)
 
     this.itemLayer.addChild(container)
     this.dragNode = null
@@ -447,12 +463,14 @@ export class GridZone extends Container {
     // 恢复静态展示
     node.bg.visible = true
     node.selectedG.visible = this.selectedId === instanceId
+    node.statBadges.visible = true
     node.upgradeArrow.visible = this.upgradeHintIds.has(instanceId)
 
     node.origX     = x
     node.origY     = y
     node.col       = col
     node.row       = row
+    this.updateStatBadgePosition(node)
     this.itemLayer.addChild(container)
     this.dragNode  = null
   }
@@ -463,6 +481,8 @@ export class GridZone extends Container {
   forgetDraggedItem(instanceId: string): void {
     const node = this.nodes.get(instanceId)
     if (this.dragNode === node) this.dragNode = null
+    if (node?.statBadges.parent) node.statBadges.parent.removeChild(node.statBadges)
+    node?.statBadges.destroy({ children: true })
     this.nodes.delete(instanceId)
   }
 
@@ -504,6 +524,11 @@ export class GridZone extends Container {
     node.origY       = y
     node.col         = item.col
     node.row         = item.row
+    this.updateStatBadgePosition(node)
+  }
+
+  bringStatBadgesToFront(): void {
+    if (this.badgeLayer.parent === this) this.addChild(this.badgeLayer)
   }
 
   static makeStageInteractive(stage: Container, w: number, h: number): void {
@@ -536,9 +561,32 @@ export class GridZone extends Container {
     this.labelText.style.fontSize = size
   }
 
+  setLabelVisible(visible: boolean): void {
+    this.labelText.visible = visible
+  }
+
+  setStatBadgeFontSize(size: number): void {
+    this.statBadgeFontSize = Math.max(8, size)
+    for (const node of this.nodes.values()) {
+      this.redrawItemBorder(node)
+    }
+  }
+
+  setStatBadgeOffsetY(offsetY: number): void {
+    this.statBadgeOffsetY = offsetY
+    for (const node of this.nodes.values()) {
+      this.redrawItemBorder(node)
+    }
+  }
+
   setLabelGlobalLeft(globalX: number): void {
     const sx = this.scale.x || 1
     this.labelText.x = (globalX - this.x) / sx
+  }
+
+  setLabelGlobalTop(globalY: number): void {
+    const sy = this.scale.y || 1
+    this.labelText.y = (globalY - this.y) / sy
   }
 
   setItemTier(instanceId: string, tier?: string): void {
@@ -615,6 +663,14 @@ export class GridZone extends Container {
       node.sprite.width = Math.max(1, pw - spriteInset * 2)
       node.sprite.height = Math.max(1, ph - spriteInset * 2)
     }
+
+    const itemDef = getAllItems().find((it) => it.id === node.defId)
+    node.statBadges.removeChildren()
+    if (itemDef) {
+      const badges = createItemStatBadges(itemDef, this.statBadgeFontSize, Math.max(44, pw - 8))
+      node.statBadges.addChild(badges)
+    }
+    this.updateStatBadgePosition(node)
 
     // 箭头位于物品可视区域中心
     node.upgradeArrow.x = frameInset + frameW / 2 - 20
@@ -705,6 +761,7 @@ export class GridZone extends Container {
       const ease = 1 - Math.pow(1 - t, 3)  // cubic ease-out
       node.container.x = fromX + (toX - fromX) * ease
       node.container.y = fromY + (toY - fromY) * ease
+      this.updateStatBadgePosition(node)
       if (t >= 1) {
         Ticker.shared.remove(tick)
         this.squeezeTicks.delete(instanceId)
@@ -739,6 +796,7 @@ export class GridZone extends Container {
       const ease = 1 - Math.pow(1 - t, 3)
       node.container.x = fromX + (toX - fromX) * ease
       node.container.y = fromY + (toY - fromY) * ease
+      this.updateStatBadgePosition(node)
       if (t >= 1) { Ticker.shared.remove(tick); this.previewTicks.delete(instanceId) }
     }
     this.previewTicks.set(instanceId, tick)
@@ -755,6 +813,13 @@ export class GridZone extends Container {
     if (!node) return
     node.container.x = node.origX
     node.container.y = node.origY
+    this.updateStatBadgePosition(node)
+  }
+
+  private updateStatBadgePosition(node: ItemNode): void {
+    const { pw } = SIZE_PX[node.size]
+    node.statBadges.x = node.container.x + pw / 2
+    node.statBadges.y = node.container.y + this.statBadgeOffsetY
   }
 
 }

@@ -38,6 +38,7 @@ const BTN_RADIUS    = 52
 const PHASE_BTN_W   = BTN_RADIUS * 4
 const PHASE_BTN_H   = BTN_RADIUS * 2
 const AREA_LABEL_LEFT_X = 0
+const BACKPACK_LABEL_GLOBAL_Y_GAP = 60
 const UPGRADE_HIGHLIGHT_COLOR = 0xffcc44
 
 // ---- 背包小地图 ----
@@ -808,13 +809,23 @@ function getDayActiveCols(day: number): number {
   return slots[2] ?? 6
 }
 
+function getShopItemScale(): number {
+  return getDebugCfg('shopItemScale')
+}
+
+function getBattleItemScale(): number {
+  return showingBackpack
+    ? getDebugCfg('battleItemScaleBackpackOpen')
+    : getDebugCfg('battleItemScale')
+}
+
 function getBattleZoneX(activeCols: number): number {
-  const s = getConfig().itemVisualScale
-  return getDebugCfg('battleZoneX') + (6 - activeCols) / 2 * CELL_SIZE * s
+  const s = getBattleItemScale()
+  return getDebugCfg('battleZoneX') + (CANVAS_W - activeCols * CELL_SIZE * s) / 2
 }
 
 function getBackpackZoneX(activeCols: number): number {
-  const s = getConfig().itemVisualScale
+  const s = getBattleItemScale()
   return (CANVAS_W - activeCols * CELL_SIZE * s) / 2
 }
 
@@ -933,7 +944,13 @@ function applyTextSizesFromDebug(): void {
 
   if (refreshCostText) refreshCostText.style.fontSize = getDebugCfg('refreshCostFontSize')
   if (hintToastText) hintToastText.style.fontSize = getDebugCfg('refreshCostFontSize')
-  if (goldText) goldText.style.fontSize = getDebugCfg('goldFontSize')
+  if (goldText) {
+    goldText.style.fontSize = getDebugCfg('goldFontSize')
+    const s = getBattleItemScale()
+    goldText.scale.set(s)
+    goldText.x = getDebugCfg('goldTextCenterX') - goldText.width / 2
+    goldText.y = getDebugCfg('goldTextY')
+  }
   if (dayPrevBtn) dayPrevBtn.style.fontSize = getDebugCfg('dayDebugArrowFontSize')
   if (dayNextBtn) dayNextBtn.style.fontSize = getDebugCfg('dayDebugArrowFontSize')
   if (dayDebugText) dayDebugText.style.fontSize = getDebugCfg('dayDebugLabelFontSize')
@@ -941,7 +958,14 @@ function applyTextSizesFromDebug(): void {
 
   battleView?.setLabelFontSize(areaLabelSize / (battleView.scale.x || 1))
   backpackView?.setLabelFontSize(areaLabelSize / (backpackView.scale.x || 1))
-  shopPanel?.setLabelFontSize(areaLabelSize / (shopPanel.scale.x || 1))
+  shopPanel?.setLabelFontSize(areaLabelSize)
+  battleView?.setLabelVisible(false)
+  battleView?.setStatBadgeFontSize(getDebugCfg('itemStatBadgeFontSize'))
+  backpackView?.setStatBadgeFontSize(getDebugCfg('itemStatBadgeFontSize'))
+  battleView?.setStatBadgeOffsetY(getDebugCfg('itemStatBadgeOffsetY'))
+  backpackView?.setStatBadgeOffsetY(getDebugCfg('itemStatBadgeOffsetY'))
+  shopPanel?.setStatBadgeFontSize(getDebugCfg('itemStatBadgeFontSize'))
+  shopPanel?.setStatBadgeOffsetY(getDebugCfg('itemStatBadgeOffsetY'))
 
   shopPanel?.setTextSizes({
     itemName: getDebugCfg('shopItemNameFontSize'),
@@ -965,11 +989,13 @@ function applyAreaLabelLeftAlign(): void {
 }
 
 function applyLayoutFromDebug(): void {
-  const s = getConfig().itemVisualScale
+  const s = getBattleItemScale()
+  const shopScale = getShopItemScale()
 
   if (shopPanel) {
     shopPanel.x = getDebugCfg('shopAreaX')
     shopPanel.y = getDebugCfg('shopAreaY')
+    shopPanel.setItemScale(shopScale)
     shopPanel.setTierBorderWidth(getDebugCfg('tierBorderWidth'))
     shopPanel.setCornerRadius(getDebugCfg('gridItemCornerRadius'))
   }
@@ -988,6 +1014,7 @@ function applyLayoutFromDebug(): void {
     backpackView.setTierBorderWidth(getDebugCfg('tierBorderWidth'))
     backpackView.setCornerRadius(getDebugCfg('gridItemCornerRadius'))
     backpackView.setCellBorderWidth(getDebugCfg('gridCellBorderWidth'))
+    backpackView.setLabelGlobalTop(backpackView.y - BACKPACK_LABEL_GLOBAL_Y_GAP)
   }
   if (bpBtnHandle) {
     bpBtnHandle.setCenter(getDebugCfg('backpackBtnX'), getDebugCfg('backpackBtnY'))
@@ -1194,6 +1221,14 @@ type AutoPackCacheEntry = {
   plan: PackPlacement[] | null
 }
 
+type BackpackTransferAnimSeed = {
+  defId: string
+  size: ItemSizeNorm
+  fromGlobal: { x: number; y: number }
+  toCol: number
+  toRow: number
+}
+
 const autoPackPlanCache = new Map<string, AutoPackCacheEntry>()
 const AUTO_PACK_CACHE_LIMIT = 80
 
@@ -1204,6 +1239,103 @@ function clearAutoPackCache(): void {
 function clonePackPlan(plan: PackPlacement[] | null): PackPlacement[] | null {
   if (!plan) return null
   return plan.map((p) => ({ ...p }))
+}
+
+function playBackpackTransferMiniAnim(seeds: BackpackTransferAnimSeed[]): void {
+  if (seeds.length === 0 || !miniMapCon || !miniMapCon.visible) return
+  const miniCon = miniMapCon
+  const { stage } = getApp()
+  const layer = new Container()
+  layer.eventMode = 'none'
+  stage.addChild(layer)
+
+  const durationMs = getDebugCfg('transferToBackpackAnimMs')
+  const arcY = getDebugCfg('transferToBackpackArcY')
+  const visualScale = getConfig().itemVisualScale
+  const iconScale = getDebugCfg('transferToBackpackIconScale')
+  const morphStart = Math.max(0.01, Math.min(0.99, getDebugCfg('transferToBackpackMorphStartPct')))
+  const holdMs = getDebugCfg('transferToBackpackHoldMs')
+  const startAt = Date.now()
+
+  const nodes = seeds.map((seed) => {
+    const wrap = new Container()
+    wrap.eventMode = 'none'
+    const icon = new Sprite(Texture.WHITE)
+    const chip = new Graphics()
+    const chipSize = MINI_CELL - 2
+    chip.roundRect(-chipSize / 2, -chipSize / 2, chipSize, chipSize, 4)
+    chip.fill({ color: 0xffcc44, alpha: 0.95 })
+    chip.stroke({ color: 0x665022, width: 1, alpha: 0.7 })
+    chip.alpha = 0
+
+    const sizeCols = seed.size === '1x1' ? 1 : seed.size === '2x1' ? 2 : 3
+    const baseW = Math.max(10, sizeCols * CELL_SIZE * visualScale * iconScale)
+    const baseH = Math.max(10, CELL_SIZE * 2 * visualScale * iconScale)
+    icon.width = baseW
+    icon.height = baseH
+    icon.anchor.set(0.5)
+    icon.alpha = 0
+    wrap.addChild(icon)
+    wrap.addChild(chip)
+
+    const from = stage.toLocal(seed.fromGlobal)
+    const toGlobal = miniCon.toGlobal({
+      x: seed.toCol * MINI_CELL + MINI_CELL / 2,
+      y: seed.toRow * MINI_CELL + MINI_CELL / 2,
+    })
+    const to = stage.toLocal(toGlobal)
+    const endScale = Math.min(1, (MINI_CELL - 4) / Math.max(baseW, baseH))
+
+    wrap.x = from.x
+    wrap.y = from.y
+    wrap.scale.set(1)
+    layer.addChild(wrap)
+
+    Assets.load<Texture>(getItemIconUrl(seed.defId))
+      .then((tex) => {
+        icon.texture = tex
+        icon.alpha = 1
+      })
+      .catch((err) => {
+        icon.alpha = 0
+        console.warn('[ShopScene] 背包转移动画图标加载失败', seed.defId, err)
+      })
+
+    return { wrap, icon, chip, from, to, endScale }
+  })
+
+  const tick = () => {
+    const tRaw = (Date.now() - startAt) / durationMs
+    const t = Math.max(0, Math.min(1, tRaw))
+    const ease = 1 - Math.pow(1 - t, 3)
+    const swapT = Math.max(0, Math.min(1, (t - morphStart) / (1 - morphStart)))
+
+    for (const n of nodes) {
+      n.wrap.x = n.from.x + (n.to.x - n.from.x) * ease
+      n.wrap.y = n.from.y + (n.to.y - n.from.y) * ease - Math.sin(Math.PI * t) * arcY
+      const s = 1 + (n.endScale - 1) * ease
+      n.wrap.scale.set(s)
+      n.icon.alpha = 1 - swapT
+      n.chip.alpha = swapT
+    }
+
+    if (t >= 1) {
+      Ticker.shared.remove(tick)
+      const holdStart = Date.now()
+      const holdTick = () => {
+        const p = Math.max(0, Math.min(1, (Date.now() - holdStart) / Math.max(1, holdMs)))
+        for (const n of nodes) n.chip.alpha = 1 - p
+        if (p >= 1) {
+          Ticker.shared.remove(holdTick)
+          if (layer.parent) layer.parent.removeChild(layer)
+          layer.destroy({ children: true })
+        }
+      }
+      Ticker.shared.add(holdTick)
+    }
+  }
+
+  Ticker.shared.add(tick)
 }
 
 function compactAutoPackCache(): void {
@@ -1355,6 +1487,27 @@ function applyBackpackPlanWithTransferred(plan: PackPlacement[], transferredIds:
   if (!backpackSystem || !backpackView || !battleSystem || !battleView) return
   clearAutoPackCache()
 
+  const transferAnimSeeds: BackpackTransferAnimSeed[] = []
+  for (const id of transferredIds) {
+    const node = battleView.getNode(id)
+    const placed = battleSystem.getItem(id)
+    const target = plan.find((p) => p.instanceId === id)
+    if (!node || !placed || !target) continue
+    const w = placed.size === '1x1' ? CELL_SIZE : placed.size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
+    const h = CELL_HEIGHT
+    const fromGlobal = battleView.toGlobal({
+      x: node.container.x + w / 2,
+      y: node.container.y + h / 2,
+    })
+    transferAnimSeeds.push({
+      defId: placed.defId,
+      size: placed.size,
+      fromGlobal,
+      toCol: target.col,
+      toRow: target.row,
+    })
+  }
+
   // 先把转移来源从战斗区移除
   for (const id of transferredIds) {
     battleSystem.remove(id)
@@ -1383,6 +1536,7 @@ function applyBackpackPlanWithTransferred(plan: PackPlacement[], transferredIds:
 
   drag?.refreshZone(backpackView)
   drag?.refreshZone(battleView)
+  playBackpackTransferMiniAnim(transferAnimSeeds)
 }
 
 function _isOverSellBtn(gx: number, gy: number): boolean {
@@ -1453,8 +1607,6 @@ function startShopDrag(
   const slot = shopManager.pool[slotIndex]
   if (!slot || slot.purchased || !shopManager.canBuy(slot)) return
 
-  const visScale = getConfig().itemVisualScale
-
   const size  = normalizeSize(slot.item.size)
   const iconW = size === '1x1' ? CELL_SIZE : size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
   const iconH = CELL_SIZE * 2
@@ -1474,7 +1626,7 @@ function startShopDrag(
     .catch((err) => { console.warn('[ShopScene] 拖拽浮层图标加载失败', slot.item.id, err) })
 
   const offsetY = getDebugCfg('dragYOffset')
-  const s = visScale
+  const s = 1
   floater.scale.set(s)
   const p = stage.toLocal(e.global)
   floater.x = p.x - (iconW * s) / 2
@@ -1507,8 +1659,7 @@ function onShopDragMove(e: FederatedPointerEvent): void {
 
   const dragSlot = shopManager?.pool[shopDragSlotIdx]
 
-  const visScale = getConfig().itemVisualScale
-  const s = visScale
+  const s = 1
 
   const iconW   = shopDragSize === '1x1' ? CELL_SIZE : shopDragSize === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
   const iconH   = CELL_SIZE * 2
@@ -1520,11 +1671,16 @@ function onShopDragMove(e: FederatedPointerEvent): void {
   shopDragFloater.y = p.y + offsetY - (iconH * s) / 2
 
   const gx = e.globalX, gy = e.globalY
-  const synthTarget = dragSlot
+  const battleCell = battleView?.pixelToCellForItem(gx, gy, shopDragSize, 0)
+  let synthTarget = dragSlot
     ? findSynthesisTargetAtPointer(dragSlot.item.id, dragSlot.tier, gx, gy, shopDragSize)
     : null
 
   if (synthTarget) {
+    if (dragSlot && sellPopup) {
+      const toTier = nextTier(dragSlot.tier)
+      if (toTier) sellPopup.showUpgradePreview(dragSlot.item, dragSlot.price, dragSlot.tier, toTier, 'buy')
+    }
     battleView?.clearHighlight()
     backpackView?.clearHighlight()
     if (synthTarget.zone === 'battle' && battleSystem && battleView) {
@@ -1541,7 +1697,10 @@ function onShopDragMove(e: FederatedPointerEvent): void {
     return
   }
 
-  const battleCell = battleView?.pixelToCellForItem(gx, gy, shopDragSize, 0)
+  if (dragSlot && sellPopup) {
+    sellPopup.show(dragSlot.item, dragSlot.price, 'buy', dragSlot.tier)
+  }
+
   if (battleCell && battleSystem) {
     const finalRow = shopDragSize !== '1x1' ? 0 : battleCell.row
     let canDirect = canPlaceInVisibleCols(battleSystem, battleView!, battleCell.col, finalRow, shopDragSize)
@@ -1622,7 +1781,7 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
 
   const gx = e.globalX, gy = e.globalY
   const size = shopDragSize
-  const synthTarget = findSynthesisTargetAtPointer(slot.item.id, slot.tier, gx, gy, size)
+  let synthTarget = findSynthesisTargetAtPointer(slot.item.id, slot.tier, gx, gy, size)
   const battleCell = battleView?.pixelToCellForItem(gx, gy, size, 0)
   const bpCell = backpackView?.visible ? backpackView.pixelToCellForItem(gx, gy, size, 0) : null
   const overBattleArea = isPointInZoneArea(battleView, gx, gy)
@@ -2324,6 +2483,10 @@ export const ShopScene: Scene = {
     offDebugCfg = onDebugCfgChange((key) => {
       if (
         key === 'shopAreaX' || key === 'shopAreaY'
+        || key === 'shopItemScale'
+        || key === 'battleItemScale'
+        || key === 'battleItemScaleBackpackOpen'
+        || key === 'enemyAreaScale'
         || key === 'battleZoneX' || key === 'battleZoneY'
         || key === 'backpackZoneX' || key === 'backpackZoneY'
         || key === 'backpackBtnX' || key === 'backpackBtnY'
@@ -2349,12 +2512,19 @@ export const ShopScene: Scene = {
         || key === 'shopItemNameFontSize'
         || key === 'shopItemPriceFontSize'
         || key === 'shopItemBoughtFontSize'
+        || key === 'itemStatBadgeFontSize'
+        || key === 'itemStatBadgeOffsetY'
         || key === 'itemInfoNameFontSize'
         || key === 'itemInfoTierFontSize'
         || key === 'itemInfoPriceFontSize'
         || key === 'itemInfoPriceCornerFontSize'
         || key === 'itemInfoCooldownFontSize'
         || key === 'itemInfoDescFontSize'
+        || key === 'battleOrbColorHp'
+        || key === 'battleColorShield'
+        || key === 'battleColorBurn'
+        || key === 'battleColorPoison'
+        || key === 'battleColorRegen'
       ) {
         applyLayoutFromDebug()
       }

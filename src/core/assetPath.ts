@@ -1,4 +1,4 @@
-export function getItemIconUrl(defId: string): string {
+function getItemIconBasePath(): string {
   const protocol = typeof window !== 'undefined' ? window.location.protocol : ''
   let base = '/resource'
   if (protocol === 'app:') {
@@ -8,7 +8,30 @@ export function getItemIconUrl(defId: string): string {
     const path = typeof window !== 'undefined' ? window.location.pathname : ''
     base = path.includes('/dist-ios/') ? '../resource' : './resource'
   }
-  // 统一使用 PNG：新资源为 PNG，且 iOS WKWebView 对 WEBP 兼容性不稳定
-  const ext = 'png'
-  return `${base}/itemicon/vanessa/${defId}.${ext}`
+  return `${base}/itemicon/vanessa`
+}
+
+function getResourceBasePath(): string {
+  const protocol = typeof window !== 'undefined' ? window.location.protocol : ''
+  let base = '/resource'
+  if (protocol === 'app:') {
+    base = 'app://dist-ios/resource'
+  }
+  if (protocol === 'file:') {
+    const path = typeof window !== 'undefined' ? window.location.pathname : ''
+    base = path.includes('/dist-ios/') ? '../resource' : './resource'
+  }
+  return base
+}
+
+export function getItemIconUrl(defId: string): string {
+  return `${getItemIconBasePath()}/${defId}.png`
+}
+
+export function getItemIconUrlByName(fileStem: string): string {
+  return `${getItemIconBasePath()}/${fileStem}.png`
+}
+
+export function getSceneImageUrl(fileName: string): string {
+  return `${getResourceBasePath()}/scene/${fileName}`
 }
