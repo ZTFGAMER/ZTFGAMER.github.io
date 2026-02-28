@@ -7,6 +7,21 @@
 
 ## 本次对话追加（2026-02-28，阶段3-P1最小切片开发中）
 
+### 本次对话追加（2026-02-28，GHE 上传 + TestFlight 发包）
+
+- GHE：已完成代码上传。
+  - 提交1：`b38a58c` `feat: advance stage3 combat effects and battle presentation`
+  - 提交2：`3909310` `chore: bump iOS build number to 4`
+  - 远端分支：`origin/main`
+- iOS 打包：
+  - 首次归档因签名缺少 Team 失败；改用 `IOS_DEVELOPMENT_TEAM=6P57AJV77Q ./ios/build.sh archive` 后归档成功。
+  - `xcodebuild -exportArchive` 导出 IPA 成功：`ios/build/export-testflight/BigBazzar.ipa`。
+- TestFlight 上传：
+  - `xcrun altool --upload-app` 上传成功。
+  - Delivery UUID：`ee4d86b7-f1b7-42bf-84cc-f10482d24e9d`
+  - 返回：`UPLOAD SUCCEEDED with no errors`。
+- 备注：`ios/packaging.config.local.json` 含本地 API 配置，未提交到仓库。
+
 ### 本次对话追加（2026-02-28，阶段3-P1 技能语义补齐第3批）
 
 - `src/combat/CombatEngine.ts`：继续补齐技能文案语义，新增以下战斗内规则：
