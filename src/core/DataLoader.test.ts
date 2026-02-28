@@ -63,11 +63,10 @@ describe('DataLoader — vanessa_items.json', () => {
   })
 
   it('getItemsByHero("Vanessa") 筛选出 Vanessa 专属物品', () => {
+    const all = getAllItems()
+    const expected = all.filter(item => item.heroes.toLowerCase().includes('vanessa'))
     const items = getItemsByHero('Vanessa')
-    expect(items.length).toBeGreaterThan(0)
-    items.forEach(item => {
-      expect(item.heroes.toLowerCase()).toContain('vanessa')
-    })
+    expect(items).toEqual(expected)
   })
 
   it('包含三种尺寸物品', () => {

@@ -27,19 +27,32 @@ echo "[iOS] Step 1.6/4 转换 iOS 图标资源为 PNG（规避部分 WEBP 解码
 python3 - <<'PY'
 from pathlib import Path
 from PIL import Image
+import shutil
 
 src_dir = Path('resource/itemicon/vanessa')
 dst_dir = Path('dist-ios/resource/itemicon/vanessa')
 dst_dir.mkdir(parents=True, exist_ok=True)
 
 count = 0
-for p in src_dir.glob('*.webp'):
-    out = dst_dir / (p.stem + '.png')
-    with Image.open(p) as im:
-        im.convert('RGBA').save(out, format='PNG')
+
+# 1) 直接复制 PNG（新资源默认 PNG）
+for p in src_dir.glob('*.png'):
+    out = dst_dir / p.name
+    shutil.copy2(p, out)
     count += 1
 
-print(f'converted {count} icons to PNG')
+# 2) 兼容遗留 WEBP：转换为 PNG
+converted = 0
+for p in src_dir.glob('*.webp'):
+    out = dst_dir / (p.stem + '.png')
+    # 若同名 png 已存在（优先 png），则跳过
+    if out.exists():
+        continue
+    with Image.open(p) as im:
+        im.convert('RGBA').save(out, format='PNG')
+    converted += 1
+
+print(f'copied {count} png icons, converted {converted} webp icons to PNG')
 PY
 
 echo "[iOS] Step 2/4 生成 Xcode 工程"

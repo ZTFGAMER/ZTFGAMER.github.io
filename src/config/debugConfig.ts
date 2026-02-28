@@ -12,6 +12,19 @@ import projectDebugDefaults from '../../data/debug_defaults.json'
 const STORAGE_PREFIX = 'bigbazzar_cfg_'
 const BC_NAME        = 'bigbazzar_debug'
 
+function normalizeConfigNumber(key: string, value: number, def?: ConfigDef): number {
+  const d = def ?? CONFIG_DEFS[key]
+  let v = Number.isFinite(value) ? value : (d?.defaultValue ?? 0)
+  if (d) v = Math.max(d.min, Math.min(d.max, v))
+
+  // 约定：所有字号统一为 4 的倍数
+  if (key.endsWith('FontSize')) {
+    v = Math.round(v / 4) * 4
+    if (d) v = Math.max(d.min, Math.min(d.max, v))
+  }
+  return v
+}
+
 // ---- 参数定义 ----
 
 export interface ConfigDef {
@@ -184,6 +197,24 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 20,
     min:  10,
     max:  56,
+    step: 1,
+    unit: 'px',
+  },
+  battleTextFontSizeDamage: {
+    labelCn:      '普通伤害跳字字号',
+    description:  '战斗中普通伤害/状态伤害跳字字体大小',
+    defaultValue: 24,
+    min:  10,
+    max:  80,
+    step: 1,
+    unit: 'px',
+  },
+  battleTextFontSizeCrit: {
+    labelCn:      '暴击伤害跳字字号',
+    description:  '战斗中暴击伤害跳字字体大小',
+    defaultValue: 32,
+    min:  10,
+    max:  96,
     step: 1,
     unit: 'px',
   },
@@ -466,6 +497,231 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     step: 1,
     unit: 'px',
   },
+  tierColorBronze: {
+    labelCn:      '品质色-青铜',
+    description:  '青铜品质边框颜色（16进制颜色）',
+    defaultValue: 0x6e4b35,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  tierColorSilver: {
+    labelCn:      '品质色-白银',
+    description:  '白银品质边框颜色（16进制颜色）',
+    defaultValue: 0xe2e8f0,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  tierColorGold: {
+    labelCn:      '品质色-黄金',
+    description:  '黄金品质边框颜色（16进制颜色）',
+    defaultValue: 0xfacc15,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  tierColorDiamond: {
+    labelCn:      '品质色-钻石',
+    description:  '钻石品质边框颜色（16进制颜色）',
+    defaultValue: 0x22d3ee,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleColorHp: {
+    labelCn:      '战斗色-生命值',
+    description:  '战斗中生命值伤害相关统一颜色（跳字/投射）',
+    defaultValue: 0xef4444,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleColorHpBar: {
+    labelCn:      '战斗色-生命值血条',
+    description:  '战斗中生命值血条填充颜色',
+    defaultValue: 0xef4444,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleColorHpText: {
+    labelCn:      '战斗色-生命值文字',
+    description:  '战斗中生命值文本颜色（如 120/300 中的血量数字）',
+    defaultValue: 0xffffff,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleColorShield: {
+    labelCn:      '战斗色-护盾',
+    description:  '战斗中护盾相关统一颜色（护盾条/跳字/投射）',
+    defaultValue: 0x3b82f6,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleColorBurn: {
+    labelCn:      '战斗色-灼烧',
+    description:  '战斗中灼烧相关统一颜色',
+    defaultValue: 0xf97316,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleColorPoison: {
+    labelCn:      '战斗色-中毒',
+    description:  '战斗中中毒相关统一颜色',
+    defaultValue: 0xa855f7,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleColorRegen: {
+    labelCn:      '战斗色-回复',
+    description:  '战斗中治疗/回复相关统一颜色',
+    defaultValue: 0x22c55e,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleOrbColorHp: {
+    labelCn:      '小球色-生命值伤害',
+    description:  '战斗中生命值伤害飞出小球颜色',
+    defaultValue: 0xef4444,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleOrbColorShield: {
+    labelCn:      '小球色-护盾',
+    description:  '战斗中护盾飞出小球颜色',
+    defaultValue: 0x3b82f6,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleOrbColorBurn: {
+    labelCn:      '小球色-灼烧',
+    description:  '战斗中灼烧飞出小球颜色',
+    defaultValue: 0xf97316,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleOrbColorPoison: {
+    labelCn:      '小球色-中毒',
+    description:  '战斗中中毒飞出小球颜色',
+    defaultValue: 0xa855f7,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleOrbColorRegen: {
+    labelCn:      '小球色-回复',
+    description:  '战斗中治疗/回复飞出小球颜色',
+    defaultValue: 0x22c55e,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleOrbColorFreeze: {
+    labelCn:      '小球色-冻结',
+    description:  '战斗中冻结飞出小球颜色',
+    defaultValue: 0x8ad8ff,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleOrbColorSlow: {
+    labelCn:      '小球色-减速',
+    description:  '战斗中减速飞出小球颜色',
+    defaultValue: 0x7aa7ff,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleOrbColorHaste: {
+    labelCn:      '小球色-加速',
+    description:  '战斗中加速飞出小球颜色',
+    defaultValue: 0xffea4d,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleTextColorDamage: {
+    labelCn:      '跳字色-普通伤害',
+    description:  '战斗中普通攻击伤害跳字颜色',
+    defaultValue: 0xef4444,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleTextColorCrit: {
+    labelCn:      '跳字色-暴击伤害',
+    description:  '战斗中暴击伤害跳字颜色',
+    defaultValue: 0xffc94d,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleTextColorShield: {
+    labelCn:      '跳字色-护盾',
+    description:  '战斗中护盾跳字颜色',
+    defaultValue: 0x3b82f6,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleTextColorBurn: {
+    labelCn:      '跳字色-灼烧',
+    description:  '战斗中灼烧伤害跳字颜色',
+    defaultValue: 0xf97316,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleTextColorPoison: {
+    labelCn:      '跳字色-中毒',
+    description:  '战斗中中毒伤害跳字颜色',
+    defaultValue: 0xa855f7,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
+  battleTextColorRegen: {
+    labelCn:      '跳字色-回复',
+    description:  '战斗中治疗/回复跳字颜色',
+    defaultValue: 0x22c55e,
+    min:  0x000000,
+    max:  0xffffff,
+    step: 1,
+    unit: 'hex',
+  },
   shopAreaBgWidth: {
     labelCn:      '商店背景宽度',
     description:  '商店区域纯色背景宽度',
@@ -544,7 +800,7 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 22,
     min:  10,
     max:  48,
-    step: 1,
+    step: 4,
     unit: 'px',
   },
   shopButtonLabelFontSize: {
@@ -553,7 +809,7 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 22,
     min:  10,
     max:  48,
-    step: 1,
+    step: 4,
     unit: 'px',
   },
   phaseButtonLabelFontSize: {
@@ -562,7 +818,16 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 22,
     min:  10,
     max:  48,
-    step: 1,
+    step: 4,
+    unit: 'px',
+  },
+  battleBackButtonLabelFontSize: {
+    labelCn:      '回到商店按钮字号',
+    description:  '战斗结算页“回到商店”按钮文字大小',
+    defaultValue: 30,
+    min:  10,
+    max:  64,
+    step: 4,
     unit: 'px',
   },
   sellButtonSubPriceFontSize: {
@@ -571,7 +836,7 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 16,
     min:  10,
     max:  40,
-    step: 1,
+    step: 4,
     unit: 'px',
   },
   refreshCostFontSize: {
@@ -580,7 +845,7 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 18,
     min:  10,
     max:  40,
-    step: 1,
+    step: 4,
     unit: 'px',
   },
   goldFontSize: {
@@ -589,7 +854,7 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 20,
     min:  10,
     max:  48,
-    step: 1,
+    step: 4,
     unit: 'px',
   },
   dayDebugArrowFontSize: {
@@ -598,7 +863,7 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 22,
     min:  10,
     max:  48,
-    step: 1,
+    step: 4,
     unit: 'px',
   },
   dayDebugLabelFontSize: {
@@ -607,7 +872,7 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 18,
     min:  10,
     max:  48,
-    step: 1,
+    step: 4,
     unit: 'px',
   },
   shopItemNameFontSize: {
@@ -616,7 +881,7 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 16,
     min:  10,
     max:  40,
-    step: 1,
+    step: 4,
     unit: 'px',
   },
   shopItemPriceFontSize: {
@@ -625,7 +890,7 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 15,
     min:  10,
     max:  40,
-    step: 1,
+    step: 4,
     unit: 'px',
   },
   shopItemBoughtFontSize: {
@@ -634,7 +899,7 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 24,
     min:  10,
     max:  56,
-    step: 1,
+    step: 4,
     unit: 'px',
   },
   itemInfoNameFontSize: {
@@ -643,7 +908,7 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 22,
     min:  10,
     max:  56,
-    step: 1,
+    step: 4,
     unit: 'px',
   },
   itemInfoTierFontSize: {
@@ -652,7 +917,7 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 14,
     min:  10,
     max:  40,
-    step: 1,
+    step: 4,
     unit: 'px',
   },
   itemInfoPriceFontSize: {
@@ -661,7 +926,25 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 20,
     min:  10,
     max:  56,
-    step: 1,
+    step: 4,
+    unit: 'px',
+  },
+  itemInfoPriceCornerFontSize: {
+    labelCn:      '信息右下价格字号',
+    description:  '上方面板右下角价格字体大小',
+    defaultValue: 20,
+    min:  10,
+    max:  56,
+    step: 4,
+    unit: 'px',
+  },
+  itemInfoCooldownFontSize: {
+    labelCn:      '信息冷却字号',
+    description:  '上方面板右上角冷却字体大小',
+    defaultValue: 20,
+    min:  10,
+    max:  56,
+    step: 4,
     unit: 'px',
   },
   itemInfoDescFontSize: {
@@ -670,7 +953,7 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 16,
     min:  10,
     max:  40,
-    step: 1,
+    step: 4,
     unit: 'px',
   },
   synthTitleFontSize: {
@@ -679,7 +962,7 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 36,
     min:  12,
     max:  80,
-    step: 1,
+    step: 4,
     unit: 'px',
   },
   synthNameFontSize: {
@@ -688,7 +971,7 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     defaultValue: 24,
     min:  12,
     max:  64,
-    step: 1,
+    step: 4,
     unit: 'px',
   },
   battleZoneExpandMs: {
@@ -761,7 +1044,7 @@ for (const [key, val] of Object.entries(_projectDefaults)) {
   const def = CONFIG_DEFS[key]
   if (!def) continue
   if (!Number.isFinite(val)) continue
-  def.defaultValue = Math.max(def.min, Math.min(def.max, Number(val)))
+  def.defaultValue = normalizeConfigNumber(key, Number(val), def)
 }
 
 // ---- 读写 ----
@@ -769,21 +1052,20 @@ for (const [key, val] of Object.entries(_projectDefaults)) {
 /** 读取配置值（localStorage > 默认值） */
 export function getConfig(key: string): number {
   const def = CONFIG_DEFS[key]
-  const clamp = (v: number): number => def ? Math.max(def.min, Math.min(def.max, v)) : v
   const raw = localStorage.getItem(STORAGE_PREFIX + key)
   if (raw !== null) {
     const n = Number(raw)
     if (!Number.isNaN(n)) {
-      return clamp(n)
+      return normalizeConfigNumber(key, n, def)
     }
   }
-  return def?.defaultValue ?? 0
+  return normalizeConfigNumber(key, def?.defaultValue ?? 0, def)
 }
 
 /** 写入配置值并广播到同源的其他页面（例如正在运行的游戏） */
 export function setConfig(key: string, value: number): void {
   const def = CONFIG_DEFS[key]
-  const v = def ? Math.max(def.min, Math.min(def.max, value)) : value
+  const v = normalizeConfigNumber(key, value, def)
   localStorage.setItem(STORAGE_PREFIX + key, String(v))
   try {
     _getChannel().postMessage({ key, value: v })

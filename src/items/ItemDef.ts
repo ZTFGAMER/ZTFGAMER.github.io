@@ -25,6 +25,7 @@ export interface ItemDef {
 
   // 基础数值（毫秒 or 百分比 or 整数）
   cooldown:    number
+  cooldown_tiers?: string
   damage:      number
   heal:        number
   shield:      number
@@ -56,11 +57,25 @@ export function normalizeSize(raw: string): ItemSizeNorm {
 /** 解析 tags 字段为标签数组 */
 export function parseTags(raw: string): string[] {
   if (!raw) return []
-  return raw.split('|').map(t => {
-    // "Aquatic / 水系" → "Aquatic"
-    const parts = t.split('/').map(p => p.trim())
-    return parts[0] ?? ''
-  }).filter(Boolean)
+
+  // 兼容两种来源：
+  // - 旧格式："Aquatic / 水系 | Weapon / 武器"
+  // - 新格式："多武器/加速"（使用 / 作为分隔）
+  const parts = raw.includes('|')
+    ? raw.split('|')
+    : raw.split('/')
+
+  return parts
+    .map(t => t.trim())
+    .map(t => {
+      // 旧格式里单段仍可能含语言分隔："Aquatic / 水系" → "Aquatic"
+      if (t.includes('/') && raw.includes('|')) {
+        const segs = t.split('/').map(p => p.trim())
+        return segs[0] ?? ''
+      }
+      return t
+    })
+    .filter(Boolean)
 }
 
 // ---- GameConfig 类型（对应 game_config.json）---- //
@@ -81,6 +96,9 @@ export interface GameConfig {
     gridZoneLabel:    number
     shopButtonLabel:  number
     phaseButtonLabel: number
+    battleBackButtonLabel: number
+    battleTextDamage: number
+    battleTextCrit: number
     sellButtonSubPrice:number
     refreshCost:      number
     gold:             number
@@ -92,6 +110,8 @@ export interface GameConfig {
     itemInfoName:     number
     itemInfoTier:     number
     itemInfoPrice:    number
+    itemInfoPriceCorner: number
+    itemInfoCooldown: number
     itemInfoDesc:     number
     synthTitle:       number
     synthName:        number

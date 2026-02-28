@@ -8,9 +8,10 @@ import { SceneManager } from '@/scenes/SceneManager'
 import { ShopScene }    from '@/scenes/ShopScene'
 import { BattleScene }  from '@/scenes/BattleScene'
 import { validateData } from '@/core/DataLoader'
-import { setApp }       from '@/core/AppContext'
+import { setApp, setStageLayout } from '@/core/AppContext'
 import { clearStoredConfig } from '@/config/debugConfig'
 import { PhaseManager, type GamePhase } from '@/core/PhaseManager'
+import { Rectangle } from 'pixi.js'
 
 // 基准分辨率（单格 128px × 5列 = 640，等比对应 390×844 物理屏）
 const BASE_W = 640
@@ -49,8 +50,8 @@ async function bootstrap(): Promise<void> {
   const app = new Application()
   await app.init({
     preference:      'webgpu',
-    width:           BASE_W,
-    height:          BASE_H,
+    width:           window.innerWidth,
+    height:          window.innerHeight,
     backgroundColor: 0x1a1a2e,
     resolution:      window.devicePixelRatio || 1,
     autoDensity:     true,
@@ -63,16 +64,45 @@ async function bootstrap(): Promise<void> {
   const container = document.getElementById('app')!
   container.appendChild(app.canvas as HTMLCanvasElement)
 
-  // 4. 竖屏适配（保持比例，居中显示）
+  // 4. 适配（Canvas 全屏，stage 等比缩放并居中）
   function resize(): void {
-    const scaleX = window.innerWidth  / BASE_W
-    const scaleY = window.innerHeight / BASE_H
+    const vw = Math.max(1, Math.floor(window.innerWidth))
+    const vh = Math.max(1, Math.floor(window.innerHeight))
+    app.renderer.resize(vw, vh)
+
+    const scaleX = vw / BASE_W
+    const scaleY = vh / BASE_H
     const scale  = Math.min(scaleX, scaleY)
-    const canvas  = app.canvas as HTMLCanvasElement
-    canvas.style.width  = `${BASE_W * scale}px`
-    canvas.style.height = `${BASE_H * scale}px`
+
+    const offsetX = (vw - BASE_W * scale) / 2
+    const offsetY = (vh - BASE_H * scale) / 2
+
+    // 将设计坐标系缩放并居中到全屏 renderer 内
+    app.stage.scale.set(scale)
+    app.stage.position.set(offsetX, offsetY)
+
+    // stage 在设计坐标系下可交互的区域：覆盖可视区域（含左右/上下留白）
+    const bleedX = offsetX / scale
+    const bleedY = offsetY / scale
+    app.stage.eventMode = 'static'
+    app.stage.hitArea = new Rectangle(-bleedX, -bleedY, BASE_W + bleedX * 2, BASE_H + bleedY * 2)
+
+    setStageLayout({
+      baseW: BASE_W,
+      baseH: BASE_H,
+      viewW: vw,
+      viewH: vh,
+      scale,
+      offsetX,
+      offsetY,
+      bleedX,
+      bleedY,
+    })
+
+    const canvas = app.canvas as HTMLCanvasElement
+    canvas.style.width = '100%'
+    canvas.style.height = '100%'
     canvas.style.display = 'block'
-    canvas.style.margin  = 'auto'
   }
   window.addEventListener('resize', resize)
   resize()

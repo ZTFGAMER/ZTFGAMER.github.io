@@ -8,11 +8,52 @@
 export type GameEvents = {
   // 战斗事件
   'battle:item_fire':    { itemId: string; sourceItemId: string; side: 'player' | 'enemy'; multicast: number };
-  'battle:take_damage':  { targetId: string; sourceItemId: string; amount: number; isCrit: boolean; type: 'normal' | 'burn' | 'poison' };
-  'battle:gain_shield':  { targetId: string; sourceItemId: string; amount: number };
-  'battle:heal':         { targetId: string; sourceItemId: string; amount: number; isRegen: boolean };
-  'battle:status_apply': { targetId: string; sourceItemId: string; status: StatusType; amount: number };
-  'battle:status_remove':{ targetId: string; status: StatusType };
+  'battle:take_damage':  {
+    targetId: string;
+    sourceItemId: string;
+    amount: number;
+    isCrit: boolean;
+    type: 'normal' | 'burn' | 'poison';
+    targetType?: 'hero' | 'item';
+    targetSide?: 'player' | 'enemy';
+    sourceType?: 'hero' | 'item' | 'system';
+    sourceSide?: 'player' | 'enemy' | 'system';
+  };
+  'battle:gain_shield':  {
+    targetId: string;
+    sourceItemId: string;
+    amount: number;
+    targetType?: 'hero' | 'item';
+    targetSide?: 'player' | 'enemy';
+    sourceType?: 'hero' | 'item' | 'system';
+    sourceSide?: 'player' | 'enemy' | 'system';
+  };
+  'battle:heal':         {
+    targetId: string;
+    sourceItemId: string;
+    amount: number;
+    isRegen: boolean;
+    targetType?: 'hero' | 'item';
+    targetSide?: 'player' | 'enemy';
+    sourceType?: 'hero' | 'item' | 'system';
+    sourceSide?: 'player' | 'enemy' | 'system';
+  };
+  'battle:status_apply': {
+    targetId: string;
+    sourceItemId: string;
+    status: StatusType;
+    amount: number;
+    targetType?: 'hero' | 'item';
+    targetSide?: 'player' | 'enemy';
+    sourceType?: 'hero' | 'item' | 'system';
+    sourceSide?: 'player' | 'enemy' | 'system';
+  };
+  'battle:status_remove':{
+    targetId: string;
+    status: StatusType;
+    targetType?: 'hero' | 'item';
+    targetSide?: 'player' | 'enemy';
+  };
   'battle:unit_die':     { unitId: string; side: 'player' | 'enemy' };
   'battle:end':          { winner: 'player' | 'enemy' | 'draw'; blameLog: string[] };
 

@@ -14,6 +14,7 @@ import { normalizeSize } from '@/items/ItemDef'
 import { CELL_SIZE, CELL_HEIGHT } from '@/grid/GridZone'
 import { getConfig as getGameConfig } from '@/core/DataLoader'
 import { getItemIconUrl } from '@/core/assetPath'
+import { getTierColor } from '@/config/colorPalette'
 
 // ---- 布局常量 ----
 const CARDS_Y  = 8
@@ -23,14 +24,6 @@ const CARD_GAP_MAX = 4
 // 统一底部区域（名称 + 价格）
 const BOTTOM_H = 72
 const SHOP_DRAG_START_PX = 8
-
-// ---- 品质颜色 ----
-const TIER_COLORS: Record<string, number> = {
-  Bronze:  0xcd7f32,
-  Silver:  0xaaaacc,
-  Gold:    0xffbf1f,
-  Diamond: 0x48e9ff,
-}
 
 export class ShopPanelView extends Container {
   private cards: Container[] = []
@@ -176,7 +169,7 @@ export class ShopPanelView extends Container {
   private _buildCard(slot: ShopSlot, slotIndex: number, gold: number): Container {
     const card      = new Container()
     const tier      = slot.tier
-    const tierColor = TIER_COLORS[tier] ?? 0xaaaaaa
+    const tierColor = getTierColor(tier)
     const canAfford = gold >= slot.price
     const bought    = slot.purchased
 

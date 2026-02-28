@@ -47,7 +47,10 @@ const LAYOUT_FONT_KEYS = [
   'gridZoneLabelFontSize',
   'shopButtonLabelFontSize',
   'phaseButtonLabelFontSize',
+  'battleBackButtonLabelFontSize',
   'battleHpTextFontSize',
+  'battleTextFontSizeDamage',
+  'battleTextFontSizeCrit',
   'sellButtonSubPriceFontSize',
   'refreshCostFontSize',
   'goldFontSize',
@@ -59,6 +62,8 @@ const LAYOUT_FONT_KEYS = [
   'itemInfoNameFontSize',
   'itemInfoTierFontSize',
   'itemInfoPriceFontSize',
+  'itemInfoPriceCornerFontSize',
+  'itemInfoCooldownFontSize',
   'itemInfoDescFontSize',
   'synthTitleFontSize',
   'synthNameFontSize',
@@ -90,7 +95,45 @@ const GAMEPLAY_KEYS = [
   'gameplayBurnDecayPct',
   'gameplayHealCleansePct',
 ]
-const DRAG_KEYS = Object.keys(CONFIG_DEFS).filter((key) => !LAYOUT_KEYS.includes(key) && !TOAST_KEYS.includes(key) && !BATTLE_VFX_KEYS.includes(key) && !GAMEPLAY_KEYS.includes(key))
+const COLOR_KEYS = [
+  'tierColorBronze',
+  'tierColorSilver',
+  'tierColorGold',
+  'tierColorDiamond',
+  'battleColorHp',
+  'battleColorHpBar',
+  'battleColorHpText',
+  'battleColorShield',
+  'battleColorBurn',
+  'battleColorPoison',
+  'battleColorRegen',
+  'battleOrbColorHp',
+  'battleOrbColorShield',
+  'battleOrbColorBurn',
+  'battleOrbColorPoison',
+  'battleOrbColorRegen',
+  'battleOrbColorFreeze',
+  'battleOrbColorSlow',
+  'battleOrbColorHaste',
+  'battleTextColorDamage',
+  'battleTextColorCrit',
+  'battleTextColorShield',
+  'battleTextColorBurn',
+  'battleTextColorPoison',
+  'battleTextColorRegen',
+]
+const DRAG_KEYS = Object.keys(CONFIG_DEFS).filter((key) => !LAYOUT_KEYS.includes(key) && !TOAST_KEYS.includes(key) && !BATTLE_VFX_KEYS.includes(key) && !GAMEPLAY_KEYS.includes(key) && !COLOR_KEYS.includes(key))
+
+function toHexColor(value: number): string {
+  const n = Math.max(0, Math.min(0xffffff, Math.round(value)))
+  return `#${n.toString(16).padStart(6, '0')}`
+}
+
+function parseHexColor(input: string, fallback: number): number {
+  const hex = input.trim().replace(/^#/, '')
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return fallback
+  return parseInt(hex, 16)
+}
 
 // ---- 渲染参数行 ----
 
@@ -225,6 +268,73 @@ function buildCheckboxRow(key: string, sectionId: string): void {
   })
 }
 
+function buildColorRow(key: string, sectionId: string): void {
+  const def = CONFIG_DEFS[key]!
+  const value = getConfig(key)
+  const section = document.getElementById(sectionId)!
+
+  const row = document.createElement('div')
+  row.className = 'param-row'
+
+  const label = document.createElement('span')
+  label.className = 'param-label'
+  label.textContent = def.labelCn
+  label.title = `${def.description}  |  默认：${toHexColor(def.defaultValue)}`
+
+  const picker = document.createElement('input')
+  picker.type = 'color'
+  picker.className = 'param-color'
+  picker.id = `color-${key}`
+  picker.value = toHexColor(value)
+
+  const valEl = document.createElement('span')
+  valEl.className = 'param-value'
+  valEl.id = `val-${key}`
+  valEl.style.width = '74px'
+  valEl.textContent = toHexColor(value)
+
+  const unitEl = document.createElement('span')
+  unitEl.className = 'param-unit'
+  unitEl.textContent = 'hex'
+
+  const hexInput = document.createElement('input')
+  hexInput.type = 'text'
+  hexInput.className = 'param-num'
+  hexInput.id = `hex-${key}`
+  hexInput.value = toHexColor(value)
+
+  const resetBtn = document.createElement('button')
+  resetBtn.className = 'btn-reset'
+  resetBtn.textContent = '↩'
+  resetBtn.title = `重置为默认值 ${toHexColor(def.defaultValue)}`
+
+  row.append(label, picker, valEl, unitEl, hexInput, resetBtn)
+  section.appendChild(row)
+
+  const applyColor = (nextValue: number): void => {
+    const clamped = Math.max(def.min, Math.min(def.max, Math.round(nextValue)))
+    const hex = toHexColor(clamped)
+    picker.value = hex
+    hexInput.value = hex
+    valEl.textContent = hex
+    setConfig(key, clamped)
+    flashSyncBadge()
+  }
+
+  picker.addEventListener('input', () => {
+    applyColor(parseHexColor(picker.value, value))
+  })
+
+  hexInput.addEventListener('change', () => {
+    applyColor(parseHexColor(hexInput.value, getConfig(key)))
+  })
+
+  resetBtn.addEventListener('click', () => {
+    resetConfig(key)
+    applyColor(CONFIG_DEFS[key]!.defaultValue)
+  })
+}
+
 // ---- 同步徽章 ----
 
 let flashTimeout: ReturnType<typeof setTimeout> | null = null
@@ -250,6 +360,10 @@ function updateUIFromExternal(key: string, value: number): void {
   const chkVal = document.getElementById(`chk-val-${key}`)
   if (chk) chk.checked = value >= 0.5
   if (chkVal) chkVal.textContent = value >= 0.5 ? '开' : '关'
+  const color = document.getElementById(`color-${key}`) as HTMLInputElement | null
+  const hex = document.getElementById(`hex-${key}`) as HTMLInputElement | null
+  if (color) color.value = toHexColor(value)
+  if (hex) hex.value = toHexColor(value)
 }
 
 function buildSnapshotJson(): string {
@@ -319,6 +433,11 @@ document.addEventListener('DOMContentLoaded', () => {
   for (const key of GAMEPLAY_KEYS) {
     if (!CONFIG_DEFS[key]) continue
     buildParamRow(key, 'params-gameplay')
+  }
+
+  for (const key of COLOR_KEYS) {
+    if (!CONFIG_DEFS[key]) continue
+    buildColorRow(key, 'params-color')
   }
 
   onConfigChange((key, value) => {

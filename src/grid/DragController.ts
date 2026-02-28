@@ -20,21 +20,13 @@ import { Container } from 'pixi.js'
 import type { FederatedPointerEvent } from 'pixi.js'
 import type { GridSystem }     from './GridSystem'
 import type { GridZone }       from './GridZone'
-import { CELL_SIZE, CELL_HEIGHT } from './GridZone'
+import { CELL_SIZE } from './GridZone'
 import type { ItemSizeNorm }   from './GridSystem'
 import { getConfig } from '@/config/debugConfig'
 import { trySqueezePlace, planUnifiedSqueeze, planCrossZoneSwap } from './SqueezeLogic'
 import type { SqueezePlan } from './VirtualGrid'
 
-const SWAP_HIGHLIGHT_COLOR = 0xffcc44
-
 // ---- 内部工具 ----
-
-function getSizePx(size: ItemSizeNorm): { pw: number; ph: number } {
-  if (size === '1x1') return { pw: CELL_SIZE,     ph: CELL_HEIGHT }
-  if (size === '2x1') return { pw: CELL_SIZE * 2, ph: CELL_HEIGHT }
-  return                     { pw: CELL_SIZE * 3, ph: CELL_HEIGHT }
-}
 
 function getSizeCellDim(size: ItemSizeNorm): { w: number; h: number } {
   if (size === '1x1') return { w: 1, h: 1 }
@@ -91,6 +83,9 @@ export class DragController {
   private pointerOffsetX  = 0
   /** 按下时手指在物品左上角坐标系内的 Y 偏移（保持点击位置不跳变） */
   private pointerOffsetY  = 0
+  /** 最新手指全局坐标（用于拖放判定，避免大型物品锚点左偏） */
+  private pointerGlobalX = 0
+  private pointerGlobalY = 0
 
   /** 拖拽开始前的物品数据（挤出提交后 DRAG 可能不在 system，用此字段兜底） */
   private dragOrigItem: { col: number; row: number; size: ItemSizeNorm; defId: string } | null = null
@@ -154,8 +149,11 @@ export class DragController {
     this.reset()
     this.activeId = instanceId
     this.homeZone = this.findZoneOf(instanceId)
-    this.startX   = e.global.x
-    this.startY   = e.global.y
+    const p = this.stage.toLocal(e.global)
+    this.startX   = p.x
+    this.startY   = p.y
+    this.pointerGlobalX = e.global.x
+    this.pointerGlobalY = e.global.y
 
     try {
       this.canvas.setPointerCapture((e.nativeEvent as PointerEvent).pointerId)
@@ -165,8 +163,11 @@ export class DragController {
   private onMove(e: FederatedPointerEvent): void {
     if (!this.enabled) return
     if (!this.activeId) return
-    const dx   = e.global.x - this.startX
-    const dy   = e.global.y - this.startY
+    const p = this.stage.toLocal(e.global)
+    this.pointerGlobalX = e.global.x
+    this.pointerGlobalY = e.global.y
+    const dx   = p.x - this.startX
+    const dy   = p.y - this.startY
     const dist = Math.sqrt(dx * dx + dy * dy)
 
     if (!this.isDragging) {
@@ -181,16 +182,16 @@ export class DragController {
 
     // 拖拽中：保持点击位置相对物品不变，仅 Y 轴追加向上偏移
     if (this.dragContainer) {
-      this.dragContainer.x = e.global.x - this.pointerOffsetX
-      this.dragContainer.y = e.global.y - this.pointerOffsetY + getConfig('dragYOffset')
+      this.dragContainer.x = p.x - this.pointerOffsetX
+      this.dragContainer.y = p.y - this.pointerOffsetY + getConfig('dragYOffset')
 
       if (this.activeId && this.dragSize) {
-        const { pw, ph } = getSizePx(this.dragSize)
-        const sx         = this.dragContainer.scale.x
-        const sy         = this.dragContainer.scale.y
-        const anchorGx   = this.dragContainer.x + (pw * sx) / 2
-        const anchorGy   = this.dragContainer.y + (ph * sy) / 2
-        this.onDragMove({ instanceId: this.activeId, anchorGx, anchorGy, size: this.dragSize })
+        this.onDragMove({
+          instanceId: this.activeId,
+          anchorGx: this.pointerGlobalX,
+          anchorGy: this.pointerGlobalY,
+          size: this.dragSize,
+        })
       }
     }
 
@@ -256,11 +257,8 @@ export class DragController {
     const item = home.system.getItem(id) ?? { instanceId: id, ...this.dragOrigItem }
 
     // 从容器实际位置推算锚点
-    const { pw, ph } = getSizePx(this.dragSize)
-    const sx         = this.dragContainer.scale.x
-    const sy         = this.dragContainer.scale.y
-    const anchorGx   = this.dragContainer.x + (pw * sx) / 2
-    const anchorGy   = this.dragContainer.y + (ph * sy) / 2
+    const anchorGx = this.pointerGlobalX
+    const anchorGy = this.pointerGlobalY
 
     const best = this.findBestDropTarget(anchorGx, anchorGy, item.size)
 
@@ -476,11 +474,8 @@ export class DragController {
     // 优先从 system 读取，fallback 到 dragOrigItem（挤出计时器提交后 DRAG 可能不在 system）
     const item = this.homeZone.system.getItem(this.activeId) ?? { instanceId: this.activeId, ...this.dragOrigItem }
 
-    const { pw, ph } = getSizePx(this.dragSize)
-    const sx         = this.dragContainer.scale.x
-    const sy         = this.dragContainer.scale.y
-    const anchorGx   = this.dragContainer.x + (pw * sx) / 2
-    const anchorGy   = this.dragContainer.y + (ph * sy) / 2
+    const anchorGx = this.pointerGlobalX
+    const anchorGy = this.pointerGlobalY
 
     const best = this.findBestDropTarget(anchorGx, anchorGy, item.size)
     if (best) {
@@ -501,21 +496,15 @@ export class DragController {
           this.dragOrigItem,
         )
         if (unified?.mode === 'cross') {
-          const ok = this.applyCrossSqueezeNow(pair, cell.col, finalRow, unified.transfers)
-          pair.view.highlightCells(cell.col, finalRow, item.size, ok, ok ? SWAP_HIGHLIGHT_COLOR : undefined)
-          return
-        }
+           const ok = this.applyCrossSqueezeNow(pair, cell.col, finalRow, unified.transfers)
+           pair.view.highlightCells(cell.col, finalRow, item.size, ok)
+           return
+         }
         if (unified?.mode === 'local' && unified.moves.length > 0) {
           const squeezable = this.updateSqueezePreview(pair, cell.col, finalRow, item.size, unified.moves)
-          pair.view.highlightCells(
-            cell.col,
-            finalRow,
-            item.size,
-            squeezable,
-            squeezable ? SWAP_HIGHLIGHT_COLOR : undefined,
-          )
-          return
-        }
+           pair.view.highlightCells(cell.col, finalRow, item.size, squeezable)
+           return
+         }
         if (!unified && pair !== this.homeZone) {
           const home = this.homeZone
           const swap = planCrossZoneSwap(
@@ -529,29 +518,19 @@ export class DragController {
             this.dragOrigItem.row,
             this.dragOrigItem.size,
           )
-          if (swap) {
-            this.clearSqueezePreview()
-            pair.view.highlightCells(cell.col, finalRow, item.size, true, SWAP_HIGHLIGHT_COLOR)
-            return
-          }
-        }
-        // 挤出预览：可行→绿色，不可行→红色
-        const squeezable = this.updateSqueezePreview(pair, cell.col, finalRow, item.size)
-        pair.view.highlightCells(
-          cell.col,
-          finalRow,
-          item.size,
-          squeezable,
-          squeezable ? SWAP_HIGHLIGHT_COLOR : undefined,
-        )
-      } else {
-        this.clearSqueezePreview()
-        const committedHere = !!(this.squeezePreview
-          && this.squeezePreview.pair === pair
-          && this.squeezePreview.col === cell.col
-          && this.squeezePreview.row === finalRow)
-        pair.view.highlightCells(cell.col, finalRow, item.size, true, committedHere ? SWAP_HIGHLIGHT_COLOR : undefined)
-      }
+           if (swap) {
+             this.clearSqueezePreview()
+             pair.view.highlightCells(cell.col, finalRow, item.size, true)
+             return
+           }
+         }
+         // 挤出预览：可行→绿色，不可行→红色
+         const squeezable = this.updateSqueezePreview(pair, cell.col, finalRow, item.size)
+         pair.view.highlightCells(cell.col, finalRow, item.size, squeezable)
+       } else {
+         this.clearSqueezePreview()
+         pair.view.highlightCells(cell.col, finalRow, item.size, true)
+       }
     } else {
       this.clearAllHighlight()
       this.clearSqueezePreview()
@@ -721,6 +700,8 @@ export class DragController {
     this.isDragging     = false
     this.pointerOffsetX = 0
     this.pointerOffsetY = 0
+    this.pointerGlobalX = 0
+    this.pointerGlobalY = 0
     this.dragOrigItem   = null
     // squeezePreview 在 tryDrop/doSnapBack 中已清理；此处兜底
     this.squeezePreview = null

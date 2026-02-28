@@ -5,13 +5,59 @@
 
 ---
 
+## 本次对话追加（2026-02-28，阶段3-P1最小切片开发中）
+
+- 已开始按主程确认方案落地 P1 最小切片：
+  - `src/combat/CombatEngine.ts`：新增 `start(snapshot, { enemyDisabled })` 测试开关；控制类状态过期时发出 `battle:status_remove`；状态周期结算改为基于 Tick 序号（按 `tickMs` 推导 burn/poison/regen 触发节拍）；同 Tick 内顺序调整为“触发队列后结算状态，再结算命中队列”。
+  - `src/core/EventBus.ts`：战斗事件 payload 补充 `targetType/targetSide/sourceType/sourceSide`（可选字段），用于明确引擎->表现层目标边界。
+  - `src/core/DataLoader.ts`：技能文案数值推导补齐 `burn/poison/regen`（与既有 damage/heal/shield/multicast 一并作为缺省值来源）。
+  - `src/combat/CombatEngine.test.ts`：新增两条回归用例——控制效果事件目标类型为 item、毒状态先 apply 后 tick 伤害。
+- 验证结果：`npm test` 通过（48/48）；`npm run build` 通过。
+- 下一步计划：继续补齐“基础伤害管线+状态优先级”剩余边界（目标选择细化、同 Tick 结算规则固化、BattleScene 事件消费对齐）。
+
+### 本次对话追加（2026-02-28，阶段3-P1最小切片继续推进）
+
+- `src/scenes/BattleScene.ts`：事件消费侧改造为优先使用事件 payload 的 `targetSide/sourceSide/targetType`，并新增 `battle:status_remove` 消费；移除事件回调中对 `engine.getBoardState()` 的反查，改为直接使用 `GridZone.getNode()` 计算物品世界坐标。
+- `src/combat/CombatEngine.test.ts`：补充 2 条规则测试（控制状态 remove 事件、同 tick 下 DOT 先于直伤结算）。
+- 回归验证：`npm test` 通过（50/50）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，战斗中物品详情交互）
+
+- 新增战斗中点按物品查看详情：敌方战斗区与我方战斗区物品均可点击打开详情面板，点击其他空白处关闭；点击其他物品会切换为该物品详情（行为与商店一致）。
+- 详情面板位置按战斗中部区域居中：以敌我血条之间区域的中线为锚点居中对齐显示。
+- `src/scenes/BattleScene.ts`：接入 `SellPopup` 作为战斗详情面板，新增选中态高亮与 stage 空白点击关闭；详情内容使用物品 `defId + tier` 显示。
+- `src/shop/SellPopup.ts`：新增 `setCenterY()` 定位模式，新增 `priceMode='none'`（战斗详情隐藏价格文案）。
+- 回归验证：`npm test` 通过（50/50）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，战斗 CD 遮罩交互与形态修正）
+
+- `src/scenes/BattleScene.ts`：战斗 CD 遮罩层改为点击穿透（`eventMode='none'`），不再阻挡物品点击查看详情。
+- `src/scenes/BattleScene.ts`：CD 遮罩绘制改为固定圆角（8）且按物品框内边距计算，不再受 `gridItemCornerRadius` 调整影响形态；同时保持遮罩位于物品框内。
+- 回归验证：`npm test` 通过（50/50）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，中/大型物品拖拽判定修正）
+
+- 问题定位：中/大型物品拖拽落点在部分场景下偏向左侧，根因是 1D 改造后仍沿用历史锚点路径，落点判定与当前拖拽容器的可视左上角不完全一致。
+- 修复：`src/grid/DragController.ts` 在 `findBestDropTarget` 中优先使用“拖拽容器左上角 -> 目标格”映射（按当前可视位置 round 到最近格），回退才走旧的 `pixelToCellForItem`。
+- 效果：中/大型物品在拖动时的高亮与落位更贴合手感，不再频繁出现“判到左侧格子”的错位感。
+- 回归验证：`npm test` 通过（50/50）；`npm run build` 通过。
+
+### 本次对话追加（2026-02-28，拖拽锚点偏移规则复核）
+
+- 按反馈修正锚点规则：中型(2x1)按手指向左偏移 0.5 格、大型(3x1)向左偏移 1 格；逻辑统一收口到 `src/grid/GridZone.ts:pixelToCellForItem`。
+- 关键修复点：偏移改为“先转本地坐标，再按格宽偏移”计算，避免缩放场景下全局坐标直接减像素带来的误差。
+- `src/grid/DragController.ts` 同步移除临时 top-left 优先分支，回归统一锚点判定链路，避免与 `pixelToCellForItem` 双轨冲突。
+- 回归验证：`npm test` 通过（50/50）；`npm run build` 通过。
+
 ## 当前状态
 
-**日期：** 2026-02-27
+**日期：** 2026-02-28
 **当前阶段：** 阶段 3 战斗引擎（可开工）
 **整体进度：** ████████████████░ 约 78%
 
 > 备注：阶段 2 与阶段 2.5 已完成；已同步主程并确认“可以进入阶段3”。
+
+**主程确认（阶段3-P1推进策略）：** 先做最小可交付切片：替换占位伤害管线 + 跑通 Poison（主角通道）+ Freeze/Slow（卡牌/物品通道）+ 事件总线到 BattleScene 表现闭环；事件 payload 必须携带明确 targetType/targetId，表现层不可反查引擎；状态结算建议“控制(卡牌)→充能→触发→DOT/HOT(500ms)→护盾/HP→死亡/胜负”；配置字段建议迭代补齐（边实现边收口到 `data/game_config.json` + debugConfig/debugPage）。NotebookLM 对话：`8f6aff9d-d2c2-4069-a61e-72b527ae405b`。
 
 ### 本轮完成要点（阶段3 P0 规则对齐）
 | 模块/主题 | 变更内容 |
@@ -70,6 +116,10 @@
 | 背包购入规则调整 | 商店拖到背包按钮不再自动合成/自动整理；仅在背包有可见空位时放入，否则提示背包已满 |
 | 验证方式 | `npm test` 全通过（45/45）；`npm run build` 通过 |
 | Notebook 同步 | 已将今日开发总结写回技术 Notebook「WebJs开发指南」，来源文件：`design/notebook_updates/2026-02-27_webjs_dev_update.md` |
+| iOS 打包发布（完成） | 将 `ios/project.yml` 的 `CURRENT_PROJECT_VERSION` 从 `2` 提升到 `3`，重新执行 archive + export + upload 全流程 |
+| TestFlight 上传（完成） | 上传成功，`Delivery UUID: b1f38807-5a5f-49a2-ac49-5eb6e52d4ed2`；altool 返回 `No errors uploading archive at 'ios/build/export-testflight/BigBazzar.ipa'.` |
+| 出口合规自动化（完成） | 在 `ios/project.yml` 增加 `ITSAppUsesNonExemptEncryption=false`，后续构建可自动声明“未使用受限加密”，避免每个 build 在 App Store Connect 手动点选 |
+| Skill 同步（完成） | `~/.claude/skills/ios-web-packager` 已同步出口合规自动化：新增配置项与执行器逻辑，默认在打包前自动写入 `ITSAppUsesNonExemptEncryption=false`（支持 project.yml/Info.plist） |
 
 ---
 
@@ -212,6 +262,7 @@
 | 2026-02-27 | 阶段3-P0 | 新增 `CombatEngine` 并接入 `BattleScene`；Shop 点击“战斗”先生成快照再切场景，先打通最小战斗闭环 |
 | 2026-02-27 | 主程Review | 阶段3-P0 首版评审通过：允许继续 P1。P0 无阻塞必改项；建议项：Tick 频率配置化、BattleScene 调试显示与正式表现层进一步解耦 |
 | 2026-02-27 | 阶段3规则 | 依据设计稿对齐 P0：固定 Tick=100ms；Draw 不扣血（仅无胜场）；burn/poison/regen 每秒环境结算后置到 P1 |
+| 2026-02-28 | 主程确认 | 阶段3-P1 先交付“基础伤害管线 + Poison + Freeze/Slow + 事件总线表现闭环”，其余状态/技能按同一流水线迭代填空；配置建议边实现边补齐并同步调参项 |
 
 ---
 
@@ -727,7 +778,185 @@
 - 将未命名剩余组件补齐为 `粘液球.png`，并按目标规则输出两步结果：
   - `~/Downloads/icon_step1_raw`（原始完整截取）
   - `~/Downloads/icon_step2_target`（等比缩放 + 透明补齐）
-- 两目录均已更新 `_manifest.json`（含 `component_index/source_bbox/match_similarity`），并刷新审图图。
+ - 两目录均已更新 `_manifest.json`（含 `component_index/source_bbox/match_similarity`），并刷新审图图。
+
+### 本次对话追加（替换物品配置与 PNG 图标）
+
+- 已将 `~/Downloads/newitem_data.json` 替换为 `data/vanessa_items.json`，并适配新 JSON schema：`src/core/DataLoader.ts` 增加 normalize，缺省字段补齐，且从技能中文里做基础数值推导（damage/multicast 等）以保持 CombatEngine 可跑通（`[待主程确认]`：数值推导规则是否需要更严格的结构化字段）。
+- 已将新图标从 `~/Downloads/newitem/*.png` 复制并按物品 id 重命名到 `resource/itemicon/vanessa/{id}.png`（共 37 张）。
+- 图标加载链路改为统一 PNG：`src/core/assetPath.ts` Web 与 iOS 均走 `.png`。
+- iOS 打包脚本兼容 PNG 源资源：`ios/build.sh` Step 1.6 先 copy `*.png`，再把遗留 `*.webp` 转为 `*.png`（若同名 png 已存在则跳过转换）。
+- 回归验证：`npm test` 全绿（46/46），`npm run build` 通过；执行 `./ios/build.sh open` 已成功生成 `dist-ios` 并完成资源拷贝/转换。
+
+### 本次对话追加（物品图标底色修正）
+
+- 修复物品图标出现绿色/蓝色底色问题：底色来自 `GridZone` 的物品框 fill（按尺寸染色）。现改为近乎透明的黑色 fill（仅为保证 stroke 稳定渲染），不再对图标产生明显染色。
+- 变更文件：`src/grid/GridZone.ts`；回归：`npm test` 通过（46/46）。
+
+### 本次对话追加（高亮圆角与区域背景）
+
+- 拖拽提示框（绿/红/黄高亮）圆角已与装备圆角一致：`GridZone.highlightCells` 从 rect 改为 roundRect 并按 `gridItemCornerRadius` 对齐。
+- 背包/战斗区格子背景改为“整块底板 + 弱分隔线”，不再按每格分别填充圆角底色（`[待设计确认]`：分隔线强度与是否完全去格线）。
+- 变更文件：`src/grid/GridZone.ts`；回归：`npm test` 通过（46/46）。
+
+### 本次对话追加（商店/战斗区背景横向延伸到屏幕外）
+
+- 渲染适配改为：Canvas 全屏（`app.renderer` resize 到 `window.innerWidth/innerHeight`），stage 按设计分辨率 `640×1384` 等比缩放并居中；留白区域仍在同一 canvas 内，可用于绘制横向延伸背景。
+- `ShopScene` 的商店/战斗区/背包区域背景改为按当前 viewport 的 `bleedX` 向左右延伸（超出 640 设计宽度），实现“背景左右出屏”。
+- 变更文件：`index.html`、`src/main.ts`、`src/core/AppContext.ts`、`src/scenes/ShopScene.ts`；回归：`npm test` 通过（46/46），`npm run build` 通过。
+
+### 本次对话追加（移除商店/背包/战斗区半透背景）
+
+- 按需求移除商店/背包/战斗区的半透明底板遮罩（保留网格区域本体与分隔线/描边）。
+- 变更文件：`src/scenes/ShopScene.ts`；回归：`npm test` 通过（46/46）。
+
+### 本次对话追加（修复拖拽浮层起始位置偏移）
+
+- 修复商店拖拽浮层从偏高位置出现：原因是 stage 做了缩放居中后，之前直接使用 `e.globalX/Y`（全屏坐标）去设置 stage 子节点坐标，导致位置被二次缩放/偏移。
+- 修复方式：商店拖拽浮层定位改为 `stage.toLocal(e.global)`；同时修正 DragController 的拖拽坐标系（内部用 stage local 计算与摆放，但对外/投放判定使用 stage.toGlobal 后的 anchor 全局坐标）。
+- 同步修复合成目标/按钮命中：`ShopScene` 的区域命中与物品命中改为使用 `toGlobal` 计算（全局坐标），不再假设 stage=640×1384。
+- 变更文件：`src/scenes/ShopScene.ts`、`src/grid/DragController.ts`；回归：`npm test` 通过（46/46）。
+
+### 本次对话追加（拖拽浮层仅显示图标）
+
+- 按需求调整“拖动中的物品”视觉：拖拽浮层不再渲染边框与背景，仅保留物品图片本体。
+- 覆盖范围：商店拖拽购买浮层（ShopScene 自绘 floater）+ 网格区拖拽（GridZone detach 的节点在拖拽期间隐藏 bg/选中/升级箭头，落下/弹回恢复）。
+- 变更文件：`src/scenes/ShopScene.ts`、`src/grid/GridZone.ts`；回归：`npm test` 通过（46/46）。
+
+### 本次对话追加（换位高亮回归绿色）
+
+- 按需求调整背包/战斗区拖拽换位高亮：可放置/可挤出的有效落点统一显示绿色；仅“合成升级目标”保留黄色高亮。
+- 变更文件：`src/grid/DragController.ts`、`src/scenes/ShopScene.ts`；回归：`npm test` 通过（46/46），`npm run build` 通过。
+
+### 本次对话追加（按钮字号统一与新增配置）
+
+- 底部按钮（背包/战斗/刷新）字号配置位置：`shopButtonLabelFontSize` 与 `phaseButtonLabelFontSize`（`data/debug_defaults.json` 默认值 + `src/config/debugConfig.ts` 定义 + `src/debug/debugPage.ts` 展示）。
+- 已将默认值统一：`data/debug_defaults.json` 中 `phaseButtonLabelFontSize` 调整为与 `shopButtonLabelFontSize` 一致（28）。
+- 新增战斗结算页“回到商店”字号配置：`battleBackButtonLabelFontSize`（同步到 `data/game_config.json:text_sizes.battleBackButtonLabel` + `src/items/ItemDef.ts` 类型 + `src/config/debugConfig.ts` + `src/debug/debugPage.ts` + `src/scenes/BattleScene.ts` 使用）。
+- 回归：`npm test` 通过（46/46），`npm run build` 通过。
+
+### 本次对话追加（字号 4 倍数约束 + Day 字号刷新复位修复）
+
+- 新增规则落地：所有 `*FontSize` 配置值统一量化为 4 的倍数（`src/config/debugConfig.ts`），并将字号类滑块 `step` 调整为 `4`。
+- 同步文本默认值为 4 倍数：`data/game_config.json` 的 `text_sizes` 已调整为 4 倍数方案（含 `battleBackButtonLabel` 等）。
+- 修复 Day 字号“刷新后重置”：根因是 Day 调试文字控件创建晚于首次 `applyLayoutFromDebug()`，导致初次进入使用了 `game_config` 默认字号；现已在创建 Day 控件后追加 `applyTextSizesFromDebug()`，确保刷新后仍应用 Debug 配置。
+- 变更文件：`src/config/debugConfig.ts`、`data/game_config.json`、`src/scenes/ShopScene.ts`；回归：`npm test` 通过（46/46），`npm run build` 通过。
+
+### 本次对话追加（Day 文本居中修正）
+
+- 修复 Day 控件中“Day N”未居中：`layoutDayDebugControls()` 改为使用左右等宽箭头槽位布局（按左右箭头最大宽度留位），并增加垂直中线对齐。
+- 变更文件：`src/scenes/ShopScene.ts`；回归：`npm test` 通过（46/46）。
+
+### 本次对话追加（Day 文本全局居中修正）
+
+- 进一步修复“Day N”看起来仍偏移：将 Day 容器定位改为画布中心 `CANVAS_W / 2`，并把容器 `pivot.x` 锚到 Day 文本中心（非整组宽度中心），确保视觉中心严格对齐。
+- 变更文件：`src/scenes/ShopScene.ts`；回归：`npm test` 通过（48/48）。
+
+### 本次对话追加（Day 首帧左偏修正）
+
+- 修复 Day 首次进入仍偏左：根因是 Day 容器创建时仍使用旧的 `dayDebugX`（260），直到后续配置变更才会触发重排。
+- 现已在创建时直接使用画布中心 `CANVAS_W / 2`，与后续布局逻辑保持一致。
+- 变更文件：`src/scenes/ShopScene.ts`；回归：`npm test` 通过（50/50）。
+
+### 本次对话追加（品质/战斗效果颜色可配置）
+
+- 按流程先与主程/设计师 Notebook 对齐方案：确定“青铜再暗一点”并新增网页调色配置，覆盖四品质 + 战斗效果（生命值/护盾/灼烧/中毒/回复）。
+- 新增统一颜色读取模块：`src/config/colorPalette.ts`，渲染层统一通过 `getTierColor/getBattleEffectColor` 取色，避免多处硬编码。
+- 新增调参项（支持保存到 `debug_defaults.json`）：`tierColorBronze/Silver/Gold/Diamond`、`battleColorHp/Shield/Burn/Poison/Regen`（`src/config/debugConfig.ts` + `data/debug_defaults.json`）。
+- 调试页新增“颜色配置”分组与色盘输入：支持 `input[type=color]` + `#RRGGBB` 文本输入与重置（`debug.html` + `src/debug/debugPage.ts`）。
+- 渲染层接入统一颜色：`GridZone`、`ShopPanelView`、`SellPopup`、`ShopScene` 的品质边框改为可配置；`BattleScene` 的生命值/护盾/灼烧/中毒/回复相关血条/跳字/飞点改为统一可配置。
+- 回归：`npm test` 通过（50/50），`npm run build` 通过。
+
+### 本次对话追加（生命值血条色与文字色拆分）
+
+- 按需求将“生命值血条颜色”与“生命值文字颜色”拆分为独立配置项：`battleColorHpBar`、`battleColorHpText`。
+- 调试页“颜色配置”分组已新增两项，支持色盘与 Hex 文本输入。
+- 战斗渲染接入：血条填充读取 `battleColorHpBar`，生命值数字读取 `battleColorHpText`；原 `battleColorHp` 继续用于生命值伤害相关跳字/飞点。
+- 变更文件：`src/config/debugConfig.ts`、`src/config/colorPalette.ts`、`src/debug/debugPage.ts`、`data/debug_defaults.json`、`src/scenes/BattleScene.ts`。
+
+### 本次对话追加（战斗飞出小球颜色可配置）
+
+- 按需求在“颜色配置”中新增战斗飞出小球颜色项：`battleOrbColorHp/Shield/Burn/Poison/Regen/Freeze/Slow`。
+- 新增统一读取方法 `getBattleOrbColor()`（`src/config/colorPalette.ts`），并在 `BattleScene` 的伤害/护盾/回复/状态施加飞点全部接入，不再使用硬编码颜色。
+- 调试页已接入上述颜色键（色盘 + Hex 输入）；默认值写入 `data/debug_defaults.json`。
+- 变更文件：`src/config/debugConfig.ts`、`src/config/colorPalette.ts`、`src/debug/debugPage.ts`、`data/debug_defaults.json`、`src/scenes/BattleScene.ts`；回归：`npm test` 通过（50/50），`npm run build` 通过。
+
+### 本次对话追加（补齐小球色-加速配置）
+
+- 补充遗漏的“加速”飞出小球颜色配置：新增 `battleOrbColorHaste`，并接入颜色配置页。
+- 战斗状态施加飞点映射补齐：`status=haste` 时使用 `getBattleOrbColor('haste')`。
+- 变更文件：`src/config/debugConfig.ts`、`src/config/colorPalette.ts`、`src/debug/debugPage.ts`、`data/debug_defaults.json`、`src/scenes/BattleScene.ts`。
+
+### 本次对话追加（战斗跳字颜色可配置）
+
+- 修复“普通攻击伤害跳字偏白”诉求：新增 `battleTextColorDamage`，默认红色（`#EF4444`），并用于普通攻击伤害跳字。
+- 跳字颜色扩展为可配置：`battleTextColorDamage/Shield/Burn/Poison/Regen`，统一出现在“颜色配置”分组。
+- BattleScene 跳字渲染改为统一读取 `getBattleFloatTextColor()`；与小球颜色配置解耦，支持独立调色。
+- 变更文件：`src/config/debugConfig.ts`、`src/config/colorPalette.ts`、`src/debug/debugPage.ts`、`data/debug_defaults.json`、`src/scenes/BattleScene.ts`。
+
+### 本次对话追加（预留暴击跳字 + 跳字字号可配置）
+
+- 预留暴击跳字颜色：新增 `battleTextColorCrit`，并在普通伤害事件里按 `isCrit` 分流（暴击走 crit 色，普通走 damage 色）。
+- 跳字字号可配置：新增 `battleTextFontSizeDamage`、`battleTextFontSizeCrit`；普通/状态伤害跳字与暴击跳字分别读取。
+- 为满足“新建字号同步”约定：已同步到 `data/game_config.json:text_sizes`（`battleTextDamage`、`battleTextCrit`）与 `src/items/ItemDef.ts` 类型定义，并在调试页“字体大小”分组展示。
+- 变更文件：`src/config/debugConfig.ts`、`src/config/colorPalette.ts`、`src/scenes/BattleScene.ts`、`src/debug/debugPage.ts`、`data/debug_defaults.json`、`data/game_config.json`、`src/items/ItemDef.ts`；回归：`npm test` 通过（50/50），`npm run build` 通过。
+
+### 本次对话追加（跳字正负号格式）
+
+- 跳字文本格式按需求统一：伤害类显示 `-x`，增益类显示 `+x`。
+- 已接入 BattleScene：普通/灼烧/中毒伤害跳字改为 `-amount`；护盾/回复跳字改为 `+amount`。
+- 变更文件：`src/scenes/BattleScene.ts`。
+
+### 本次对话追加（护盾条与血条重叠显示）
+
+- 按需求调整战斗 HUD：护盾条改为半透明覆盖在血条上方（与血条重叠），不再绘制在血条外侧。
+- 变更文件：`src/scenes/BattleScene.ts`。
+
+### 本次对话追加（护盾条高度与血条一致）
+
+- 按需求将护盾条高度从细条改为与血条等高；仍保持半透明覆盖显示。
+- 变更文件：`src/scenes/BattleScene.ts`。
+
+### 本次对话追加（物品面板 CD 与按品质描述）
+
+- 已按主程确认方案实现：物品信息面板显示冷却，并将技能描述从“全档位串”改为“当前品质档位值”。
+- 技术实现：
+  - `SellPopup` 增加按 `available_tiers` + 当前 `tierOverride` 计算档位索引；
+  - 描述文案中数值分档（如 `10/20/30/40`、`1/1.5/2`）按当前档位选值；
+  - 冷却显示优先读取 `cooldown_tiers`（按档位取值，ms→秒），回退 `cooldown`；0 或“无”显示“冷却：无”。
+- 数据层补齐：`ItemDef` / `DataLoader` 保留 `cooldown_tiers` 字段，供 UI 显示使用。
+- 变更文件：`src/shop/SellPopup.ts`、`src/items/ItemDef.ts`、`src/core/DataLoader.ts`；回归：`npm test` 通过（50/50），`npm run build` 通过。
+
+### 本次对话追加（信息面板布局与可配置字号扩展）
+
+- 按需求完成信息面板重排：价格移动到右下角；冷却移动到右上角（无冷却则隐藏）；名称与品质间距缩小。
+- 描述改为逐行渲染：当描述有 2 行及以上时，在行与行之间绘制分隔线。
+- 新增可配置字号并接入网页“字体大小”：`itemInfoPriceCornerFontSize`（右下价格）、`itemInfoCooldownFontSize`（右上冷却）。
+- 同步配置链路：`data/game_config.json:text_sizes`、`data/debug_defaults.json`、`src/config/debugConfig.ts`、`src/debug/debugPage.ts`、`src/items/ItemDef.ts`、`src/scenes/ShopScene.ts`、`src/scenes/BattleScene.ts`、`src/shop/SellPopup.ts`。
+- 回归：`npm test` 通过（50/50），`npm run build` 通过。
+
+### 本次对话追加（冷却文字颜色调整）
+
+- 按需求将信息面板右上角“冷却”文字颜色由红色改为蓝色（`0x62a8ff`）。
+- 变更文件：`src/shop/SellPopup.ts`。
+
+### 本次对话追加（冷却秒数格式）
+
+- 按需求将冷却显示统一为 `x.x秒`（示例：`5.0秒`）。
+- 变更文件：`src/shop/SellPopup.ts`；回归：`npm test` 通过（50/50）。
+
+### 本次对话追加（信息面板结构重排：头部上下 + 内容左右）
+
+- 信息面板布局调整为：第一行展示“名称 + 品质 + 冷却（右上）”；其下展示“左侧图标 + 右侧描述/价格（右下）”的左右结构。
+- 图标按需求缩小为原显示尺寸 `2/3`，并放入左侧独立框中居中偏下显示，避免顶栏文字遮挡。
+- 冷却与头部文字同一行展示，保证第一行名称/品质/冷却稳定显示；无冷却时不显示冷却文本。
+- 变更文件：`src/shop/SellPopup.ts`；回归：`npm test` 通过（50/50），`npm run build` 通过。
+
+### 本次对话追加（左侧图标框缩小与顶对齐）
+
+- 按需求将左侧图标边框同步缩小为 `2/3`，与图标尺度一致。
+- 布局改为从左上角开始展示：左侧图标框顶对齐到面板上边距，移除左列上方空白行。
+- 变更文件：`src/shop/SellPopup.ts`；回归：`npm test` 通过（50/50）。
 
 ---
 

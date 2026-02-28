@@ -8,7 +8,7 @@
 // ============================================================
 
 import { SceneManager, type Scene } from './SceneManager'
-import { getApp }            from '@/core/AppContext'
+import { getApp } from '@/core/AppContext'
 import { getConfig, getAllItems } from '@/core/DataLoader'
 import { GridSystem }        from '@/grid/GridSystem'
 import type { ItemSizeNorm, PlacedItem } from '@/grid/GridSystem'
@@ -21,6 +21,7 @@ import { ShopManager, type ShopSlot, type TierKey } from '@/shop/ShopManager'
 import { ShopPanelView }     from '@/shop/ShopPanelView'
 import { SellPopup }         from '@/shop/SellPopup'
 import { getConfig as getDebugCfg, onConfigChange as onDebugCfgChange } from '@/config/debugConfig'
+import { getTierColor } from '@/config/colorPalette'
 import { getItemIconUrl } from '@/core/assetPath'
 import { PhaseManager } from '@/core/PhaseManager'
 import { clearBattleSnapshot, setBattleSnapshot, type BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
@@ -37,16 +38,11 @@ const BTN_RADIUS    = 52
 const PHASE_BTN_W   = BTN_RADIUS * 4
 const PHASE_BTN_H   = BTN_RADIUS * 2
 const AREA_LABEL_LEFT_X = 0
-const SWAP_HIGHLIGHT_COLOR = 0xffcc44
+const UPGRADE_HIGHLIGHT_COLOR = 0xffcc44
 
 // ---- 背包小地图 ----
 const MINI_CELL = 20
 const MINI_W    = 6 * MINI_CELL
-
-// ---- 品质颜色（商店拖拽浮层用）----
-const TIER_COLORS: Record<string, number> = {
-  Bronze: 0xcd7f32, Silver: 0xaaaacc, Gold: 0xffbf1f, Diamond: 0x48e9ff,
-}
 
 // ---- 场景级状态 ----
 let shopManager:    ShopManager    | null = null
@@ -530,13 +526,17 @@ function refreshUpgradeHints(): void {
 }
 
 function isPointInItemBounds(view: GridZone, item: PlacedItem, gx: number, gy: number): boolean {
-  const sx = view.scale.x || 1
-  const sy = view.scale.y || 1
   const w = item.size === '1x1' ? CELL_SIZE : item.size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
-  const h = CELL_SIZE * 2
-  const left = view.x + item.col * CELL_SIZE * sx
-  const top = view.y + item.row * CELL_SIZE * sy
-  return gx >= left && gx <= left + w * sx && gy >= top && gy <= top + h * sy
+  const h = CELL_HEIGHT
+  const left = item.col * CELL_SIZE
+  const top = item.row * CELL_HEIGHT
+  const a = view.toGlobal({ x: left, y: top })
+  const b = view.toGlobal({ x: left + w, y: top + h })
+  const x0 = Math.min(a.x, b.x)
+  const x1 = Math.max(a.x, b.x)
+  const y0 = Math.min(a.y, b.y)
+  const y1 = Math.max(a.y, b.y)
+  return gx >= x0 && gx <= x1 && gy >= y0 && gy <= y1
 }
 
 function getCellSize(size: ItemSizeNorm): { w: number; h: number } {
@@ -634,13 +634,13 @@ function highlightSynthesisTarget(target: SynthesisTarget): void {
   if (target.zone === 'battle' && battleSystem && battleView) {
     const item = battleSystem.getItem(target.instanceId)
     if (!item) return
-    battleView.highlightCells(item.col, item.row, item.size, true, SWAP_HIGHLIGHT_COLOR)
+    battleView.highlightCells(item.col, item.row, item.size, true, UPGRADE_HIGHLIGHT_COLOR)
     return
   }
   if (target.zone === 'backpack' && backpackSystem && backpackView?.visible) {
     const item = backpackSystem.getItem(target.instanceId)
     if (!item) return
-    backpackView.highlightCells(item.col, item.row, item.size, true, SWAP_HIGHLIGHT_COLOR)
+    backpackView.highlightCells(item.col, item.row, item.size, true, UPGRADE_HIGHLIGHT_COLOR)
   }
 }
 
@@ -656,7 +656,7 @@ async function playSynthesisAnimation(
   mask.eventMode = 'static'
   layer.addChild(mask)
 
-  const upColor = TIER_COLORS[result.toTier] ?? 0xffe88a
+  const upColor = getTierColor(result.toTier)
   const title = new Text({
     text: `合成升级  ${TIER_LABEL_CN[result.fromTier]} -> ${TIER_LABEL_CN[result.toTier]}`,
     style: {
@@ -869,9 +869,23 @@ function setDay(day: number): void {
 function layoutDayDebugControls(): void {
   if (!dayPrevBtn || !dayNextBtn || !dayDebugText) return
   const gap = Math.max(16, Math.round(dayDebugText.style.fontSize as number))
+
+  // 预留左右等宽箭头槽位，确保 Day 文本始终几何居中
+  const arrowSlotW = Math.max(dayPrevBtn.width, dayNextBtn.width)
   dayPrevBtn.x = 0
-  dayDebugText.x = dayPrevBtn.width + gap
-  dayNextBtn.x = dayDebugText.x + dayDebugText.width + gap
+  dayDebugText.x = arrowSlotW + gap
+  dayNextBtn.x = dayDebugText.x + dayDebugText.width + gap + (arrowSlotW - dayNextBtn.width)
+
+  // 垂直也对齐到同一中线
+  const maxH = Math.max(dayPrevBtn.height, dayDebugText.height, dayNextBtn.height)
+  dayPrevBtn.y = (maxH - dayPrevBtn.height) / 2
+  dayDebugText.y = (maxH - dayDebugText.height) / 2
+  dayNextBtn.y = (maxH - dayNextBtn.height) / 2
+
+  // 以 Day 文本中心作为容器 pivot，便于全局精确居中
+  if (dayDebugCon) {
+    dayDebugCon.pivot.x = dayDebugText.x + dayDebugText.width / 2
+  }
 }
 
 function applyItemInfoPanelLayout(): void {
@@ -883,7 +897,8 @@ function applyItemInfoPanelLayout(): void {
   sellPopup.setTextSizes({
     name:  getDebugCfg('itemInfoNameFontSize'),
     tier:  getDebugCfg('itemInfoTierFontSize'),
-    price: getDebugCfg('itemInfoPriceFontSize'),
+    cooldown: getDebugCfg('itemInfoCooldownFontSize'),
+    priceCorner: getDebugCfg('itemInfoPriceCornerFontSize'),
     desc:  getDebugCfg('itemInfoDescFontSize'),
   })
   const panelBottomY = getDebugCfg('shopAreaY') - getDebugCfg('itemInfoBottomGapToShop')
@@ -937,7 +952,8 @@ function applyTextSizesFromDebug(): void {
   sellPopup?.setTextSizes({
     name: getDebugCfg('itemInfoNameFontSize'),
     tier: getDebugCfg('itemInfoTierFontSize'),
-    price: getDebugCfg('itemInfoPriceFontSize'),
+    cooldown: getDebugCfg('itemInfoCooldownFontSize'),
+    priceCorner: getDebugCfg('itemInfoPriceCornerFontSize'),
     desc: getDebugCfg('itemInfoDescFontSize'),
   })
 }
@@ -990,7 +1006,7 @@ function applyLayoutFromDebug(): void {
     goldText.y = getDebugCfg('goldTextY')
   }
   if (dayDebugCon) {
-    dayDebugCon.x = getDebugCfg('dayDebugX')
+    dayDebugCon.x = CANVAS_W / 2
     dayDebugCon.y = getDebugCfg('dayDebugY')
   }
   if (miniMapCon) {
@@ -998,44 +1014,10 @@ function applyLayoutFromDebug(): void {
     miniMapCon.y = getDebugCfg('backpackBtnY') + BTN_RADIUS + 8
   }
 
-  // 商店区 / 背包区轻色背景（整块区域罩住：含标题 + 内容）
-  const bgCorner = getDebugCfg('gridItemCornerRadius') + 8
-  if (shopAreaBg && shopPanel) {
-    const b = shopPanel.getBounds()
-    const pad = 12
-    const left = Math.max(0, b.x - pad)
-    const top = Math.max(0, b.y - pad)
-    const width = Math.min(CANVAS_W - left, b.width + pad * 2)
-    const height = b.height + pad * 2
-    shopAreaBg.clear()
-    shopAreaBg.roundRect(left, top, Math.max(1, width), Math.max(1, height), bgCorner)
-    shopAreaBg.fill({ color: 0x3a456a, alpha: 0.20 })
-    shopAreaBg.visible = !showingBackpack
-  }
-  if (backpackAreaBg && backpackView) {
-    const padX = 12
-    const padY = 12
-    const left = Math.max(0, backpackView.x - padX)
-    const top = Math.max(0, backpackView.y - 42)
-    const width = Math.min(CANVAS_W - left, backpackView.activeColCount * CELL_SIZE * s + padX * 2)
-    const height = 42 + CELL_HEIGHT * s + padY
-    backpackAreaBg.clear()
-    backpackAreaBg.roundRect(left, top, Math.max(1, width), Math.max(1, height), bgCorner)
-    backpackAreaBg.fill({ color: 0x3a456a, alpha: 0.20 })
-    backpackAreaBg.visible = showingBackpack
-  }
-  if (battleAreaBg && battleView) {
-    const padX = 12
-    const padY = 12
-    const left = Math.max(0, battleView.x - padX)
-    const top = Math.max(0, battleView.y - 42)
-    const width = Math.min(CANVAS_W - left, battleView.activeColCount * CELL_SIZE * s + padX * 2)
-    const height = 42 + CELL_HEIGHT * s + padY
-    battleAreaBg.clear()
-    battleAreaBg.roundRect(left, top, Math.max(1, width), Math.max(1, height), bgCorner)
-    battleAreaBg.fill({ color: 0x3a456a, alpha: 0.20 })
-    battleAreaBg.visible = true
-  }
+  // 商店/背包/战斗区半透背景：按需求移除
+  if (shopAreaBg) { shopAreaBg.clear(); shopAreaBg.visible = false }
+  if (backpackAreaBg) { backpackAreaBg.clear(); backpackAreaBg.visible = false }
+  if (battleAreaBg) { battleAreaBg.clear(); battleAreaBg.visible = false }
 
   applyTextSizesFromDebug()
   applyItemInfoPanelLayout()
@@ -1407,7 +1389,8 @@ function _isOverSellBtn(gx: number, gy: number): boolean {
   const cx = getDebugCfg('sellBtnX')
   const cy = getDebugCfg('sellBtnY')
   const r  = BTN_RADIUS + 24
-  return (gx - cx) ** 2 + (gy - cy) ** 2 <= r * r
+  const c = getApp().stage.toGlobal({ x: cx, y: cy })
+  return (gx - c.x) ** 2 + (gy - c.y) ** 2 <= r * r
 }
 
 function startGridDragButtonFlash(stage: Container, canSell: boolean, canToBackpack: boolean): void {
@@ -1477,14 +1460,10 @@ function startShopDrag(
   const iconH = CELL_SIZE * 2
 
   const floater   = new Container()
-  const tier      = slot.tier
-  const tierColor = TIER_COLORS[tier] ?? 0x4a6fa5
 
-  const bg = new Graphics()
-  bg.roundRect(0, 0, iconW, iconH, getDebugCfg('gridItemCornerRadius'))
-  bg.fill({ color: 0x1e1e2e, alpha: 0.92 })
-  bg.stroke({ color: tierColor, width: 2.5, alpha: 0.9 })
-  floater.addChild(bg)
+  // 拖拽浮层：仅显示图片本体（不显示边框与背景）
+  floater.eventMode = 'none'
+  floater.interactiveChildren = false
 
   const sp = new Sprite(Texture.WHITE)
   sp.width = iconW - 10; sp.height = iconH - 10
@@ -1497,8 +1476,9 @@ function startShopDrag(
   const offsetY = getDebugCfg('dragYOffset')
   const s = visScale
   floater.scale.set(s)
-  floater.x = e.globalX - (iconW * s) / 2
-  floater.y = e.globalY + offsetY - (iconH * s) / 2
+  const p = stage.toLocal(e.global)
+  floater.x = p.x - (iconW * s) / 2
+  floater.y = p.y + offsetY - (iconH * s) / 2
   stage.addChild(floater)
 
   shopDragFloater   = floater
@@ -1533,9 +1513,11 @@ function onShopDragMove(e: FederatedPointerEvent): void {
   const iconW   = shopDragSize === '1x1' ? CELL_SIZE : shopDragSize === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
   const iconH   = CELL_SIZE * 2
   const offsetY = getDebugCfg('dragYOffset')
+  const stage = getApp().stage
+  const p = stage.toLocal(e.global)
   shopDragFloater.scale.set(s)
-  shopDragFloater.x = e.globalX - (iconW * s) / 2
-  shopDragFloater.y = e.globalY + offsetY - (iconH * s) / 2
+  shopDragFloater.x = p.x - (iconW * s) / 2
+  shopDragFloater.y = p.y + offsetY - (iconH * s) / 2
 
   const gx = e.globalX, gy = e.globalY
   const synthTarget = dragSlot
@@ -1548,12 +1530,12 @@ function onShopDragMove(e: FederatedPointerEvent): void {
     if (synthTarget.zone === 'battle' && battleSystem && battleView) {
       const target = battleSystem.getItem(synthTarget.instanceId)
       if (target) {
-        battleView.highlightCells(target.col, target.row, target.size, true, SWAP_HIGHLIGHT_COLOR)
+        battleView.highlightCells(target.col, target.row, target.size, true, UPGRADE_HIGHLIGHT_COLOR)
       }
     } else if (synthTarget.zone === 'backpack' && backpackSystem && backpackView?.visible) {
       const target = backpackSystem.getItem(synthTarget.instanceId)
       if (target) {
-        backpackView.highlightCells(target.col, target.row, target.size, true, SWAP_HIGHLIGHT_COLOR)
+        backpackView.highlightCells(target.col, target.row, target.size, true, UPGRADE_HIGHLIGHT_COLOR)
       }
     }
     return
@@ -1563,7 +1545,6 @@ function onShopDragMove(e: FederatedPointerEvent): void {
   if (battleCell && battleSystem) {
     const finalRow = shopDragSize !== '1x1' ? 0 : battleCell.row
     let canDirect = canPlaceInVisibleCols(battleSystem, battleView!, battleCell.col, finalRow, shopDragSize)
-    let usedSwapFlow = false
 
     if (!canDirect) {
       const unified = planUnifiedSqueeze(
@@ -1577,7 +1558,6 @@ function onShopDragMove(e: FederatedPointerEvent): void {
           : undefined,
       )
       if (unified?.mode === 'local' && unified.moves.length > 0) {
-        usedSwapFlow = true
         const squeezeMs = getDebugCfg('squeezeMs')
         for (const move of unified.moves) {
           const movedItem = battleSystem.getItem(move.instanceId)
@@ -1596,7 +1576,6 @@ function onShopDragMove(e: FederatedPointerEvent): void {
       if (blockers.length > 0) {
         const transferPlan = buildBackpackPlanForTransferred(blockers)
         canReplaceToBackpack = transferPlan !== null
-        if (canReplaceToBackpack) usedSwapFlow = true
       }
     }
 
@@ -1605,7 +1584,7 @@ function onShopDragMove(e: FederatedPointerEvent): void {
       battleCell.row,
       shopDragSize,
       canDirect || canReplaceToBackpack,
-      usedSwapFlow ? SWAP_HIGHLIGHT_COLOR : undefined,
+      undefined,
     )
   } else {
     battleView?.clearHighlight()
@@ -1813,16 +1792,21 @@ function _isOverBpBtn(gx: number, gy: number): boolean {
   const cx = getDebugCfg('backpackBtnX')
   const cy = getDebugCfg('backpackBtnY')
   const r  = BTN_RADIUS + 24
-  return (gx - cx) ** 2 + (gy - cy) ** 2 <= r * r
+  const c = getApp().stage.toGlobal({ x: cx, y: cy })
+  return (gx - c.x) ** 2 + (gy - c.y) ** 2 <= r * r
 }
 
 function isPointInZoneArea(view: GridZone | null, gx: number, gy: number): boolean {
   if (!view || !view.visible) return false
-  const sx = view.scale.x || 1
-  const sy = view.scale.y || 1
-  const w = view.activeColCount * CELL_SIZE * sx
-  const h = CELL_HEIGHT * sy
-  return gx >= view.x && gx <= view.x + w && gy >= view.y && gy <= view.y + h
+  const w = view.activeColCount * CELL_SIZE
+  const h = CELL_HEIGHT
+  const a = view.toGlobal({ x: 0, y: 0 })
+  const b = view.toGlobal({ x: w, y: h })
+  const x0 = Math.min(a.x, b.x)
+  const x1 = Math.max(a.x, b.x)
+  const y0 = Math.min(a.y, b.y)
+  const y1 = Math.max(a.y, b.y)
+  return gx >= x0 && gx <= x1 && gy >= y0 && gy <= y1
 }
 
 // ============================================================
@@ -1906,7 +1890,6 @@ export const ShopScene: Scene = {
     backpackView.y = getDebugCfg('backpackZoneY')
     backpackView.visible = false
 
-    GridZone.makeStageInteractive(stage, CANVAS_W, CANVAS_H)
     stage.addChild(battleView)
     stage.addChild(backpackView)
 
@@ -2369,6 +2352,8 @@ export const ShopScene: Scene = {
         || key === 'itemInfoNameFontSize'
         || key === 'itemInfoTierFontSize'
         || key === 'itemInfoPriceFontSize'
+        || key === 'itemInfoPriceCornerFontSize'
+        || key === 'itemInfoCooldownFontSize'
         || key === 'itemInfoDescFontSize'
       ) {
         applyLayoutFromDebug()
@@ -2389,7 +2374,7 @@ export const ShopScene: Scene = {
 
     // Debug 天数控制
     dayDebugCon = new Container()
-    dayDebugCon.x = getDebugCfg('dayDebugX')
+    dayDebugCon.x = CANVAS_W / 2
     dayDebugCon.y = getDebugCfg('dayDebugY')
 
     const prevDayBtn = new Text({ text: '◀', style: { fontSize: cfg.textSizes.dayDebugArrow, fill: 0x888888 } })
@@ -2420,6 +2405,8 @@ export const ShopScene: Scene = {
     dayPrevBtn = prevDayBtn
     dayNextBtn = nextDayBtn
     layoutDayDebugControls()
+    // Day 调试文字在此处才创建，需要再应用一次字号配置以覆盖 game_config 默认值
+    applyTextSizesFromDebug()
 
     offPhaseChange = PhaseManager.onChange((next, prev) => {
       if (next === 'COMBAT') {

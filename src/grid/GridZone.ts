@@ -18,6 +18,7 @@ import {
 import type { ItemSizeNorm, PlacedItem } from './GridSystem'
 import { getAllItems, getConfig as getGameConfig } from '@/core/DataLoader'
 import { getItemIconUrl } from '@/core/assetPath'
+import { getTierColor } from '@/config/colorPalette'
 
 export const CELL_SIZE = 128
 export const CELL_HEIGHT = CELL_SIZE * 2
@@ -37,20 +38,6 @@ const SIZE_DIMS: Record<ItemSizeNorm, [number, number]> = {
   '3x1': [3, 1],
 }
 
-// 物品尺寸对应背景色（占位色，后期换真实卡牌背景）
-const SIZE_COLOR: Record<ItemSizeNorm, number> = {
-  '1x1': 0x4a6fa5,
-  '2x1': 0x5a8a5a,
-  '3x1': 0x8a5a3a,
-}
-
-const TIER_COLORS: Record<string, number> = {
-  Bronze: 0xcd7f32,
-  Silver: 0xaaaacc,
-  Gold: 0xffbf1f,
-  Diamond: 0x48e9ff,
-}
-
 let tierByDefId: Map<string, string> | null = null
 
 function getTier(defId: string, tierOverride?: string): string {
@@ -63,10 +50,6 @@ function getTier(defId: string, tierOverride?: string): string {
     }
   }
   return tierByDefId.get(defId) ?? 'Bronze'
-}
-
-function getTierColor(tier: string): number {
-  return TIER_COLORS[tier] ?? 0xaaaaaa
 }
 
 // ---- ItemNode ----
@@ -164,16 +147,33 @@ export class GridZone extends Container {
     g.clear()
     const radius = this.cornerRadius
     const borderWidth = this.cellBorderWidth
+
+    // 背包/战斗区背景：一整块底板（不按每格单独填充）
+    const w = this._activeColCount * CELL_SIZE
+    const h = this.zoneRows * CELL_HEIGHT
     const inset = Math.max(1, Math.ceil(borderWidth / 2))
-    for (let c = 0; c < this._activeColCount; c++) {
-      for (let row = 0; row < this.zoneRows; row++) {
-        const x = c * CELL_SIZE
-        const y = row * CELL_HEIGHT
-        g.roundRect(x + inset, y + inset, CELL_SIZE - inset * 2, CELL_HEIGHT - inset * 2, Math.max(0, radius - inset))
-        g.fill({ color: 0x2a2a3e })
-        g.roundRect(x, y, CELL_SIZE, CELL_HEIGHT, radius)
-        g.stroke({ color: 0x4a4a6e, width: borderWidth })
-      }
+
+    // 底板 fill
+    g.roundRect(inset, inset, Math.max(1, w - inset * 2), Math.max(1, h - inset * 2), Math.max(0, radius - inset))
+    g.fill({ color: 0x2a2a3e })
+
+    // 外边框 stroke
+    g.roundRect(0, 0, w, h, radius)
+    g.stroke({ color: 0x4a4a6e, width: borderWidth })
+
+    // 内部格线（更弱的分隔线，非圆角）
+    const lineAlpha = 0.35
+    for (let c = 1; c < this._activeColCount; c++) {
+      const x = c * CELL_SIZE
+      g.moveTo(x, 0)
+      g.lineTo(x, h)
+      g.stroke({ color: 0x4a4a6e, width: borderWidth, alpha: lineAlpha })
+    }
+    for (let r = 1; r < this.zoneRows; r++) {
+      const y = r * CELL_HEIGHT
+      g.moveTo(0, y)
+      g.lineTo(w, y)
+      g.stroke({ color: 0x4a4a6e, width: borderWidth, alpha: lineAlpha })
     }
   }
 
@@ -229,18 +229,16 @@ export class GridZone extends Container {
     const [w] = SIZE_DIMS[size]
     const { ph } = SIZE_PX[size]
 
-    const anchorGx = globalX - ((w - 1) * CELL_SIZE) / 2
-
-    // Y：手指视觉中心 Y（含拖拽偏移）
-    const anchorGy = globalY + dragOffsetY
-
-    const local = this.toLocal({ x: anchorGx, y: anchorGy })
-    const col   = Math.floor(local.x / CELL_SIZE)
+    // 先转为本地坐标，再按宽物品向左偏移锚点：
+    // 2x1 偏 0.5 格，3x1 偏 1 格（与手感要求一致）
+    const pointerLocal = this.toLocal({ x: globalX, y: globalY + dragOffsetY })
+    const anchorLocalX = pointerLocal.x - ((w - 1) * CELL_SIZE) / 2
+    const col   = Math.floor(anchorLocalX / CELL_SIZE)
     if (col < 0 || col + w > this._activeColCount) return null
 
-    const row = Math.floor(local.y / CELL_HEIGHT)
+    const row = Math.floor(pointerLocal.y / CELL_HEIGHT)
     if (row < 0 || row >= this.zoneRows) return null
-    if (local.y < -(ph / 2) || local.y > CELL_HEIGHT * this.zoneRows + ph / 2) return null
+    if (pointerLocal.y < -(ph / 2) || pointerLocal.y > CELL_HEIGHT * this.zoneRows + ph / 2) return null
     return { col, row }
   }
 
@@ -390,6 +388,11 @@ export class GridZone extends Container {
 
     this.dragNode = node
 
+    // 拖拽时仅显示图片本体（隐藏边框/底板/选中/升级箭头）
+    node.bg.visible = false
+    node.selectedG.visible = false
+    node.upgradeArrow.visible = false
+
     // 拖拽视觉：放大 + 半透明
     node.container.scale.set(1.08)
     node.container.alpha = 0.88
@@ -419,6 +422,12 @@ export class GridZone extends Container {
     container.y = node.origY
     container.scale.set(1)
     container.alpha = 1
+
+    // 恢复静态展示
+    node.bg.visible = true
+    node.selectedG.visible = this.selectedId === instanceId
+    node.upgradeArrow.visible = this.upgradeHintIds.has(instanceId)
+
     this.itemLayer.addChild(container)
     this.dragNode = null
   }
@@ -434,6 +443,12 @@ export class GridZone extends Container {
     container.y    = y
     container.scale.set(1)
     container.alpha = 1
+
+    // 恢复静态展示
+    node.bg.visible = true
+    node.selectedG.visible = this.selectedId === instanceId
+    node.upgradeArrow.visible = this.upgradeHintIds.has(instanceId)
+
     node.origX     = x
     node.origY     = y
     node.col       = col
@@ -458,9 +473,14 @@ export class GridZone extends Container {
     const { x, y }   = this.cellToLocal(col, row)
     const color = colorOverride ?? (valid ? 0x00ff88 : 0xff3333)
     this.hlOverlay.clear()
-    this.hlOverlay.rect(x + 2, y + 2, pw - 4, ph - 4)
+
+    // 高亮圆角与装备一致
+    const rFill = Math.max(0, this.cornerRadius - 2)
+    const rStroke = Math.max(0, this.cornerRadius - 1)
+
+    this.hlOverlay.roundRect(x + 2, y + 2, pw - 4, ph - 4, rFill)
     this.hlOverlay.fill({ color, alpha: 0.28 })
-    this.hlOverlay.rect(x + 1, y + 1, pw - 2, ph - 2)
+    this.hlOverlay.roundRect(x + 1, y + 1, pw - 2, ph - 2, rStroke)
     this.hlOverlay.stroke({ color, width: 2, alpha: 0.7 })
   }
 
@@ -573,7 +593,8 @@ export class GridZone extends Container {
 
     node.bg.clear()
     node.bg.roundRect(frameInset, frameInset, frameW, frameH, frameRadius)
-    node.bg.fill({ color: SIZE_COLOR[node.size], alpha: 0.85 })
+    // 物品底色不应染色图标；保留极低透明 fill 以确保 stroke 稳定渲染
+    node.bg.fill({ color: 0x000000, alpha: 0.001 })
     node.bg.stroke({
       color: tierColor,
       width: this.tierBorderWidth,

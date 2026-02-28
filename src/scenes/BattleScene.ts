@@ -5,10 +5,12 @@ import { SceneManager } from '@/scenes/SceneManager'
 import { getApp } from '@/core/AppContext'
 import { Container, Graphics, Text } from 'pixi.js'
 import { GridZone, CELL_SIZE, CELL_HEIGHT } from '@/grid/GridZone'
-import { getConfig as getGameCfg } from '@/core/DataLoader'
+import { getAllItems, getConfig as getGameCfg } from '@/core/DataLoader'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import type { ItemSizeNorm } from '@/items/ItemDef'
 import { EventBus } from '@/core/EventBus'
+import { SellPopup } from '@/shop/SellPopup'
+import { getBattleEffectColor, getBattleFloatTextColor, getBattleOrbColor } from '@/config/colorPalette'
 
 const CANVAS_W = 640
 
@@ -30,6 +32,10 @@ let offDamageEvent: (() => void) | null = null
 let offShieldEvent: (() => void) | null = null
 let offHealEvent: (() => void) | null = null
 let offStatusApplyEvent: (() => void) | null = null
+let offStatusRemoveEvent: (() => void) | null = null
+let onStageTapHidePopup: (() => void) | null = null
+let itemInfoPopup: SellPopup | null = null
+let selectedItemId: string | null = null
 
 type TickAnim = (dtMs: number) => boolean
 const activeFx: TickAnim[] = []
@@ -42,10 +48,6 @@ type PulseState = {
   maxScale: number
 }
 const pulseStates = new Map<string, PulseState>()
-
-const COLOR_BURN = 0xffa347
-const COLOR_POISON = 0x2f8f3a
-const COLOR_HEAL = 0x7dff8c
 
 function getDayActiveCols(day: number): number {
   const slots = getGameCfg().dailyBattleSlots
@@ -74,16 +76,14 @@ function getHeroBarCenter(side: 'player' | 'enemy'): { x: number; y: number } {
 }
 
 function getItemCenterById(sourceItemId: string, side: 'player' | 'enemy'): { x: number; y: number } | null {
-  if (!engine || !enemyZone || !playerZone) return null
-  const board = engine.getBoardState()
-  const item = board.items.find((it) => it.id === sourceItemId && it.side === side)
-  if (!item) return null
+  if (!enemyZone || !playerZone) return null
   const zone = side === 'enemy' ? enemyZone : playerZone
-  const { w, h } = sizeToWH(item.size)
-  const local = zone.cellToLocal(item.col, item.row)
+  const node = zone.getNode(sourceItemId)
+  if (!node) return null
+  const { w, h } = sizeToWH(node.size)
   return {
-    x: zone.x + (local.x + (w * CELL_SIZE) / 2) * zone.scale.x,
-    y: zone.y + (local.y + (h * CELL_HEIGHT) / 2) * zone.scale.y,
+    x: zone.x + (node.container.x + (w * CELL_SIZE) / 2) * zone.scale.x,
+    y: zone.y + (node.container.y + (h * CELL_HEIGHT) / 2) * zone.scale.y,
   }
 }
 
@@ -175,12 +175,12 @@ function spawnProjectile(from: { x: number; y: number }, to: { x: number; y: num
   })
 }
 
-function spawnFloatingNumber(to: { x: number; y: number }, text: string, color: number): void {
+function spawnFloatingNumber(to: { x: number; y: number }, text: string, color: number, fontSize?: number): void {
   if (!fxLayer) return
   const t = new Text({
     text,
     style: {
-      fontSize: getDebugCfg('battleHpTextFontSize'),
+      fontSize: fontSize ?? getDebugCfg('battleHpTextFontSize'),
       fill: color,
       fontFamily: 'Arial',
       fontWeight: 'bold',
@@ -230,7 +230,7 @@ function makeBackButton(): Container {
 
   const txt = new Text({
     text: '回到商店',
-    style: { fontSize: 30, fill: 0xffcc44, fontFamily: 'Arial', fontWeight: 'bold' },
+    style: { fontSize: getDebugCfg('battleBackButtonLabelFontSize'), fill: 0xffcc44, fontFamily: 'Arial', fontWeight: 'bold' },
   })
   txt.x = 320 - txt.width / 2
   txt.y = y + (h - txt.height) / 2
@@ -292,29 +292,31 @@ function drawHeroBars(
     if (shield > 0) {
       const shieldRatio = maxHp > 0 ? Math.max(0, Math.min(1, shield / maxHp)) : 0
       const shieldW = Math.max(4, barW * shieldRatio)
-      const shieldH = Math.max(2, Math.round(barH * 0.22))
-      heroHudG!.roundRect(x, y - shieldH, shieldW, shieldH, Math.max(2, barR - 6))
-      heroHudG!.fill({ color: 0xffdc69, alpha: 0.45 })
+      // 护盾条与血条等高，半透覆盖在血条上方
+      const shieldH = barH
+      const shieldY = y
+      heroHudG!.roundRect(x, shieldY, shieldW, shieldH, Math.max(2, barR - 6))
+      heroHudG!.fill({ color: getBattleEffectColor('shield'), alpha: 0.45 })
     }
     heroHudG!.roundRect(x, y, barW, barH, barR)
     heroHudG!.stroke({ color: 0x8b94b5, width: 2, alpha: 0.95 })
   }
 
   heroHudG.clear()
-  drawOne(yEnemy, enemy.hp, enemy.maxHp, enemy.shield, 0xff6f7b)
-  drawOne(yPlayer, player.hp, player.maxHp, player.shield, 0xff6f7b)
+  drawOne(yEnemy, enemy.hp, enemy.maxHp, enemy.shield, getBattleEffectColor('hpBar'))
+  drawOne(yPlayer, player.hp, player.maxHp, player.shield, getBattleEffectColor('hpBar'))
 
-  const enemyParts: Array<{ text: string; color: number }> = [{ text: `${enemy.hp}`, color: 0xffffff }]
-  if (enemy.shield > 0) enemyParts.push({ text: `${enemy.shield}`, color: 0xffd24a })
-  if (enemy.regen > 0) enemyParts.push({ text: `${enemy.regen}`, color: COLOR_HEAL })
-  if (enemy.poison > 0) enemyParts.push({ text: `${enemy.poison}`, color: COLOR_POISON })
-  if (enemy.burn > 0) enemyParts.push({ text: `${enemy.burn}`, color: COLOR_BURN })
+  const enemyParts: Array<{ text: string; color: number }> = [{ text: `${enemy.hp}`, color: getBattleEffectColor('hpText') }]
+  if (enemy.shield > 0) enemyParts.push({ text: `${enemy.shield}`, color: getBattleEffectColor('shield') })
+  if (enemy.regen > 0) enemyParts.push({ text: `${enemy.regen}`, color: getBattleEffectColor('regen') })
+  if (enemy.poison > 0) enemyParts.push({ text: `${enemy.poison}`, color: getBattleEffectColor('poison') })
+  if (enemy.burn > 0) enemyParts.push({ text: `${enemy.burn}`, color: getBattleEffectColor('burn') })
 
-  const playerParts: Array<{ text: string; color: number }> = [{ text: `${player.hp}`, color: 0xffffff }]
-  if (player.shield > 0) playerParts.push({ text: `${player.shield}`, color: 0xffd24a })
-  if (player.regen > 0) playerParts.push({ text: `${player.regen}`, color: COLOR_HEAL })
-  if (player.poison > 0) playerParts.push({ text: `${player.poison}`, color: COLOR_POISON })
-  if (player.burn > 0) playerParts.push({ text: `${player.burn}`, color: COLOR_BURN })
+  const playerParts: Array<{ text: string; color: number }> = [{ text: `${player.hp}`, color: getBattleEffectColor('hpText') }]
+  if (player.shield > 0) playerParts.push({ text: `${player.shield}`, color: getBattleEffectColor('shield') })
+  if (player.regen > 0) playerParts.push({ text: `${player.regen}`, color: getBattleEffectColor('regen') })
+  if (player.poison > 0) playerParts.push({ text: `${player.poison}`, color: getBattleEffectColor('poison') })
+  if (player.burn > 0) playerParts.push({ text: `${player.burn}`, color: getBattleEffectColor('burn') })
 
   drawInfoText(enemyHpInfoCon, x + barW / 2, yEnemy + barH / 2, enemyParts, fontSize)
   drawInfoText(playerHpInfoCon, x + barW / 2, yPlayer + barH / 2, playerParts, fontSize)
@@ -340,7 +342,7 @@ function drawCooldownOverlay(zone: GridZone, overlay: Graphics, items: CombatBoa
     const pw = w * CELL_SIZE
     const ph = h * CELL_HEIGHT
     const pos = zone.cellToLocal(it.col, it.row)
-    const inset = 8
+    const inset = Math.max(2, getDebugCfg('tierBorderWidth') + 2)
     const fullH = Math.max(1, ph - inset * 2)
     const coverRatio = Math.max(0, Math.min(1, 1 - it.chargeRatio))
     const coverH = Math.round(fullH * coverRatio)
@@ -356,7 +358,7 @@ function drawCooldownOverlay(zone: GridZone, overlay: Graphics, items: CombatBoa
     const sy = cy + (y - cy) * scale
     const sw = wPx * scale
     const sh = coverH * scale
-    overlay.roundRect(sx, sy, sw, sh, Math.max(3, getDebugCfg('gridItemCornerRadius') - 2))
+    overlay.roundRect(sx, sy, sw, sh, 8)
     overlay.fill({ color: 0x0b1020, alpha: 0.48 })
   }
 }
@@ -378,6 +380,46 @@ function applyLayout(activeCols: number): void {
 
 function pushBattleLog(line: string): void {
   console.log(`[BattleLog] ${line}`)
+}
+
+function getBattleInfoPanelCenterY(): number {
+  const top = getDebugCfg('enemyHpBarY') + getDebugCfg('battleHpBarH') + 24
+  const bottom = getDebugCfg('playerHpBarY') - 24
+  return (top + bottom) / 2
+}
+
+function clearBattleItemSelection(): void {
+  selectedItemId = null
+  enemyZone?.setSelected(null)
+  playerZone?.setSelected(null)
+  itemInfoPopup?.hide()
+}
+
+function showBattleItemInfo(instanceId: string, side: 'player' | 'enemy'): void {
+  if (!engine || !itemInfoPopup) return
+  const board = engine.getBoardState()
+  const hit = board.items.find((it) => it.id === instanceId && it.side === side)
+  if (!hit) return
+  const item = getAllItems().find((it) => it.id === hit.defId)
+  if (!item) return
+
+  selectedItemId = instanceId
+  enemyZone?.setSelected(side === 'enemy' ? instanceId : null)
+  playerZone?.setSelected(side === 'player' ? instanceId : null)
+
+  itemInfoPopup.setWidth(getDebugCfg('itemInfoWidth'))
+  itemInfoPopup.setMinHeight(getDebugCfg('itemInfoMinH'))
+  itemInfoPopup.setSmallMinHeight(getDebugCfg('itemInfoMinHSmall'))
+  itemInfoPopup.setCornerRadius(getDebugCfg('gridItemCornerRadius'))
+  itemInfoPopup.setTextSizes({
+    name: getDebugCfg('itemInfoNameFontSize'),
+    tier: getDebugCfg('itemInfoTierFontSize'),
+    cooldown: getDebugCfg('itemInfoCooldownFontSize'),
+    priceCorner: getDebugCfg('itemInfoPriceCornerFontSize'),
+    desc: getDebugCfg('itemInfoDescFontSize'),
+  })
+  itemInfoPopup.setCenterY(getBattleInfoPanelCenterY())
+  itemInfoPopup.show(item, 0, 'none', hit.tier)
 }
 
 export const BattleScene: Scene = {
@@ -422,12 +464,19 @@ export const BattleScene: Scene = {
 
     enemyCdOverlay = new Graphics()
     playerCdOverlay = new Graphics()
+    enemyCdOverlay.eventMode = 'none'
+    playerCdOverlay.eventMode = 'none'
     enemyZone.addChild(enemyCdOverlay)
     playerZone.addChild(playerCdOverlay)
 
     fxLayer = new Container()
     fxLayer.zIndex = 60
     root.addChild(fxLayer)
+
+    itemInfoPopup = new SellPopup(CANVAS_W, 1384)
+    itemInfoPopup.zIndex = 55
+    itemInfoPopup.visible = false
+    root.addChild(itemInfoPopup)
 
     statusText = new Text({
       text: '初始化中...',
@@ -461,76 +510,118 @@ export const BattleScene: Scene = {
     await mountZoneItems(playerZone, board.items.filter((it) => it.side === 'player'))
     await mountZoneItems(enemyZone, board.items.filter((it) => it.side === 'enemy'))
 
+    enemyZone.makeItemsInteractive((id, e) => {
+      e.stopPropagation()
+      showBattleItemInfo(id, 'enemy')
+    })
+    playerZone.makeItemsInteractive((id, e) => {
+      e.stopPropagation()
+      showBattleItemInfo(id, 'player')
+    })
+
+    onStageTapHidePopup = () => {
+      clearBattleItemSelection()
+    }
+    stage.on('pointerdown', onStageTapHidePopup)
+
     offFireEvent = EventBus.on('battle:item_fire', (e) => {
       animateItemFirePulse(e.sourceItemId, e.side)
       pushBattleLog(`开火 ${e.side === 'player' ? '我方' : '敌方'} ${e.itemId} x${e.multicast}`)
     })
     offDamageEvent = EventBus.on('battle:take_damage', (e) => {
-      const side = e.targetId === 'hero_enemy' ? 'enemy' : 'player'
-      const fromSide = side === 'enemy' ? 'player' : 'enemy'
+      const side = e.targetSide ?? (e.targetId === 'hero_enemy' ? 'enemy' : 'player')
+      const fromSide = e.sourceSide === 'player' || e.sourceSide === 'enemy'
+        ? e.sourceSide
+        : (side === 'enemy' ? 'player' : 'enemy')
       const from = (e.sourceItemId === 'fatigue' || e.sourceItemId.startsWith('status_'))
         ? getHeroBarCenter(fromSide)
         : (getItemCenterById(e.sourceItemId, fromSide) ?? getHeroBarCenter(fromSide))
       const to = getHeroBarCenter(side)
-      const bulletColor = e.type === 'burn' ? COLOR_BURN : e.type === 'poison' ? COLOR_POISON : 0xff4f4f
-      const textColor = e.type === 'burn' ? COLOR_BURN : e.type === 'poison' ? COLOR_POISON : 0xff4f4f
+      const bulletColor = e.type === 'burn' ? getBattleOrbColor('burn') : e.type === 'poison' ? getBattleOrbColor('poison') : getBattleOrbColor('hp')
+      const isCritDamage = e.type === 'normal' && e.isCrit
+      const textColor = e.type === 'burn'
+        ? getBattleFloatTextColor('burn')
+        : e.type === 'poison'
+          ? getBattleFloatTextColor('poison')
+          : isCritDamage
+            ? getBattleFloatTextColor('crit')
+            : getBattleFloatTextColor('damage')
+      const textSize = isCritDamage ? getDebugCfg('battleTextFontSizeCrit') : getDebugCfg('battleTextFontSizeDamage')
       if (e.sourceItemId.startsWith('status_')) {
-        spawnFloatingNumber(to, `${e.amount}`, textColor)
+        spawnFloatingNumber(to, `-${e.amount}`, textColor, textSize)
         pushBattleLog(`结算 ${e.type} ${side === 'enemy' ? '敌方' : '我方'} ${e.amount}`)
       } else {
         spawnProjectile(from, to, bulletColor, () => {
-          if (side === 'enemy') spawnFloatingNumber(to, `${e.amount}`, textColor)
+          if (side === 'enemy') spawnFloatingNumber(to, `-${e.amount}`, textColor, textSize)
         })
         pushBattleLog(`伤害 ${side === 'enemy' ? '敌方' : '我方'} ${e.amount}`)
       }
     })
     offShieldEvent = EventBus.on('battle:gain_shield', (e) => {
-      const side = e.targetId === 'hero_enemy' ? 'enemy' : 'player'
+      const side = e.targetSide ?? (e.targetId === 'hero_enemy' ? 'enemy' : 'player')
       const from = getItemCenterById(e.sourceItemId, side) ?? getHeroBarCenter(side)
       const to = getHeroBarCenter(side)
-      spawnProjectile(from, to, 0xffd24a, () => {
-        if (side === 'enemy') spawnFloatingNumber(to, `${e.amount}`, 0xffd24a)
+      const shieldColor = getBattleFloatTextColor('shield')
+      const shieldOrbColor = getBattleOrbColor('shield')
+      spawnProjectile(from, to, shieldOrbColor, () => {
+        if (side === 'enemy') spawnFloatingNumber(to, `+${e.amount}`, shieldColor)
       })
       pushBattleLog(`护盾 ${side === 'enemy' ? '敌方' : '我方'} ${e.amount}`)
     })
     offHealEvent = EventBus.on('battle:heal', (e) => {
-      const side = e.targetId === 'hero_enemy' ? 'enemy' : 'player'
+      const side = e.targetSide ?? (e.targetId === 'hero_enemy' ? 'enemy' : 'player')
       const from = e.sourceItemId.startsWith('status_') ? getHeroBarCenter(side) : (getItemCenterById(e.sourceItemId, side) ?? getHeroBarCenter(side))
       const to = getHeroBarCenter(side)
       if (e.sourceItemId.startsWith('status_')) {
-        spawnFloatingNumber(to, `${e.amount}`, COLOR_HEAL)
+        spawnFloatingNumber(to, `+${e.amount}`, getBattleFloatTextColor('regen'))
         pushBattleLog(`回复 ${side === 'enemy' ? '敌方' : '我方'} ${e.amount}`)
       } else {
-        spawnProjectile(from, to, COLOR_HEAL, () => {
-          if (side === 'enemy') spawnFloatingNumber(to, `${e.amount}`, COLOR_HEAL)
+        const regenColor = getBattleFloatTextColor('regen')
+        const regenOrbColor = getBattleOrbColor('regen')
+        spawnProjectile(from, to, regenOrbColor, () => {
+          if (side === 'enemy') spawnFloatingNumber(to, `+${e.amount}`, regenColor)
         })
         pushBattleLog(`治疗 ${side === 'enemy' ? '敌方' : '我方'} ${e.amount}`)
       }
     })
     offStatusApplyEvent = EventBus.on('battle:status_apply', (e) => {
-      const fromResolved = getItemCenterAnySide(e.sourceItemId)
-      const targetIsHero = e.targetId === 'hero_enemy' || e.targetId === 'hero_player'
-      const targetResolved = targetIsHero ? null : getItemCenterAnySide(e.targetId)
-      const targetSide = targetIsHero
-        ? (e.targetId === 'hero_enemy' ? 'enemy' : 'player')
-        : (targetResolved?.side ?? 'enemy')
-      const from = fromResolved?.pos ?? getHeroBarCenter(targetSide === 'enemy' ? 'player' : 'enemy')
+      const fromResolved = e.sourceSide === 'player' || e.sourceSide === 'enemy'
+        ? getItemCenterById(e.sourceItemId, e.sourceSide)
+        : getItemCenterAnySide(e.sourceItemId)?.pos
+      const targetIsHero = e.targetType === 'hero' || e.targetId === 'hero_enemy' || e.targetId === 'hero_player'
+      const targetResolved = targetIsHero
+        ? null
+        : (e.targetSide === 'player' || e.targetSide === 'enemy'
+            ? getItemCenterById(e.targetId, e.targetSide)
+            : getItemCenterAnySide(e.targetId)?.pos)
+      const targetSide = e.targetSide
+        ?? (targetIsHero ? (e.targetId === 'hero_enemy' ? 'enemy' : 'player') : 'enemy')
+      const from = fromResolved ?? getHeroBarCenter(targetSide === 'enemy' ? 'player' : 'enemy')
       const to = targetIsHero
         ? getHeroBarCenter(targetSide)
-        : (targetResolved?.pos ?? getHeroBarCenter(targetSide))
+        : (targetResolved ?? getHeroBarCenter(targetSide))
       const color =
-        e.status === 'burn' ? COLOR_BURN
-          : e.status === 'poison' ? COLOR_POISON
-            : e.status === 'freeze' ? 0x8ad8ff
-              : e.status === 'slow' ? 0x7aa7ff
-                : COLOR_HEAL
+        e.status === 'burn' ? getBattleOrbColor('burn')
+          : e.status === 'poison' ? getBattleOrbColor('poison')
+            : e.status === 'freeze' ? getBattleOrbColor('freeze')
+              : e.status === 'slow' ? getBattleOrbColor('slow')
+                : e.status === 'haste' ? getBattleOrbColor('haste')
+                  : getBattleOrbColor('regen')
       spawnProjectile(from, to, color)
       pushBattleLog(`施加 ${e.status} ${targetSide === 'enemy' ? '敌方' : '我方'} +${e.amount}`)
+    })
+    offStatusRemoveEvent = EventBus.on('battle:status_remove', (e) => {
+      const side = e.targetSide ?? (e.targetId === 'hero_enemy' ? 'enemy' : 'player')
+      pushBattleLog(`移除 ${e.status} ${side === 'enemy' ? '敌方' : '我方'}`)
     })
     pushBattleLog('战斗开始')
   },
   onExit() {
     const { stage } = getApp()
+    if (onStageTapHidePopup) {
+      stage.off('pointerdown', onStageTapHidePopup)
+      onStageTapHidePopup = null
+    }
     if (root) stage.removeChild(root)
     root?.destroy({ children: true })
     root = null
@@ -550,6 +641,9 @@ export const BattleScene: Scene = {
     offShieldEvent?.(); offShieldEvent = null
     offHealEvent?.(); offHealEvent = null
     offStatusApplyEvent?.(); offStatusApplyEvent = null
+    offStatusRemoveEvent?.(); offStatusRemoveEvent = null
+    itemInfoPopup = null
+    selectedItemId = null
     activeFx.length = 0
     for (const [, st] of pulseStates) {
       st.node?.visual.scale.set(1)
@@ -587,6 +681,14 @@ export const BattleScene: Scene = {
     if (statusText) {
       const s = engine.getDebugState()
       statusText.text = `phase:${engine.getPhase()}  ticks:${s.tickIndex}  fatigue:${s.inFatigue ? 'on' : 'off'}`
+    }
+
+    if (itemInfoPopup?.visible) {
+      itemInfoPopup.setCenterY(getBattleInfoPanelCenterY())
+      if (selectedItemId) {
+        const boardItem = board.items.find((it) => it.id === selectedItemId)
+        if (!boardItem) clearBattleItemSelection()
+      }
     }
   },
 }

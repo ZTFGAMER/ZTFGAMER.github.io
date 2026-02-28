@@ -54,6 +54,10 @@ interface PendingHit {
   crit: number
 }
 
+interface CombatStartOptions {
+  enemyDisabled?: boolean
+}
+
 type ControlStatus = 'freeze' | 'slow' | 'haste'
 
 interface ControlSpec {
@@ -114,7 +118,7 @@ function parseControlSpecsFromDef(def: ItemDef, cr: ReturnType<typeof getConfig>
 
     return statusLines.map((line) => {
       const all = /所有|all/i.test(line)
-      const countMatch = line.match(/(\d+)\s*件/) ?? line.match(/(\d+)\s*(items?)/i)
+      const countMatch = line.match(/(\d+)\s*(?:件|个)/) ?? line.match(/(\d+)\s*(items?)/i)
       const secondMatch = line.match(/(\d+(?:\.\d+)?)\s*秒/) ?? line.match(/(\d+(?:\.\d+)?)\s*s(ec)?/i)
       const count = all ? 999 : Math.max(1, Number(countMatch?.[1] ?? 1))
       const sec = Math.max(0.1, Number(secondMatch?.[1] ?? (status === 'freeze' ? 1 : 1.5)))
@@ -152,9 +156,6 @@ export class CombatEngine {
   private elapsedMs = 0
   private tickAccumulatorMs = 0
   private fatigueAccumulatorMs = 0
-  private burnAccumulatorMs = 0
-  private poisonAccumulatorMs = 0
-  private regenAccumulatorMs = 0
   private tickIndex = 0
   private inFatigue = false
   private finished = false
@@ -165,7 +166,7 @@ export class CombatEngine {
   private items: CombatItemRunner[] = []
   private pendingHits: PendingHit[] = []
 
-  start(snapshot: BattleSnapshotBundle): void {
+  start(snapshot: BattleSnapshotBundle, options?: CombatStartOptions): void {
     this.reset()
     const cfg = getConfig()
     this.day = snapshot.day
@@ -178,7 +179,7 @@ export class CombatEngine {
 
     this.items = [
       ...snapshot.entities.map((it, idx) => this.toRunner(it, `P-${idx}`)),
-      ...this.makeEnemyRunners(snapshot),
+      ...(options?.enemyDisabled ? [] : this.makeEnemyRunners(snapshot)),
     ]
 
     this.phase = 'INIT'
@@ -202,7 +203,6 @@ export class CombatEngine {
     if (this.phase === 'TICK') {
       if (!this.inFatigue && this.elapsedMs >= cfg.timeoutMs) this.inFatigue = true
 
-      this.processStatusPeriodic(deltaMs)
       if (this.shouldResolve()) {
         this.phase = 'RESOLVE'
       }
@@ -282,9 +282,6 @@ export class CombatEngine {
     this.elapsedMs = 0
     this.tickAccumulatorMs = 0
     this.fatigueAccumulatorMs = 0
-    this.burnAccumulatorMs = 0
-    this.poisonAccumulatorMs = 0
-    this.regenAccumulatorMs = 0
     this.tickIndex = 0
     this.inFatigue = false
     this.finished = false
@@ -463,14 +460,41 @@ export class CombatEngine {
     this.tickIndex += 1
     const queue: CombatItemRunner[] = []
     for (const item of this.items) {
+      const freezeBefore = item.freezeMs
+      const slowBefore = item.slowMs
+      const hasteBefore = item.hasteMs
       if (item.freezeMs > 0) {
         item.freezeMs = Math.max(0, item.freezeMs - tickMs)
+        if (freezeBefore > 0 && item.freezeMs === 0) {
+          EventBus.emit('battle:status_remove', {
+            targetId: item.id,
+            status: 'freeze',
+            targetType: 'item',
+            targetSide: item.side,
+          })
+        }
       }
       if (item.slowMs > 0) {
         item.slowMs = Math.max(0, item.slowMs - tickMs)
+        if (slowBefore > 0 && item.slowMs === 0) {
+          EventBus.emit('battle:status_remove', {
+            targetId: item.id,
+            status: 'slow',
+            targetType: 'item',
+            targetSide: item.side,
+          })
+        }
       }
       if (item.hasteMs > 0) {
         item.hasteMs = Math.max(0, item.hasteMs - tickMs)
+        if (hasteBefore > 0 && item.hasteMs === 0) {
+          EventBus.emit('battle:status_remove', {
+            targetId: item.id,
+            status: 'haste',
+            targetType: 'item',
+            targetSide: item.side,
+          })
+        }
       }
 
       if (item.freezeMs > 0) continue
@@ -494,6 +518,7 @@ export class CombatEngine {
     for (const q of playerQueue) this.resolveFire(q)
     for (const q of enemyQueue) this.resolveFire(q)
 
+    this.processStatusPeriodicByTick()
     this.resolvePendingHitsForCurrentTick()
   }
 
@@ -510,6 +535,10 @@ export class CombatEngine {
         targetId: sourceHero.id,
         sourceItemId: item.id,
         amount: item.shield,
+        targetType: 'hero',
+        targetSide: sourceHero.side,
+        sourceType: 'item',
+        sourceSide: item.side,
       })
     }
     if (item.heal > 0 && sourceHero.hp > 0) {
@@ -519,12 +548,34 @@ export class CombatEngine {
         sourceItemId: item.id,
         amount: item.heal,
         isRegen: false,
+        targetType: 'hero',
+        targetSide: sourceHero.side,
+        sourceType: 'item',
+        sourceSide: item.side,
       })
       const cleansePct = Math.max(0, rv('healCleansePct', getConfig().combatRuntime.healCleansePct))
       const clearLayer = Math.max(0, Math.ceil(item.heal * cleansePct))
       if (clearLayer > 0) {
+        const burnBefore = sourceHero.burn
+        const poisonBefore = sourceHero.poison
         sourceHero.burn = Math.max(0, sourceHero.burn - clearLayer)
         sourceHero.poison = Math.max(0, sourceHero.poison - clearLayer)
+        if (burnBefore > 0 && sourceHero.burn === 0) {
+          EventBus.emit('battle:status_remove', {
+            targetId: sourceHero.id,
+            status: 'burn',
+            targetType: 'hero',
+            targetSide: sourceHero.side,
+          })
+        }
+        if (poisonBefore > 0 && sourceHero.poison === 0) {
+          EventBus.emit('battle:status_remove', {
+            targetId: sourceHero.id,
+            status: 'poison',
+            targetType: 'hero',
+            targetSide: sourceHero.side,
+          })
+        }
       }
     }
 
@@ -535,6 +586,10 @@ export class CombatEngine {
         sourceItemId: item.id,
         status: 'burn',
         amount: item.burn,
+        targetType: 'hero',
+        targetSide: targetHero.side,
+        sourceType: 'item',
+        sourceSide: item.side,
       })
     }
     if (item.poison > 0) {
@@ -544,6 +599,10 @@ export class CombatEngine {
         sourceItemId: item.id,
         status: 'poison',
         amount: item.poison,
+        targetType: 'hero',
+        targetSide: targetHero.side,
+        sourceType: 'item',
+        sourceSide: item.side,
       })
     }
     if (item.regen > 0) {
@@ -553,6 +612,10 @@ export class CombatEngine {
         sourceItemId: item.id,
         status: 'regen',
         amount: item.regen,
+        targetType: 'hero',
+        targetSide: sourceHero.side,
+        sourceType: 'item',
+        sourceSide: item.side,
       })
     }
 
@@ -588,6 +651,10 @@ export class CombatEngine {
           sourceItemId: source.id,
           status: spec.status,
           amount: spec.durationMs,
+          targetType: 'item',
+          targetSide: target.side,
+          sourceType: 'item',
+          sourceSide: source.side,
         })
       }
     }
@@ -636,6 +703,10 @@ export class CombatEngine {
         amount: panel,
         isCrit,
         type: 'normal',
+        targetType: 'hero',
+        targetSide: targetHero.side,
+        sourceType: 'item',
+        sourceSide: hit.side,
       })
 
       if (targetHero.hp === 0) {
@@ -660,6 +731,10 @@ export class CombatEngine {
       amount: pDmg,
       isCrit: false,
       type: 'normal',
+      targetType: 'hero',
+      targetSide: 'player',
+      sourceType: 'system',
+      sourceSide: 'system',
     })
     EventBus.emit('battle:take_damage', {
       targetId: this.enemyHero.id,
@@ -667,32 +742,31 @@ export class CombatEngine {
       amount: eDmg,
       isCrit: false,
       type: 'normal',
+      targetType: 'hero',
+      targetSide: 'enemy',
+      sourceType: 'system',
+      sourceSide: 'system',
     })
   }
 
-  private processStatusPeriodic(deltaMs: number): void {
+  private processStatusPeriodicByTick(): void {
     const cr = getConfig().combatRuntime
-    const burnTickMs = Math.max(1, rv('burnTickMs', cr.burnTickMs))
-    const poisonTickMs = Math.max(1, rv('poisonTickMs', cr.poisonTickMs))
-    const regenTickMs = Math.max(1, rv('regenTickMs', cr.regenTickMs))
+    const tickMs = Math.max(1, cr.tickMs)
+    const burnTickEvery = Math.max(1, Math.round(Math.max(1, rv('burnTickMs', cr.burnTickMs)) / tickMs))
+    const poisonTickEvery = Math.max(1, Math.round(Math.max(1, rv('poisonTickMs', cr.poisonTickMs)) / tickMs))
+    const regenTickEvery = Math.max(1, Math.round(Math.max(1, rv('regenTickMs', cr.regenTickMs)) / tickMs))
 
-    this.burnAccumulatorMs += deltaMs
-    while (this.burnAccumulatorMs >= burnTickMs) {
-      this.burnAccumulatorMs -= burnTickMs
+    if (this.tickIndex % burnTickEvery === 0) {
       this.applyBurnTick(this.playerHero)
       this.applyBurnTick(this.enemyHero)
     }
 
-    this.poisonAccumulatorMs += deltaMs
-    while (this.poisonAccumulatorMs >= poisonTickMs) {
-      this.poisonAccumulatorMs -= poisonTickMs
+    if (this.tickIndex % poisonTickEvery === 0) {
       this.applyPoisonTick(this.playerHero)
       this.applyPoisonTick(this.enemyHero)
     }
 
-    this.regenAccumulatorMs += deltaMs
-    while (this.regenAccumulatorMs >= regenTickMs) {
-      this.regenAccumulatorMs -= regenTickMs
+    if (this.tickIndex % regenTickEvery === 0) {
       this.applyRegenTick(this.playerHero)
       this.applyRegenTick(this.enemyHero)
     }
@@ -717,12 +791,27 @@ export class CombatEngine {
         amount: hpDamage,
         isCrit: false,
         type: 'burn',
+        targetType: 'hero',
+        targetSide: hero.side,
+        sourceType: 'system',
+        sourceSide: 'system',
       })
     }
 
     const decayPct = Math.max(0, rv('burnDecayPct', getConfig().combatRuntime.burnDecayPct))
     const decay = Math.ceil(layer * decayPct)
-    if (decay > 0) hero.burn = Math.max(0, hero.burn - decay)
+    if (decay > 0) {
+      const burnBefore = hero.burn
+      hero.burn = Math.max(0, hero.burn - decay)
+      if (burnBefore > 0 && hero.burn === 0) {
+        EventBus.emit('battle:status_remove', {
+          targetId: hero.id,
+          status: 'burn',
+          targetType: 'hero',
+          targetSide: hero.side,
+        })
+      }
+    }
   }
 
   private applyPoisonTick(hero: HeroState): void {
@@ -735,6 +824,10 @@ export class CombatEngine {
       amount: layer,
       isCrit: false,
       type: 'poison',
+      targetType: 'hero',
+      targetSide: hero.side,
+      sourceType: 'system',
+      sourceSide: 'system',
     })
   }
 
@@ -749,6 +842,10 @@ export class CombatEngine {
       sourceItemId: 'status_regen',
       amount: healed,
       isRegen: true,
+      targetType: 'hero',
+      targetSide: hero.side,
+      sourceType: 'system',
+      sourceSide: 'system',
     })
   }
 
