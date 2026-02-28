@@ -7,6 +7,17 @@
 
 ## 本次对话追加（2026-02-28，阶段3-P1最小切片开发中）
 
+### 本次对话追加（2026-02-28，iOS 场景图修复后重新发 TF）
+
+- 已按验收反馈直接重发 TestFlight（携带 `app://resource` 路径修复）。
+- 构建号更新：`ios/project.yml` 的 `CURRENT_PROJECT_VERSION` 已升至 `5`。
+- 打包与上传结果：
+  - Archive：成功（`IOS_DEVELOPMENT_TEAM=6P57AJV77Q ./ios/build.sh archive`）
+  - Export：成功（`xcodebuild -exportArchive`）
+  - Upload：成功（`xcrun altool --upload-app`）
+  - Delivery UUID：`9f13c565-2a30-4c71-a36c-662e07e5b2f1`
+  - 回执：`UPLOAD SUCCEEDED with no errors`。
+
 ### 本次对话追加（2026-02-28，iOS 场景图资源路径修复）
 
 - 问题复盘：英雄/敌人/背景图片文件已打入 ipa（`resource/scene/background.png|boss.png|hero.png`），但 iOS `app://` 路径指向了 `dist-ios/resource/...`，与包内真实目录 `resource/...` 不一致，导致运行时 404。
