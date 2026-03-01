@@ -1,5 +1,6 @@
 import type { Scene } from './SceneManager'
 import { getBattleSnapshot } from '@/combat/BattleSnapshotStore'
+import { setBattleOutcome } from '@/combat/BattleOutcomeStore'
 import { CombatEngine, setCombatRuntimeOverride, type CombatBoardItem } from '@/combat/CombatEngine'
 import { SceneManager } from '@/scenes/SceneManager'
 import { getApp } from '@/core/AppContext'
@@ -59,10 +60,49 @@ let playerHeroHitElapsedMs = -1
 let playerHeroIdleElapsedMs = 0
 let enemyPresentationVisible = true
 let battleSpeed = 1
+let battleDay = 1
+let enteredSnapshot: ReturnType<typeof getBattleSnapshot> = null
 const BATTLE_SPEED_STEPS = [1, 2, 4, 8] as const
+const FX_MAX_PROJECTILES = 40
+const FX_MAX_FLOATING_NUMBERS = 30
+const FX_MAX_ACTIVE_TOTAL = 80
+const FX_POOL_MAX_PROJECTILES = 48
+const FX_POOL_MAX_FLOATING_NUMBERS = 40
 
 type TickAnim = (dtMs: number) => boolean
 const activeFx: TickAnim[] = []
+const projectileSpritePool: Sprite[] = []
+const projectileDotPool: Graphics[] = []
+const floatingNumberPool: Text[] = []
+let activeProjectileCount = 0
+let activeFloatingNumberCount = 0
+let droppedProjectileCount = 0
+let droppedFloatingNumberCount = 0
+let projectileUseCursor = 1
+
+export type BattleFxPerfStats = {
+  activeFx: number
+  activeProjectiles: number
+  activeFloatingNumbers: number
+  droppedProjectiles: number
+  droppedFloatingNumbers: number
+  pooledProjectileSprites: number
+  pooledProjectileDots: number
+  pooledFloatingNumbers: number
+}
+
+export function getBattleFxPerfStats(): BattleFxPerfStats {
+  return {
+    activeFx: activeFx.length,
+    activeProjectiles: activeProjectileCount,
+    activeFloatingNumbers: activeFloatingNumberCount,
+    droppedProjectiles: droppedProjectileCount,
+    droppedFloatingNumbers: droppedFloatingNumberCount,
+    pooledProjectileSprites: projectileSpritePool.length,
+    pooledProjectileDots: projectileDotPool.length,
+    pooledFloatingNumbers: floatingNumberPool.length,
+  }
+}
 
 type StatusBadgeFx = {
   box: Graphics
@@ -574,26 +614,138 @@ function tickPulseStates(dtMs: number): void {
   }
 }
 
+function canSpawnProjectileFx(): boolean {
+  if (activeFx.length >= FX_MAX_ACTIVE_TOTAL) {
+    droppedProjectileCount += 1
+    return false
+  }
+  if (activeProjectileCount >= FX_MAX_PROJECTILES) {
+    droppedProjectileCount += 1
+    return false
+  }
+  return true
+}
+
+function canSpawnFloatingNumberFx(): boolean {
+  if (activeFx.length >= FX_MAX_ACTIVE_TOTAL) {
+    droppedFloatingNumberCount += 1
+    return false
+  }
+  if (activeFloatingNumberCount >= FX_MAX_FLOATING_NUMBERS) {
+    droppedFloatingNumberCount += 1
+    return false
+  }
+  return true
+}
+
+function acquireProjectileSprite(from: { x: number; y: number }): Sprite {
+  const sprite = projectileSpritePool.pop() ?? new Sprite(Texture.WHITE)
+  sprite.anchor.set(0.5)
+  sprite.x = from.x
+  sprite.y = from.y
+  sprite.alpha = 1
+  sprite.rotation = 0
+  sprite.scale.set(1)
+  sprite.texture = Texture.WHITE
+  return sprite
+}
+
+function releaseProjectileSprite(sprite: Sprite): void {
+  if (sprite.parent) sprite.parent.removeChild(sprite)
+  ;(sprite as Sprite & { __fxUseId?: number }).__fxUseId = 0
+  sprite.alpha = 1
+  sprite.rotation = 0
+  sprite.scale.set(1)
+  sprite.texture = Texture.WHITE
+  if (projectileSpritePool.length < FX_POOL_MAX_PROJECTILES) {
+    projectileSpritePool.push(sprite)
+  } else {
+    sprite.destroy()
+  }
+}
+
+function acquireProjectileDot(from: { x: number; y: number }, color: number): Graphics {
+  const dot = projectileDotPool.pop() ?? new Graphics()
+  dot.clear()
+  dot.circle(0, 0, 5)
+  dot.fill({ color, alpha: 0.95 })
+  dot.x = from.x
+  dot.y = from.y
+  dot.alpha = 1
+  dot.rotation = 0
+  dot.scale.set(1)
+  return dot
+}
+
+function releaseProjectileDot(dot: Graphics): void {
+  if (dot.parent) dot.parent.removeChild(dot)
+  dot.clear()
+  dot.alpha = 1
+  dot.rotation = 0
+  dot.scale.set(1)
+  if (projectileDotPool.length < FX_POOL_MAX_PROJECTILES) {
+    projectileDotPool.push(dot)
+  } else {
+    dot.destroy()
+  }
+}
+
+function acquireFloatingNumber(text: string, color: number, fontSize: number): Text {
+  const t = floatingNumberPool.pop() ?? new Text({ text: '' })
+  t.text = text
+  t.style.fill = color
+  t.style.fontSize = fontSize
+  t.style.fontFamily = 'Arial'
+  t.style.fontWeight = 'bold'
+  t.style.stroke = { color: 0x000000, width: 3 }
+  t.alpha = 1
+  t.rotation = 0
+  t.scale.set(1)
+  return t
+}
+
+function releaseFloatingNumber(t: Text): void {
+  if (t.parent) t.parent.removeChild(t)
+  t.text = ''
+  t.alpha = 1
+  t.rotation = 0
+  t.scale.set(1)
+  if (floatingNumberPool.length < FX_POOL_MAX_FLOATING_NUMBERS) {
+    floatingNumberPool.push(t)
+  } else {
+    t.destroy()
+  }
+}
+
 function spawnProjectile(from: { x: number; y: number }, to: { x: number; y: number }, color: number, onHit?: () => void, sourceItemId?: string): void {
-  if (!fxLayer) return
+  if (!fxLayer) {
+    onHit?.()
+    return
+  }
+  if (!canSpawnProjectileFx()) {
+    onHit?.()
+    return
+  }
+  activeProjectileCount += 1
 
   const useItemSprite = true
   const sourceDef = sourceItemId ? getDefBySourceInstance(sourceItemId) : null
   const useSprite = useItemSprite && isFlyableProjectile(sourceDef)
 
   let visual: Graphics | Sprite
+  let recycle: (() => void) | null = null
   let spinRadPerSec = 0
   let lockFacingRad: number | null = null
   if (useSprite && sourceDef) {
-    const sprite = new Sprite(Texture.WHITE)
-    sprite.anchor.set(0.5)
-    sprite.x = from.x
-    sprite.y = from.y
+    const sprite = acquireProjectileSprite(from)
     const px = Math.max(8, getDebugCfg('battleProjectileItemSizePx'))
     sprite.width = px
     sprite.height = px
     fxLayer.addChild(sprite)
     visual = sprite
+    recycle = () => releaseProjectileSprite(sprite)
+    const useId = projectileUseCursor++
+    ;(sprite as Sprite & { __fxUseId?: number }).__fxUseId = useId
 
     const attackStyle = sourceDef.attack_style ?? ''
     if (attackStyle.includes('旋转')) {
@@ -606,16 +758,13 @@ function spawnProjectile(from: { x: number; y: number }, to: { x: number; y: num
     const urls = collectProjectileIconUrls(sourceDef, sourceItemId)
     ;(async () => {
       const tex = await resolveProjectileTexture(urls)
-      if (tex) sprite.texture = tex
+      if (tex && (sprite as Sprite & { __fxUseId?: number }).__fxUseId === useId) sprite.texture = tex
     })()
   } else {
-    const dot = new Graphics()
-    dot.circle(0, 0, 5)
-    dot.fill({ color, alpha: 0.95 })
-    dot.x = from.x
-    dot.y = from.y
+    const dot = acquireProjectileDot(from, color)
     fxLayer.addChild(dot)
     visual = dot
+    recycle = () => releaseProjectileDot(dot)
   }
 
   const duration = getDebugCfg('battleProjectileFlyMs')
@@ -643,8 +792,8 @@ function spawnProjectile(from: { x: number; y: number }, to: { x: number; y: num
     }
 
     if (p >= 1) {
-      if (visual.parent) visual.parent.removeChild(visual)
-      visual.destroy()
+      recycle?.()
+      activeProjectileCount = Math.max(0, activeProjectileCount - 1)
       onHit?.()
       return false
     }
@@ -654,16 +803,10 @@ function spawnProjectile(from: { x: number; y: number }, to: { x: number; y: num
 
 function spawnFloatingNumber(to: { x: number; y: number }, text: string, color: number, fontSize?: number): void {
   if (!fxLayer) return
-  const t = new Text({
-    text,
-    style: {
-      fontSize: fontSize ?? getDebugCfg('battleHpTextFontSize'),
-      fill: color,
-      fontFamily: 'Arial',
-      fontWeight: 'bold',
-      stroke: { color: 0x000000, width: 3 },
-    },
-  })
+  if (!canSpawnFloatingNumberFx()) return
+  activeFloatingNumberCount += 1
+  const actualFontSize = fontSize ?? getDebugCfg('battleHpTextFontSize')
+  const t = acquireFloatingNumber(text, color, actualFontSize)
   const randomX = getDebugCfg('battleDamageFloatRandomX')
   t.x = to.x - t.width / 2 + (Math.random() * 2 - 1) * randomX
   t.y = to.y - t.height / 2
@@ -685,8 +828,8 @@ function spawnFloatingNumber(to: { x: number; y: number }, text: string, color: 
     const fadeT = elapsed - riseMs - holdMs
     t.alpha = Math.max(0, 1 - fadeT / Math.max(1, fadeMs))
     if (fadeT >= fadeMs) {
-      if (t.parent) t.parent.removeChild(t)
-      t.destroy()
+      releaseFloatingNumber(t)
+      activeFloatingNumberCount = Math.max(0, activeFloatingNumberCount - 1)
       return false
     }
     return true
@@ -716,6 +859,11 @@ function makeBackButton(): Container {
   con.eventMode = 'static'
   con.cursor = 'pointer'
   con.on('pointerdown', () => {
+    setBattleOutcome({
+      result: engine?.getResult() ?? null,
+      snapshot: enteredSnapshot,
+      finishedAtMs: Date.now(),
+    })
     SceneManager.goto('shop')
   })
   return con
@@ -1020,7 +1168,18 @@ export const BattleScene: Scene = {
   async onEnter() {
     const { stage } = getApp()
     const snapshot = getBattleSnapshot()
+    if (!snapshot) {
+      console.warn('[BattleScene] 缺少战斗快照，回退商店并尝试恢复进度')
+      SceneManager.goto('shop')
+      return
+    }
+    enteredSnapshot = snapshot
+    battleDay = Math.max(1, snapshot.day)
     battleSpeed = 1
+    activeProjectileCount = 0
+    activeFloatingNumberCount = 0
+    droppedProjectileCount = 0
+    droppedFloatingNumberCount = 0
     root = new Container()
     root.sortableChildren = true
     stage.addChild(root)
@@ -1203,13 +1362,8 @@ export const BattleScene: Scene = {
       burnDecayPct: getDebugCfg('gameplayBurnDecayPct'),
       healCleansePct: getDebugCfg('gameplayHealCleansePct'),
     })
-    if (snapshot) {
-      engine.start(snapshot)
-      console.log(`[BattleScene] 进入战斗场景 day=${snapshot.day} entities=${snapshot.entities.length} cols=${snapshot.activeColCount}`)
-    } else {
-      engine.start({ day: 1, activeColCount: 2, createdAtMs: Date.now(), entities: [] })
-      console.log('[BattleScene] 进入战斗场景（未找到战斗快照）')
-    }
+    engine.start(snapshot)
+    console.log(`[BattleScene] 进入战斗场景 day=${snapshot.day} entities=${snapshot.entities.length} cols=${snapshot.activeColCount}`)
 
     const board = engine.getBoardState()
     await mountZoneItems(playerZone, board.items.filter((it) => it.side === 'player'))
@@ -1405,7 +1559,13 @@ export const BattleScene: Scene = {
     playerHeroBaseScale = 1
     playerHeroHitElapsedMs = -1
     playerHeroIdleElapsedMs = 0
+    battleDay = 1
+    enteredSnapshot = null
     battleSpeed = 1
+    activeProjectileCount = 0
+    activeFloatingNumberCount = 0
+    droppedProjectileCount = 0
+    droppedFloatingNumberCount = 0
     activeFx.length = 0
     for (const [, st] of pulseStates) {
       st.node?.visual.scale.set(1)
@@ -1435,7 +1595,7 @@ export const BattleScene: Scene = {
     const board = engine.getBoardState()
     const runtime = engine.getRuntimeState()
     const runtimeChargePercentById = new Map(runtime.map((it) => [it.id, it.chargePercent]))
-    const activeCols = getDayActiveCols((getBattleSnapshot()?.day ?? 1))
+    const activeCols = getDayActiveCols(battleDay)
     enemyZone.setActiveColCount(activeCols)
     playerZone.setActiveColCount(activeCols)
     applyZoneVisualStyle(enemyZone)
@@ -1462,7 +1622,7 @@ export const BattleScene: Scene = {
 
     if (statusText) {
       const s = engine.getDebugState()
-      statusText.text = `phase:${engine.getPhase()}  ticks:${s.tickIndex}  fatigue:${s.inFatigue ? 'on' : 'off'}`
+      statusText.text = `phase:${engine.getPhase()} ticks:${s.tickIndex} fatigue:${s.inFatigue ? 'on' : 'off'} fx:${activeFx.length} p:${activeProjectileCount}/${FX_MAX_PROJECTILES} t:${activeFloatingNumberCount}/${FX_MAX_FLOATING_NUMBERS} drop:${droppedProjectileCount + droppedFloatingNumberCount}`
     }
 
     if (battleEndMask) {

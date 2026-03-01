@@ -3,6 +3,7 @@ import type { TierKey } from '@/shop/ShopManager'
 
 export interface BattleSnapshotEntity extends CombatEntity {
   tier: TierKey
+  permanentDamageBonus?: number
 }
 
 export interface BattleSnapshotBundle {

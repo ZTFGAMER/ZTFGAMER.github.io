@@ -387,7 +387,7 @@ export class CombatEngine {
       defId: entity.defId,
       baseStats: {
         cooldownMs: this.validCooldown(def?.cooldown ?? 0),
-        damage: Math.max(0, def?.damage ?? 0),
+        damage: Math.max(0, (def?.damage ?? 0) + Math.max(0, entity.permanentDamageBonus ?? 0)),
         heal: Math.max(0, def?.heal ?? 0),
         shield: Math.max(0, def?.shield ?? 0),
         burn: Math.max(0, def?.burn ?? 0),
@@ -656,6 +656,85 @@ export class CombatEngine {
     }
   }
 
+  private applyBurnUseSlowTriggers(fired: CombatItemRunner): void {
+    if (fired.baseStats.burn <= 0) return
+    for (const owner of this.items) {
+      if (owner.side !== fired.side || owner.id === fired.id) continue
+      const def = this.findItemDef(owner.defId)
+      if (!def) continue
+      const line = this.skillLines(def).find((s) => /使用灼烧物品时.*减速敌方\d+件敌方物品\d+(?:\/\d+)*秒/.test(s))
+      if (!line) continue
+      const sec = this.tierValueFromLine(line, this.tierIndex(def, owner.tier))
+      if (sec <= 0) continue
+      const targets = this.pickControlTargets({
+        side: fired.side === 'player' ? 'enemy' : 'player',
+        count: 1,
+        mode: 'leftmost',
+        source: owner,
+      })
+      for (const target of targets) {
+        const durationMs = Math.max(1, Math.round(sec * 1000))
+        target.runtime.modifiers.slowMs = Math.max(target.runtime.modifiers.slowMs, durationMs)
+        EventBus.emit('battle:status_apply', {
+          targetId: target.id,
+          sourceItemId: owner.id,
+          status: 'slow',
+          amount: durationMs,
+          targetType: 'item',
+          targetSide: target.side,
+          sourceType: 'item',
+          sourceSide: owner.side,
+        })
+      }
+    }
+  }
+
+  private applyBattleStartPassiveGrowths(): void {
+    for (const owner of this.items) {
+      const def = this.findItemDef(owner.defId)
+      if (!def) continue
+      const lines = this.skillLines(def)
+      const tIdx = this.tierIndex(def, owner.tier)
+
+      const shieldLine = lines.find((s) => /护盾物品护盾值\+\d+(?:\/\d+)*/.test(s))
+      if (shieldLine) {
+        const v = Math.round(this.tierValueFromLine(shieldLine, tIdx))
+        if (v > 0) {
+          for (const ally of this.items) {
+            if (ally.side !== owner.side) continue
+            if (ally.baseStats.shield <= 0) continue
+            ally.baseStats.shield += v
+          }
+        }
+      }
+
+      const burnLine = lines.find((s) => /灼烧物品\+\d+(?:\/\d+)*灼烧/.test(s))
+      if (burnLine) {
+        const v = Math.round(this.tierValueFromLine(burnLine, tIdx))
+        if (v > 0) {
+          for (const ally of this.items) {
+            if (ally.side !== owner.side) continue
+            if (ally.baseStats.burn <= 0) continue
+            ally.baseStats.burn += v
+          }
+        }
+      }
+
+      const adjacentPoisonLine = lines.find((s) => /相邻剧毒物品\+\d+(?:\/\d+)*剧毒/.test(s))
+      if (adjacentPoisonLine) {
+        const v = Math.round(this.tierValueFromLine(adjacentPoisonLine, tIdx))
+        if (v > 0) {
+          for (const ally of this.items) {
+            if (ally.side !== owner.side || ally.id === owner.id) continue
+            if (ally.baseStats.poison <= 0) continue
+            if (!this.isAdjacentByFootprint(ally, owner)) continue
+            ally.baseStats.poison += v
+          }
+        }
+      }
+    }
+  }
+
   private applyFreezeTriggeredAdjacentAttackBuff(source: CombatItemRunner): void {
     const def = this.findItemDef(source.defId)
     if (!def) return
@@ -802,6 +881,7 @@ export class CombatEngine {
     const tIdx = this.tierIndex(def, item.tier)
     this.applyAdjacentUseHasteTriggers(item)
     this.applyAdjacentUseBurnTriggers(item)
+    this.applyBurnUseSlowTriggers(item)
 
     const ctrl = this.applyCardEffects(item, def)
 
@@ -1080,6 +1160,7 @@ export class CombatEngine {
   }
 
   private applyBattleStartEffects(): void {
+    this.applyBattleStartPassiveGrowths()
     for (const item of this.items) {
       const def = this.findItemDef(item.defId)
       if (!def) continue

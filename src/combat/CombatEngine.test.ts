@@ -283,4 +283,161 @@ describe('CombatEngine', () => {
     expect(fatigueStarted).toBe(true)
     expect(fireAfterFatigue).toBeGreaterThan(0)
   })
+
+  it('战斗开始时可对灼烧物品施加本场战斗增益', () => {
+    const burnAuraItem = getAllItems().find((it) =>
+      it.skills.some((s) => /灼烧物品\+\d+(?:\/\d+)*灼烧/.test(s.cn)),
+    )
+    const burnItem = getAllItems().find((it) =>
+      it.burn > 0 && it.cooldown > 0 && it.skills.length === 1,
+    )
+    expect(burnAuraItem).toBeTruthy()
+    expect(burnItem).toBeTruthy()
+
+    const snapshot: BattleSnapshotBundle = {
+      day: 3,
+      activeColCount: 4,
+      createdAtMs: 123,
+      entities: [
+        { instanceId: 'burn-aura', defId: burnAuraItem!.id, tier: 'Gold', size: '2x1', col: 0, row: 0 },
+        { instanceId: 'burn-src', defId: burnItem!.id, tier: 'Gold', size: '1x1', col: 2, row: 0 },
+      ],
+    }
+
+    let burnApplied = -1
+    const off = EventBus.on('battle:status_apply', (e) => {
+      if (e.status === 'burn' && e.sourceItemId.includes('burn-src')) {
+        burnApplied = e.amount
+      }
+    })
+
+    const engine = new CombatEngine()
+    engine.start(snapshot, { enemyDisabled: true })
+    for (let i = 0; i < 1200; i++) {
+      engine.update(1 / 60)
+      if (burnApplied >= 0) break
+    }
+    off()
+
+    expect(burnApplied).toBeGreaterThanOrEqual((burnItem?.burn ?? 0) + 8)
+  })
+
+  it('战斗开始时仅相邻剧毒物品获得本场战斗增益', () => {
+    const poisonAdjAuraItem = getAllItems().find((it) =>
+      it.skills.some((s) => /相邻剧毒物品\+\d+(?:\/\d+)*剧毒/.test(s.cn)),
+    )
+    const poisonItem = getAllItems().find((it) =>
+      it.skills.some((s) => /造成\d+(?:\/\d+)*剧毒/.test(s.cn)) && it.skills.length === 1,
+    )
+    expect(poisonAdjAuraItem).toBeTruthy()
+    expect(poisonItem).toBeTruthy()
+
+    const snapshot: BattleSnapshotBundle = {
+      day: 3,
+      activeColCount: 6,
+      createdAtMs: 123,
+      entities: [
+        { instanceId: 'poison-left', defId: poisonItem!.id, tier: 'Gold', size: '1x1', col: 0, row: 0 },
+        { instanceId: 'poison-aura', defId: poisonAdjAuraItem!.id, tier: 'Gold', size: '1x1', col: 1, row: 0 },
+        { instanceId: 'poison-right', defId: poisonItem!.id, tier: 'Gold', size: '1x1', col: 5, row: 0 },
+      ],
+    }
+
+    const amountBySource = new Map<string, number>()
+    const off = EventBus.on('battle:status_apply', (e) => {
+      if (e.status !== 'poison' || !e.sourceItemId.startsWith('P-')) return
+      if (e.sourceItemId.includes('poison-left')) amountBySource.set('left', e.amount)
+      if (e.sourceItemId.includes('poison-right')) amountBySource.set('right', e.amount)
+    })
+
+    const engine = new CombatEngine()
+    engine.start(snapshot, { enemyDisabled: true })
+    for (let i = 0; i < 1400; i++) {
+      engine.update(1 / 60)
+      if (amountBySource.has('left') && amountBySource.has('right')) break
+    }
+    off()
+
+    expect(amountBySource.has('left')).toBe(true)
+    expect(amountBySource.has('right')).toBe(true)
+    expect((amountBySource.get('left') ?? 0)).toBeGreaterThan((amountBySource.get('right') ?? 0))
+  })
+
+  it('使用灼烧物品时可触发减速敌方物品', () => {
+    const burnUseSlowItem = getAllItems().find((it) =>
+      it.skills.some((s) => /使用灼烧物品时.*减速敌方\d+件敌方物品/.test(s.cn)),
+    )
+    const burnItem = getAllItems().find((it) =>
+      it.burn > 0 && it.cooldown > 0,
+    )
+    expect(burnUseSlowItem).toBeTruthy()
+    expect(burnItem).toBeTruthy()
+
+    const snapshot: BattleSnapshotBundle = {
+      day: 6,
+      activeColCount: 6,
+      createdAtMs: 123,
+      entities: [
+        { instanceId: 'burn-slow-owner', defId: burnUseSlowItem!.id, tier: 'Gold', size: '1x1', col: 0, row: 0 },
+        { instanceId: 'burn-slow-src', defId: burnItem!.id, tier: 'Gold', size: '1x1', col: 1, row: 0 },
+      ],
+    }
+
+    let seenSlow = false
+    const off = EventBus.on('battle:status_apply', (e) => {
+      if (e.status === 'slow' && e.targetType === 'item' && e.sourceItemId.includes('burn-slow-owner')) {
+        seenSlow = true
+      }
+    })
+
+    const engine = new CombatEngine()
+    engine.start(snapshot)
+    for (let i = 0; i < 2000; i++) {
+      engine.update(1 / 60)
+      if (seenSlow) break
+    }
+    off()
+
+    expect(seenSlow).toBe(true)
+  })
+
+  it('快照中的永久伤害加成会进入直伤基值', () => {
+    const damageItem = getAllItems().find((it) => it.damage > 0 && it.cooldown > 0)
+    expect(damageItem).toBeTruthy()
+
+    const bonus = 37
+    const snapshot: BattleSnapshotBundle = {
+      day: 3,
+      activeColCount: 3,
+      createdAtMs: 123,
+      entities: [
+        {
+          instanceId: 'perm-dmg-1',
+          defId: damageItem!.id,
+          tier: 'Gold',
+          size: '1x1',
+          col: 0,
+          row: 0,
+          permanentDamageBonus: bonus,
+        },
+      ],
+    }
+
+    let baseDamage = -1
+    const off = EventBus.on('battle:take_damage', (e) => {
+      if (e.type === 'normal' && e.sourceItemId.startsWith('P-')) {
+        baseDamage = e.baseDamage ?? -1
+      }
+    })
+
+    const engine = new CombatEngine()
+    engine.start(snapshot, { enemyDisabled: true })
+    for (let i = 0; i < 1200; i++) {
+      engine.update(1 / 60)
+      if (baseDamage >= 0) break
+    }
+    off()
+
+    expect(baseDamage).toBeGreaterThanOrEqual((damageItem?.damage ?? 0) + bonus)
+  })
 })

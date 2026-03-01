@@ -7,6 +7,94 @@
 
 ## 本次对话追加（2026-02-28，阶段3-P1最小切片开发中）
 
+### 本次对话追加（2026-03-01，阶段3-P1 卡牌语义补齐第4批）
+
+- 已按“直接推进，不中途询问”执行本轮实现，目标为加速“全卡牌效果可验收”。
+- `src/combat/CombatEngine.ts`：新增 4 类卡牌语义处理：
+  - 新增“使用灼烧物品时，减速敌方1件物品X秒”触发链（灼烧物品触发后由被动持有者施加 slow）。
+  - 新增战斗开始时“灼烧物品+X灼烧”被动增益（对同阵营灼烧物品生效，本场战斗内）。
+  - 新增战斗开始时“护盾物品护盾值+X”被动增益（对同阵营护盾物品生效，本场战斗内）。
+  - 新增战斗开始时“相邻剧毒物品+X剧毒”被动增益（仅对相邻且具剧毒面板的物品生效，本场战斗内）。
+- `src/combat/CombatEngine.test.ts`：新增 3 条稳定回归用例：
+  - 灼烧物品开场增益生效。
+  - 相邻剧毒增益仅影响相邻目标（非相邻不增益）。
+  - 使用灼烧物品可触发敌方物品 slow 事件。
+- 回归验证：`npm test` 通过（56/56）；`npm run build` 通过（保留既有 chunk size warning）。
+- 过程备注：本轮尝试通过主程 NotebookLM 获取“剩余效果优先级清单”时工具超时（timeout），未拿到新增答复；实现口径沿用已确认的阶段3-P1规则与进度文档中已约定的“护盾/灼烧/相邻剧毒”待补项继续推进。
+- 下一步计划：继续补齐剩余“非战中即时结算型”效果（如“战后复制/战后永久成长”）的系统边界与数据落点，并整理“全卡牌效果验收清单（触发/不触发）”供统一验收。
+
+### 本次对话追加（2026-03-01，移动端卡顿 + 战斗回 Day1 排查与止血）
+
+- 已按“先问主程再改”执行：向主程 Notebook（`WebJs开发指南`）提交排查问题并拿到优先方案，结论聚焦两类高概率根因：
+  - ShopScene stage 级指针监听未解绑导致累计回调（越玩越卡）
+  - 战斗/商店状态仅内存保存，异常重载后丢进度（表现为回 Day1）
+- 已完成代码止血修复：
+  - `src/scenes/ShopScene.ts`：为 `pointermove/pointerup/pointerupoutside` 保存回调引用，并在 `onExit` 对应 `stage.off(...)`，修复监听器泄漏。
+  - `src/scenes/ShopScene.ts`：新增商店状态持久化（`localStorage`），在 `refreshShopUI()` 与战斗切场前落盘，`onEnter` 优先恢复；增加版本字段（`SHOP_STATE_STORAGE_VERSION`）避免旧缓存污染。
+  - `src/scenes/BattleScene.ts`：无快照时不再以 Day1 占位开战，改为直接回商店恢复；战斗中 activeCols 改为使用进入战斗时锁定的 `battleDay`，避免外部快照丢失导致日数回退。
+- 主程复核结论：上述 3 项修复方向通过；补充建议已采纳（存档版本化、切场清理一致性检查）。
+- 回归验证：`npm test` 通过（53/53）；`npm run build` 通过（保留 chunk size warning）。
+- 当前阶段：仍在阶段3-P1 验收与优化中（稳定性专项）。
+- 下一步计划：
+  - 真机复现链路复测（连续多局、长时挂战）验证“卡顿斜率”是否下降。
+  - 增加 battle 特效并发上限/池化（第二层止血，降低移动端 GC 压力）。
+  - 若仍有偶发回退，补充 battle 中断恢复标记（区分“战斗未结算返回商店”与“正常结算+1天”）。
+- 待解决项/技术债：当前持久化为 `localStorage`（同步 IO），后续数据量增大时应迁移 IndexedDB。
+
+### 本次对话追加（2026-03-01，战斗特效并发上限 + 轻量池化）
+
+- 已先与主程确认方案后实施：采用“并发上限 + 轻量池化 + 丢弃兜底不影响结算”最小改动路径。
+- `src/scenes/BattleScene.ts`：新增特效并发上限常量：`FX_MAX_PROJECTILES=40`、`FX_MAX_FLOATING_NUMBERS=30`、`FX_MAX_ACTIVE_TOTAL=80`。
+- `src/scenes/BattleScene.ts`：超上限时启用丢弃策略：
+  - 投射物丢弃时立即执行 `onHit`（保证受击反馈/逻辑链不断）。
+  - 跳字丢弃为静默跳过（血条变化仍正常）。
+- `src/scenes/BattleScene.ts`：加入轻量对象池与复用：
+  - `projectileSpritePool` / `projectileDotPool` / `floatingNumberPool`
+  - 动画结束后回收复用，池满再 `destroy()`。
+  - 对投射物 sprite 增加 useId 防抖，避免异步贴图回写到已复用实例。
+- `src/scenes/BattleScene.ts`：状态栏调试文案新增最小监控指标（`activeFx`、投射物/跳字并发、drop 计数），便于真机压测观察。
+- 回归验证：`npm test` 通过（56/56）；`npm run build` 通过（保留 chunk size warning）。
+- 下一步计划：真机长时压测（连续多局 + 加时赛）观察 drop 计数与帧率曲线；若 drop 常态偏高，再按项细化上限或引入分级降特效策略。
+
+### 本次对话追加（2026-03-01，自动化 Soak Test 开关）
+
+- 已按“继续稳定性验证”补充自动化长时压测入口，便于本地/真机重复跑：
+  - `src/main.ts` 新增 `__startSoakTest/__stopSoakTest/__getSoakStats`（DEV 环境注入到 window）。
+  - 支持 URL 自动启动：`?soak=1&rounds=...&battleMs=...&shopMs=...`。
+  - 压测流程：自动循环 `shop -> battle -> shop`，每轮随机 day（默认 6~20），自动构建战斗快照并切场景。
+  - 统计项：最大 `activeFx`、最大投射物并发、最大跳字并发、投射物/跳字 drop 计数。
+- `src/scenes/BattleScene.ts` 新增 `getBattleFxPerfStats()` 导出，供 soak runner 采样读取。
+- 采样频率：战斗中每 500ms 拉取一次 FX 指标并累计峰值，结束时控制台输出汇总。
+- 回归验证：`npm test` 通过（57/57）；`npm run build` 通过（保留 chunk size warning）。
+- 下一步计划：在手机端执行 20~50 轮自动压测，结合 `__getSoakStats()` 输出评估是否需要进一步下调特效上限或引入分级降特效。
+
+### 本次对话追加（2026-03-01，进度写回确认）
+
+- 已按你的要求完成本轮进度写回：`design/progress.md` 已同步记录“特效并发上限+轻量池化”与“自动化 Soak Test 开关”两项内容。
+
+### 本次对话追加（2026-03-01，阶段3-P1 卡牌效果收口：战后类 + 永久成长）
+
+- `src/combat/BattleSnapshotStore.ts`：战斗快照实体新增 `permanentDamageBonus`（可选），用于把商店中的实例级永久伤害成长带入战斗。
+- `src/combat/CombatEngine.ts`：`toRunner()` 已接入快照 `permanentDamageBonus`，基础伤害按 `def.damage + permanentDamageBonus` 进入伤害管线。
+- 新增 `src/combat/BattleOutcomeStore.ts`：保存/消费单次战斗结果与战斗快照，供回店后结算“战后效果”。
+- `src/scenes/BattleScene.ts`：点击“回到商店”时写入 battle outcome（结果 + 入场快照），并在 `onExit` 清理入场快照引用。
+- `src/scenes/ShopScene.ts`：新增战后结算链路（回店且 `pendingAdvanceToNextDay` 时执行）：
+  - 实现“如果这是你唯一的攻击物品，战斗结束后永久+X伤害”实例级成长（按品质取值，累加到实例永久伤害）。
+  - 实现“如果背包中有空位，每次战斗后自动复制”自动复制到背包（按源物品品质复制）。
+  - 新增实例元数据 `instanceToPermanentDamageBonus`，并接入存档捕获/恢复、快照构建、实例删除清理。
+- `src/combat/CombatEngine.test.ts`：新增回归用例“快照永久伤害加成进入直伤基值”。
+- 回归验证：`npm test` 通过（57/57）；`npm run build` 通过（保留 chunk size warning）。
+- 当前状态：Vanessa 37 件物品的技能语义已覆盖到引擎与回店结算链路，可进入“全卡牌效果统一验收”。
+
+### 本次对话追加（2026-03-01，阶段3-P1 统一验收预检-自动化）
+
+- 已执行统一验收前自动化预检：`npm test && npm run build`。
+- 结果：
+  - 单测：`57/57` 全通过（含 CombatEngine 新增“永久伤害加成入战斗基值”用例）。
+  - 构建：TypeScript + Vite 生产构建通过。
+  - 已知非阻塞项：仍有既有 `chunk size warning`（>500k），本轮未新增构建错误。
+- 预检结论：代码层可进入你的人工体验验收阶段（全卡牌触发/不触发、战后复制/永久成长、多局连续稳定性）。
+
 ### 本次对话追加（2026-02-28，iOS 场景图修复后重新发 TF）
 
 - 已按验收反馈直接重发 TestFlight（携带 `app://resource` 路径修复）。

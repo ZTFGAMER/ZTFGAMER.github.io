@@ -25,6 +25,7 @@ import { getTierColor } from '@/config/colorPalette'
 import { getItemIconUrl } from '@/core/assetPath'
 import { PhaseManager } from '@/core/PhaseManager'
 import { clearBattleSnapshot, setBattleSnapshot, type BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
+import { clearBattleOutcome, consumeBattleOutcome } from '@/combat/BattleOutcomeStore'
 import {
   Container, Graphics, Text, Sprite,
   Assets, Texture, Rectangle, Ticker,
@@ -44,6 +45,8 @@ const UPGRADE_HIGHLIGHT_COLOR = 0xffcc44
 // ---- 背包小地图 ----
 const MINI_CELL = 20
 const MINI_W    = 6 * MINI_CELL
+const SHOP_STATE_STORAGE_KEY = 'bigbazzar_shop_state_v1'
+const SHOP_STATE_STORAGE_VERSION = 1
 
 // ---- 场景级状态 ----
 let shopManager:    ShopManager    | null = null
@@ -91,6 +94,9 @@ let gridDragCanToBackpack = false
 let offDebugCfg:    (() => void) | null = null
 let offPhaseChange: (() => void) | null = null
 let onStageTapHidePopup: ((e: FederatedPointerEvent) => void) | null = null
+let onStageShopPointerMove: ((e: FederatedPointerEvent) => void) | null = null
+let onStageShopPointerUp: ((e: FederatedPointerEvent) => void) | null = null
+let onStageShopPointerUpOutside: ((e: FederatedPointerEvent) => void) | null = null
 let shopAreaBg: Graphics | null = null
 let backpackAreaBg: Graphics | null = null
 let battleAreaBg: Graphics | null = null
@@ -126,6 +132,7 @@ type SavedPlacedItem = {
   col: number
   row: number
   tier: TierKey
+  permanentDamageBonus: number
 }
 
 type SavedShopState = {
@@ -141,6 +148,48 @@ type SavedShopState = {
 let pendingBattleTransition = false
 let pendingAdvanceToNextDay = false
 let savedShopState: SavedShopState | null = null
+
+function saveShopStateToStorage(state: SavedShopState | null): void {
+  if (!state) return
+  try {
+    localStorage.setItem(SHOP_STATE_STORAGE_KEY, JSON.stringify({
+      version: SHOP_STATE_STORAGE_VERSION,
+      state,
+    }))
+  } catch (err) {
+    console.warn('[ShopScene] 保存商店状态失败', err)
+  }
+}
+
+function loadShopStateFromStorage(): SavedShopState | null {
+  try {
+    const raw = localStorage.getItem(SHOP_STATE_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { version?: unknown, state?: unknown } | Partial<SavedShopState> | null
+    if (!parsed || typeof parsed !== 'object') return null
+
+    const candidate = ('state' in parsed)
+      ? (
+          typeof (parsed as { version?: unknown }).version === 'number'
+          && (parsed as { version?: number }).version === SHOP_STATE_STORAGE_VERSION
+          ? (parsed as { state?: unknown }).state
+          : null
+        )
+      : parsed
+
+    if (!candidate || typeof candidate !== 'object') return null
+    const state = candidate as Partial<SavedShopState>
+    if (typeof state.day !== 'number') return null
+    if (typeof state.gold !== 'number') return null
+    if (typeof state.refreshIndex !== 'number') return null
+    if (typeof state.instCounter !== 'number') return null
+    if (!Array.isArray(state.pool) || !Array.isArray(state.battleItems) || !Array.isArray(state.backpackItems)) return null
+    return state as SavedShopState
+  } catch (err) {
+    console.warn('[ShopScene] 读取商店状态失败', err)
+    return null
+  }
+}
 
 function isShopInputEnabled(): boolean {
   return PhaseManager.isShopInputEnabled()
@@ -279,6 +328,7 @@ function buildBattleSnapshot(): BattleSnapshotBundle | null {
     entities: snap.entities.map((it) => ({
       ...it,
       tier: instanceToTier.get(it.instanceId) ?? 'Bronze',
+      permanentDamageBonus: Math.max(0, Math.round(instanceToPermanentDamageBonus.get(it.instanceId) ?? 0)),
     })),
   }
 }
@@ -292,6 +342,7 @@ function captureShopState(): SavedShopState | null {
     col: it.col,
     row: it.row,
     tier: instanceToTier.get(it.instanceId) ?? 'Bronze',
+    permanentDamageBonus: Math.max(0, Math.round(instanceToPermanentDamageBonus.get(it.instanceId) ?? 0)),
   }))
 
   return {
@@ -335,11 +386,13 @@ function applySavedShopState(state: SavedShopState): void {
   backpackSystem.clear()
   instanceToDefId.clear()
   instanceToTier.clear()
+  instanceToPermanentDamageBonus.clear()
 
   const restoreOne = (it: SavedPlacedItem, system: GridSystem, view: GridZone) => {
     system.place(it.col, it.row, it.size, it.defId, it.instanceId)
     instanceToDefId.set(it.instanceId, it.defId)
     instanceToTier.set(it.instanceId, it.tier)
+    instanceToPermanentDamageBonus.set(it.instanceId, Math.max(0, Math.round(it.permanentDamageBonus ?? 0)))
     view.addItem(it.instanceId, it.defId, it.size, it.col, it.row, it.tier).then(() => {
       view.setItemTier(it.instanceId, it.tier)
       drag?.refreshZone(view)
@@ -361,6 +414,13 @@ const nextId = () => `inst-${instCounter++}`
 
 const instanceToDefId = new Map<string, string>()
 const instanceToTier = new Map<string, TierKey>()
+const instanceToPermanentDamageBonus = new Map<string, number>()
+
+function removeInstanceMeta(instanceId: string): void {
+  instanceToDefId.delete(instanceId)
+  instanceToTier.delete(instanceId)
+  instanceToPermanentDamageBonus.delete(instanceId)
+}
 
 type UpgradeMatch = {
   shopSlots: number[]
@@ -430,6 +490,115 @@ function collectOwnedTierByDef(): Map<string, TierKey> {
 function syncShopOwnedTierRules(): void {
   if (!shopManager) return
   shopManager.setOwnedTiers(collectOwnedTierByDef())
+}
+
+function parseTierName(raw: string): TierKey | null {
+  if (raw.includes('Bronze')) return 'Bronze'
+  if (raw.includes('Silver')) return 'Silver'
+  if (raw.includes('Gold')) return 'Gold'
+  if (raw.includes('Diamond')) return 'Diamond'
+  return null
+}
+
+function parseAvailableTiers(raw: string): TierKey[] {
+  const s = (raw || '').trim()
+  if (!s) return ['Bronze', 'Silver', 'Gold', 'Diamond']
+  const out = s
+    .split('/')
+    .map((v) => parseTierName(v.trim()))
+    .filter((v): v is TierKey => !!v)
+  return out.length > 0 ? out : ['Bronze', 'Silver', 'Gold', 'Diamond']
+}
+
+function pickTierSeriesValueByTier(series: string, tier: TierKey, availableTiersRaw: string): number {
+  const parts = series.split('/').map((v) => v.trim()).filter(Boolean)
+  if (parts.length === 0) return 0
+  const tiers = parseAvailableTiers(availableTiersRaw)
+  const tierIdx = Math.max(0, tiers.indexOf(tier))
+  const idx = Math.max(0, Math.min(parts.length - 1, tierIdx))
+  const n = Number(parts[idx])
+  return Number.isFinite(n) ? n : 0
+}
+
+function tierValueFromSkillLine(item: ReturnType<typeof getAllItems>[number], tier: TierKey, line: string): number {
+  const m = line.match(/(\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)+)/)
+  if (!m?.[1]) return 0
+  return pickTierSeriesValueByTier(m[1], tier, item.available_tiers)
+}
+
+function isAttackItemForBattle(item: ReturnType<typeof getAllItems>[number]): boolean {
+  if (item.damage > 0) return true
+  const lines = (item.skills ?? []).map((s) => s.cn ?? '')
+  return lines.some((line) => /攻击造成|掷出造成|最大生命值.*%.*伤害|等同于当前自身护盾值/.test(line))
+}
+
+function applyPostBattlePermanentGrowth(snapshot: BattleSnapshotBundle): boolean {
+  const allItems = getAllItems()
+  const byId = new Map(allItems.map((it) => [it.id, it] as const))
+  const playerEntities = snapshot.entities
+  const attackerCount = playerEntities
+    .map((e) => byId.get(e.defId))
+    .filter((v): v is ReturnType<typeof getAllItems>[number] => !!v)
+    .filter((it) => isAttackItemForBattle(it))
+    .length
+
+  if (attackerCount !== 1) return false
+
+  let changed = false
+  for (const entity of playerEntities) {
+    const item = byId.get(entity.defId)
+    if (!item) continue
+    const line = (item.skills ?? []).map((s) => s.cn ?? '').find((s) => /唯一的攻击物品.*战斗结束后永久\+\d+(?:\/\d+)*伤害/.test(s))
+    if (!line) continue
+    const bonus = Math.round(tierValueFromSkillLine(item, entity.tier, line))
+    if (bonus <= 0) continue
+    const prev = Math.max(0, Math.round(instanceToPermanentDamageBonus.get(entity.instanceId) ?? 0))
+    instanceToPermanentDamageBonus.set(entity.instanceId, prev + bonus)
+    changed = true
+    console.log(`[ShopScene] 战后永久成长 ${item.name_cn} +${bonus}伤害（累计 ${prev + bonus}）`)
+  }
+  return changed
+}
+
+function applyPostBattleAutoCopy(snapshot: BattleSnapshotBundle): boolean {
+  if (!backpackSystem || !backpackView) return false
+  const allItems = getAllItems()
+  const byId = new Map(allItems.map((it) => [it.id, it] as const))
+  let changed = false
+
+  for (const entity of snapshot.entities) {
+    const item = byId.get(entity.defId)
+    if (!item) continue
+    const hasAutoCopy = (item.skills ?? []).some((s) => /每次战斗后自动复制/.test(s.cn ?? ''))
+    if (!hasAutoCopy) continue
+    const size = normalizeSize(item.size)
+    const place = findFirstBackpackPlace(size)
+    if (!place) continue
+
+    const newId = nextId()
+    backpackSystem.place(place.col, place.row, size, item.id, newId)
+    backpackView.addItem(newId, item.id, size, place.col, place.row, entity.tier).then(() => {
+      backpackView!.setItemTier(newId, entity.tier)
+      drag?.refreshZone(backpackView!)
+    })
+    instanceToDefId.set(newId, item.id)
+    instanceToTier.set(newId, entity.tier)
+    instanceToPermanentDamageBonus.set(newId, 0)
+    changed = true
+    console.log(`[ShopScene] 战后复制 ${item.name_cn} -> 背包`)
+  }
+
+  return changed
+}
+
+function applyPostBattleEffects(snapshot: BattleSnapshotBundle | null): void {
+  if (!snapshot) return
+  const changedGrowth = applyPostBattlePermanentGrowth(snapshot)
+  const changedCopy = applyPostBattleAutoCopy(snapshot)
+  if (changedGrowth || changedCopy) {
+    syncShopOwnedTierRules()
+    refreshShopUI()
+  }
 }
 
 function computeUpgradeMatch(): UpgradeMatch {
@@ -798,6 +967,7 @@ function refreshShopUI(): void {
   }
   updateMiniMap()
   refreshUpgradeHints()
+  saveShopStateToStorage(captureShopState())
 }
 
 // ---- Day 辅助 ----
@@ -1883,6 +2053,7 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
         })
       instanceToDefId.set(id, slot.item.id)
       instanceToTier.set(id, slot.tier)
+      instanceToPermanentDamageBonus.set(id, 0)
       console.log(`[ShopScene] 购买→战斗区 ${slot.item.name_cn}，金币: ${shopManager.gold}`)
       refreshShopUI()
     } else {
@@ -1924,6 +2095,7 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
       })
     instanceToDefId.set(id, slot.item.id)
     instanceToTier.set(id, slot.tier)
+    instanceToPermanentDamageBonus.set(id, 0)
     console.log(`[ShopScene] 购买→背包 ${slot.item.name_cn}，金币: ${shopManager.gold}`)
 
     refreshShopUI()
@@ -1998,6 +2170,7 @@ function placeInitialItems(): void {
       })
     instanceToDefId.set(id, bp.defId)
     instanceToTier.set(id, tier)
+    instanceToPermanentDamageBonus.set(id, 0)
   }
 
   console.log('[ShopScene] 背包初始物品:', backpackSystem!.getAllItems().length)
@@ -2085,9 +2258,8 @@ export const ShopScene: Scene = {
       // 1) 拖到出售按钮：直接出售
       if (_isOverSellBtn(anchorGx, anchorGy)) {
         homeSystem.remove(instanceId)
-        instanceToDefId.delete(instanceId)
         const tier = getInstanceTier(instanceId)
-        instanceToTier.delete(instanceId)
+        removeInstanceMeta(instanceId)
         const gained = shopManager.sellItem(item, tier)
         console.log(`[ShopScene] 拖拽出售 ${item.name_cn} +${gained}G，金币: ${shopManager.gold}`)
         refreshShopUI()
@@ -2101,8 +2273,7 @@ export const ShopScene: Scene = {
         if (synthTarget) {
           const synth = synthesizeTarget(defId, fromTier, synthTarget.instanceId, synthTarget.zone)
           if (synth) {
-            instanceToDefId.delete(instanceId)
-            instanceToTier.delete(instanceId)
+            removeInstanceMeta(instanceId)
             console.log(`[ShopScene] 拖拽合成 ${item.name_cn} ${fromTier} -> ${synth.toTier}`)
             void playSynthesisAnimation(stage, { item: { id: item.id, name_cn: item.name_cn } }, synth)
             refreshShopUI()
@@ -2387,6 +2558,7 @@ export const ShopScene: Scene = {
         SceneManager.goto('shop')
         return
       }
+      clearBattleOutcome()
       const snapshot = buildBattleSnapshot()
       if (snapshot) {
         setBattleSnapshot(snapshot)
@@ -2439,8 +2611,7 @@ export const ShopScene: Scene = {
       selectedSellAction = () => {
         system.remove(instanceId)
         view.removeItem(instanceId)
-        instanceToDefId.delete(instanceId)
-        instanceToTier.delete(instanceId)
+        removeInstanceMeta(instanceId)
         manager.sellItem(item, tier)
         drag?.refreshZone(view)
         console.log(`[ShopScene] 出售 ${item.name_cn} +${sellPrice}G，金币: ${manager.gold}`)
@@ -2538,9 +2709,18 @@ export const ShopScene: Scene = {
     stage.on('pointerdown', onStageTapHidePopup)
 
     // Stage 级指针事件（商店拖拽）
-    stage.on('pointermove',      (e: FederatedPointerEvent) => { if (shopDragFloater) onShopDragMove(e) })
-    stage.on('pointerup',        (e: FederatedPointerEvent) => { if (shopDragFloater) void onShopDragEnd(e, stage) })
-    stage.on('pointerupoutside', (e: FederatedPointerEvent) => { if (shopDragFloater) void onShopDragEnd(e, stage) })
+    onStageShopPointerMove = (e: FederatedPointerEvent) => {
+      if (shopDragFloater) onShopDragMove(e)
+    }
+    onStageShopPointerUp = (e: FederatedPointerEvent) => {
+      if (shopDragFloater) void onShopDragEnd(e, stage)
+    }
+    onStageShopPointerUpOutside = (e: FederatedPointerEvent) => {
+      if (shopDragFloater) void onShopDragEnd(e, stage)
+    }
+    stage.on('pointermove', onStageShopPointerMove)
+    stage.on('pointerup', onStageShopPointerUp)
+    stage.on('pointerupoutside', onStageShopPointerUpOutside)
 
     // Debug 天数控制
     dayDebugCon = new Container()
@@ -2592,11 +2772,14 @@ export const ShopScene: Scene = {
       applyPhaseInputLock()
     })
 
-    if (savedShopState) {
-      applySavedShopState(savedShopState)
+    const restoredState = savedShopState ?? loadShopStateFromStorage()
+    const battleOutcome = consumeBattleOutcome()
+    if (restoredState) {
+      applySavedShopState(restoredState)
       savedShopState = null
       if (pendingAdvanceToNextDay) {
         setDay(currentDay + 1)
+        applyPostBattleEffects(battleOutcome?.snapshot ?? null)
         pendingAdvanceToNextDay = false
       }
     } else {
@@ -2636,6 +2819,18 @@ export const ShopScene: Scene = {
       stage.off('pointerdown', onStageTapHidePopup)
       onStageTapHidePopup = null
     }
+    if (onStageShopPointerMove) {
+      stage.off('pointermove', onStageShopPointerMove)
+      onStageShopPointerMove = null
+    }
+    if (onStageShopPointerUp) {
+      stage.off('pointerup', onStageShopPointerUp)
+      onStageShopPointerUp = null
+    }
+    if (onStageShopPointerUpOutside) {
+      stage.off('pointerupoutside', onStageShopPointerUpOutside)
+      onStageShopPointerUpOutside = null
+    }
 
     if (bpBtnHandle?.container) {
       const upTick = (bpBtnHandle.container as any)._upgradeTick as (() => void) | undefined
@@ -2650,9 +2845,11 @@ export const ShopScene: Scene = {
     offPhaseChange = null
     if (pendingBattleTransition) {
       savedShopState = captureShopState()
+      saveShopStateToStorage(savedShopState)
       pendingBattleTransition = false
     } else {
       clearBattleSnapshot()
+      clearBattleOutcome()
       savedShopState = null
       pendingAdvanceToNextDay = false
     }
@@ -2683,6 +2880,7 @@ export const ShopScene: Scene = {
     battleSystem = backpackSystem = battleView = backpackView = drag = null
     instanceToDefId.clear()
     instanceToTier.clear()
+    instanceToPermanentDamageBonus.clear()
   },
 
   update(_dt: number) {},
