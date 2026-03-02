@@ -48,4 +48,12 @@ describe('GridSystem (1x6 single row)', () => {
     const snap6 = g.exportCombatSnapshot(6)
     expect(new Set(snap6.entities.map((e) => e.instanceId))).toEqual(new Set(['A', 'B']))
   })
+
+  it('supports two-row placement for wide items', () => {
+    const g2 = new GridSystem(6, 2)
+    expect(g2.canPlace(1, 1, '2x1')).toBe(true)
+    expect(g2.place(1, 1, '2x1', 'd', 'M')).toBe(true)
+    expect(g2.canPlace(1, 1, '1x1')).toBe(false)
+    expect(g2.canPlace(4, 1, '3x1')).toBe(false)
+  })
 })

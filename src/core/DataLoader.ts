@@ -24,13 +24,20 @@ function extractConfig(entries: ConfigEntry[]): GameConfig {
     if (!entry) throw new Error(`[DataLoader] Missing config key: ${name}`)
     return entry.value as T
   }
+  const getOptional = <T>(name: string): T | undefined => {
+    const entry = entries.find(e => e.name === name)
+    return entry ? (entry.value as T) : undefined
+  }
 
   return {
     dailyGold:          get<number>('daily_gold'),
+    dailyGoldByDay:     getOptional<number[]>('daily_gold_by_day'),
     shopRefreshPrices:  get<number[]>('shop_refresh_prices'),
     dailyBattleSlots:   get<number[]>('daily_battle_area_slots'),
     backpackSlots:      get<number>('backpack_slots'),
     dailyHealth:        get<number[]>('daily_health'),
+    dailyEnemyHealth:   getOptional<number[]>('daily_enemy_health'),
+    dailyPlayerHealth:  getOptional<number[]>('daily_player_health'),
     sellPriceRatio:     get<number>('sell_price_ratio'),
     smallItemPrices:    get<number[]>('small_item_prices'),
     mediumItemPrices:   get<number[]>('medium_item_prices'),
@@ -38,6 +45,7 @@ function extractConfig(entries: ConfigEntry[]): GameConfig {
     sellMinDaysByRarity:get<number[]>('sell_min_days_by_rarity'),
     itemVisualScale:    get<number>('item_visual_scale'),
     shopTierChancesByDay:get<number[][]>('shop_tier_chances_by_day'),
+    shopRules:          getOptional<GameConfig['shopRules']>('shop_rules'),
     textSizes:          get<GameConfig['textSizes']>('text_sizes'),
     combatRuntime:      get<GameConfig['combatRuntime']>('combat_runtime'),
   }
@@ -178,6 +186,8 @@ function normalizeItem(raw: unknown): ItemDef | null {
     sell_price: Math.max(0, toNumber(r.sell_price, 0)),
 
     skills,
+    simple_desc: toSafeString(r.simple_desc).trim(),
+    simple_desc_tiered: toSafeString(r.simple_desc_tiered).trim(),
     enchantments,
   }
 }

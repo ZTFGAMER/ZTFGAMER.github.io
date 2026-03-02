@@ -37,14 +37,15 @@ export interface CombatSnapshot {
 
 export class GridSystem {
   readonly cols: number
-  readonly rows: number = 1
+  readonly rows: number
 
   // grid[col][row] = instanceId | null
   private grid: (string | null)[][]
   private items = new Map<string, PlacedItem>()
 
-  constructor(cols: number = 5) {
+  constructor(cols: number = 5, rows: number = 1) {
     this.cols = cols
+    this.rows = Math.max(1, Math.floor(rows))
     this.grid = Array.from({ length: cols }, () => Array<string | null>(this.rows).fill(null))
   }
 

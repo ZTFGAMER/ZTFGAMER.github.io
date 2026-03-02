@@ -18,20 +18,43 @@ const DEFAULT_POPUP_W = 400
 const POPUP_MIN_H = 240
 const POPUP_MIN_W = 360
 
-const TIER_LABELS: Record<string, string> = {
-  Bronze: '青铜',
-  Silver: '白银',
-  Gold: '黄金',
-  Diamond: '钻石',
-}
-
 const TIER_ORDER = ['Bronze', 'Silver', 'Gold', 'Diamond'] as const
+
+export type ItemInfoMode = 'simple' | 'detailed'
+
+export interface ItemInfoRuntimeOverride {
+  cooldownMs?: number
+  damage?: number
+  shield?: number
+  heal?: number
+  burn?: number
+  poison?: number
+  multicast?: number
+  ammoCurrent?: number
+  ammoMax?: number
+}
 
 function parseTierName(raw: string): string {
   for (const t of TIER_ORDER) {
     if (raw.includes(t)) return t
   }
   return ''
+}
+
+function parseTierStar(raw: string): 1 | 2 {
+  const m = raw.match(/#(\d+)/)
+  const n = Number(m?.[1] ?? '1')
+  if (!Number.isFinite(n) || n <= 1) return 1
+  return 2
+}
+
+function formatTierLabel(rawTier: string): string {
+  const tier = parseTierName(rawTier) || 'Bronze'
+  const star = tier === 'Diamond' ? 1 : parseTierStar(rawTier)
+  if (tier === 'Bronze') return `Lv${star}`
+  if (tier === 'Silver') return `Lv${star + 2}`
+  if (tier === 'Gold') return `Lv${star + 4}`
+  return 'Lv7'
 }
 
 function parseAvailableTiers(raw: string): string[] {
@@ -46,7 +69,7 @@ function parseAvailableTiers(raw: string): string[] {
 }
 
 function pickTierValue(series: string, tierIndex: number): string {
-  const parts = series.split('/').map(v => v.trim()).filter(Boolean)
+  const parts = series.split(/[\/|]/).map(v => v.trim()).filter(Boolean)
   if (parts.length <= 1) return series
   const idx = Math.max(0, Math.min(parts.length - 1, tierIndex))
   return parts[idx] ?? parts[0] ?? series
@@ -54,12 +77,12 @@ function pickTierValue(series: string, tierIndex: number): string {
 
 function formatDescByTier(raw: string, tierIndex: number): string {
   // 仅替换纯数值分档：10/20/30(/40)、1.5/2/2.5
-  return raw.replace(/\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)+/g, (m) => pickTierValue(m, tierIndex))
+  return raw.replace(/\+?\d+(?:\.\d+)?(?:[\/|]\+?\d+(?:\.\d+)?)+/g, (m) => pickTierValue(m, tierIndex))
 }
 
 function formatDescDiffByTier(raw: string, fromTierIndex: number, toTierIndex: number): { text: string; changed: boolean } {
   let changed = false
-  const text = raw.replace(/\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)+/g, (m) => {
+  const text = raw.replace(/\+?\d+(?:\.\d+)?(?:[\/|]\+?\d+(?:\.\d+)?)+/g, (m) => {
     const from = pickTierValue(m, fromTierIndex)
     const to = pickTierValue(m, toTierIndex)
     if (from !== to) {
@@ -74,10 +97,17 @@ function formatDescDiffByTier(raw: string, fromTierIndex: number, toTierIndex: n
 function formatCooldownLine(item: ItemDef, tierIndex: number): string | null {
   const sec = getCooldownSecText(item, tierIndex)
   if (!sec) return null
-  return `冷却：${sec}秒`
+  return `间隔：${sec}秒`
 }
 
 function getCooldownSecText(item: ItemDef, tierIndex: number): string | null {
+  const ms = getCooldownMsByTier(item, tierIndex)
+  if (!Number.isFinite(ms) || ms <= 0) return null
+  const sec = ms / 1000
+  return (Math.round(sec * 10) / 10).toFixed(1)
+}
+
+function getCooldownMsByTier(item: ItemDef, tierIndex: number): number {
   const rawTier = (item.cooldown_tiers ?? '').trim()
 
   let ms = Number.NaN
@@ -88,9 +118,143 @@ function getCooldownSecText(item: ItemDef, tierIndex: number): string | null {
   }
   if (!Number.isFinite(ms)) ms = Number(item.cooldown)
 
-  if (!Number.isFinite(ms) || ms <= 0) return null
-  const sec = ms / 1000
-  return (Math.round(sec * 10) / 10).toFixed(1)
+  return ms
+}
+
+type SimpleStatEntry = {
+  label: string
+  value: string
+  color: number
+  icon: string
+}
+
+function speedTierText(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '无'
+  if (ms <= 2500) return '很快'
+  if (ms <= 4000) return '快'
+  if (ms <= 6500) return '中等'
+  if (ms <= 9000) return '慢'
+  return '很慢'
+}
+
+function extractSimpleStatEntries(
+  lines: string[],
+  item: ItemDef,
+  tierIndex: number,
+  rt?: ItemInfoRuntimeOverride,
+  displayMode: ItemInfoMode = 'simple',
+): SimpleStatEntry[] {
+  const out: SimpleStatEntry[] = []
+  const find = (regex: RegExp): string | null => {
+    for (const line of lines) {
+      const m = line.match(regex)
+      if (m?.[1]) return m[1]
+    }
+    return null
+  }
+
+  const damage = find(/(?:造成|攻击造成)\s*([+\-]?\d+(?:\.\d+)?)\s*伤害/)
+  if (damage) {
+    out.push({
+      label: '伤害',
+      value: damage,
+      color: 0xff6b6b,
+      icon: '✦',
+    })
+  }
+
+  const shield = find(/(?:获得|提供)\s*([+\-]?\d+(?:\.\d+)?)\s*护盾/)
+  if (shield) {
+    out.push({
+      label: '护盾',
+      value: shield,
+      color: 0xf5d46b,
+      icon: '🛡',
+    })
+  }
+
+  const ms = typeof rt?.cooldownMs === 'number'
+    ? Math.max(0, rt.cooldownMs)
+    : getCooldownMsByTier(item, tierIndex)
+  if (!Number.isFinite(ms) || ms <= 0) {
+    out.push({
+      label: '',
+      value: '被动物品',
+      color: 0x62a8ff,
+      icon: '◈',
+    })
+  } else {
+    if (displayMode === 'simple') {
+      out.push({
+        label: '速度',
+        value: speedTierText(ms),
+        color: 0x62a8ff,
+        icon: '⏱',
+      })
+    } else {
+      const sec = (Math.round((ms / 1000) * 10) / 10).toFixed(1)
+      out.push({
+        label: '间隔',
+        value: `${sec}秒`,
+        color: 0x62a8ff,
+        icon: '⏱',
+      })
+    }
+  }
+
+  return out
+}
+
+function stripTierNumbersFromGameplayLine(line: string): string {
+  let out = line
+  out = out.replace(/\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)+/g, '')
+  out = out.replace(/[+\-]?\d+(?:\.\d+)?/g, '')
+  out = out.replace(/\+\s*/g, '提升')
+  out = out.replace(/\s+/g, '')
+  out = out.replace(/[：:,，]\s*[。；;.!！?？]?$/g, '')
+  out = out.replace(/[。；;.!！?？]+$/g, '')
+  out = out.replace(/提升提升/g, '提升')
+  out = out.replace(/次$/g, '')
+  return out
+}
+
+function formatSimpleGameplayLine(lines: string[], preferred?: string): string {
+  if (preferred && preferred.trim()) return preferred.trim().replace(/^玩法\s*[：:]\s*/u, '')
+  const base = lines[1] ?? lines[0] ?? ''
+  const text = stripTierNumbersFromGameplayLine(base)
+  return (text || '(暂无玩法描述)').replace(/^玩法\s*[：:]\s*/u, '')
+}
+
+function isPureStatLine(line: string): boolean {
+  const s = line.replace(/\s+/g, '').replace(/[。；;!！?？]+$/g, '')
+  if (!s) return false
+  if (/^(攻击)?造成[+\-]?\d+(?:\.\d+)?伤害$/.test(s)) return true
+  if (/^(获得|提供|回复|治疗)[+\-]?\d+(?:\.\d+)?(护盾|生命|治疗)?$/.test(s)) return true
+  if (/^造成[+\-]?\d+(?:\.\d+)?(灼烧|剧毒|中毒)$/.test(s)) return true
+  if (/^(冷却|间隔)[:：]?[+\-]?\d+(?:\.\d+)?秒$/.test(s)) return true
+  return false
+}
+
+function applyRuntimeValueToLine(line: string, rt?: ItemInfoRuntimeOverride): string {
+  if (!rt) return line
+  let out = line
+  const damage = typeof rt.damage === 'number' ? Math.max(0, Math.round(rt.damage)) : null
+  const shield = typeof rt.shield === 'number' ? Math.max(0, Math.round(rt.shield)) : null
+  const burn = typeof rt.burn === 'number' ? Math.max(0, Math.round(rt.burn)) : null
+  const poison = typeof rt.poison === 'number' ? Math.max(0, Math.round(rt.poison)) : null
+  const multicast = typeof rt.multicast === 'number' ? Math.max(1, Math.round(rt.multicast)) : null
+  if (damage !== null) out = out.replace(/(?:攻击造成|造成)\s*\d+(?:\.\d+)?\s*伤害/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${damage}`))
+  if (shield !== null) out = out.replace(/(?:获得|提供)\s*\d+(?:\.\d+)?\s*护盾/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${shield}`))
+  if (burn !== null) out = out.replace(/造成\s*\d+(?:\.\d+)?\s*灼烧/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${burn}`))
+  if (poison !== null) out = out.replace(/造成\s*\d+(?:\.\d+)?\s*剧毒/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${poison}`))
+  if (multicast !== null) out = out.replace(/(?:连续发射|攻击次数\+)\s*\d+(?:\.\d+)?\s*次/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${multicast}`))
+  if (typeof rt.ammoMax === 'number') {
+    const ammoText = typeof rt.ammoCurrent === 'number'
+      ? `${Math.max(0, Math.round(rt.ammoCurrent))}/${Math.max(0, Math.round(rt.ammoMax))}`
+      : `${Math.max(0, Math.round(rt.ammoMax))}`
+    out = out.replace(/弹药\s*[:：]\s*\d+(?:\/\d+)?/g, `弹药:${ammoText}`)
+  }
+  return out
 }
 
 export class SellPopup extends Container {
@@ -120,7 +284,9 @@ export class SellPopup extends Container {
   private lastPriceMode: 'sell' | 'buy' | 'none' = 'sell'
   private lastTierOverride: string | undefined = undefined
   private lastUpgradeFromTier: string | undefined = undefined
-  private textSize = { name: 22, tier: 14, cooldown: 16, priceCorner: 20, desc: 16 }
+  private lastInfoMode: ItemInfoMode = 'detailed'
+  private lastRuntimeOverride: ItemInfoRuntimeOverride | undefined = undefined
+  private textSize = { name: 22, tier: 14, cooldown: 16, priceCorner: 20, desc: 16, simpleDesc: 16 }
   private cornerRadius = 10
 
   constructor(canvasW: number, _canvasH: number) {
@@ -134,6 +300,7 @@ export class SellPopup extends Container {
       cooldown: ts.itemInfoCooldown,
       priceCorner: ts.itemInfoPriceCorner,
       desc: ts.itemInfoDesc,
+      simpleDesc: ts.itemInfoDesc,
     }
 
     // 弹窗面板
@@ -246,7 +413,7 @@ export class SellPopup extends Container {
     this.minH = Math.max(0, height)
     this.currentMinH = this.minH
     if (this.lastItem) {
-      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier)
+      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride)
     } else {
       this.redrawPanel(this.minH)
       this.setAnchor(0, this.anchorY)
@@ -256,11 +423,11 @@ export class SellPopup extends Container {
   setSmallMinHeight(height: number): void {
     this.minHSmall = Math.max(0, height)
     if (this.lastItem) {
-      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier)
+      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride)
     }
   }
 
-  setTextSizes(sizes: { name?: number; tier?: number; cooldown?: number; priceCorner?: number; desc?: number }): void {
+  setTextSizes(sizes: { name?: number; tier?: number; cooldown?: number; priceCorner?: number; desc?: number; simpleDesc?: number }): void {
     const n = (v: unknown, fallback: number) => {
       const x = Number(v)
       return Number.isFinite(x) ? Math.max(1, x) : fallback
@@ -271,24 +438,25 @@ export class SellPopup extends Container {
       cooldown: n(sizes.cooldown, this.textSize.cooldown),
       priceCorner: n(sizes.priceCorner, this.textSize.priceCorner),
       desc:  n(sizes.desc,  this.textSize.desc),
+      simpleDesc: n(sizes.simpleDesc, this.textSize.simpleDesc),
     }
     this.nameT.style.fontSize  = this.textSize.name
     this.tierBadgeT.style.fontSize = this.textSize.tier
     this.cooldownT.style.fontSize = this.textSize.cooldown
     this.priceT.style.fontSize = this.textSize.priceCorner
-    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier)
+    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride)
   }
 
   setCornerRadius(radius: number): void {
     this.cornerRadius = Math.max(0, radius)
-    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier)
+    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride)
   }
 
   setWidth(width: number): void {
     this.panelW = Math.max(POPUP_MIN_W, Math.min(this.canvasW, width))
     this.nameT.style.wordWrapWidth = this.panelW - 24
     if (this.lastItem) {
-      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride)
+      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride)
     } else {
       this.redrawPanel(POPUP_MIN_H)
       this.setAnchor(0, this.anchorY)
@@ -296,12 +464,14 @@ export class SellPopup extends Container {
   }
 
   /** 展示弹窗（需传入物品信息及出售价格） */
-  show(item: ItemDef, price: number, priceMode: 'sell' | 'buy' | 'none' = 'sell', tierOverride?: string, upgradeFromTier?: string): void {
+  show(item: ItemDef, price: number, priceMode: 'sell' | 'buy' | 'none' = 'sell', tierOverride?: string, upgradeFromTier?: string, infoMode: ItemInfoMode = 'detailed', runtimeOverride?: ItemInfoRuntimeOverride): void {
     this.lastItem = item
     this.lastPrice = price
     this.lastPriceMode = priceMode
     this.lastTierOverride = tierOverride
     this.lastUpgradeFromTier = upgradeFromTier
+    this.lastInfoMode = infoMode
+    this.lastRuntimeOverride = runtimeOverride
     const cfg = getGameConfig()
     const visualScale = cfg.itemVisualScale
     const size = normalizeSize(item.size)
@@ -315,14 +485,19 @@ export class SellPopup extends Container {
     const gap = 14
     const top = 14
 
-    const tier = tierOverride ?? (parseTierName(item.starting_tier) || 'Bronze')
+    const tierRaw = tierOverride ?? (parseTierName(item.starting_tier) || 'Bronze')
+    const tier = parseTierName(tierRaw) || 'Bronze'
+    const tierStar = tier === 'Diamond' ? 1 : parseTierStar(tierRaw)
     const tierColor = getTierColor(tier)
-    const tierLabel = TIER_LABELS[tier] ?? '青铜'
+    const tierLabel = formatTierLabel(tierRaw)
     const availableTiers = parseAvailableTiers(item.available_tiers)
-    const tierIndex = Math.max(0, availableTiers.indexOf(tier))
-    const fromTier = upgradeFromTier ?? tier
+    const tierBaseIndex = Math.max(0, availableTiers.indexOf(tier))
+    const tierIndex = tierBaseIndex + (tierStar - 1)
+    const fromTier = parseTierName(upgradeFromTier ?? tierRaw) || tier
+    const fromStar = fromTier === 'Diamond' ? 1 : parseTierStar(upgradeFromTier ?? tierRaw)
     const fromTierIndexRaw = availableTiers.indexOf(fromTier)
-    const fromTierIndex = fromTierIndexRaw >= 0 ? fromTierIndexRaw : tierIndex
+    const fromTierBaseIndex = fromTierIndexRaw >= 0 ? fromTierIndexRaw : tierBaseIndex
+    const fromTierIndex = fromTierBaseIndex + (fromStar - 1)
     const inUpgradePreview = Boolean(upgradeFromTier && fromTier !== tier)
     // 先更新字体，再计算布局
     this.nameT.style.fontSize  = this.textSize.name
@@ -331,26 +506,50 @@ export class SellPopup extends Container {
     this.priceT.style.fontSize = this.textSize.priceCorner
 
     this.nameT.text  = item.name_cn
-    this.priceT.text = priceMode === 'none' ? '' : `${priceMode === 'buy' ? '购买价格' : '出售价格'}：💰 ${price}G`
-    this.priceT.visible = priceMode !== 'none'
+    this.priceT.text = ''
+    this.priceT.visible = false
     const cooldownLine = (() => {
+      if (runtimeOverride && typeof runtimeOverride.cooldownMs === 'number') {
+        const sec = Math.max(0, runtimeOverride.cooldownMs) / 1000
+        return `间隔：${(Math.round(sec * 10) / 10).toFixed(1)}秒`
+      }
       if (!inUpgradePreview) return formatCooldownLine(item, tierIndex)
       const oldSec = getCooldownSecText(item, fromTierIndex)
       const newSec = getCooldownSecText(item, tierIndex)
-      if (oldSec && newSec && oldSec !== newSec) return `冷却：${oldSec}秒 -> ${newSec}秒`
+      if (oldSec && newSec && oldSec !== newSec) return `间隔：${oldSec}秒 -> ${newSec}秒`
       return formatCooldownLine(item, tierIndex)
     })()
     this.cooldownT.text = cooldownLine ?? ''
-    this.cooldownT.visible = Boolean(cooldownLine)
+    this.cooldownT.visible = false
 
     const skillLinesRaw = item.skills
       .map((s) => s.cn?.trim())
       .filter((s): s is string => Boolean(s))
+    const descGuideSimple = item.simple_desc?.trim() || undefined
+    const descGuideTiered = item.simple_desc_tiered?.trim() || undefined
 
+    const statLines = skillLinesRaw.map((s) => applyRuntimeValueToLine(formatDescByTier(s, tierIndex), runtimeOverride))
+    const simpleStats = extractSimpleStatEntries(statLines, item, tierIndex, runtimeOverride, infoMode)
     const descLines = (() => {
+      if (infoMode === 'simple') {
+        return [
+          formatSimpleGameplayLine(statLines, descGuideSimple),
+        ]
+      }
+
       if (!inUpgradePreview) {
-        const lines = skillLinesRaw.map((s) => formatDescByTier(s, tierIndex))
-        return lines.length > 0 ? lines : ['(暂无文本)']
+        if (descGuideTiered) {
+          return [applyRuntimeValueToLine(formatDescByTier(descGuideTiered, tierIndex), runtimeOverride)]
+        }
+        const lines = skillLinesRaw
+          .map((s) => applyRuntimeValueToLine(formatDescByTier(s, tierIndex), runtimeOverride))
+          .filter((line) => !isPureStatLine(line))
+        return lines.length > 0 ? lines : []
+      }
+
+      if (descGuideTiered) {
+        const diff = formatDescDiffByTier(descGuideTiered, fromTierIndex, tierIndex)
+        return diff.changed ? [diff.text] : ['（当前升级无数值变化）']
       }
 
       const changed = skillLinesRaw
@@ -360,6 +559,8 @@ export class SellPopup extends Container {
 
       return changed.length > 0 ? changed : ['（当前升级无数值变化）']
     })()
+
+    const isSimple = infoMode === 'simple'
 
     const frameX = pad
     const frameY = top
@@ -372,18 +573,26 @@ export class SellPopup extends Container {
     this.iconSp.height = Math.max(1, frameH - iconInset * 2)
     this.iconSp.x = frameX + iconInset
     this.iconSp.y = frameY + iconInset
+    this.iconSp.visible = true
 
     this.iconFrame.clear()
     this.iconFrame.roundRect(frameX, frameY, frameW, frameH, this.cornerRadius)
     this.iconFrame.stroke({ color: tierColor, width: 4, alpha: 0.98 })
+    this.iconFrame.visible = true
 
-    const rightX = frameX + frameW + gap
-    const rightW = Math.max(120, this.panelW - rightX - pad)
+    let rightX = frameX + frameW + gap
+    let rightW = Math.max(120, this.panelW - rightX - pad)
+    const simpleNarrowLayout = isSimple && (rightX + 120 > this.panelW - pad)
+    if (simpleNarrowLayout) {
+      rightX = pad
+      rightW = Math.max(120, this.panelW - pad * 2)
+    }
     this.nameT.style.wordWrap = false
     this.nameT.style.wordWrapWidth = rightW
 
     this.nameT.x = rightX
     this.nameT.y = top
+    this.nameT.visible = !isSimple
 
     this.tierBadgeT.text = tierLabel
     const badgePadX = 10
@@ -393,19 +602,26 @@ export class SellPopup extends Container {
     const nameTierGap = Math.max(8, Math.round(this.textSize.tier * 0.8))
     this.cooldownT.x = this.panelW - pad - this.cooldownT.width
     this.cooldownT.y = top
+    this.cooldownT.visible = false
 
     const tierMaxX = (this.cooldownT.visible ? this.cooldownT.x - 8 : (this.panelW - pad)) - badgeW + badgePadX
     this.tierBadgeT.x = Math.max(rightX + badgePadX, Math.min(tierMaxX, rightX + this.nameT.width + nameTierGap + badgePadX))
     this.tierBadgeT.y = this.nameT.y + 2
     this.tierBadgeBg.clear()
-    this.tierBadgeBg.roundRect(this.tierBadgeT.x - badgePadX, this.tierBadgeT.y - badgePadY, badgeW, badgeH, 8)
-    this.tierBadgeBg.fill({ color: tierColor, alpha: 0.92 })
-    this.tierBadgeBg.stroke({ color: 0xffffff, width: 1, alpha: 0.5 })
+    if (!isSimple) {
+      this.tierBadgeBg.roundRect(this.tierBadgeT.x - badgePadX, this.tierBadgeT.y - badgePadY, badgeW, badgeH, 8)
+      this.tierBadgeBg.fill({ color: tierColor, alpha: 0.92 })
+      this.tierBadgeBg.stroke({ color: 0xffffff, width: 1, alpha: 0.5 })
+    }
+    this.tierBadgeBg.visible = !isSimple
+    this.tierBadgeT.visible = !isSimple
 
     // 描述区布局
     this.descCon.x = rightX
     const headerH = Math.max(this.nameT.height, this.tierBadgeT.height, this.cooldownT.visible ? this.cooldownT.height : 0)
-    this.descCon.y = top + headerH + 10
+    this.descCon.y = isSimple
+      ? (simpleNarrowLayout ? (frameY + frameH + 8) : top)
+      : (top + headerH + 10)
     this.descDividerG.clear()
     for (const t of this.descTexts) {
       if (t.parent) t.parent.removeChild(t)
@@ -415,17 +631,52 @@ export class SellPopup extends Container {
 
     let cursorY = 0
     const lineGap = 6
+    if (simpleStats.length > 0) {
+      let statX = 0
+      let statLineH = 0
+      for (const entry of simpleStats) {
+        const t = new Text({
+          text: `${entry.icon} ${entry.label}${entry.value}`,
+          style: {
+            fontSize: this.textSize.simpleDesc,
+            fill: entry.color,
+            fontFamily: 'Arial',
+            fontWeight: 'bold',
+          },
+        })
+        if (statX > 0 && statX + t.width > rightW) {
+          statX = 0
+          cursorY += statLineH + 4
+          statLineH = 0
+        }
+        t.x = statX
+        t.y = cursorY
+        this.descCon.addChild(t)
+        this.descTexts.push(t)
+        statX += t.width + 16
+        statLineH = Math.max(statLineH, t.height)
+      }
+      cursorY += statLineH
+      if (descLines.length > 0) {
+        const y = cursorY + 5
+        this.descDividerG.moveTo(0, y)
+        this.descDividerG.lineTo(rightW, y)
+        this.descDividerG.stroke({ color: 0x5a628f, width: 1, alpha: 0.9 })
+        cursorY += 10
+      }
+    }
+
     for (let i = 0; i < descLines.length; i++) {
       const t = new Text({
         text: descLines[i] ?? '',
         style: {
-          fontSize: this.textSize.desc,
+          fontSize: isSimple ? this.textSize.simpleDesc : this.textSize.desc,
           fill: 0xbfc7f5,
           fontFamily: 'Arial',
           wordWrap: true,
           wordWrapWidth: rightW,
           breakWords: true,
-          lineHeight: Math.round(this.textSize.desc * 1.25),
+          lineHeight: Math.round((isSimple ? this.textSize.simpleDesc : this.textSize.desc) * 1.25),
         },
       })
       t.x = 0
@@ -470,7 +721,7 @@ export class SellPopup extends Container {
   }
 
   showUpgradePreview(item: ItemDef, price: number, fromTier: string, toTier: string, priceMode: 'sell' | 'buy' | 'none' = 'buy'): void {
-    this.show(item, price, priceMode, toTier, fromTier)
+    this.show(item, price, priceMode, toTier, fromTier, 'detailed')
   }
 
   hide(): void {

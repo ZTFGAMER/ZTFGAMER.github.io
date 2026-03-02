@@ -1,139 +1,215 @@
 [
   {
-    "id": "788a8553-cb53-4df0-938d-3c102060ae2c",
+    "id": "ab108c45-bd0b-4129-8b92-19d17c798164",
     "name_en": "",
-    "name_cn": "连发飞镖",
+    "name_cn": "短剑",
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze/Silver/Gold/Diamond",
+    "available_tiers": "Bronze",
     "heroes": "",
-    "tags": "多武器",
-    "position": "核心",
+    "tags": "战士",
+    "position": "",
     "cooldown": 5000,
     "cooldown_tiers": "5000",
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成5/10/15/20伤害，触发2次。"
+        "cn": "攻击造成10/20伤害。"
+      },
+      {
+        "en": "",
+        "cn": "相邻的护盾物品护盾+5/10。"
       }
     ],
     "icon": "item1",
-    "attack_style": "直线飞行\n交替发射",
-    "attack_variants": [
-      "item1_a",
-      "item1_a2"
-    ]
+    "attack_style": "旋转飞行",
+    "simple_desc": "相邻物品护盾提升",
+    "simple_desc_tiered": "相邻物品护盾+5|10"
   },
   {
-    "id": "eac51b96-8b79-44b8-a8a2-3fe718662336",
+    "id": "578d9e51-a6c2-4c40-9dcd-60420ffe91c6",
     "name_en": "",
-    "name_cn": "回旋镖",
-    "type": "Item / 物品",
-    "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze/Silver/Gold/Diamond",
-    "heroes": "",
-    "tags": "多武器",
-    "position": "辅助",
-    "cooldown": 0,
-    "cooldown_tiers": "无",
-    "skills": [
-      {
-        "en": "",
-        "cn": "相邻物品攻击时，攻击造成10/20/30/40伤害。"
-      }
-    ],
-    "icon": "item2",
-    "attack_style": "旋转飞行"
-  },
-  {
-    "id": "c7a1137c-c476-48b2-9810-8c89418fa2d1",
-    "name_en": "",
-    "name_cn": "碎片手雷",
-    "type": "Item / 物品",
-    "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze/Silver/Gold/Diamond",
-    "heroes": "",
-    "tags": "多武器",
-    "position": "基础",
-    "cooldown": 7000,
-    "cooldown_tiers": "7000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "攻击造成50/100/150/200伤害。"
-      }
-    ],
-    "icon": "item3",
-    "attack_style": "旋转飞行"
-  },
-  {
-    "id": "65ad8217-d921-4859-8485-20513763201e",
-    "name_en": "",
-    "name_cn": "沉重飞斧",
+    "name_cn": "圆盾",
     "type": "Item / 物品",
     "size": "Medium / 中型",
-    "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
+    "starting_tier": "Bronze / 青铜",
+    "available_tiers": "Bronze",
     "heroes": "",
-    "tags": "多武器/减速",
-    "position": "核心",
-    "cooldown": 6000,
-    "cooldown_tiers": "6000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "攻击造成30/60/90伤害。"
-      },
-      {
-        "en": "",
-        "cn": "减速敌人时+30/60/90伤害（本场战斗内）。"
-      }
-    ],
-    "icon": "item4",
-    "attack_style": "旋转飞行"
-  },
-  {
-    "id": "8a0c53d5-2b29-44b6-b3d9-aa3332df37b4",
-    "name_en": "",
-    "name_cn": "动力飞轮",
-    "type": "Item / 物品",
-    "size": "Small / 小型",
-    "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
-    "heroes": "",
-    "tags": "多武器/加速",
-    "position": "辅助",
+    "tags": "战士",
+    "position": "",
     "cooldown": 5000,
     "cooldown_tiers": "5000",
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成20/40/60伤害。"
+        "cn": "获得20/40护盾。"
       },
       {
         "en": "",
-        "cn": "飞出时加速相邻物品1/1.5/2秒。"
+        "cn": "相邻的武器伤害+10/20。"
+      }
+    ],
+    "icon": "item2",
+    "attack_style": "旋转飞行",
+    "simple_desc": "相邻物品伤害提升",
+    "simple_desc_tiered": "相邻物品伤害+10|20"
+  },
+  {
+    "id": "0c6beae3-3f07-4496-957b-447dde815ffb",
+    "name_en": "",
+    "name_cn": "弹药袋",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Bronze / 青铜",
+    "available_tiers": "Bronze",
+    "heroes": "",
+    "tags": "弓手",
+    "position": "",
+    "cooldown": 3000,
+    "cooldown_tiers": "3000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "给相邻的物品补充1/2发弹药。"
+      }
+    ],
+    "icon": "item3",
+    "attack_style": "不飞行",
+    "simple_desc": "使用时给相邻的物品补充弹药",
+    "simple_desc_tiered": "使用时给相邻的物品补充1|2发弹药"
+  },
+  {
+    "id": "16e55d6c-d856-4820-a337-5f73332b8fe4",
+    "name_en": "",
+    "name_cn": "木弓",
+    "type": "Item / 物品",
+    "size": "Medium / 中型",
+    "starting_tier": "Bronze / 青铜",
+    "available_tiers": "Bronze",
+    "heroes": "",
+    "tags": "弓手",
+    "position": "",
+    "cooldown": 8000,
+    "cooldown_tiers": "8000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "攻击造成30/60伤害。"
+      },
+      {
+        "en": "",
+        "cn": "每次攻击后伤害+30/60，弹药:2。"
+      }
+    ],
+    "icon": "item4",
+    "attack_style": "直线飞行",
+    "attack_variants": [
+      "item4_a"
+    ],
+    "simple_desc": "每次使用后伤害提升,弹药:2",
+    "simple_desc_tiered": "每次使用后伤害+50|100,弹药:2"
+  },
+  {
+    "id": "aa05e315-afdd-40ba-8149-3fd3fd3617ce",
+    "name_en": "",
+    "name_cn": "匕首",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Bronze / 青铜",
+    "available_tiers": "Bronze",
+    "heroes": "",
+    "tags": "刺客",
+    "position": "",
+    "cooldown": 3000,
+    "cooldown_tiers": "3000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "攻击造成5/10伤害。"
+      },
+      {
+        "en": "",
+        "cn": "相邻的武器攻击时，所有武器伤害+2/4。"
       }
     ],
     "icon": "item5",
-    "attack_style": "直线飞行"
+    "attack_style": "旋转飞行",
+    "simple_desc": "相邻物品攻击后,所有物品伤害提升",
+    "simple_desc_tiered": "相邻物品攻击后,所有物品伤害+2|4"
   },
   {
-    "id": "7b3fc78e-7971-4873-ba93-fa5b6205b7de",
+    "id": "4e61c6f3-4d31-4b29-97fb-691537b3a3a0",
     "name_en": "",
-    "name_cn": "疾风手里剑",
+    "name_cn": "连发飞镖",
     "type": "Item / 物品",
     "size": "Medium / 中型",
-    "starting_tier": "Gold / 黄金",
-    "available_tiers": "Gold/Diamond",
+    "starting_tier": "Bronze / 青铜",
+    "available_tiers": "Bronze",
     "heroes": "",
-    "tags": "多武器/加速",
-    "position": "核心",
-    "cooldown": 9000,
-    "cooldown_tiers": "9000",
+    "tags": "刺客",
+    "position": "",
+    "cooldown": 3000,
+    "cooldown_tiers": "3000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "攻击造成5/10伤害。"
+      },
+      {
+        "en": "",
+        "cn": "连续发射3次。"
+      }
+    ],
+    "icon": "item6",
+    "attack_style": "旋转飞行",
+    "attack_variants": [
+      "item6_a"
+    ],
+    "simple_desc": "连发次数:3",
+    "simple_desc_tiered": "连发次数:3"
+  },
+  {
+    "id": "2f0448e7-58d2-4304-9819-d48f3c877858",
+    "name_en": "",
+    "name_cn": "长盾",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver",
+    "heroes": "",
+    "tags": "战士",
+    "position": "",
+    "cooldown": 5000,
+    "cooldown_tiers": "5000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "获得40/80护盾。"
+      },
+      {
+        "en": "",
+        "cn": "每次使用后护盾+20/40。"
+      }
+    ],
+    "icon": "item7",
+    "attack_style": "旋转飞行",
+    "simple_desc": "每次使用后护盾提升",
+    "simple_desc_tiered": "每次使用后护盾+20|40"
+  },
+  {
+    "id": "6cd98599-56a3-4604-a66a-95b01195ba03",
+    "name_en": "",
+    "name_cn": "长剑",
+    "type": "Item / 物品",
+    "size": "Medium / 中型",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver",
+    "heroes": "",
+    "tags": "战士",
+    "position": "",
+    "cooldown": 5000,
+    "cooldown_tiers": "5000",
     "skills": [
       {
         "en": "",
@@ -141,783 +217,297 @@
       },
       {
         "en": "",
-        "cn": "触发加速时，额外造成100/200伤害。"
-      }
-    ],
-    "icon": "item6",
-    "attack_style": "旋转飞行"
-  },
-  {
-    "id": "5e749519-e422-494d-bffe-0d582ce31752",
-    "name_en": "",
-    "name_cn": "打磨匕首",
-    "type": "Item / 物品",
-    "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze/Silver/Gold/Diamond",
-    "heroes": "",
-    "tags": "多武器",
-    "position": "辅助",
-    "cooldown": 5000,
-    "cooldown_tiers": "5000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "攻击造成10/20/30/40伤害。"
-      },
-      {
-        "en": "",
-        "cn": "相邻物品攻击造成伤害时，该物品+5/10/15/20伤害（本场战斗内）。"
-      }
-    ],
-    "icon": "item7",
-    "attack_style": "直线飞行"
-  },
-  {
-    "id": "6be05e4f-542f-4bf9-9eea-6f5ea0507a8c",
-    "name_en": "",
-    "name_cn": "狙击标枪",
-    "type": "Item / 物品",
-    "size": "Medium / 中型",
-    "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
-    "heroes": "",
-    "tags": "单武器",
-    "position": "基础",
-    "cooldown": 10000,
-    "cooldown_tiers": "10000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "攻击造成40/80/120伤害。"
-      },
-      {
-        "en": "",
-        "cn": "如果这是你唯一的攻击物品，战斗结束后永久+40/80/120伤害。"
+        "cn": "获得护盾时，充能1秒。"
       }
     ],
     "icon": "item8",
-    "attack_style": "直线飞行",
-    "attack_variants": [
-      "item8_a"
-    ]
+    "attack_style": "旋转飞行",
+    "simple_desc": "获得护盾时充能",
+    "simple_desc_tiered": "获得护盾时,充能1秒"
   },
   {
-    "id": "8e0873e5-b4dc-4f67-a87c-fb3a4991b6d2",
+    "id": "6631ae4c-ae28-46fc-ba6c-b8aa2555d261",
     "name_en": "",
-    "name_cn": "破甲巨矛",
+    "name_cn": "手弩",
     "type": "Item / 物品",
-    "size": "Large / 大型",
-    "starting_tier": "Gold / 黄金",
-    "available_tiers": "Gold/Diamond",
+    "size": "Small / 小型",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver",
     "heroes": "",
-    "tags": "单武器",
-    "position": "核心",
-    "cooldown": 10000,
-    "cooldown_tiers": "10000",
+    "tags": "弓手",
+    "position": "",
+    "cooldown": 8000,
+    "cooldown_tiers": "8000",
     "skills": [
       {
         "en": "",
-        "cn": "掷出造成目标最大生命值20%/40%的伤害。"
+        "cn": "攻击造成50/100伤害。"
       },
       {
         "en": "",
-        "cn": "如果这是你唯一的攻击物品，触发2次。"
+        "cn": "一次打出所有弹药，弹药:4。"
       }
     ],
     "icon": "item9",
     "attack_style": "直线飞行",
     "attack_variants": [
       "item9_a"
-    ]
+    ],
+    "simple_desc": "使用时打出所有弹药,弹药:4",
+    "simple_desc_tiered": "使用时打出所有弹药,弹药:4"
   },
   {
-    "id": "00d929c8-ab2e-4d04-bde5-776ee33844c0",
+    "id": "8c4289c7-ce64-4ddb-9b0d-2858b1b83a6f",
     "name_en": "",
-    "name_cn": "随身沙袋",
+    "name_cn": "弹药堆",
     "type": "Item / 物品",
-    "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze/Silver/Gold/Diamond",
+    "size": "Medium / 中型",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver",
     "heroes": "",
-    "tags": "叠甲",
-    "position": "基础",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "tags": "弓手",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
     "skills": [
       {
         "en": "",
-        "cn": "获得10/20/30/40护盾。"
+        "cn": "相邻物品+2/+4最大弹药量。"
       }
     ],
     "icon": "item10",
-    "attack_style": "不飞行"
+    "attack_style": "不飞行",
+    "simple_desc": "相邻物品增加最大弹药量",
+    "simple_desc_tiered": "相邻物品+2|+4最大弹药量"
   },
   {
-    "id": "ba8f0d95-ae4b-42e9-91e5-3b56bb6f42fa",
+    "id": "2d974fec-6038-417d-8831-1e7ea8d2fcde",
     "name_en": "",
-    "name_cn": "反弹屏障",
+    "name_cn": "回旋镖",
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
+    "available_tiers": "Silver",
     "heroes": "",
-    "tags": "叠甲",
-    "position": "核心",
-    "cooldown": 0,
-    "cooldown_tiers": "无",
+    "tags": "刺客",
+    "position": "",
+    "cooldown": 2000,
+    "cooldown_tiers": "2000",
     "skills": [
       {
         "en": "",
-        "cn": "受到攻击伤害时获得5/10/15护盾。"
+        "cn": "攻击造成20/40伤害。"
+      },
+      {
+        "en": "",
+        "cn": "武器伤害+10/20。"
       }
     ],
     "icon": "item11",
-    "attack_style": "不飞行"
+    "attack_style": "旋转飞行",
+    "simple_desc": "所有物品伤害提升",
+    "simple_desc_tiered": "所有物品伤害+10|20"
   },
   {
-    "id": "9abdc275-2d2a-4dcf-aab8-236f20376a07",
+    "id": "2e7ac6f1-a8d8-4e22-a9b4-7459c2a37302",
     "name_en": "",
-    "name_cn": "纳米装甲",
+    "name_cn": "大手里剑",
     "type": "Item / 物品",
     "size": "Medium / 中型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze/Silver/Gold/Diamond",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver",
     "heroes": "",
-    "tags": "叠甲",
-    "position": "辅助",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "tags": "刺客",
+    "position": "",
+    "cooldown": 8000,
+    "cooldown_tiers": "8000",
     "skills": [
       {
         "en": "",
-        "cn": "获得10/20/30/40护盾。"
+        "cn": "攻击造成50/100伤害。"
       },
       {
         "en": "",
-        "cn": "相邻护盾物品的获得+10/20/30/40护盾（本场战斗内）。"
+        "cn": "相邻武器攻击时额外触发此武器攻击。"
       }
     ],
     "icon": "item12",
-    "attack_style": "不飞行"
+    "attack_style": "旋转飞行",
+    "simple_desc": "相邻物品攻击时额外使用此物品",
+    "simple_desc_tiered": "相邻物品攻击时额外使用此物品"
   },
   {
-    "id": "2a911bc5-8a00-4c70-81ac-7679e3e8a54f",
+    "id": "67ab47ed-640b-432d-8afe-5f2f4d2046d7",
     "name_en": "",
-    "name_cn": "动能护额",
+    "name_cn": "皇家佩剑",
     "type": "Item / 物品",
     "size": "Small / 小型",
-    "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
     "heroes": "",
-    "tags": "叠甲/加速",
-    "position": "辅助",
-    "cooldown": 8000,
-    "cooldown_tiers": "8000",
+    "tags": "战士",
+    "position": "",
+    "cooldown": 2000,
+    "cooldown_tiers": "2000",
     "skills": [
       {
         "en": "",
-        "cn": "获得20/40/60护盾。"
+        "cn": "攻击造成100/200伤害。"
       },
       {
         "en": "",
-        "cn": "获得护盾时，加速1件物品1/2/3秒。"
+        "cn": "每次使用后相邻护盾物品+50/100护盾。"
       }
     ],
     "icon": "item13",
-    "attack_style": "不飞行"
+    "attack_style": "旋转飞行",
+    "simple_desc": "使用后相邻物品护盾提升",
+    "simple_desc_tiered": "使用后相邻物品+50|100护盾"
   },
   {
-    "id": "4cb65e6f-04ef-4619-847c-3a0bd494b8f2",
+    "id": "ea7d8f3c-b0c8-4570-90de-4a706657f3f2",
     "name_en": "",
-    "name_cn": "急救力场",
+    "name_cn": "尖刺金盾",
     "type": "Item / 物品",
     "size": "Medium / 中型",
-    "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
     "heroes": "",
-    "tags": "叠甲/回复",
-    "position": "基础",
-    "cooldown": 9000,
-    "cooldown_tiers": "9000",
+    "tags": "战士",
+    "position": "",
+    "cooldown": 8000,
+    "cooldown_tiers": "8000",
     "skills": [
       {
         "en": "",
-        "cn": "获得20/40/60护盾。"
+        "cn": "获得600/1200护盾。"
       },
       {
         "en": "",
-        "cn": "首次被击败时复活并恢复400/800/1200生命值。"
+        "cn": "使用后根据当前护盾值对对方造成伤害。"
       }
     ],
     "icon": "item14",
-    "attack_style": "不飞行"
+    "attack_style": "旋转飞行",
+    "simple_desc": "使用后根据当前护盾值对对方造成伤害",
+    "simple_desc_tiered": "使用后根据当前护盾值对对方造成伤害"
   },
   {
-    "id": "2ddad993-e92a-4e82-bb7e-d79335817e7a",
+    "id": "7587058e-0db0-4d26-afa7-8cc19777c68c",
     "name_en": "",
-    "name_cn": "燃烧弹",
+    "name_cn": "超级手雷",
     "type": "Item / 物品",
     "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze/Silver/Gold/Diamond",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
     "heroes": "",
-    "tags": "火焰",
-    "position": "基础",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "tags": "弓手",
+    "position": "",
+    "cooldown": 5000,
+    "cooldown_tiers": "5000",
     "skills": [
       {
         "en": "",
-        "cn": "造成4/6/8/10灼烧。"
+        "cn": "攻击造成100/200伤害。"
+      },
+      {
+        "en": "",
+        "cn": "每次使用后伤害翻倍，弹药:3。"
       }
     ],
     "icon": "item15",
-    "attack_style": "旋转飞行"
+    "attack_style": "旋转飞行",
+    "simple_desc": "使用时伤害翻倍,弹药:3",
+    "simple_desc_tiered": "每次使用后伤害翻倍,弹药:3"
   },
   {
-    "id": "d99251e2-3f03-494e-aa72-360a037caa9e",
+    "id": "37ad7738-9773-4c30-8987-fc4ba70f5577",
     "name_en": "",
-    "name_cn": "燃油瓶",
+    "name_cn": "超级弩机",
     "type": "Item / 物品",
-    "size": "Small / 小型",
-    "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
+    "size": "Medium / 中型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
     "heroes": "",
-    "tags": "火焰/武器",
-    "position": "核心",
-    "cooldown": 0,
-    "cooldown_tiers": "无",
+    "tags": "弓手",
+    "position": "",
+    "cooldown": 12000,
+    "cooldown_tiers": "12000",
     "skills": [
       {
         "en": "",
-        "cn": "使用相邻物品时，造成1/2/3灼烧。"
+        "cn": "攻击造成300/600伤害。"
+      },
+      {
+        "en": "",
+        "cn": "使用弹药物品时攻击次数+1，弹药:2。"
       }
     ],
     "icon": "item16",
-    "attack_style": "旋转飞行"
+    "attack_style": "直线飞行",
+    "attack_variants": [
+      "item16_a"
+    ],
+    "simple_desc": "使用其他弹药物品时,连发次数+1,弹药:2",
+    "simple_desc_tiered": "使用其他弹药物品时,连发次数+1,弹药:2"
   },
   {
-    "id": "881b96d5-0ae8-4c64-b0ef-e2b348d15cd2",
+    "id": "aa88379b-caf0-48e4-8427-54aff2bcc0e3",
     "name_en": "",
-    "name_cn": "霜火炸弹",
+    "name_cn": "黄金袖箭",
     "type": "Item / 物品",
-    "size": "Medium / 中型",
-    "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
     "heroes": "",
-    "tags": "火焰/冰冻",
-    "position": "核心",
-    "cooldown": 8000,
-    "cooldown_tiers": "8000",
+    "tags": "刺客",
+    "position": "",
+    "cooldown": 5000,
+    "cooldown_tiers": "5000",
     "skills": [
       {
         "en": "",
-        "cn": "造成10/15/20灼烧。"
+        "cn": "攻击造成150/300伤害。"
       },
       {
         "en": "",
-        "cn": "冻结敌方时，额外造成10/15/20灼烧。"
+        "cn": "攻击后间隔不断缩短。"
       }
     ],
     "icon": "item17",
-    "attack_style": "旋转飞行"
+    "attack_style": "直线飞行",
+    "attack_variants": [
+      "item17_a"
+    ],
+    "simple_desc": "使用后间隔不断缩短",
+    "simple_desc_tiered": "使用后间隔不断缩短"
   },
   {
-    "id": "c35764af-dd7c-4175-816b-109da1fc6550",
+    "id": "35a85821-5a72-4b42-8f8e-129e6504cbd0",
     "name_en": "",
-    "name_cn": "焦油罐",
+    "name_cn": "切割镰刀",
     "type": "Item / 物品",
-    "size": "Small / 小型",
-    "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
+    "size": "Medium / 中型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
     "heroes": "",
-    "tags": "火焰/减速",
-    "position": "辅助",
-    "cooldown": 0,
-    "cooldown_tiers": "无",
+    "tags": "刺客",
+    "position": "",
+    "cooldown": 8000,
+    "cooldown_tiers": "8000",
     "skills": [
       {
         "en": "",
-        "cn": "使用灼烧物品时，减速敌方1件敌方物品1/2/3秒。"
+        "cn": "攻击造成100/200伤害。"
+      },
+      {
+        "en": "",
+        "cn": "其他武器攻击时该武器伤害+100/200。"
       }
     ],
     "icon": "item18",
-    "attack_style": "不飞行"
-  },
-  {
-    "id": "16ffe0a9-28ea-411e-abc2-a809996a9211",
-    "name_en": "",
-    "name_cn": "熔岩爆竹",
-    "type": "Item / 物品",
-    "size": "Medium / 中型",
-    "starting_tier": "Gold / 黄金",
-    "available_tiers": "Gold/Diamond",
-    "heroes": "",
-    "tags": "火焰/减速",
-    "position": "核心",
-    "cooldown": 8000,
-    "cooldown_tiers": "8000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "造成10/15灼烧。"
-      },
-      {
-        "en": "",
-        "cn": "减速敌人时+10/15灼烧（本场战斗内）。"
-      }
-    ],
-    "icon": "item19",
-    "attack_style": "旋转飞行"
-  },
-  {
-    "id": "83c6c51a-db37-4969-be06-cc469cf738f3",
-    "name_en": "",
-    "name_cn": "飞火流星",
-    "type": "Item / 物品",
-    "size": "Large / 大型",
-    "starting_tier": "Gold / 黄金",
-    "available_tiers": "Gold/Diamond",
-    "heroes": "",
-    "tags": "火焰",
-    "position": "基础",
-    "cooldown": 7000,
-    "cooldown_tiers": "7000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "造成20/30灼烧。"
-      },
-      {
-        "en": "",
-        "cn": "每次使用后自身CD减少1秒（本场战斗内）。"
-      }
-    ],
-    "icon": "item20",
-    "attack_style": "直线飞行",
-    "attack_variants": [
-      "item20_a"
-    ]
-  },
-  {
-    "id": "db2925be-aa8a-4c67-8526-f5a8e6c22c46",
-    "name_en": "",
-    "name_cn": "人造太阳",
-    "type": "Item / 物品",
-    "size": "Medium / 中型",
-    "starting_tier": "Gold / 黄金",
-    "available_tiers": "Gold/Diamond",
-    "heroes": "",
-    "tags": "火焰/加速",
-    "position": "辅助",
-    "cooldown": 7000,
-    "cooldown_tiers": "7000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "加速2/4个物品2秒。"
-      },
-      {
-        "en": "",
-        "cn": "灼烧物品+8/16灼烧。"
-      }
-    ],
-    "icon": "item21",
-    "attack_style": "不飞行"
-  },
-  {
-    "id": "0f0dcff0-25bd-4366-ae89-a5660521e296",
-    "name_en": "",
-    "name_cn": "毒气飞镖",
-    "type": "Item / 物品",
-    "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze/Silver/Gold/Diamond",
-    "heroes": "",
-    "tags": "中毒",
-    "position": "基础",
-    "cooldown": 5000,
-    "cooldown_tiers": "5000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "造成4/6/8/10剧毒。"
-      }
-    ],
-    "icon": "item22",
-    "attack_style": "直线飞行",
-    "attack_variants": [
-      "item22_a"
-    ]
-  },
-  {
-    "id": "a21296b3-8852-4915-a709-70a8f7445fac",
-    "name_en": "",
-    "name_cn": "毒性孢子",
-    "type": "Item / 物品",
-    "size": "Small / 小型",
-    "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
-    "heroes": "",
-    "tags": "中毒",
-    "position": "辅助",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "造成3/5/7剧毒。"
-      },
-      {
-        "en": "",
-        "cn": "相邻剧毒物品+3/5/7剧毒（本场战斗内）。"
-      }
-    ],
-    "icon": "item23",
-    "attack_style": "不飞行"
-  },
-  {
-    "id": "0de01bdf-1500-4f63-8f81-ba9919123cb5",
-    "name_en": "",
-    "name_cn": "汲取毒蛾",
-    "type": "Item / 物品",
-    "size": "Small / 小型",
-    "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
-    "heroes": "",
-    "tags": "中毒/回复",
-    "position": "基础",
-    "cooldown": 6000,
-    "cooldown_tiers": "6000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "恢复20/40/60生命值。"
-      },
-      {
-        "en": "",
-        "cn": "造成剧毒时恢复+10/20/30生命值。"
-      }
-    ],
-    "icon": "item24",
-    "attack_style": "不飞行"
-  },
-  {
-    "id": "ca4fca8f-7de9-45a6-a039-92b2caed2a6a",
-    "name_en": "",
-    "name_cn": "寒冰飞针",
-    "type": "Item / 物品",
-    "size": "Medium / 中型",
-    "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
-    "heroes": "",
-    "tags": "冰冻/武器",
-    "position": "核心",
-    "cooldown": 6000,
-    "cooldown_tiers": "6000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "造成30/60伤害。"
-      },
-      {
-        "en": "",
-        "cn": "冻结敌方时+30/60伤害。"
-      }
-    ],
-    "icon": "item25",
-    "attack_style": "直线飞行",
-    "attack_variants": [
-      "item25_a"
-    ]
-  },
-  {
-    "id": "c4ee4bc2-e0fd-48eb-82a2-36864897c0ba",
-    "name_en": "",
-    "name_cn": "冰霜毒瘤",
-    "type": "Item / 物品",
-    "size": "Medium / 中型",
-    "starting_tier": "Gold / 黄金",
-    "available_tiers": "Gold/Diamond",
-    "heroes": "",
-    "tags": "中毒/冰冻",
-    "position": "辅助",
-    "cooldown": 7000,
-    "cooldown_tiers": "7000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "冻结敌人1/2件物品1秒。"
-      },
-      {
-        "en": "",
-        "cn": "冻结敌方时，剧毒物品+3/6剧毒（本场战斗内）。"
-      }
-    ],
-    "icon": "item26",
-    "attack_style": "不飞行"
-  },
-  {
-    "id": "368b0b39-f892-48a5-bced-642337229fec",
-    "name_en": "",
-    "name_cn": "瘟疫壶",
-    "type": "Item / 物品",
-    "size": "Small / 小型",
-    "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
-    "heroes": "",
-    "tags": "火焰/中毒",
-    "position": "辅助",
-    "cooldown": 0,
-    "cooldown_tiers": "无",
-    "skills": [
-      {
-        "en": "",
-        "cn": "造成灼烧时剧毒物品+2/4/6剧毒。"
-      },
-      {
-        "en": "",
-        "cn": "造成剧毒时灼烧物品+2/4/6灼烧。"
-      }
-    ],
-    "icon": "item27",
-    "attack_style": "不飞行"
-  },
-  {
-    "id": "55bd6713-c33b-40e1-9ba5-3bd85ba269a0",
-    "name_en": "",
-    "name_cn": "枯萎核心",
-    "type": "Item / 物品",
-    "size": "Medium / 中型",
-    "starting_tier": "Gold / 黄金",
-    "available_tiers": "Gold/Diamond",
-    "heroes": "",
-    "tags": "中毒",
-    "position": "核心",
-    "cooldown": 6000,
-    "cooldown_tiers": "6000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "造成3/6剧毒，并使目标身上的剧毒层数翻倍。"
-      }
-    ],
-    "icon": "item28",
-    "attack_style": "旋转飞行"
-  },
-  {
-    "id": "2b299696-b418-406b-a66b-ffcdc8c2c934",
-    "name_en": "",
-    "name_cn": "加速齿轮",
-    "type": "Item / 物品",
-    "size": "Medium / 中型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze/Silver/Gold/Diamond",
-    "heroes": "",
-    "tags": "加速",
-    "position": "辅助",
-    "cooldown": 0,
-    "cooldown_tiers": "无",
-    "skills": [
-      {
-        "en": "",
-        "cn": "相邻物品使用时，加速另一侧的物品1/2/3/4秒。"
-      }
-    ],
-    "icon": "item29",
-    "attack_style": "不飞行"
-  },
-  {
-    "id": "44e36c11-126c-44bb-8261-888cedf4adab",
-    "name_en": "",
-    "name_cn": "无人机",
-    "type": "Item / 物品",
-    "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze/Silver/Gold/Diamond",
-    "heroes": "",
-    "tags": "加速",
-    "position": "辅助",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "加速左侧物品1/2/3/4秒。"
-      }
-    ],
-    "icon": "item30",
-    "attack_style": "不飞行"
-  },
-  {
-    "id": "320090ed-640a-4a9a-9fe2-b7e9bb8deee2",
-    "name_en": "",
-    "name_cn": "时间沙漏",
-    "type": "Item / 物品",
-    "size": "Medium / 中型",
-    "starting_tier": "Gold / 黄金",
-    "available_tiers": "Gold/Diamond",
-    "heroes": "",
-    "tags": "加速",
-    "position": "辅助",
-    "cooldown": 5000,
-    "cooldown_tiers": "5000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "加速所有己方物品1/2秒。"
-      },
-      {
-        "en": "",
-        "cn": "开场时自动触发。"
-      }
-    ],
-    "icon": "item31",
-    "attack_style": "不飞行"
-  },
-  {
-    "id": "9e51e248-1e38-4ada-8f4d-1c817039fd34",
-    "name_en": "",
-    "name_cn": "绊索球",
-    "type": "Item / 物品",
-    "size": "Small / 小型",
-    "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
-    "heroes": "",
-    "tags": "减速",
-    "position": "辅助",
-    "cooldown": 6000,
-    "cooldown_tiers": "6000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "减速敌人2件物品1/2/3秒。"
-      }
-    ],
-    "icon": "item32",
-    "attack_style": "不飞行"
-  },
-  {
-    "id": "9ad35a5b-d6c3-48c1-abe4-8d186cccff49",
-    "name_en": "",
-    "name_cn": "粘液",
-    "type": "Item / 物品",
-    "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze/Silver/Gold/Diamond",
-    "heroes": "",
-    "tags": "成长",
-    "position": "经济",
-    "cooldown": 0,
-    "cooldown_tiers": "无",
-    "skills": [
-      {
-        "en": "",
-        "cn": "开场时减速敌人2件物品1/2/3/99秒。"
-      },
-      {
-        "en": "",
-        "cn": "如果背包中有空位，每次战斗后自动复制。"
-      }
-    ],
-    "icon": "item33",
-    "attack_style": "不飞行"
-  },
-  {
-    "id": "ae62b279-ecd0-4b59-921e-b44309fc1cae",
-    "name_en": "",
-    "name_cn": "铁匠巨锤",
-    "type": "Item / 物品",
-    "size": "Large / 大型",
-    "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
-    "heroes": "",
-    "tags": "叠甲/武器",
-    "position": "核心",
-    "cooldown": 8000,
-    "cooldown_tiers": "8000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "攻击造成等同于当前自身护盾值的伤害。"
-      },
-      {
-        "en": "",
-        "cn": "护盾物品护盾值+10/20/30。"
-      }
-    ],
-    "icon": "item34",
-    "attack_style": "旋转飞行"
-  },
-  {
-    "id": "774fdc2b-d812-424e-8f3b-943924d9c460",
-    "name_en": "",
-    "name_cn": "冰冻飞弹",
-    "type": "Item / 物品",
-    "size": "Small / 小型",
-    "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
-    "heroes": "",
-    "tags": "冰冻",
-    "position": "辅助",
-    "cooldown": 7000,
-    "cooldown_tiers": "7000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "冻结敌方最快的物品1/1.5/2秒。"
-      }
-    ],
-    "icon": "item35",
-    "attack_style": "不飞行"
-  },
-  {
-    "id": "af0a197b-d176-44ff-9884-b7c6e63cb9c5",
-    "name_en": "",
-    "name_cn": "急冻射线",
-    "type": "Item / 物品",
-    "size": "Medium / 中型",
-    "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
-    "heroes": "",
-    "tags": "冰冻/武器",
-    "position": "辅助",
-    "cooldown": 6000,
-    "cooldown_tiers": "6000",
-    "skills": [
-      {
-        "en": "",
-        "cn": "冻结敌方1/2个物品1秒。"
-      },
-      {
-        "en": "",
-        "cn": "冻结敌方时，相邻攻击物品+50/100伤害。"
-      }
-    ],
-    "icon": "item36",
-    "attack_style": "不飞行"
-  },
-  {
-    "id": "6d882301-283d-474b-befc-f61c5bb77784",
-    "name_en": "",
-    "name_cn": "雪花片",
-    "type": "Item / 物品",
-    "size": "Small / 小型",
-    "starting_tier": "Diamond / 钻石",
-    "available_tiers": "Diamond",
-    "heroes": "",
-    "tags": "冰冻",
-    "position": "辅助",
-    "cooldown": 0,
-    "cooldown_tiers": "无",
-    "skills": [
-      {
-        "en": "",
-        "cn": "开场时冻结敌人1件物品99秒。"
-      }
-    ],
-    "icon": "item37",
-    "attack_style": "不飞行"
+    "attack_style": "旋转飞行",
+    "simple_desc": "使用其他物品攻击时该物品伤害增加",
+    "simple_desc_tiered": "使用其他物品攻击时该物品伤害+100|200"
   }
 ]

@@ -45,6 +45,8 @@ export interface ItemDef {
   sell_price:  number
 
   skills:       SkillText[]
+  simple_desc?: string
+  simple_desc_tiered?: string
   enchantments: Record<string, { name_cn: string; effect_en: string; effect_cn: string }>
 }
 
@@ -84,10 +86,13 @@ export function parseTags(raw: string): string[] {
 // ---- GameConfig 类型（对应 game_config.json）---- //
 export interface GameConfig {
   dailyGold:           number
+  dailyGoldByDay?:     number[]
   shopRefreshPrices:   number[]
   dailyBattleSlots:    number[]    // 随 Day 解锁的格数
   backpackSlots:       number
   dailyHealth:         number[]    // 每天敌方 HP
+  dailyEnemyHealth?:   number[]
+  dailyPlayerHealth?:  number[]
   sellPriceRatio:      number      // 0.5
   smallItemPrices:     number[]    // [铜,银,金,钻]
   mediumItemPrices:    number[]
@@ -95,6 +100,16 @@ export interface GameConfig {
   sellMinDaysByRarity: number[]    // 各品质最早可出售的 Day
   itemVisualScale:     number      // 装备显示缩放（5/6）
   shopTierChancesByDay: number[][] // Day -> [Bronze, Silver, Gold, Diamond] 百分比
+  shopRules?: {
+    ammoSupportRequiresAmmoOwned?: boolean
+    ammoSupportItemNames?: string[]
+    day1ThirdItemMatchExistingArchetype?: boolean
+    shopSizeWeights?: {
+      small?: number
+      medium?: number
+      large?: number
+    }
+  }
   textSizes: {
     gridZoneLabel:    number
     shopButtonLabel:  number
@@ -112,12 +127,14 @@ export interface GameConfig {
     shopItemPrice:    number
     shopItemBought:   number
     itemStatBadge:    number
+    itemTierStar:     number
     itemInfoName:     number
     itemInfoTier:     number
     itemInfoPrice:    number
     itemInfoPriceCorner: number
     itemInfoCooldown: number
     itemInfoDesc:     number
+    itemInfoSimpleDesc: number
     synthTitle:       number
     synthName:        number
   }

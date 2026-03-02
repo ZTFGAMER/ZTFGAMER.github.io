@@ -17,7 +17,36 @@
     "name": "daily_gold",
     "desc": "每天获得的金币数量",
     "desc_en": "Daily gold amount",
-    "value": 15
+    "value": 10
+  },
+  {
+    "id": 16,
+    "name": "daily_gold_by_day",
+    "desc": "按天发放金币（Day1~Day20）",
+    "desc_en": "Daily gold by day (Day1~Day20)",
+    "value": [
+      10,
+      13,
+      14,
+      16,
+      18,
+      20,
+      22,
+      24,
+      26,
+      28,
+      30,
+      33,
+      36,
+      39,
+      42,
+      44,
+      46,
+      48,
+      50,
+      52
+    ],
+    "note": "购买基础价3时的经济曲线：前期平滑、中后期加速"
   },
   {
     "id": 3,
@@ -44,11 +73,11 @@
     "desc": "每天的战斗区域格数",
     "desc_en": "Daily battle area slots",
     "value": [
-      4,
-      5,
+      6,
+      6,
       6
     ],
-    "note": "战斗区单行可见宽度：Day1-2=4，Day3-4=5，Day5+=6"
+    "note": "战斗区单行可见宽度固定 6 格"
   },
   {
     "id": 5,
@@ -70,24 +99,86 @@
     "desc": "每天的生命值",
     "desc_en": "Daily health",
     "value": [
-      300,
-      600,
-      900,
-      1200,
-      1500,
-      2000,
-      2500,
-      3000,
-      3500,
-      4000,
-      5000,
-      6000,
-      7000,
-      8000,
-      9000,
-      10000
+      140,
+      170,
+      200,
+      240,
+      280,
+      330,
+      390,
+      460,
+      540,
+      630,
+      730,
+      850,
+      980,
+      1120,
+      1280,
+      1380,
+      1480,
+      1580,
+      1680,
+      1780
     ],
-    "note": "按天数递增"
+    "note": "兼容字段：默认等同敌方生命曲线"
+  },
+  {
+    "id": 17,
+    "name": "daily_enemy_health",
+    "desc": "敌方每日生命值（Day1~Day20）",
+    "desc_en": "Enemy daily health (Day1~Day20)",
+    "value": [
+      140,
+      170,
+      200,
+      240,
+      280,
+      330,
+      390,
+      460,
+      540,
+      630,
+      730,
+      850,
+      980,
+      1120,
+      1280,
+      1380,
+      1480,
+      1580,
+      1680,
+      1780
+    ],
+    "note": "目标20秒战斗节奏：前3天轻松，中期递增，后期靠运营与合成"
+  },
+  {
+    "id": 18,
+    "name": "daily_player_health",
+    "desc": "玩家每日生命值（Day1~Day20）",
+    "desc_en": "Player daily health (Day1~Day20)",
+    "value": [
+      240,
+      280,
+      320,
+      370,
+      420,
+      480,
+      550,
+      630,
+      720,
+      820,
+      930,
+      1060,
+      1200,
+      1360,
+      1540,
+      1660,
+      1780,
+      1900,
+      2020,
+      2140
+    ],
+    "note": "玩家HP略高于同日敌方，减小高波动败局，提升连续体验"
   },
   {
     "id": 8,
@@ -167,12 +258,14 @@
       "shopItemPrice": 16,
       "shopItemBought": 24,
       "itemStatBadge": 20,
+      "itemTierStar": 36,
       "itemInfoName": 24,
       "itemInfoTier": 16,
       "itemInfoPrice": 20,
       "itemInfoPriceCorner": 20,
       "itemInfoCooldown": 20,
       "itemInfoDesc": 16,
+      "itemInfoSimpleDesc": 16,
       "synthTitle": 36,
       "synthName": 24
     },
@@ -214,7 +307,7 @@
     "desc_en": "Combat runtime parameters",
     "value": {
       "tickMs": 100,
-      "fatigueStartMs": 25000,
+      "fatigueStartMs": 30000,
       "fatigueIntervalMs": 1000,
       "fatigueDamagePctPerInterval": 0.02,
       "fatigueDamageFixedPerInterval": 10,
@@ -273,5 +366,22 @@
       ]
     },
     "note": "Stage3 战斗时序参数：固定 Tick、超时疲劳、暴击倍率"
+  },
+  {
+    "id": 16,
+    "name": "shop_rules",
+    "desc": "商店随机规则",
+    "desc_en": "Shop randomization rules",
+    "value": {
+      "ammoSupportRequiresAmmoOwned": true,
+      "ammoSupportItemNames": ["弹药袋", "弹药堆"],
+      "day1ThirdItemMatchExistingArchetype": true,
+      "shopSizeWeights": {
+        "small": 2,
+        "medium": 1,
+        "large": 1
+      }
+    },
+    "note": "弹药支持物品需先拥有弹药系物品；Day1 初始第3件与前两件职业一致"
   }
 ]

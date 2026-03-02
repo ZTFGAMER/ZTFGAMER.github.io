@@ -13,14 +13,14 @@
 //
 // 放置规则：
 //   - 以物品视觉左上角为落点检测依据（而非手指原始坐标）
-//   - 1x2 / 2x2 多行物品强制从 row=0 放置（占满上下两行）
+//   - 2x1 / 3x1 在多行区域可落任意合法 row（不再强制 row=0）
 // ============================================================
 
 import { Container } from 'pixi.js'
 import type { FederatedPointerEvent } from 'pixi.js'
 import type { GridSystem }     from './GridSystem'
 import type { GridZone }       from './GridZone'
-import { CELL_SIZE } from './GridZone'
+import { CELL_HEIGHT } from './GridZone'
 import type { ItemSizeNorm }   from './GridSystem'
 import { getConfig } from '@/config/debugConfig'
 import { trySqueezePlace, planUnifiedSqueeze, planCrossZoneSwap } from './SqueezeLogic'
@@ -90,12 +90,13 @@ export class DragController {
   /** 拖拽开始前的物品数据（挤出提交后 DRAG 可能不在 system，用此字段兜底） */
   private dragOrigItem: { col: number; row: number; size: ItemSizeNorm; defId: string } | null = null
 
-  // ---- 挤出状态（悬停即提交，不回滚） ----
+  // ---- 挤出状态（悬停提交，可按需回滚） ----
   private squeezePreview: {
     pair: ZonePair
     col: number
     row: number
     plan: SqueezePlan
+    revert?: Array<{ instanceId: string; fromCol: number; fromRow: number; toCol: number; toRow: number }>
   } | null = null
 
   constructor(
@@ -109,6 +110,15 @@ export class DragController {
     stage.on('pointermove',      (e: FederatedPointerEvent) => this.onMove(e))
     stage.on('pointerup',        (e: FederatedPointerEvent) => this.onUp(e))
     stage.on('pointerupoutside', (e: FederatedPointerEvent) => this.onUp(e))
+  }
+
+  private isDragDebugEnabled(): boolean {
+    return true
+  }
+
+  private dragDebug(event: string, payload: Record<string, unknown>): void {
+    if (!this.isDragDebugEnabled()) return
+    console.log(`[DragDebug] ${event}`, payload)
   }
 
   // ---- 注册区域 ----
@@ -136,9 +146,9 @@ export class DragController {
     return this.enabled
   }
 
-  setSqueezeSuppressed(suppressed: boolean): void {
+  setSqueezeSuppressed(suppressed: boolean, rollbackCommitted = false): void {
     this.suppressSqueeze = suppressed
-    if (suppressed) this.clearSqueezePreview()
+    if (suppressed) this.clearSqueezePreview(rollbackCommitted)
   }
 
   // ---- 事件处理 ----
@@ -285,28 +295,63 @@ export class DragController {
     const { pair: targetPair, cell } = best
     const container = this.dragContainer
 
-    // 多行物品（1x2 / 2x2）强制从 row=0 放置
+    // 行号按命中格 cell.row 走（背包 2 行场景可正常放下排）
     const finalRow = cell.row
+    const homeLogicalRow = home.system.rows > 1 ? this.dragOrigItem.row : null
+    const targetLogicalRow = targetPair.system.rows > 1 ? finalRow : null
+    const isLogicalSameZone = targetPair === home && homeLogicalRow === targetLogicalRow
+    if (targetPair === home && home.system.rows > 1 && !isLogicalSameZone) {
+      this.dragDebug('cross_row_blocked', { id, fromRow: homeLogicalRow, toRow: targetLogicalRow })
+      this.doSnapBack()
+      return
+    }
     const canDrop  = this.canPlaceInVisibleCols(targetPair, cell.col, finalRow, item.size, id)
+    this.dragDebug('target', {
+      id,
+      homeRows: home.system.rows,
+      targetRows: targetPair.system.rows,
+      homeLogicalRow,
+      targetLogicalRow,
+      isLogicalSameZone,
+      col: cell.col,
+      row: finalRow,
+      canDrop,
+      size: item.size,
+    })
 
     // 无法直接放置时，尝试统一挤出（本区挤出优先，其次跨区域挤出）
     // 注：若挤出已在计时器中提交，目标格应已清空，canDrop 应为 true，此分支通常不走
     let squeezeMoves: { instanceId: string; newCol: number; newRow: number }[] = []
     let crossTransfers: { instanceId: string; newCol: number; newRow: number }[] = []
     let swapTransfers: { instanceId: string; newCol: number; newRow: number }[] = []
+    const localCommits: Array<{ pair: ZonePair; revert: Array<{ instanceId: string; fromCol: number; fromRow: number; toCol: number; toRow: number }> }> = []
+    let plannedDropCol = cell.col
+    let plannedDropRow = finalRow
     if (!canDrop) {
-      const unified = planUnifiedSqueeze(
+      const squeezeEnabled = getConfig('dragSqueezeEnabled') >= 0.5 && !this.suppressSqueeze
+      const canUseLocalSqueeze = targetPair === home
+        ? (targetPair.system.rows > 1 ? isLogicalSameZone : squeezeEnabled)
+        : false
+      const unifiedRaw = planUnifiedSqueeze(
         { system: targetPair.system, activeColCount: targetPair.view.activeColCount },
         cell.col,
         finalRow,
         item.size,
         id,
-        undefined,
+        { system: home.system, activeColCount: home.view.activeColCount },
         this.dragOrigItem,
+        targetPair.system.rows > 1 ? finalRow : undefined,
+        undefined,
       )
+      const unified = unifiedRaw && (
+        (unifiedRaw.mode === 'local' && canUseLocalSqueeze)
+        || (unifiedRaw.mode === 'cross' && targetPair !== home)
+      )
+        ? unifiedRaw
+        : null
 
-      if (!unified && targetPair !== home) {
-        const swap = planCrossZoneSwap(
+      if (!unified) {
+        const swap = this.planSwapWithFlexibleAnchor(
           { system: targetPair.system, activeColCount: targetPair.view.activeColCount },
           { system: home.system, activeColCount: home.view.activeColCount },
           cell.col,
@@ -316,11 +361,34 @@ export class DragController {
           this.dragOrigItem.col,
           this.dragOrigItem.row,
           this.dragOrigItem.size,
+          targetPair === home && targetPair.system.rows > 1 && !isLogicalSameZone,
         )
-        if (swap) swapTransfers = swap.transfers
+        if (swap) {
+          swapTransfers = swap.transfers
+          plannedDropCol = swap.dropCol
+          plannedDropRow = swap.dropRow
+        }
       }
 
-      if (!unified && swapTransfers.length === 0) { this.doSnapBack(); return }
+      if (!unified && swapTransfers.length === 0) {
+        this.dragDebug('plan_none', {
+          reason: this.suppressSqueeze ? 'suppress_squeeze' : 'no_unified_and_no_swap',
+          col: cell.col,
+          row: finalRow,
+          size: item.size,
+          isLogicalSameZone,
+        })
+        this.doSnapBack()
+        return
+      }
+      this.dragDebug('plan', {
+        unifiedMode: unified?.mode ?? null,
+        squeezeMoves: squeezeMoves.length,
+        crossTransfers: crossTransfers.length,
+        swapTransfers: swapTransfers.length,
+        plannedDropCol,
+        plannedDropRow,
+      })
       if (unified) {
         if (unified.mode === 'local') squeezeMoves = unified.moves
         else crossTransfers = unified.transfers
@@ -339,52 +407,127 @@ export class DragController {
     // 2. 执行未提交的挤出（若计时器已提交则 squeezeMoves 为空，此处跳过）
     if (squeezeMoves.length > 0) {
       const squeezeMs = getConfig('squeezeMs')
-      for (const move of squeezeMoves) {
-        const movedItem = targetPair.system.getItem(move.instanceId)
-        if (!movedItem) continue
-        targetPair.system.remove(move.instanceId)
-        targetPair.system.place(move.newCol, move.newRow, movedItem.size, movedItem.defId, move.instanceId)
-        targetPair.view.animateToCell(move.instanceId, move.newCol, move.newRow, squeezeMs)
+      const committed = this.commitLocalSqueezeMoves(targetPair, squeezeMoves, squeezeMs)
+      if (!committed.ok) { this.doSnapBack(); return }
+      localCommits.push({ pair: targetPair, revert: committed.revert })
+    }
+
+    if (crossTransfers.length > 0 && !isLogicalSameZone) {
+      if (targetPair === home) {
+        // 同一物理区（背包两行）的逻辑跨区：按本区重排提交，避免 remove/add 同 view 抖动
+        const squeezeMs = getConfig('squeezeMs')
+        const committed = this.commitLocalSqueezeMoves(targetPair, crossTransfers, squeezeMs)
+        if (!committed.ok) { this.doSnapBack(); return }
+        localCommits.push({ pair: targetPair, revert: committed.revert })
+      } else {
+        const sourcePair = targetPair
+        const destPair = home
+        for (const tr of crossTransfers) {
+          const movedItem = sourcePair.system.getItem(tr.instanceId)
+          if (!movedItem) continue
+          const tier = sourcePair.view.getItemTier(tr.instanceId)
+          sourcePair.system.remove(tr.instanceId)
+          if (!destPair.system.place(tr.newCol, tr.newRow, movedItem.size, movedItem.defId, tr.instanceId)) {
+            this.doSnapBack()
+            return
+          }
+          sourcePair.view.removeItem(tr.instanceId)
+          destPair.view.addItem(tr.instanceId, movedItem.defId, movedItem.size, tr.newCol, tr.newRow, tier).then(() => {
+            destPair.view.setItemTier(tr.instanceId, tier)
+            this.refreshZone(destPair.view)
+          })
+        }
       }
     }
 
-    if (crossTransfers.length > 0 && targetPair !== home) {
-      for (const tr of crossTransfers) {
-        const movedItem = targetPair.system.getItem(tr.instanceId)
-        if (!movedItem) continue
-        const tier = targetPair.view.getItemTier(tr.instanceId)
-        targetPair.system.remove(tr.instanceId)
-        if (!home.system.place(tr.newCol, tr.newRow, movedItem.size, movedItem.defId, tr.instanceId)) {
-          this.doSnapBack()
-          return
+    if (swapTransfers.length > 0) {
+      if (isLogicalSameZone || targetPair === home) {
+        const squeezeMs = getConfig('squeezeMs')
+        const committed = this.commitLocalSqueezeMoves(targetPair, swapTransfers, squeezeMs)
+        if (!committed.ok) { this.doSnapBack(); return }
+        localCommits.push({ pair: targetPair, revert: committed.revert })
+      } else {
+        const sourcePair = targetPair
+        const destPair = home
+        for (const tr of swapTransfers) {
+          const movedItem = sourcePair.system.getItem(tr.instanceId)
+          if (!movedItem) continue
+          const tier = sourcePair.view.getItemTier(tr.instanceId)
+          sourcePair.system.remove(tr.instanceId)
+          if (!destPair.system.place(tr.newCol, tr.newRow, movedItem.size, movedItem.defId, tr.instanceId)) {
+            this.doSnapBack()
+            return
+          }
+          sourcePair.view.removeItem(tr.instanceId)
+          destPair.view.addItem(tr.instanceId, movedItem.defId, movedItem.size, tr.newCol, tr.newRow, tier).then(() => {
+            destPair.view.setItemTier(tr.instanceId, tier)
+            this.refreshZone(destPair.view)
+          })
         }
-        targetPair.view.removeItem(tr.instanceId)
-        home.view.addItem(tr.instanceId, movedItem.defId, movedItem.size, tr.newCol, tr.newRow, tier).then(() => {
-          home.view.setItemTier(tr.instanceId, tier)
-          this.refreshZone(home.view)
-        })
-      }
-    }
-
-    if (swapTransfers.length > 0 && targetPair !== home) {
-      for (const tr of swapTransfers) {
-        const movedItem = targetPair.system.getItem(tr.instanceId)
-        if (!movedItem) continue
-        const tier = targetPair.view.getItemTier(tr.instanceId)
-        targetPair.system.remove(tr.instanceId)
-        if (!home.system.place(tr.newCol, tr.newRow, movedItem.size, movedItem.defId, tr.instanceId)) {
-          this.doSnapBack()
-          return
-        }
-        targetPair.view.removeItem(tr.instanceId)
-        home.view.addItem(tr.instanceId, movedItem.defId, movedItem.size, tr.newCol, tr.newRow, tier).then(() => {
-          home.view.setItemTier(tr.instanceId, tier)
-          this.refreshZone(home.view)
-        })
       }
     }
 
     // 3. 放置 DRAG 到目标位置
+    let dropCol = plannedDropCol
+    let dropRow = plannedDropRow
+    this.dragDebug('pre_place_state', {
+      id,
+      dropCol,
+      dropRow,
+      blockers: this.listOverlapIds(targetPair, dropCol, dropRow, item.size, id),
+    })
+    if (!targetPair.system.canPlace(dropCol, dropRow, item.size)) {
+      const cleanup = trySqueezePlace(
+        targetPair.system,
+        id,
+        dropCol,
+        dropRow,
+        item.size,
+        this.dragOrigItem ?? undefined,
+        targetPair.system.rows > 1 ? dropRow : undefined,
+      )
+      if (cleanup?.moves && cleanup.moves.length > 0) {
+        const committed = this.commitLocalSqueezeMoves(targetPair, cleanup.moves, getConfig('squeezeMs'))
+        if (committed.ok) {
+          localCommits.push({ pair: targetPair, revert: committed.revert })
+          this.dragDebug('pre_place_cleanup_ok', { moves: cleanup.moves.length })
+        } else {
+          this.dragDebug('pre_place_cleanup_failed', { reason: 'commit_failed' })
+        }
+      }
+    }
+    if (!targetPair.system.place(dropCol, dropRow, item.size, item.defId, id)) {
+      this.dragDebug('place_failed', { id, dropCol, dropRow, size: item.size })
+      const fallback = this.findNearestVisiblePlace(
+        targetPair,
+        dropCol,
+        dropRow,
+        item.size,
+        id,
+        targetPair.system.rows > 1 ? dropRow : undefined,
+      )
+      if (!fallback) {
+        for (let i = localCommits.length - 1; i >= 0; i--) {
+          const c = localCommits[i]!
+          this.rollbackLocalMoves(c.pair, c.revert)
+        }
+        this.doSnapBack()
+        return
+      }
+      if (!targetPair.system.place(fallback.col, fallback.row, item.size, item.defId, id)) {
+        for (let i = localCommits.length - 1; i >= 0; i--) {
+          const c = localCommits[i]!
+          this.rollbackLocalMoves(c.pair, c.revert)
+        }
+        this.dragDebug('fallback_failed', { id, col: fallback.col, row: fallback.row, size: item.size })
+        this.doSnapBack()
+        return
+      }
+      this.dragDebug('fallback_ok', { id, col: fallback.col, row: fallback.row, size: item.size })
+      dropCol = fallback.col
+      dropRow = fallback.row
+    }
+
     if (targetPair !== home) {
       // 跨区域：销毁旧 container，在目标 zone 创建新 container
       const draggedTier = home.view.getItemTier(id)
@@ -392,23 +535,21 @@ export class DragController {
       container.destroy({ children: true })
       home.view.forgetDraggedItem(id)
 
-      targetPair.system.place(cell.col, finalRow, item.size, item.defId, id)
-      targetPair.view.addItem(id, item.defId, item.size, cell.col, finalRow, draggedTier).then(() => {
+      targetPair.view.addItem(id, item.defId, item.size, dropCol, dropRow, draggedTier).then(() => {
         targetPair.view.setItemTier(id, draggedTier)
         this.refreshZone(targetPair.view)
       })
     } else {
       // 同区域：从 dragLayer 归还给 zone.itemLayer，吸附到新格子
-      targetPair.system.place(cell.col, finalRow, item.size, item.defId, id)
       this.dragLayer.removeChild(container)
-      home.view.snapToCellFromDrag(id, container, cell.col, finalRow)
+      home.view.snapToCellFromDrag(id, container, dropCol, dropRow)
     }
     this.onDragEnd()
   }
 
   private doSnapBack(): void {
-    // 仅清理状态；已提交的挤出保持提交状态，不还原
-    this.clearSqueezePreview()
+    // 放置失败回弹时回滚已提交的挤出，避免原位被占导致物品卡死
+    this.clearSqueezePreview(true)
 
     const container = this.dragContainer
     const home      = this.homeZone
@@ -427,20 +568,15 @@ export class DragController {
     let useNewCell = false
 
     if (!home.system.getItem(id)) {
-      const committed = this.squeezePreview
-      if (committed && committed.pair === home && home.system.canPlace(committed.col, committed.row, origItem.size)) {
-        home.system.place(committed.col, committed.row, origItem.size, origItem.defId, id)
-        snapCol = committed.col
-        snapRow = committed.row
-        useNewCell = true
-      } else if (home.system.canPlace(origItem.col, origItem.row, origItem.size)) {
+      if (home.system.canPlace(origItem.col, origItem.row, origItem.size)) {
         home.system.place(origItem.col, origItem.row, origItem.size, origItem.defId, id)
         snapCol = origItem.col
         snapRow = origItem.row
         useNewCell = true
       } else {
+        const rows = Array.from({ length: home.system.rows }, (_, i) => i)
         outer: for (let c = 0; c < home.system.cols; c++) {
-          for (let r = 0; r < home.system.rows; r++) {
+          for (const r of rows) {
             if (home.system.canPlace(c, r, origItem.size)) {
               home.system.place(c, r, origItem.size, origItem.defId, id)
               snapCol    = c
@@ -467,10 +603,7 @@ export class DragController {
 
   private updateHighlight(): void {
     if (!this.dragSize || !this.activeId || !this.homeZone || !this.dragContainer || !this.dragOrigItem) return
-    if (this.suppressSqueeze) {
-      this.clearSqueezePreview()
-      return
-    }
+    if (this.suppressSqueeze) this.clearSqueezePreview()
     // 优先从 system 读取，fallback 到 dragOrigItem（挤出计时器提交后 DRAG 可能不在 system）
     const item = this.homeZone.system.getItem(this.activeId) ?? { instanceId: this.activeId, ...this.dragOrigItem }
 
@@ -480,57 +613,84 @@ export class DragController {
     const best = this.findBestDropTarget(anchorGx, anchorGy, item.size)
     if (best) {
       const { pair, cell } = best
-      const finalRow = item.size !== '1x1' ? 0 : cell.row
+      const finalRow = cell.row
+      const homeLogicalRow = this.homeZone.system.rows > 1 ? this.dragOrigItem.row : null
+      const targetLogicalRow = pair.system.rows > 1 ? finalRow : null
+      const isLogicalSameZone = pair === this.homeZone && homeLogicalRow === targetLogicalRow
+      if (pair === this.homeZone && this.homeZone.system.rows > 1 && !isLogicalSameZone) {
+        this.clearSqueezePreview()
+        pair.view.highlightCells(cell.col, finalRow, item.size, false)
+        return
+      }
       const canDrop  = this.canPlaceInVisibleCols(pair, cell.col, finalRow, item.size, this.activeId)
       for (const other of this.pairs)
         if (other !== pair) other.view.clearHighlight()
 
       if (!canDrop) {
-        const unified = planUnifiedSqueeze(
+        const squeezeEnabled = getConfig('dragSqueezeEnabled') >= 0.5 && !this.suppressSqueeze
+        const canUseLocalSqueeze = pair === this.homeZone
+          ? (pair.system.rows > 1 ? isLogicalSameZone : squeezeEnabled)
+          : false
+        const unifiedRaw = planUnifiedSqueeze(
           { system: pair.system, activeColCount: pair.view.activeColCount },
           cell.col,
           finalRow,
           item.size,
           this.activeId,
-          undefined,
+          { system: this.homeZone.system, activeColCount: this.homeZone.view.activeColCount },
           this.dragOrigItem,
+          pair.system.rows > 1 ? finalRow : undefined,
+          undefined,
         )
+        const unified = unifiedRaw && (
+          (unifiedRaw.mode === 'local' && canUseLocalSqueeze)
+          || (unifiedRaw.mode === 'cross' && pair !== this.homeZone)
+        )
+          ? unifiedRaw
+          : null
         if (unified?.mode === 'cross') {
-           const ok = this.applyCrossSqueezeNow(pair, cell.col, finalRow, unified.transfers)
-           pair.view.highlightCells(cell.col, finalRow, item.size, ok)
-           return
-         }
+          this.clearSqueezePreview()
+          pair.view.highlightCells(cell.col, finalRow, item.size, true)
+          return
+        }
         if (unified?.mode === 'local' && unified.moves.length > 0) {
           const squeezable = this.updateSqueezePreview(pair, cell.col, finalRow, item.size, unified.moves)
-           pair.view.highlightCells(cell.col, finalRow, item.size, squeezable)
-           return
-         }
-        if (!unified && pair !== this.homeZone) {
-          const home = this.homeZone
-          const swap = planCrossZoneSwap(
-            { system: pair.system, activeColCount: pair.view.activeColCount },
-            { system: home.system, activeColCount: home.view.activeColCount },
-            cell.col,
-            finalRow,
-            item.size,
-            this.activeId,
-            this.dragOrigItem.col,
-            this.dragOrigItem.row,
-            this.dragOrigItem.size,
-          )
-           if (swap) {
-             this.clearSqueezePreview()
-             pair.view.highlightCells(cell.col, finalRow, item.size, true)
-             return
-           }
-         }
-         // 挤出预览：可行→绿色，不可行→红色
-         const squeezable = this.updateSqueezePreview(pair, cell.col, finalRow, item.size)
-         pair.view.highlightCells(cell.col, finalRow, item.size, squeezable)
-       } else {
-         this.clearSqueezePreview()
-         pair.view.highlightCells(cell.col, finalRow, item.size, true)
-       }
+          pair.view.highlightCells(cell.col, finalRow, item.size, squeezable)
+          return
+        }
+
+        const home = this.homeZone
+        const swap = this.planSwapWithFlexibleAnchor(
+          { system: pair.system, activeColCount: pair.view.activeColCount },
+          { system: home.system, activeColCount: home.view.activeColCount },
+          cell.col,
+          finalRow,
+          item.size,
+          this.activeId,
+          this.dragOrigItem.col,
+          this.dragOrigItem.row,
+          this.dragOrigItem.size,
+          pair === this.homeZone && pair.system.rows > 1 && !isLogicalSameZone,
+        )
+        if (swap) {
+          this.clearSqueezePreview()
+          pair.view.highlightCells(swap.dropCol, swap.dropRow, item.size, true)
+          return
+        }
+
+        if (!canUseLocalSqueeze) {
+          this.clearSqueezePreview()
+          pair.view.highlightCells(cell.col, finalRow, item.size, false)
+          return
+        }
+
+        // 挤出预览：可行→绿色，不可行→红色
+        const squeezable = this.updateSqueezePreview(pair, cell.col, finalRow, item.size)
+        pair.view.highlightCells(cell.col, finalRow, item.size, squeezable)
+      } else {
+        this.clearSqueezePreview()
+        pair.view.highlightCells(cell.col, finalRow, item.size, true)
+      }
     } else {
       this.clearAllHighlight()
       this.clearSqueezePreview()
@@ -539,6 +699,78 @@ export class DragController {
 
   private clearAllHighlight(): void {
     for (const p of this.pairs) p.view.clearHighlight()
+  }
+
+  private commitLocalSqueezeMoves(
+    pair: ZonePair,
+    moves: Array<{ instanceId: string; newCol: number; newRow: number }>,
+    durationMs: number,
+  ): { ok: boolean; revert: Array<{ instanceId: string; fromCol: number; fromRow: number; toCol: number; toRow: number }> } {
+    const captured: Array<{
+      instanceId: string
+      defId: string
+      size: ItemSizeNorm
+      fromCol: number
+      fromRow: number
+      toCol: number
+      toRow: number
+    }> = []
+
+    for (const move of moves) {
+      const it = pair.system.getItem(move.instanceId)
+      if (!it) return { ok: false, revert: [] }
+      captured.push({
+        instanceId: it.instanceId,
+        defId: it.defId,
+        size: it.size,
+        fromCol: it.col,
+        fromRow: it.row,
+        toCol: move.newCol,
+        toRow: move.newRow,
+      })
+    }
+
+    for (const c of captured) pair.system.remove(c.instanceId)
+
+    const placed: typeof captured = []
+    for (const c of captured) {
+      if (!pair.system.place(c.toCol, c.toRow, c.size, c.defId, c.instanceId)) {
+        for (const p of placed) pair.system.remove(p.instanceId)
+        for (const r of captured) {
+          pair.system.place(r.fromCol, r.fromRow, r.size, r.defId, r.instanceId)
+        }
+        return { ok: false, revert: [] }
+      }
+      placed.push(c)
+    }
+
+    for (const c of captured) {
+      pair.view.animateToCell(c.instanceId, c.toCol, c.toRow, durationMs)
+    }
+
+    return {
+      ok: true,
+      revert: captured.map((c) => ({
+        instanceId: c.instanceId,
+        fromCol: c.fromCol,
+        fromRow: c.fromRow,
+        toCol: c.toCol,
+        toRow: c.toRow,
+      })),
+    }
+  }
+
+  private rollbackLocalMoves(
+    pair: ZonePair,
+    revert: Array<{ instanceId: string; fromCol: number; fromRow: number; toCol: number; toRow: number }>,
+  ): void {
+    for (const step of revert) {
+      const movedItem = pair.system.getItem(step.instanceId)
+      if (!movedItem) continue
+      pair.system.remove(step.instanceId)
+      if (!pair.system.place(step.fromCol, step.fromRow, movedItem.size, movedItem.defId, movedItem.instanceId)) continue
+      pair.view.animateToCell(step.instanceId, step.fromCol, step.fromRow, getConfig('squeezeMs'))
+    }
   }
 
   // ---- 挤出即时提交 ----
@@ -576,17 +808,12 @@ export class DragController {
     const homeSystem = this.homeZone!.system
     homeSystem.remove(dragId)
 
-    for (const move of planMoves) {
-      const movedItem = pair.system.getItem(move.instanceId)
-      if (!movedItem) continue
-      pair.system.remove(move.instanceId)
-      pair.system.place(move.newCol, move.newRow, movedItem.size, movedItem.defId, move.instanceId)
-      pair.view.animateToCell(move.instanceId, move.newCol, move.newRow, squeezeMs)
-    }
+    const committed = this.commitLocalSqueezeMoves(pair, planMoves, squeezeMs)
+    if (!committed.ok) return false
 
     // 挤出一旦提交，拖拽物的“逻辑锚点”更新到当前目标位。
     // 这样后续继续移动时，可基于新位置再次发生互换/挤出（支持来回连续挤出）。
-    if (this.dragOrigItem) {
+    if (this.dragOrigItem && pair.system.rows === 1) {
       this.dragOrigItem = {
         ...this.dragOrigItem,
         col,
@@ -594,7 +821,7 @@ export class DragController {
       }
     }
 
-    this.squeezePreview = { pair, col, row, plan: { moves: planMoves } }
+    this.squeezePreview = { pair, col, row, plan: { moves: planMoves }, revert: committed.revert }
     return true
   }
 
@@ -602,50 +829,20 @@ export class DragController {
    * 清理挤出记录。
    * 已提交的挤出不还原——物品保持其已提交的新位置。
    */
-  private clearSqueezePreview(): void {
-    this.squeezePreview = null
-  }
-
-  private applyCrossSqueezeNow(
-    targetPair: ZonePair,
-    col: number,
-    row: number,
-    transfers: { instanceId: string; newCol: number; newRow: number }[],
-  ): boolean {
-    const p = this.squeezePreview
-    if (p && p.pair === targetPair && p.col === col && p.row === row) return true
-
-    if (!this.homeZone || !this.activeId) return false
-    this.clearSqueezePreview()
-
-    const home = this.homeZone
-    const dragId = this.activeId
-    home.system.remove(dragId)
-
-    for (const tr of transfers) {
-      const movedItem = targetPair.system.getItem(tr.instanceId)
-      if (!movedItem) continue
-      const tier = targetPair.view.getItemTier(tr.instanceId)
-      targetPair.system.remove(tr.instanceId)
-      if (!home.system.place(tr.newCol, tr.newRow, movedItem.size, movedItem.defId, tr.instanceId)) return false
-      targetPair.view.removeItem(tr.instanceId)
-      home.view.addItem(tr.instanceId, movedItem.defId, movedItem.size, tr.newCol, tr.newRow, tier).then(() => {
-        home.view.setItemTier(tr.instanceId, tier)
-        this.refreshZone(home.view)
-      })
-    }
-
-    if (this.dragOrigItem) {
-      this.dragOrigItem = {
-        ...this.dragOrigItem,
-        col,
-        row,
+  private clearSqueezePreview(rollbackCommitted = false): void {
+    if (rollbackCommitted && this.squeezePreview?.revert && this.squeezePreview.revert.length > 0) {
+      const preview = this.squeezePreview
+      const squeezeMs = getConfig('squeezeMs')
+      const revertMoves = preview.revert ?? []
+      for (const step of revertMoves) {
+        const movedItem = preview.pair.system.getItem(step.instanceId)
+        if (!movedItem) continue
+        preview.pair.system.remove(step.instanceId)
+        if (!preview.pair.system.place(step.fromCol, step.fromRow, movedItem.size, movedItem.defId, movedItem.instanceId)) continue
+        preview.pair.view.animateToCell(step.instanceId, step.fromCol, step.fromRow, squeezeMs)
       }
     }
-
-    this.squeezePreview = { pair: targetPair, col, row, plan: { moves: [] } }
-    this.refreshZone(targetPair.view)
-    return true
+    this.squeezePreview = null
   }
 
   // ---- 工具 ----
@@ -657,7 +854,7 @@ export class DragController {
   /**
    * 查找最佳放置区域，同时返回目标格子。
    * - 1x1：取第一个锚点落在区域内的 zone
-   * - 1x2 / 2x2（多行）：在所有锚点有效的 zone 中，取物品视觉中心 Y 距 zone 中心 Y 最近的
+   * - 2x1 / 3x1（宽物品）：在所有锚点有效的 zone 中，取物品视觉中心 Y 距 zone 中心 Y 最近的
    *   → 实现"更靠近哪个区域就放到哪个区域"
    */
   private findBestDropTarget(
@@ -666,15 +863,15 @@ export class DragController {
     size: ItemSizeNorm,
   ): { pair: ZonePair; cell: { col: number; row: number } } | null {
     if (size === '1x1') {
-      for (const pair of this.pairs) {
-        if (!pair.view.visible) continue  // 隐藏的区域不参与拖放
-        const cell = pair.view.pixelToCellForItem(anchorGx, anchorGy, size, 0)
-        if (cell) return { pair, cell }
-      }
+    for (const pair of this.pairs) {
+      if (!pair.view.visible) continue  // 隐藏的区域不参与拖放
+      const cell = pair.view.pixelToCellForItem(anchorGx, anchorGy, size, getConfig('dragYOffset'))
+      if (cell) return { pair, cell }
+    }
       return null
     }
 
-    // 多行物品：收集所有有效候选，按距离排序取最近
+    // 宽物品：收集所有有效候选，按距离排序取最近
     const candidates: Array<{
       pair: ZonePair
       cell: { col: number; row: number }
@@ -682,11 +879,10 @@ export class DragController {
     }> = []
     for (const pair of this.pairs) {
       if (!pair.view.visible) continue  // 隐藏的区域不参与拖放
-      const cell = pair.view.pixelToCellForItem(anchorGx, anchorGy, size, 0)
+      const cell = pair.view.pixelToCellForItem(anchorGx, anchorGy, size, getConfig('dragYOffset'))
       if (cell) {
-        // zone 共 2 行，中心 Y = zone.y + CELL_SIZE
-        const zoneCenterY = pair.view.y + CELL_SIZE * pair.view.scale.y
-        candidates.push({ pair, cell, dist: Math.abs(anchorGy - zoneCenterY) })
+        const cellCenterY = pair.view.y + ((cell.row + 0.5) * CELL_HEIGHT * pair.view.scale.y)
+        candidates.push({ pair, cell, dist: Math.abs(anchorGy - cellCenterY) })
       }
     }
     if (candidates.length === 0) return null
@@ -731,6 +927,75 @@ export class DragController {
     return pair.system.canPlace(col, row, size)
   }
 
+  private findNearestVisiblePlace(
+    pair: ZonePair,
+    preferredCol: number,
+    preferredRow: number,
+    size: ItemSizeNorm,
+    excludeId?: string,
+    rowLock?: number,
+  ): { col: number; row: number } | null {
+    const { w, h } = getSizeCellDim(size)
+    const maxCol = pair.view.activeColCount - w
+    const maxRow = pair.system.rows - h
+    if (maxCol < 0 || maxRow < 0) return null
+
+    let best: { col: number; row: number; score: number } | null = null
+    const rows = rowLock != null ? [rowLock] : Array.from({ length: maxRow + 1 }, (_, i) => i)
+    for (const row of rows) {
+      for (let col = 0; col <= maxCol; col++) {
+        if (!this.canPlaceInVisibleCols(pair, col, row, size, excludeId)) continue
+        const dRow = Math.abs(row - preferredRow)
+        const dCol = Math.abs(col - preferredCol)
+        const score = dRow * 100 + dCol
+        if (!best || score < best.score) best = { col, row, score }
+      }
+    }
+    return best ? { col: best.col, row: best.row } : null
+  }
+
+  private planSwapWithFlexibleAnchor(
+    targetZone: { system: GridSystem; activeColCount: number },
+    homeZone: { system: GridSystem; activeColCount: number },
+    targetCol: number,
+    targetRow: number,
+    draggedSize: ItemSizeNorm,
+    draggedId: string,
+    footprintCol: number,
+    footprintRow: number,
+    footprintSize: ItemSizeNorm,
+    lockTargetRow = false,
+  ): { transfers: Array<{ instanceId: string; newCol: number; newRow: number }>; dropCol: number; dropRow: number } | null {
+    const { w } = getSizeCellDim(draggedSize)
+    const maxCol = targetZone.activeColCount - w
+    const maxRow = Math.max(0, targetZone.system.rows - 1)
+    const candidates = [targetCol, targetCol - 1, targetCol + 1, targetCol - 2, targetCol + 2]
+      .filter((v, i, arr) => arr.indexOf(v) === i)
+      .filter((col) => col >= 0 && col <= maxCol)
+    const rowCandidates = lockTargetRow
+      ? [targetRow]
+      : [targetRow, targetRow - 1, targetRow + 1].filter((v, i, arr) => arr.indexOf(v) === i)
+    const legalRows = rowCandidates.filter((row) => row >= 0 && row <= maxRow)
+
+    for (const row of legalRows) {
+      for (const col of candidates) {
+        const swap = planCrossZoneSwap(
+          targetZone,
+          homeZone,
+          col,
+          row,
+          draggedSize,
+          draggedId,
+          footprintCol,
+          footprintRow,
+          footprintSize,
+        )
+        if (swap) return { transfers: swap.transfers, dropCol: col, dropRow: row }
+      }
+    }
+    return null
+  }
+
   private isSqueezePlanVisible(
     pair: ZonePair,
     moves: { instanceId: string; newCol: number; newRow: number }[],
@@ -741,5 +1006,30 @@ export class DragController {
       if (!this.canPlaceInVisibleCols(pair, move.newCol, move.newRow, movedItem.size, move.instanceId)) return false
     }
     return true
+  }
+
+  private listOverlapIds(
+    pair: ZonePair,
+    col: number,
+    row: number,
+    size: ItemSizeNorm,
+    excludeId?: string,
+  ): string[] {
+    const out: string[] = []
+    const { w, h } = getSizeCellDim(size)
+    const l = col
+    const r = col + w
+    const t = row
+    const b = row + h
+    for (const it of pair.system.getAllItems()) {
+      if (excludeId && it.instanceId === excludeId) continue
+      const d = getSizeCellDim(it.size)
+      const il = it.col
+      const ir = it.col + d.w
+      const itop = it.row
+      const ib = it.row + d.h
+      if (l < ir && r > il && t < ib && b > itop) out.push(it.instanceId)
+    }
+    return out
   }
 }

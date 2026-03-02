@@ -6,17 +6,210 @@
 import { Application, Assets, Sprite, Texture } from 'pixi.js'
 import { SceneManager } from '@/scenes/SceneManager'
 import { ShopScene }    from '@/scenes/ShopScene'
-import { BattleScene }  from '@/scenes/BattleScene'
-import { validateData } from '@/core/DataLoader'
+import { BattleScene, getBattleFxPerfStats }  from '@/scenes/BattleScene'
+import { validateData, getAllItems } from '@/core/DataLoader'
 import { setApp, setStageLayout } from '@/core/AppContext'
 import { clearStoredConfig } from '@/config/debugConfig'
 import { PhaseManager, type GamePhase } from '@/core/PhaseManager'
 import { Rectangle } from 'pixi.js'
 import { getSceneImageUrl } from '@/core/assetPath'
+import { setBattleSnapshot, type BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
+import { normalizeSize } from '@/items/ItemDef'
 
 // 基准分辨率（单格 128px × 5列 = 640，等比对应 390×844 物理屏）
 const BASE_W = 640
 const BASE_H = 1384
+
+type SoakTestOptions = {
+  rounds: number
+  shopMs: number
+  battleMs: number
+  dayMin: number
+  dayMax: number
+}
+
+type SoakTestStats = {
+  running: boolean
+  roundsPlanned: number
+  roundsDone: number
+  startedAtMs: number
+  maxActiveFx: number
+  maxActiveProjectiles: number
+  maxActiveFloatingNumbers: number
+  droppedProjectiles: number
+  droppedFloatingNumbers: number
+  lastBattleDay: number
+}
+
+let soakRoundTimer: number | null = null
+let soakBattleEndTimer: number | null = null
+let soakPollTimer: number | null = null
+let soakState: SoakTestStats | null = null
+
+const DEFAULT_SOAK_OPTIONS: SoakTestOptions = {
+  rounds: 20,
+  shopMs: 1200,
+  battleMs: 20000,
+  dayMin: 6,
+  dayMax: 20,
+}
+
+function clearSoakTimers(): void {
+  if (soakRoundTimer !== null) {
+    window.clearTimeout(soakRoundTimer)
+    soakRoundTimer = null
+  }
+  if (soakBattleEndTimer !== null) {
+    window.clearTimeout(soakBattleEndTimer)
+    soakBattleEndTimer = null
+  }
+  if (soakPollTimer !== null) {
+    window.clearInterval(soakPollTimer)
+    soakPollTimer = null
+  }
+}
+
+function pickSoakDay(minDay: number, maxDay: number): number {
+  const a = Math.max(1, Math.floor(minDay))
+  const b = Math.max(a, Math.floor(maxDay))
+  if (a === b) return a
+  return a + Math.floor(Math.random() * (b - a + 1))
+}
+
+function createSoakSnapshot(day: number): BattleSnapshotBundle {
+  const items = getAllItems()
+  const activeColCount = 6
+  const toW = (size: '1x1' | '2x1' | '3x1'): number => (size === '1x1' ? 1 : size === '2x1' ? 2 : 3)
+
+  const candidates = items
+    .filter((it) => (it.damage + it.heal + it.shield + it.burn + it.poison + it.regen) > 0)
+    .sort((a, b) => {
+      const as = normalizeSize(a.size)
+      const bs = normalizeSize(b.size)
+      const aw = toW(as)
+      const bw = toW(bs)
+      if (aw !== bw) return aw - bw
+      return (a.cooldown || 0) - (b.cooldown || 0)
+    })
+
+  const entities: BattleSnapshotBundle['entities'] = []
+  const placeSide = (side: 'player' | 'enemy', seedOffset: number): void => {
+    let col = 0
+    let idx = seedOffset % Math.max(1, candidates.length)
+    let guard = 0
+    while (col < activeColCount && guard < candidates.length * 2) {
+      const def = candidates[idx % candidates.length]
+      idx += 1
+      guard += 1
+      if (!def) continue
+      const size = normalizeSize(def.size)
+      const w = toW(size)
+      if (col + w > activeColCount) continue
+      entities.push({
+        instanceId: `soak-${side}-${entities.length + 1}`,
+        defId: def.id,
+        size,
+        col,
+        row: 0,
+        tier: 'Bronze',
+      })
+      col += w
+      if (entities.length >= 12) break
+    }
+  }
+
+  placeSide('player', day)
+  placeSide('enemy', day + 3)
+
+  return {
+    day,
+    activeColCount,
+    createdAtMs: Date.now(),
+    entities,
+  }
+}
+
+function stopSoakTestInternal(report: boolean): void {
+  clearSoakTimers()
+  if (!soakState) return
+  const snapshot = { ...soakState }
+  soakState = null
+  if (SceneManager.currentName() !== 'shop') SceneManager.goto('shop')
+  if (report) {
+    const sec = Math.round((Date.now() - snapshot.startedAtMs) / 1000)
+    console.log(`[SoakTest] stop rounds=${snapshot.roundsDone}/${snapshot.roundsPlanned} elapsed=${sec}s maxFx=${snapshot.maxActiveFx} maxP=${snapshot.maxActiveProjectiles} maxT=${snapshot.maxActiveFloatingNumbers} dropP=${snapshot.droppedProjectiles} dropT=${snapshot.droppedFloatingNumbers}`)
+  }
+}
+
+function startSoakPolling(): void {
+  if (soakPollTimer !== null) {
+    window.clearInterval(soakPollTimer)
+    soakPollTimer = null
+  }
+  soakPollTimer = window.setInterval(() => {
+    if (!soakState || SceneManager.currentName() !== 'battle') return
+    const fx = getBattleFxPerfStats()
+    soakState.maxActiveFx = Math.max(soakState.maxActiveFx, fx.activeFx)
+    soakState.maxActiveProjectiles = Math.max(soakState.maxActiveProjectiles, fx.activeProjectiles)
+    soakState.maxActiveFloatingNumbers = Math.max(soakState.maxActiveFloatingNumbers, fx.activeFloatingNumbers)
+    soakState.droppedProjectiles = Math.max(soakState.droppedProjectiles, fx.droppedProjectiles)
+    soakState.droppedFloatingNumbers = Math.max(soakState.droppedFloatingNumbers, fx.droppedFloatingNumbers)
+  }, 500)
+}
+
+function runSoakRound(options: SoakTestOptions): void {
+  if (!soakState || !soakState.running) return
+  if (soakState.roundsDone >= soakState.roundsPlanned) {
+    stopSoakTestInternal(true)
+    return
+  }
+
+  if (SceneManager.currentName() !== 'shop') SceneManager.goto('shop')
+  soakRoundTimer = window.setTimeout(() => {
+    if (!soakState || !soakState.running) return
+    const day = pickSoakDay(options.dayMin, options.dayMax)
+    const snapshot = createSoakSnapshot(day)
+    setBattleSnapshot(snapshot)
+    soakState.lastBattleDay = day
+    soakState.roundsDone += 1
+    SceneManager.goto('battle')
+    startSoakPolling()
+    console.log(`[SoakTest] round=${soakState.roundsDone}/${soakState.roundsPlanned} day=${day} entities=${snapshot.entities.length}`)
+    soakBattleEndTimer = window.setTimeout(() => {
+      if (!soakState || !soakState.running) return
+      runSoakRound(options)
+    }, options.battleMs)
+  }, options.shopMs)
+}
+
+function startSoakTest(options?: Partial<SoakTestOptions>): void {
+  const merged: SoakTestOptions = {
+    rounds: Math.max(1, Math.floor(options?.rounds ?? DEFAULT_SOAK_OPTIONS.rounds)),
+    shopMs: Math.max(300, Math.floor(options?.shopMs ?? DEFAULT_SOAK_OPTIONS.shopMs)),
+    battleMs: Math.max(1000, Math.floor(options?.battleMs ?? DEFAULT_SOAK_OPTIONS.battleMs)),
+    dayMin: Math.max(1, Math.floor(options?.dayMin ?? DEFAULT_SOAK_OPTIONS.dayMin)),
+    dayMax: Math.max(1, Math.floor(options?.dayMax ?? DEFAULT_SOAK_OPTIONS.dayMax)),
+  }
+  if (soakState?.running) stopSoakTestInternal(true)
+  soakState = {
+    running: true,
+    roundsPlanned: merged.rounds,
+    roundsDone: 0,
+    startedAtMs: Date.now(),
+    maxActiveFx: 0,
+    maxActiveProjectiles: 0,
+    maxActiveFloatingNumbers: 0,
+    droppedProjectiles: 0,
+    droppedFloatingNumbers: 0,
+    lastBattleDay: 1,
+  }
+  console.log(`[SoakTest] start rounds=${merged.rounds} shopMs=${merged.shopMs} battleMs=${merged.battleMs} day=[${merged.dayMin},${merged.dayMax}]`)
+  runSoakRound(merged)
+}
+
+function getSoakStats(): SoakTestStats | null {
+  return soakState ? { ...soakState } : null
+}
 
 function showFatalError(message: string): void {
   const body = document.body
@@ -132,6 +325,9 @@ async function bootstrap(): Promise<void> {
     ;(window as Window & {
       __setGamePhase?: (phase: GamePhase) => void
       __getGamePhase?: () => GamePhase
+      __startSoakTest?: (options?: Partial<SoakTestOptions>) => void
+      __stopSoakTest?: () => void
+      __getSoakStats?: () => SoakTestStats | null
     }).__setGamePhase = (phase: GamePhase) => {
       PhaseManager.setPhase(phase)
       console.log(`[Debug] phase -> ${PhaseManager.getPhase()}`)
@@ -139,7 +335,43 @@ async function bootstrap(): Promise<void> {
     ;(window as Window & {
       __setGamePhase?: (phase: GamePhase) => void
       __getGamePhase?: () => GamePhase
+      __startSoakTest?: (options?: Partial<SoakTestOptions>) => void
+      __stopSoakTest?: () => void
+      __getSoakStats?: () => SoakTestStats | null
     }).__getGamePhase = () => PhaseManager.getPhase()
+    ;(window as Window & {
+      __setGamePhase?: (phase: GamePhase) => void
+      __getGamePhase?: () => GamePhase
+      __startSoakTest?: (options?: Partial<SoakTestOptions>) => void
+      __stopSoakTest?: () => void
+      __getSoakStats?: () => SoakTestStats | null
+    }).__startSoakTest = (options?: Partial<SoakTestOptions>) => startSoakTest(options)
+    ;(window as Window & {
+      __setGamePhase?: (phase: GamePhase) => void
+      __getGamePhase?: () => GamePhase
+      __startSoakTest?: (options?: Partial<SoakTestOptions>) => void
+      __stopSoakTest?: () => void
+      __getSoakStats?: () => SoakTestStats | null
+    }).__stopSoakTest = () => stopSoakTestInternal(true)
+    ;(window as Window & {
+      __setGamePhase?: (phase: GamePhase) => void
+      __getGamePhase?: () => GamePhase
+      __startSoakTest?: (options?: Partial<SoakTestOptions>) => void
+      __stopSoakTest?: () => void
+      __getSoakStats?: () => SoakTestStats | null
+    }).__getSoakStats = () => getSoakStats()
+
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('soak') === '1') {
+      const rounds = Number(params.get('rounds') ?? '')
+      const battleMs = Number(params.get('battleMs') ?? '')
+      const shopMs = Number(params.get('shopMs') ?? '')
+      startSoakTest({
+        rounds: Number.isFinite(rounds) && rounds > 0 ? rounds : undefined,
+        battleMs: Number.isFinite(battleMs) && battleMs > 0 ? battleMs : undefined,
+        shopMs: Number.isFinite(shopMs) && shopMs > 0 ? shopMs : undefined,
+      })
+    }
   }
 
   // 6. 接入 PixiJS Ticker（取代手写 RAF）

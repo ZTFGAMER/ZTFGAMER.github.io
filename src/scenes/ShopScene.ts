@@ -17,11 +17,11 @@ import { DragController }    from '@/grid/DragController'
 import { planAutoPack, type PackItem, type PackPlacement } from '@/grid/AutoPack'
 import { planUnifiedSqueeze } from '@/grid/SqueezeLogic'
 import { normalizeSize }     from '@/items/ItemDef'
+import { resolveItemTierBaseStats } from '@/items/itemTierStats'
 import { ShopManager, type ShopSlot, type TierKey } from '@/shop/ShopManager'
 import { ShopPanelView }     from '@/shop/ShopPanelView'
-import { SellPopup }         from '@/shop/SellPopup'
+import { SellPopup, type ItemInfoMode } from '@/shop/SellPopup'
 import { getConfig as getDebugCfg, onConfigChange as onDebugCfgChange } from '@/config/debugConfig'
-import { getTierColor } from '@/config/colorPalette'
 import { getItemIconUrl } from '@/core/assetPath'
 import { PhaseManager } from '@/core/PhaseManager'
 import { clearBattleSnapshot, setBattleSnapshot, type BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
@@ -40,11 +40,12 @@ const PHASE_BTN_W   = BTN_RADIUS * 4
 const PHASE_BTN_H   = BTN_RADIUS * 2
 const AREA_LABEL_LEFT_X = 0
 const BACKPACK_LABEL_GLOBAL_Y_GAP = 60
-const UPGRADE_HIGHLIGHT_COLOR = 0xffcc44
 
 // ---- 背包小地图 ----
 const MINI_CELL = 20
 const MINI_W    = 6 * MINI_CELL
+const SHOP_QUICK_BUY_PRICE = 3
+const BACKPACK_GAP_FROM_BATTLE = 28
 const SHOP_STATE_STORAGE_KEY = 'bigbazzar_shop_state_v1'
 const SHOP_STATE_STORAGE_VERSION = 1
 
@@ -58,7 +59,7 @@ let battleView:     GridZone       | null = null
 let backpackView:   GridZone       | null = null
 let drag:           DragController | null = null
 let btnRow:         Container      | null = null
-let showingBackpack = false
+let showingBackpack = true
 
 // 按钮/UI 引用（动画需要）
 let goldText:       Text      | null = null
@@ -100,6 +101,21 @@ let onStageShopPointerUpOutside: ((e: FederatedPointerEvent) => void) | null = n
 let shopAreaBg: Graphics | null = null
 let backpackAreaBg: Graphics | null = null
 let battleAreaBg: Graphics | null = null
+let restartBtn: Container | null = null
+let passiveJumpLayer: Container | null = null
+type PassiveResolvedStat = {
+  damage: number
+  shield: number
+  heal: number
+  burn: number
+  poison: number
+  multicast: number
+  cooldownMs: number
+  ammoCurrent: number
+  ammoMax: number
+}
+const battlePassivePrevStats = new Map<string, PassiveResolvedStat>()
+const battlePassiveResolvedStats = new Map<string, PassiveResolvedStat>()
 
 // Day 状态
 let currentDay    = 1
@@ -124,6 +140,28 @@ type SelectionState =
 
 let currentSelection: SelectionState = { kind: 'none' }
 let selectedSellAction: (() => void) | null = null
+let selectedInfoKey: string | null = null
+let selectedInfoMode: ItemInfoMode = 'simple'
+
+function resetInfoModeSelection(): void {
+  selectedInfoKey = null
+  selectedInfoMode = 'simple'
+}
+
+function resolveInfoMode(nextKey: string): ItemInfoMode {
+  if (!sellPopup?.visible) {
+    selectedInfoKey = nextKey
+    selectedInfoMode = 'simple'
+    return selectedInfoMode
+  }
+  if (selectedInfoKey === nextKey) {
+    selectedInfoMode = selectedInfoMode === 'simple' ? 'detailed' : 'simple'
+  } else {
+    selectedInfoKey = nextKey
+    selectedInfoMode = 'simple'
+  }
+  return selectedInfoMode
+}
 
 type SavedPlacedItem = {
   instanceId: string
@@ -132,6 +170,7 @@ type SavedPlacedItem = {
   col: number
   row: number
   tier: TierKey
+  tierStar: 1 | 2
   permanentDamageBonus: number
 }
 
@@ -148,6 +187,107 @@ type SavedShopState = {
 let pendingBattleTransition = false
 let pendingAdvanceToNextDay = false
 let savedShopState: SavedShopState | null = null
+
+type BattleStartTransitionState = {
+  elapsedMs: number
+  durationMs: number
+  battleStartY: number
+  battleTargetY: number
+  backpackStartY: number
+  backpackTargetY: number
+  backpackStartAlpha: number
+  backpackTargetAlpha: number
+  buttonsStartAlpha: number
+  buttonsTargetAlpha: number
+}
+
+let battleStartTransition: BattleStartTransitionState | null = null
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v))
+}
+
+function easeOutCubic(t: number): number {
+  const p = clamp01(t)
+  return 1 - Math.pow(1 - p, 3)
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t
+}
+
+function setTransitionInputEnabled(enabled: boolean): void {
+  drag?.setEnabled(enabled)
+  if (shopPanel) shopPanel.interactiveChildren = enabled
+  if (btnRow) btnRow.interactiveChildren = enabled
+  if (dayDebugCon) dayDebugCon.interactiveChildren = enabled
+}
+
+function beginBattleStartTransition(): void {
+  if (battleStartTransition) return
+  const transitionMs = Math.max(1, getDebugCfg('shopToBattleTransitionMs'))
+  const battleDropPx = Math.max(0, getDebugCfg('battleZoneYInBattleOffset'))
+  const backpackDropPx = Math.max(0, getDebugCfg('shopToBattleBackpackDropPx'))
+  const backpackTargetAlpha = clamp01(getDebugCfg('shopToBattleBackpackAlpha'))
+  const buttonsTargetAlpha = clamp01(getDebugCfg('shopToBattleButtonsAlpha'))
+  const currentBattleY = battleView?.y ?? (getDebugCfg('battleZoneY') + (CELL_HEIGHT * (1 - getBattleItemScale())) / 2)
+  const currentBackpackY = backpackView?.y ?? getBackpackZoneYByBattle()
+
+  clearSelection()
+  stopGridDragButtonFlash()
+  stopFlashEffect()
+  battleView?.clearHighlight()
+  backpackView?.clearHighlight()
+  setTransitionInputEnabled(false)
+
+  battleStartTransition = {
+    elapsedMs: 0,
+    durationMs: transitionMs,
+    battleStartY: currentBattleY,
+    battleTargetY: currentBattleY + battleDropPx,
+    backpackStartY: currentBackpackY,
+    backpackTargetY: currentBackpackY + backpackDropPx,
+    backpackStartAlpha: backpackView?.alpha ?? 1,
+    backpackTargetAlpha,
+    buttonsStartAlpha: btnRow?.alpha ?? 1,
+    buttonsTargetAlpha,
+  }
+}
+
+function tickBattleStartTransition(dt: number): void {
+  if (!battleStartTransition) return
+  battleStartTransition.elapsedMs += Math.max(0, dt * 1000)
+  const t = clamp01(battleStartTransition.elapsedMs / battleStartTransition.durationMs)
+  const eased = easeOutCubic(t)
+
+  if (battleView) {
+    battleView.y = lerp(battleStartTransition.battleStartY, battleStartTransition.battleTargetY, eased)
+  }
+  if (backpackView) {
+    backpackView.y = lerp(battleStartTransition.backpackStartY, battleStartTransition.backpackTargetY, eased)
+    backpackView.alpha = lerp(battleStartTransition.backpackStartAlpha, battleStartTransition.backpackTargetAlpha, eased)
+  }
+  if (backpackAreaBg) {
+    backpackAreaBg.alpha = lerp(1, battleStartTransition.backpackTargetAlpha, eased)
+  }
+  if (btnRow) {
+    btnRow.alpha = lerp(battleStartTransition.buttonsStartAlpha, battleStartTransition.buttonsTargetAlpha, eased)
+  }
+  if (refreshCostText) {
+    refreshCostText.alpha = lerp(1, battleStartTransition.buttonsTargetAlpha, eased)
+  }
+  if (dayDebugCon) {
+    dayDebugCon.alpha = lerp(1, battleStartTransition.buttonsTargetAlpha, eased)
+  }
+  if (hintToastCon) {
+    hintToastCon.alpha = lerp(1, battleStartTransition.buttonsTargetAlpha, eased)
+  }
+
+  if (t >= 1) {
+    battleStartTransition = null
+    SceneManager.goto('battle')
+  }
+}
 
 function saveShopStateToStorage(state: SavedShopState | null): void {
   if (!state) return
@@ -189,6 +329,24 @@ function loadShopStateFromStorage(): SavedShopState | null {
     console.warn('[ShopScene] 读取商店状态失败', err)
     return null
   }
+}
+
+function clearShopStateFromStorage(): void {
+  try {
+    localStorage.removeItem(SHOP_STATE_STORAGE_KEY)
+  } catch (err) {
+    console.warn('[ShopScene] 清理商店状态失败', err)
+  }
+}
+
+function restartRunFromBeginning(): void {
+  clearShopStateFromStorage()
+  clearBattleSnapshot()
+  clearBattleOutcome()
+  savedShopState = null
+  pendingBattleTransition = false
+  pendingAdvanceToNextDay = false
+  window.location.reload()
 }
 
 function isShopInputEnabled(): boolean {
@@ -268,7 +426,7 @@ function applyPhaseUiVisibility(): void {
   const inShop = isShopInputEnabled()
 
   if (!inShop) {
-    showingBackpack = false
+    showingBackpack = true
     shopPanel?.setSelectedSlot(-1)
     battleView?.setSelected(null)
     backpackView?.setSelected(null)
@@ -276,18 +434,18 @@ function applyPhaseUiVisibility(): void {
     applySellButtonState()
   }
 
-  if (shopPanel) shopPanel.visible = inShop && !showingBackpack
+  if (shopPanel) shopPanel.visible = false
   if (backpackView) backpackView.visible = inShop && showingBackpack
   if (shopAreaBg) shopAreaBg.visible = inShop && !showingBackpack
   if (backpackAreaBg) backpackAreaBg.visible = inShop && showingBackpack
   if (battleAreaBg) battleAreaBg.visible = inShop
 
-  if (bpBtnHandle) bpBtnHandle.container.visible = inShop
+  if (bpBtnHandle) bpBtnHandle.container.visible = false
   if (refreshBtnHandle) refreshBtnHandle.container.visible = inShop
-  if (sellBtnHandle) sellBtnHandle.container.visible = inShop && (currentSelection.kind === 'battle' || currentSelection.kind === 'backpack')
+  if (sellBtnHandle) sellBtnHandle.container.visible = inShop
   if (phaseBtnHandle) phaseBtnHandle.container.visible = true
 
-  if (refreshCostText) refreshCostText.visible = inShop && !showingBackpack && currentSelection.kind === 'none'
+  if (refreshCostText) refreshCostText.visible = inShop
   if (goldText) goldText.visible = inShop
   if (miniMapCon) miniMapCon.visible = inShop
   if (dayDebugCon) dayDebugCon.visible = inShop
@@ -328,8 +486,32 @@ function buildBattleSnapshot(): BattleSnapshotBundle | null {
     entities: snap.entities.map((it) => ({
       ...it,
       tier: instanceToTier.get(it.instanceId) ?? 'Bronze',
+      tierStar: getInstanceTierStar(it.instanceId),
       permanentDamageBonus: Math.max(0, Math.round(instanceToPermanentDamageBonus.get(it.instanceId) ?? 0)),
+      baseStats: resolveInstanceBaseStats(it.instanceId),
     })),
+  }
+}
+
+function resolveInstanceBaseStats(instanceId: string): BattleSnapshotBundle['entities'][number]['baseStats'] {
+  const defId = instanceToDefId.get(instanceId)
+  if (!defId) return undefined
+  const def = getAllItems().find((it) => it.id === defId)
+  if (!def) return undefined
+  const tier = instanceToTier.get(instanceId) ?? 'Bronze'
+  const star = getInstanceTierStar(instanceId)
+  const stats = resolveItemTierBaseStats(def, `${tier}#${star}`)
+  const permanentBonus = Math.max(0, Math.round(instanceToPermanentDamageBonus.get(instanceId) ?? 0))
+  return {
+    cooldownMs: Math.max(0, Math.round(stats.cooldownMs)),
+    damage: Math.max(0, Math.round(stats.damage + permanentBonus)),
+    heal: Math.max(0, Math.round(stats.heal)),
+    shield: Math.max(0, Math.round(stats.shield)),
+    burn: Math.max(0, Math.round(stats.burn)),
+    poison: Math.max(0, Math.round(stats.poison)),
+    regen: Math.max(0, Math.round(stats.regen)),
+    crit: Math.max(0, stats.crit),
+    multicast: Math.max(1, Math.round(stats.multicast)),
   }
 }
 
@@ -342,6 +524,7 @@ function captureShopState(): SavedShopState | null {
     col: it.col,
     row: it.row,
     tier: instanceToTier.get(it.instanceId) ?? 'Bronze',
+    tierStar: getInstanceTierStar(it.instanceId),
     permanentDamageBonus: Math.max(0, Math.round(instanceToPermanentDamageBonus.get(it.instanceId) ?? 0)),
   }))
 
@@ -386,15 +569,17 @@ function applySavedShopState(state: SavedShopState): void {
   backpackSystem.clear()
   instanceToDefId.clear()
   instanceToTier.clear()
+  instanceToTierStar.clear()
   instanceToPermanentDamageBonus.clear()
 
   const restoreOne = (it: SavedPlacedItem, system: GridSystem, view: GridZone) => {
     system.place(it.col, it.row, it.size, it.defId, it.instanceId)
     instanceToDefId.set(it.instanceId, it.defId)
     instanceToTier.set(it.instanceId, it.tier)
+    instanceToTierStar.set(it.instanceId, normalizeTierStar(it.tier, it.tierStar))
     instanceToPermanentDamageBonus.set(it.instanceId, Math.max(0, Math.round(it.permanentDamageBonus ?? 0)))
-    view.addItem(it.instanceId, it.defId, it.size, it.col, it.row, it.tier).then(() => {
-      view.setItemTier(it.instanceId, it.tier)
+    view.addItem(it.instanceId, it.defId, it.size, it.col, it.row, toVisualTier(it.tier, normalizeTierStar(it.tier, it.tierStar))).then(() => {
+      view.setItemTier(it.instanceId, toVisualTier(it.tier, normalizeTierStar(it.tier, it.tierStar)))
       drag?.refreshZone(view)
     })
   }
@@ -414,11 +599,13 @@ const nextId = () => `inst-${instCounter++}`
 
 const instanceToDefId = new Map<string, string>()
 const instanceToTier = new Map<string, TierKey>()
+const instanceToTierStar = new Map<string, 1 | 2>()
 const instanceToPermanentDamageBonus = new Map<string, number>()
 
 function removeInstanceMeta(instanceId: string): void {
   instanceToDefId.delete(instanceId)
   instanceToTier.delete(instanceId)
+  instanceToTierStar.delete(instanceId)
   instanceToPermanentDamageBonus.delete(instanceId)
 }
 
@@ -433,7 +620,9 @@ type SynthesizeResult = {
   instanceId: string
   targetZone: 'battle' | 'backpack'
   fromTier: TierKey
+  fromStar: 1 | 2
   toTier: TierKey
+  toStar: 1 | 2
   targetSize: ItemSizeNorm
 }
 
@@ -441,6 +630,8 @@ type SynthesisTarget = {
   instanceId: string
   zone: 'battle' | 'backpack'
 }
+
+const SYNTH_HIGHLIGHT_COLOR = 0xffcc44
 
 const TIER_ORDER: TierKey[] = ['Bronze', 'Silver', 'Gold', 'Diamond']
 const TIER_LABEL_CN: Record<TierKey, string> = {
@@ -450,10 +641,30 @@ const TIER_LABEL_CN: Record<TierKey, string> = {
   Diamond: '钻石',
 }
 
-function nextTier(tier: TierKey): TierKey | null {
+function tierStarLabelCn(tier: TierKey, star: 1 | 2): string {
+  const actualStar = tier === 'Diamond' ? 1 : star
+  return `${TIER_LABEL_CN[tier]}${actualStar}星`
+}
+
+function maxStarForTier(tier: TierKey): 1 | 2 {
+  return tier === 'Diamond' ? 1 : 2
+}
+
+function normalizeTierStar(tier: TierKey, star?: number): 1 | 2 {
+  const max = maxStarForTier(tier)
+  const value = Number.isFinite(star) ? Math.round(star as number) : 1
+  if (value <= 1) return 1
+  return max
+}
+
+function nextTierLevel(tier: TierKey, star: 1 | 2): { tier: TierKey, star: 1 | 2 } | null {
+  if (tier === 'Diamond') return null
+  if (star < maxStarForTier(tier)) return { tier, star: 2 }
   const idx = TIER_ORDER.indexOf(tier)
   if (idx < 0 || idx >= TIER_ORDER.length - 1) return null
-  return TIER_ORDER[idx + 1] ?? null
+  const next = TIER_ORDER[idx + 1] ?? null
+  if (!next) return null
+  return { tier: next, star: 1 }
 }
 
 function compareTier(a: TierKey, b: TierKey): number {
@@ -464,15 +675,25 @@ function getInstanceTier(instanceId: string): TierKey | undefined {
   return instanceToTier.get(instanceId)
 }
 
+function getInstanceTierStar(instanceId: string): 1 | 2 {
+  const tier = instanceToTier.get(instanceId) ?? 'Bronze'
+  return normalizeTierStar(tier, instanceToTierStar.get(instanceId))
+}
+
+function toVisualTier(tier?: TierKey, star?: 1 | 2): string | undefined {
+  if (!tier) return undefined
+  return `${tier}#${normalizeTierStar(tier, star)}`
+}
+
 function applyInstanceTierVisuals(): void {
   if (battleView) {
     for (const id of instanceToDefId.keys()) {
-      battleView.setItemTier(id, getInstanceTier(id))
+      battleView.setItemTier(id, toVisualTier(getInstanceTier(id), getInstanceTierStar(id)))
     }
   }
   if (backpackView) {
     for (const id of instanceToDefId.keys()) {
-      backpackView.setItemTier(id, getInstanceTier(id))
+      backpackView.setItemTier(id, toVisualTier(getInstanceTier(id), getInstanceTierStar(id)))
     }
   }
 }
@@ -526,6 +747,228 @@ function tierValueFromSkillLine(item: ReturnType<typeof getAllItems>[number], ti
   return pickTierSeriesValueByTier(m[1], tier, item.available_tiers)
 }
 
+function tierValueFromSkillLineByStar(item: ReturnType<typeof getAllItems>[number], tier: TierKey, star: 1 | 2, line: string): number {
+  const m = line.match(/(\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)+)/)
+  if (!m?.[1]) return 0
+  const parts = m[1].split('/').map((v) => v.trim()).filter(Boolean)
+  if (parts.length === 0) return 0
+  const tiers = parseAvailableTiers(item.available_tiers)
+  const base = Math.max(0, tiers.indexOf(tier))
+  const idx = Math.max(0, Math.min(parts.length - 1, base + (star - 1)))
+  const n = Number(parts[idx])
+  return Number.isFinite(n) ? n : 0
+}
+
+function ammoValueFromLineByStar(item: ReturnType<typeof getAllItems>[number], tier: TierKey, star: 1 | 2, line: string): number {
+  const m = line.match(/弹药\s*[:：]\s*(\d+(?:\/\d+)*)/)
+  if (!m?.[1]) return 0
+  const parts = m[1].split('/').map((v) => v.trim()).filter(Boolean)
+  if (parts.length === 0) return 0
+  const tiers = parseAvailableTiers(item.available_tiers)
+  const base = Math.max(0, tiers.indexOf(tier))
+  const idx = Math.max(0, Math.min(parts.length - 1, base + (star - 1)))
+  const n = Number(parts[idx])
+  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0
+}
+
+function spawnPassiveJumpText(instanceId: string, text: string, color: number, offsetRow = 0): void {
+  if (!battleView || !passiveJumpLayer) return
+  const node = battleView.getNode(instanceId)
+  if (!node) return
+  const w = node.size === '1x1' ? CELL_SIZE : node.size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
+  const x = node.container.x + w / 2
+  const y = node.container.y + CELL_HEIGHT * 0.3 + 40 - offsetRow * 24
+  const label = new Text({
+    text,
+    style: {
+      fontSize: Math.max(8, getDebugCfg('shopPassiveJumpFontSize')),
+      fontFamily: 'Arial',
+      fontWeight: 'bold',
+      fill: color,
+      stroke: { color: 0x101018, width: 4 },
+    },
+  })
+  label.anchor.set(0.5, 0.5)
+  label.x = x
+  label.y = y
+  passiveJumpLayer.addChild(label)
+
+  const start = Date.now()
+  const moveMs = Math.max(0, getDebugCfg('shopPassiveJumpMoveMs'))
+  const holdMs = Math.max(0, getDebugCfg('shopPassiveJumpHoldMs'))
+  const fadeMs = Math.max(0, getDebugCfg('shopPassiveJumpFadeMs'))
+  const risePx = 42
+  const total = Math.max(1, moveMs + holdMs + fadeMs)
+  const tick = () => {
+    const elapsed = Date.now() - start
+    if (elapsed <= moveMs) {
+      const p = moveMs <= 0 ? 1 : Math.min(1, elapsed / moveMs)
+      const eased = 1 - Math.pow(1 - p, 3)
+      label.y = y - eased * risePx
+      label.alpha = 1
+    } else if (elapsed <= moveMs + holdMs) {
+      label.y = y - risePx
+      label.alpha = 1
+    } else {
+      const t = elapsed - moveMs - holdMs
+      const p = fadeMs <= 0 ? 1 : Math.min(1, t / fadeMs)
+      label.y = y - risePx
+      label.alpha = 1 - p
+    }
+    if (elapsed >= total) {
+      Ticker.shared.remove(tick)
+      label.parent?.removeChild(label)
+      label.destroy()
+    }
+  }
+  Ticker.shared.add(tick)
+}
+
+function setZoneItemAmmo(view: GridZone, instanceId: string, current: number, max: number): void {
+  const v = view as GridZone & { setItemAmmo?: (id: string, c: number, m: number) => void }
+  v.setItemAmmo?.(instanceId, current, max)
+}
+
+function refreshBattlePassiveStatBadges(showJump = true): void {
+  if (!battleSystem || !battleView) return
+  const allItems = getAllItems()
+  const byId = new Map(allItems.map((it) => [it.id, it] as const))
+  const placed = battleSystem.getAllItems()
+  const next = new Map<string, PassiveResolvedStat>()
+
+  for (const it of placed) {
+    const def = byId.get(it.defId)
+    if (!def) continue
+    const tier = getInstanceTier(it.instanceId) ?? 'Bronze'
+    const star = getInstanceTierStar(it.instanceId)
+    const stats = resolveItemTierBaseStats(def, `${tier}#${star}`)
+    const permanent = Math.max(0, Math.round(instanceToPermanentDamageBonus.get(it.instanceId) ?? 0))
+    const ammoLine = (def.skills ?? []).map((s) => s.cn ?? '').find((s) => /弹药\s*[:：]\s*\d+/.test(s))
+    const ammoMax = ammoLine ? ammoValueFromLineByStar(def, tier, star, ammoLine) : 0
+    next.set(it.instanceId, {
+      damage: Math.max(0, Math.round(stats.damage + permanent)),
+      shield: Math.max(0, Math.round(stats.shield)),
+      heal: Math.max(0, Math.round(stats.heal)),
+      burn: Math.max(0, Math.round(stats.burn)),
+      poison: Math.max(0, Math.round(stats.poison)),
+      multicast: Math.max(1, Math.round(stats.multicast)),
+      cooldownMs: Math.max(0, Math.round(stats.cooldownMs)),
+      ammoCurrent: ammoMax,
+      ammoMax,
+    })
+  }
+
+  const baseBeforePassive = new Map<string, PassiveResolvedStat>()
+  for (const [id, st] of next) baseBeforePassive.set(id, { ...st })
+
+  const isWeapon = (id: string): boolean => (next.get(id)?.damage ?? 0) > 0
+  const isShield = (id: string): boolean => (next.get(id)?.shield ?? 0) > 0
+
+  for (const owner of placed) {
+    const def = byId.get(owner.defId)
+    if (!def) continue
+    const tier = getInstanceTier(owner.instanceId) ?? 'Bronze'
+    const star = getInstanceTierStar(owner.instanceId)
+    const lines = (def.skills ?? []).map((s) => s.cn ?? '')
+    const adjacentIds = battleSystem.getAdjacentItems(owner.instanceId)
+
+    const shortSwordLine = lines.find((s) => /相邻的护盾物品护盾\+\d+(?:\/\d+)*/.test(s))
+    if (shortSwordLine) {
+      const v = Math.round(tierValueFromSkillLineByStar(def, tier, star, shortSwordLine))
+      if (v > 0) {
+        for (const aid of adjacentIds) {
+          if (!isShield(aid)) continue
+          const st = next.get(aid)
+          if (!st) continue
+          st.shield += v
+        }
+      }
+    }
+
+    const roundShieldLine = lines.find((s) => /相邻的?武器伤害\+\d+(?:\/\d+)*/.test(s))
+    if (roundShieldLine) {
+      const v = Math.round(tierValueFromSkillLineByStar(def, tier, star, roundShieldLine))
+      if (v > 0) {
+        for (const aid of adjacentIds) {
+          if (!isWeapon(aid)) continue
+          const st = next.get(aid)
+          if (!st) continue
+          st.damage += v
+        }
+      }
+    }
+
+    const boomerangLine = lines.find(
+      (s) => /武器伤害\+\d+(?:\/\d+)*/.test(s)
+        && !/相邻/.test(s)
+        && !/其他武器攻击时该(?:武器|物品)伤害\+/.test(s),
+    )
+    if (boomerangLine) {
+      const v = Math.round(tierValueFromSkillLineByStar(def, tier, star, boomerangLine))
+      if (v > 0) {
+        for (const st of next.values()) {
+          if (st.damage <= 0) continue
+          st.damage += v
+        }
+      }
+    }
+
+    const adjacentAmmoCapLine = lines.find((s) => /相邻物品\+\d+(?:\/\d+)*最大弹药量/.test(s))
+    if (adjacentAmmoCapLine) {
+      const v = Math.round(tierValueFromSkillLineByStar(def, tier, star, adjacentAmmoCapLine))
+      if (v > 0) {
+        for (const aid of adjacentIds) {
+          const st = next.get(aid)
+          if (!st || st.ammoMax <= 0) continue
+          st.ammoMax += v
+          st.ammoCurrent = Math.min(st.ammoMax, st.ammoCurrent + v)
+        }
+      }
+    }
+  }
+
+  for (const it of placed) {
+    const st = next.get(it.instanceId)
+    if (!st) {
+      battleView.setItemStatOverride(it.instanceId, null)
+      setZoneItemAmmo(battleView, it.instanceId, 0, 0)
+      continue
+    }
+    battleView.setItemStatOverride(it.instanceId, {
+      damage: st.damage,
+      shield: st.shield,
+      heal: st.heal,
+      burn: st.burn,
+      poison: st.poison,
+      multicast: st.multicast,
+    })
+    setZoneItemAmmo(battleView, it.instanceId, st.ammoCurrent, st.ammoMax)
+
+    const prev = battlePassivePrevStats.get(it.instanceId) ?? baseBeforePassive.get(it.instanceId)
+    if (showJump && prev) {
+      const deltas: Array<{ text: string; color: number }> = []
+      const dDmg = st.damage - prev.damage
+      const dShield = st.shield - prev.shield
+      if (dDmg !== 0) deltas.push({ text: `⚔ ${dDmg > 0 ? '+' : ''}${dDmg}`, color: dDmg > 0 ? 0xff7b7b : 0xbfc7f5 })
+      if (dShield !== 0) deltas.push({ text: `🛡 ${dShield > 0 ? '+' : ''}${dShield}`, color: dShield > 0 ? 0xffd86b : 0xbfc7f5 })
+      for (let i = 0; i < deltas.length; i++) {
+        const d = deltas[i]!
+        spawnPassiveJumpText(it.instanceId, d.text, d.color, i)
+      }
+    }
+    battlePassivePrevStats.set(it.instanceId, { ...st })
+  }
+
+  for (const id of Array.from(battlePassivePrevStats.keys())) {
+    if (!next.has(id)) battlePassivePrevStats.delete(id)
+  }
+  for (const id of Array.from(battlePassiveResolvedStats.keys())) {
+    if (!next.has(id)) setZoneItemAmmo(battleView, id, 0, 0)
+  }
+  battlePassiveResolvedStats.clear()
+  for (const [id, st] of next) battlePassiveResolvedStats.set(id, st)
+}
+
 function isAttackItemForBattle(item: ReturnType<typeof getAllItems>[number]): boolean {
   if (item.damage > 0) return true
   const lines = (item.skills ?? []).map((s) => s.cn ?? '')
@@ -577,12 +1020,13 @@ function applyPostBattleAutoCopy(snapshot: BattleSnapshotBundle): boolean {
 
     const newId = nextId()
     backpackSystem.place(place.col, place.row, size, item.id, newId)
-    backpackView.addItem(newId, item.id, size, place.col, place.row, entity.tier).then(() => {
-      backpackView!.setItemTier(newId, entity.tier)
+    backpackView.addItem(newId, item.id, size, place.col, place.row, toVisualTier(entity.tier, 1)).then(() => {
+      backpackView!.setItemTier(newId, toVisualTier(entity.tier, 1))
       drag?.refreshZone(backpackView!)
     })
     instanceToDefId.set(newId, item.id)
     instanceToTier.set(newId, entity.tier)
+    instanceToTierStar.set(newId, 1)
     instanceToPermanentDamageBonus.set(newId, 0)
     changed = true
     console.log(`[ShopScene] 战后复制 ${item.name_cn} -> 背包`)
@@ -646,53 +1090,11 @@ function computeUpgradeMatch(): UpgradeMatch {
   }
 }
 
-function applyBackpackUpgradeButtonHint(enabled: boolean): void {
-  if (!bpBtnHandle) return
-  const existing = bpBtnHandle.container.getChildByName('bp-upgrade-arrow') as Graphics | null
-  let arrow = existing
-  if (!arrow) {
-    arrow = new Graphics()
-    arrow.name = 'bp-upgrade-arrow'
-    // 2x 箭头（40x48）
-    arrow.moveTo(0, 24)
-    arrow.lineTo(20, 0)
-    arrow.lineTo(40, 24)
-    arrow.lineTo(28, 24)
-    arrow.lineTo(28, 48)
-    arrow.lineTo(12, 48)
-    arrow.lineTo(12, 24)
-    arrow.fill({ color: 0xffffff, alpha: 0.95 })
-    arrow.stroke({ color: 0x1a1a2a, width: 3, alpha: 0.85 })
-    // 放在背包按钮中心
-    arrow.x = getDebugCfg('backpackBtnX') - 20
-    arrow.y = getDebugCfg('backpackBtnY') - 24
-    bpBtnHandle.container.addChild(arrow)
-  }
-  arrow.visible = enabled
-  const prev = (bpBtnHandle.container as any)._upgradeTick as (() => void) | undefined
-  if (enabled && !prev) {
-    let t = 0
-    const tick = () => {
-      t += 0.08
-      arrow!.alpha = 0.55 + ((Math.sin(t) + 1) / 2) * 0.45
-      arrow!.x = getDebugCfg('backpackBtnX') - 20
-      arrow!.y = getDebugCfg('backpackBtnY') - 24 + Math.sin(t * 1.6) * 3
-    }
-    ;(bpBtnHandle.container as any)._upgradeTick = tick
-    Ticker.shared.add(tick)
-  }
-  if (!enabled && prev) {
-    Ticker.shared.remove(prev)
-    ;(bpBtnHandle.container as any)._upgradeTick = undefined
-  }
-}
-
 function refreshUpgradeHints(): void {
-  const match = computeUpgradeMatch()
-  shopPanel?.setUpgradeHints(match.shopSlots)
-  battleView?.setUpgradeHints(match.battleIds)
-  backpackView?.setUpgradeHints(match.backpackIds)
-  applyBackpackUpgradeButtonHint(!showingBackpack && match.hasBackpackMatch)
+  void computeUpgradeMatch()
+  shopPanel?.setUpgradeHints([])
+  battleView?.setUpgradeHints([])
+  backpackView?.setUpgradeHints([])
 }
 
 function isPointInItemBounds(view: GridZone, item: PlacedItem, gx: number, gy: number): boolean {
@@ -709,55 +1111,31 @@ function isPointInItemBounds(view: GridZone, item: PlacedItem, gx: number, gy: n
   return gx >= x0 && gx <= x1 && gy >= y0 && gy <= y1
 }
 
-function getCellSize(size: ItemSizeNorm): { w: number; h: number } {
-  if (size === '1x1') return { w: 1, h: 1 }
-  if (size === '2x1') return { w: 2, h: 1 }
-  return { w: 3, h: 1 }
-}
-
-function isCellFootprintOverlap(
-  aCol: number,
-  aRow: number,
-  aSize: ItemSizeNorm,
-  bCol: number,
-  bRow: number,
-  bSize: ItemSizeNorm,
-): boolean {
-  const a = getCellSize(aSize)
-  const b = getCellSize(bSize)
-  const aR = aCol + a.w
-  const aB = aRow + a.h
-  const bR = bCol + b.w
-  const bB = bRow + b.h
-  return aCol < bR && aR > bCol && aRow < bB && aB > bRow
-}
-
-function findSynthesisTargetAtPointer(defId: string, tier: TierKey, gx: number, gy: number, dragSize?: ItemSizeNorm): SynthesisTarget | null {
-  if (battleView && battleSystem && isPointInZoneArea(battleView, gx, gy)) {
-    const battleCell = dragSize ? battleView.pixelToCellForItem(gx, gy, dragSize, 0) : null
-    const battleRow = battleCell ? (dragSize !== '1x1' ? 0 : battleCell.row) : 0
+function findSynthesisTargetAtPointer(
+  defId: string,
+  tier: TierKey,
+  star: 1 | 2,
+  gx: number,
+  gy: number,
+  _dragSize?: ItemSizeNorm,
+): SynthesisTarget | null {
+  if (battleView && battleSystem) {
     for (const it of battleSystem.getAllItems()) {
       if (it.defId !== defId) continue
       if ((instanceToTier.get(it.instanceId) ?? 'Bronze') !== tier) continue
-      const hit = battleCell
-        ? isCellFootprintOverlap(it.col, it.row, it.size, battleCell.col, battleRow, dragSize!)
-        : isPointInItemBounds(battleView, it, gx, gy)
-      if (hit) {
+      if (getInstanceTierStar(it.instanceId) !== star) continue
+      if (isPointInItemBounds(battleView, it, gx, gy)) {
         return { instanceId: it.instanceId, zone: 'battle' }
       }
     }
   }
 
-  if (backpackView && backpackView.visible && backpackSystem && isPointInZoneArea(backpackView, gx, gy)) {
-    const bpCell = dragSize ? backpackView.pixelToCellForItem(gx, gy, dragSize, 0) : null
-    const bpRow = bpCell ? (dragSize !== '1x1' ? 0 : bpCell.row) : 0
+  if (backpackView && backpackView.visible && backpackSystem) {
     for (const it of backpackSystem.getAllItems()) {
       if (it.defId !== defId) continue
       if ((instanceToTier.get(it.instanceId) ?? 'Bronze') !== tier) continue
-      const hit = bpCell
-        ? isCellFootprintOverlap(it.col, it.row, it.size, bpCell.col, bpRow, dragSize!)
-        : isPointInItemBounds(backpackView, it, gx, gy)
-      if (hit) {
+      if (getInstanceTierStar(it.instanceId) !== star) continue
+      if (isPointInItemBounds(backpackView, it, gx, gy)) {
         return { instanceId: it.instanceId, zone: 'backpack' }
       }
     }
@@ -766,9 +1144,49 @@ function findSynthesisTargetAtPointer(defId: string, tier: TierKey, gx: number, 
   return null
 }
 
-function synthesizeTarget(defId: string, tier: TierKey, targetInstanceId: string, zone: 'battle' | 'backpack'): SynthesizeResult | null {
+function findSynthesisTargetWithDragProbe(
+  defId: string,
+  tier: TierKey,
+  star: 1 | 2,
+  gx: number,
+  gy: number,
+  dragSize?: ItemSizeNorm,
+): SynthesisTarget | null {
+  const probeY = gy + (dragSize ? getDebugCfg('dragYOffset') : 0)
+  return findSynthesisTargetAtPointer(defId, tier, star, gx, probeY, dragSize)
+}
+
+function highlightSynthesisTarget(target: SynthesisTarget | null): void {
+  if (!target || !battleSystem || !backpackSystem || !battleView || !backpackView) {
+    battleView?.clearHighlight()
+    backpackView?.clearHighlight()
+    return
+  }
+
+  const inBattle = target.zone === 'battle'
+  const system = inBattle ? battleSystem : backpackSystem
+  const view = inBattle ? battleView : backpackView
+  const item = system.getItem(target.instanceId)
+  if (!item) {
+    battleView?.clearHighlight()
+    backpackView?.clearHighlight()
+    return
+  }
+
+  view.highlightCells(item.col, item.row, item.size, true, SYNTH_HIGHLIGHT_COLOR)
+  if (inBattle) backpackView.clearHighlight()
+  else battleView.clearHighlight()
+}
+
+function synthesizeTarget(
+  defId: string,
+  tier: TierKey,
+  star: 1 | 2,
+  targetInstanceId: string,
+  zone: 'battle' | 'backpack',
+): SynthesizeResult | null {
   if (!battleSystem || !backpackSystem || !battleView || !backpackView) return null
-  const upgradeTo = nextTier(tier)
+  const upgradeTo = nextTierLevel(tier, star)
   if (!upgradeTo) return null
 
   const targetItem = zone === 'battle'
@@ -777,15 +1195,38 @@ function synthesizeTarget(defId: string, tier: TierKey, targetInstanceId: string
   if (!targetItem) return null
   if (targetItem.defId !== defId) return null
   if ((instanceToTier.get(targetInstanceId) ?? 'Bronze') !== tier) return null
+  if (getInstanceTierStar(targetInstanceId) !== star) return null
 
-  instanceToTier.set(targetInstanceId, upgradeTo)
-  if (zone === 'battle') {
-    battleView.setItemTier(targetInstanceId, upgradeTo)
-    drag?.refreshZone(battleView)
-  } else {
-    backpackView.setItemTier(targetInstanceId, upgradeTo)
-    drag?.refreshZone(backpackView)
+  const evolveCandidates = getAllItems().filter((it) =>
+    normalizeSize(it.size) === targetItem.size
+    && parseAvailableTiers(it.available_tiers).includes(upgradeTo.tier),
+  )
+  const evolvedDef = evolveCandidates[Math.floor(Math.random() * evolveCandidates.length)]
+  if (!evolvedDef) return null
+
+  const system = zone === 'battle' ? battleSystem : backpackSystem
+  const view = zone === 'battle' ? battleView : backpackView
+  system.remove(targetInstanceId)
+  if (!system.place(targetItem.col, targetItem.row, targetItem.size, evolvedDef.id, targetInstanceId)) {
+    system.place(targetItem.col, targetItem.row, targetItem.size, targetItem.defId, targetInstanceId)
+    return null
   }
+  view.removeItem(targetInstanceId)
+  void view.addItem(
+    targetInstanceId,
+    evolvedDef.id,
+    targetItem.size,
+    targetItem.col,
+    targetItem.row,
+    toVisualTier(upgradeTo.tier, upgradeTo.star),
+  ).then(() => {
+    view.setItemTier(targetInstanceId, toVisualTier(upgradeTo.tier, upgradeTo.star))
+    drag?.refreshZone(view)
+  })
+
+  instanceToDefId.set(targetInstanceId, evolvedDef.id)
+  instanceToTier.set(targetInstanceId, upgradeTo.tier)
+  instanceToTierStar.set(targetInstanceId, upgradeTo.star)
   applyInstanceTierVisuals()
   syncShopOwnedTierRules()
   refreshUpgradeHints()
@@ -793,134 +1234,73 @@ function synthesizeTarget(defId: string, tier: TierKey, targetInstanceId: string
     instanceId: targetInstanceId,
     targetZone: zone,
     fromTier: tier,
-    toTier: upgradeTo,
+    fromStar: star,
+    toTier: upgradeTo.tier,
+    toStar: upgradeTo.star,
     targetSize: targetItem.size,
   }
 }
 
-function highlightSynthesisTarget(target: SynthesisTarget): void {
-  battleView?.clearHighlight()
-  backpackView?.clearHighlight()
-  if (target.zone === 'battle' && battleSystem && battleView) {
-    const item = battleSystem.getItem(target.instanceId)
-    if (!item) return
-    battleView.highlightCells(item.col, item.row, item.size, true, UPGRADE_HIGHLIGHT_COLOR)
-    return
-  }
-  if (target.zone === 'backpack' && backpackSystem && backpackView?.visible) {
-    const item = backpackSystem.getItem(target.instanceId)
-    if (!item) return
-    backpackView.highlightCells(item.col, item.row, item.size, true, UPGRADE_HIGHLIGHT_COLOR)
-  }
-}
+function playSynthesisFlashEffect(stage: Container, result: SynthesizeResult): void {
+  if (!battleSystem || !backpackSystem || !battleView || !backpackView) return
+  const system = result.targetZone === 'battle' ? battleSystem : backpackSystem
+  const view = result.targetZone === 'battle' ? battleView : backpackView
+  const item = system.getItem(result.instanceId)
+  if (!item) return
 
-async function playSynthesisAnimation(
-  stage: Container,
-  slot: { item: { id: string; name_cn: string } },
-  result: SynthesizeResult,
-): Promise<void> {
-  const layer = new Container()
-  const mask = new Graphics()
-  mask.rect(0, 0, CANVAS_W, CANVAS_H)
-  mask.fill({ color: 0x000000, alpha: 0.55 })
-  mask.eventMode = 'static'
-  layer.addChild(mask)
+  const w = item.size === '1x1' ? CELL_SIZE : item.size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
+  const h = CELL_HEIGHT
+  const a = view.toGlobal({ x: item.col * CELL_SIZE, y: item.row * CELL_HEIGHT })
+  const b = view.toGlobal({ x: item.col * CELL_SIZE + w, y: item.row * CELL_HEIGHT + h })
+  const p0 = stage.toLocal(a)
+  const p1 = stage.toLocal(b)
+  const x = Math.min(p0.x, p1.x)
+  const y = Math.min(p0.y, p1.y)
+  const rectW = Math.abs(p1.x - p0.x)
+  const rectH = Math.abs(p1.y - p0.y)
+  const flash = new Graphics()
+  flash.eventMode = 'none'
+  stage.addChild(flash)
 
-  const upColor = getTierColor(result.toTier)
-  const title = new Text({
-    text: `合成升级  ${TIER_LABEL_CN[result.fromTier]} -> ${TIER_LABEL_CN[result.toTier]}`,
-    style: {
-      fontSize: getDebugCfg('synthTitleFontSize'),
-      fill: upColor,
-      fontFamily: 'Arial',
-      fontWeight: 'bold',
-    },
-  })
-  title.x = (CANVAS_W - title.width) / 2
-  title.y = CANVAS_H * 0.35
-  layer.addChild(title)
-
-  const nameT = new Text({
-    text: slot.item.name_cn,
-    style: {
-      fontSize: getDebugCfg('synthNameFontSize'),
-      fill: 0xdde3ff,
-      fontFamily: 'Arial',
-      fontWeight: 'bold',
-    },
-  })
-  nameT.x = (CANVAS_W - nameT.width) / 2
-  nameT.y = title.y + 48
-  layer.addChild(nameT)
-
-  const iconWrap = new Container()
-  const visualScale = getConfig().itemVisualScale
-  const baseW = result.targetSize === '1x1' ? CELL_SIZE : result.targetSize === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
-  const baseH = CELL_SIZE * 2
-  const iconW = Math.max(48, Math.round(baseW * visualScale))
-  const iconH = Math.max(48, Math.round(baseH * visualScale))
-  const bg = new Graphics()
-  bg.roundRect(0, 0, iconW, iconH, 16)
-  bg.fill({ color: 0x1f2238, alpha: 0.96 })
-  bg.stroke({ color: upColor, width: 3, alpha: 0.95 })
-  iconWrap.addChild(bg)
-
-  const sp = new Sprite(Texture.WHITE)
-  sp.width = iconW - 12
-  sp.height = iconH - 12
-  sp.x = 6
-  sp.y = 6
-  sp.alpha = 0
-  iconWrap.addChild(sp)
-
-  iconWrap.x = (CANVAS_W - iconW) / 2
-  iconWrap.y = nameT.y + 56
-  layer.addChild(iconWrap)
-  stage.addChild(layer)
-
-  Assets.load<Texture>(getItemIconUrl(slot.item.id))
-    .then((tex) => { sp.texture = tex; sp.alpha = 1 })
-    .catch((err) => { console.warn('[ShopScene] 合成图标加载失败', slot.item.id, err) })
-
-  const holdMs = getDebugCfg('synthHoldMs')
-  if (holdMs > 0) {
-    await new Promise<void>((resolve) => setTimeout(resolve, holdMs))
-  }
-
-  const fadeMs = getDebugCfg('synthFadeOutMs')
-  if (fadeMs <= 0) {
-    stage.removeChild(layer)
-    layer.destroy({ children: true })
-    return
-  }
-
+  const durationMs = 220
   const start = Date.now()
-  await new Promise<void>((resolve) => {
-    const tick = () => {
-      const t = Math.min((Date.now() - start) / fadeMs, 1)
-      const ease = 1 - Math.pow(1 - t, 3)
-      mask.alpha = 0.55 * (1 - ease)
-      title.alpha = 1 - ease
-      nameT.alpha = 1 - ease
-      iconWrap.alpha = 1 - ease
-      if (t >= 1) {
-        Ticker.shared.remove(tick)
-        stage.removeChild(layer)
-        layer.destroy({ children: true })
-        resolve()
-      }
+  const tick = () => {
+    const t = Math.min(1, (Date.now() - start) / durationMs)
+    const alpha = Math.sin(Math.PI * t) * 0.78
+    const corner = Math.max(6, Math.round(getDebugCfg('gridItemCornerRadius') * (view.scale.x || 1)))
+    flash.clear()
+    flash.roundRect(x + 2, y + 2, Math.max(4, rectW - 4), Math.max(4, rectH - 4), corner)
+    flash.fill({ color: 0xffffff, alpha })
+    flash.roundRect(x + 1, y + 1, Math.max(2, rectW - 2), Math.max(2, rectH - 2), corner)
+    flash.stroke({ color: 0xffffff, width: 2, alpha: Math.max(0, alpha * 0.9) })
+    if (t >= 1) {
+      Ticker.shared.remove(tick)
+      flash.parent?.removeChild(flash)
+      flash.destroy()
     }
-    Ticker.shared.add(tick)
-  })
+  }
+  Ticker.shared.add(tick)
 }
 
 function findFirstBackpackPlace(size: ItemSizeNorm): { col: number; row: number } | null {
   if (!backpackSystem || !backpackView) return null
   for (let row = 0; row < backpackSystem.rows; row++) {
     for (let col = 0; col < backpackView.activeColCount; col++) {
-      const finalRow = size !== '1x1' ? 0 : row
+      const finalRow = row
       if (canPlaceInVisibleCols(backpackSystem, backpackView, col, finalRow, size)) {
         return { col, row: finalRow }
+      }
+    }
+  }
+  return null
+}
+
+function findFirstBattlePlace(size: ItemSizeNorm): { col: number; row: number } | null {
+  if (!battleSystem || !battleView) return null
+  for (let row = 0; row < battleSystem.rows; row++) {
+    for (let col = 0; col < battleView.activeColCount; col++) {
+      if (canPlaceInVisibleCols(battleSystem, battleView, col, row, size)) {
+        return { col, row }
       }
     }
   }
@@ -934,8 +1314,10 @@ function updateMiniMap(): void {
   if (!miniMapGfx || !backpackSystem) return
   const g = miniMapGfx
   g.clear()
-  for (let r = 0; r < 1; r++) {
-    for (let c = 0; c < 6; c++) {
+  const rows = backpackSystem.rows
+  const cols = backpackView?.activeColCount ?? 6
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
       const x    = c * MINI_CELL
       const y    = r * MINI_CELL
       const free = backpackSystem.canPlace(c, r, '1x1')
@@ -951,23 +1333,88 @@ function updateMiniMap(): void {
 // 刷新商店 UI
 // ============================================================
 function refreshShopUI(): void {
-  if (!shopManager || !shopPanel) return
+  if (!shopManager) return
   syncShopOwnedTierRules()
-  shopPanel.update(shopManager.pool, shopManager.gold)
+  if (shopPanel) {
+    shopPanel.update([], shopManager.gold)
+  }
   if (goldText) {
     goldText.text = `💰 ${shopManager.gold}G`
     goldText.x    = getDebugCfg('goldTextCenterX') - goldText.width / 2
     goldText.y    = getDebugCfg('goldTextY')
   }
   if (refreshCostText) {
-    refreshCostText.text = `💰 ${shopManager.getRefreshPrice()}G`
+    refreshCostText.text = `💰 ${shopManager.gold}/${SHOP_QUICK_BUY_PRICE}`
     refreshCostText.x    = getDebugCfg('refreshBtnX') - refreshCostText.width / 2
-    // 金币不足：刷新价格显示红色
-    refreshCostText.style.fill = shopManager.canRefresh() ? 0xffd700 : 0xff4444
+    refreshCostText.style.fill = shopManager.gold >= SHOP_QUICK_BUY_PRICE ? 0xffd700 : 0xff4444
   }
   updateMiniMap()
   refreshUpgradeHints()
+  refreshBattlePassiveStatBadges(true)
   saveShopStateToStorage(captureShopState())
+}
+
+function buyRandomBronzeToBoardOrBackpack(): void {
+  if (!shopManager || !battleSystem || !battleView || !backpackSystem || !backpackView) return
+  if (shopManager.gold < SHOP_QUICK_BUY_PRICE) {
+    showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
+    refreshShopUI()
+    return
+  }
+
+  const candidates = getAllItems().filter((it) => parseAvailableTiers(it.available_tiers).includes('Bronze'))
+  if (candidates.length === 0) {
+    refreshShopUI()
+    return
+  }
+
+  const placeableCandidates = candidates.filter((it) => {
+    const size = normalizeSize(it.size)
+    return !!findFirstBattlePlace(size) || !!findFirstBackpackPlace(size)
+  })
+  if (placeableCandidates.length === 0) {
+    showHintToast('backpack_full_buy', '格子不够，无法购买', 0xff8f8f)
+    refreshShopUI()
+    return
+  }
+
+  const item = placeableCandidates[Math.floor(Math.random() * placeableCandidates.length)]
+  if (!item) {
+    refreshShopUI()
+    return
+  }
+
+  const size = normalizeSize(item.size)
+  const battleSlot = findFirstBattlePlace(size)
+  const backpackSlot = battleSlot ? null : findFirstBackpackPlace(size)
+  if (!battleSlot && !backpackSlot) {
+    showHintToast('backpack_full_buy', '战斗区与背包已满，无法购买', 0xff8f8f)
+    refreshShopUI()
+    return
+  }
+
+  shopManager.gold -= SHOP_QUICK_BUY_PRICE
+  const id = nextId()
+  if (battleSlot) {
+    battleSystem.place(battleSlot.col, battleSlot.row, size, item.id, id)
+    void battleView.addItem(id, item.id, size, battleSlot.col, battleSlot.row, 'Bronze').then(() => {
+      battleView!.setItemTier(id, toVisualTier('Bronze', 1))
+      drag?.refreshZone(battleView!)
+    })
+    console.log(`[ShopScene] 购买随机青铜→战斗区 ${item.name_cn}，金币: ${shopManager.gold}`)
+  } else if (backpackSlot) {
+    backpackSystem.place(backpackSlot.col, backpackSlot.row, size, item.id, id)
+    void backpackView.addItem(id, item.id, size, backpackSlot.col, backpackSlot.row, 'Bronze').then(() => {
+      backpackView!.setItemTier(id, toVisualTier('Bronze', 1))
+      drag?.refreshZone(backpackView!)
+    })
+    console.log(`[ShopScene] 购买随机青铜→背包 ${item.name_cn}，金币: ${shopManager.gold}`)
+  }
+  instanceToDefId.set(id, item.id)
+  instanceToTier.set(id, 'Bronze')
+  instanceToTierStar.set(id, 1)
+  instanceToPermanentDamageBonus.set(id, 0)
+  refreshShopUI()
 }
 
 // ---- Day 辅助 ----
@@ -997,6 +1444,11 @@ function getBattleZoneX(activeCols: number): number {
 function getBackpackZoneX(activeCols: number): number {
   const s = getBattleItemScale()
   return (CANVAS_W - activeCols * CELL_SIZE * s) / 2
+}
+
+function getBackpackZoneYByBattle(): number {
+  const s = getBattleItemScale()
+  return getDebugCfg('battleZoneY') + CELL_HEIGHT * s + BACKPACK_GAP_FROM_BATTLE + (CELL_HEIGHT * (1 - s)) / 2
 }
 
 function setDay(day: number): void {
@@ -1081,6 +1533,7 @@ function applyItemInfoPanelLayout(): void {
     cooldown: getDebugCfg('itemInfoCooldownFontSize'),
     priceCorner: getDebugCfg('itemInfoPriceCornerFontSize'),
     desc:  getDebugCfg('itemInfoDescFontSize'),
+    simpleDesc: getDebugCfg('itemInfoSimpleDescFontSize'),
   })
   const panelBottomY = getDebugCfg('shopAreaY') - getDebugCfg('itemInfoBottomGapToShop')
   sellPopup.setBottomAnchor(panelBottomY)
@@ -1102,13 +1555,19 @@ function applyTextSizesFromDebug(): void {
   }
 
   setBtnTextSize(bpBtnHandle, showingBackpack)
-  setBtnTextSize(refreshBtnHandle, false)
+  setBtnTextSize(refreshBtnHandle, true)
   setBtnTextSize(sellBtnHandle, false)
   setBtnTextSize(phaseBtnHandle, true)
 
+  if (refreshBtnHandle) {
+    const main = refreshBtnHandle.container.getChildByName('btn-main') as Text | null
+    if (main) main.style.fontSize = phaseButtonSize
+    refreshBtnHandle.redraw(true)
+  }
+
   if (phaseBtnHandle) {
     const main = phaseBtnHandle.container.getChildByName('btn-main') as Text | null
-    if (main) main.style.fontSize = phaseButtonSize
+    if (main) main.style.fontSize = buttonSize
     phaseBtnHandle.redraw(true)
   }
 
@@ -1130,8 +1589,13 @@ function applyTextSizesFromDebug(): void {
   backpackView?.setLabelFontSize(areaLabelSize / (backpackView.scale.x || 1))
   shopPanel?.setLabelFontSize(areaLabelSize)
   battleView?.setLabelVisible(false)
+  backpackView?.setLabelVisible(false)
   battleView?.setStatBadgeFontSize(getDebugCfg('itemStatBadgeFontSize'))
   backpackView?.setStatBadgeFontSize(getDebugCfg('itemStatBadgeFontSize'))
+  battleView?.setTierStarFontSize(getDebugCfg('itemTierStarFontSize'))
+  backpackView?.setTierStarFontSize(getDebugCfg('itemTierStarFontSize'))
+  battleView?.setTierStarStrokeWidth(getDebugCfg('itemTierStarStrokeWidth'))
+  backpackView?.setTierStarStrokeWidth(getDebugCfg('itemTierStarStrokeWidth'))
   battleView?.setStatBadgeOffsetY(getDebugCfg('itemStatBadgeOffsetY'))
   backpackView?.setStatBadgeOffsetY(getDebugCfg('itemStatBadgeOffsetY'))
   shopPanel?.setStatBadgeFontSize(getDebugCfg('itemStatBadgeFontSize'))
@@ -1149,6 +1613,7 @@ function applyTextSizesFromDebug(): void {
     cooldown: getDebugCfg('itemInfoCooldownFontSize'),
     priceCorner: getDebugCfg('itemInfoPriceCornerFontSize'),
     desc: getDebugCfg('itemInfoDescFontSize'),
+    simpleDesc: getDebugCfg('itemInfoSimpleDescFontSize'),
   })
 }
 
@@ -1180,7 +1645,7 @@ function applyLayoutFromDebug(): void {
   if (backpackView) {
     backpackView.scale.set(s)
     backpackView.x = getBackpackZoneX(backpackView.activeColCount)
-    backpackView.y = getDebugCfg('backpackZoneY') + (CELL_HEIGHT * (1 - s)) / 2
+    backpackView.y = getBackpackZoneYByBattle()
     backpackView.setTierBorderWidth(getDebugCfg('tierBorderWidth'))
     backpackView.setCornerRadius(getDebugCfg('gridItemCornerRadius'))
     backpackView.setCellBorderWidth(getDebugCfg('gridCellBorderWidth'))
@@ -1244,17 +1709,13 @@ function applySellButtonState(): void {
 
   const showSell = currentSelection.kind === 'battle' || currentSelection.kind === 'backpack'
   if (sellBtnHandle) {
-    sellBtnHandle.container.visible = showSell
+    sellBtnHandle.container.visible = true
     sellBtnHandle.redraw(showSell)
     if (!showSell) sellBtnHandle.setSubLabel('')
   }
 
-  // 显示优先级：出售 > 刷新
-  // 刷新保持原逻辑（背包打开时隐藏），但当出售可见时强制隐藏。
-  const canShowRefresh = !showingBackpack
-  const showRefresh = canShowRefresh && !showSell
-  if (refreshBtnHandle) refreshBtnHandle.container.visible = showRefresh
-  if (refreshCostText) refreshCostText.visible = showRefresh
+  if (refreshBtnHandle) refreshBtnHandle.container.visible = true
+  if (refreshCostText) refreshCostText.visible = true
 }
 
 function canPlaceInVisibleCols(
@@ -1275,7 +1736,7 @@ function hasAnyPlaceInVisibleCols(system: GridSystem, view: GridZone, size: Item
   const { w, h } = system.getSizeDim(size)
   const maxCol = view.activeColCount - w
   if (maxCol < 0) return false
-  const maxRow = 2 - h
+  const maxRow = system.rows - h
   if (maxRow < 0) return false
   for (let r = 0; r <= maxRow; r++)
     for (let c = 0; c <= maxCol; c++)
@@ -1314,6 +1775,7 @@ function canBattleAcceptShopItem(size: ItemSizeNorm): boolean {
 function clearSelection(): void {
   currentSelection = { kind: 'none' }
   selectedSellAction = null
+  resetInfoModeSelection()
   shopPanel?.setSelectedSlot(-1)
   battleView?.setSelected(null)
   backpackView?.setSelected(null)
@@ -1591,8 +2053,9 @@ function applyBackpackAutoPackExisting(existingPlan: PackPlacement[]): void {
     const old = oldById.get(p.instanceId)
     if (!old) {
       const tier = getInstanceTier(p.instanceId)
-      backpackView.addItem(p.instanceId, p.defId, p.size, p.col, p.row, tier).then(() => {
-        backpackView!.setItemTier(p.instanceId, tier)
+      const star = getInstanceTierStar(p.instanceId)
+      backpackView.addItem(p.instanceId, p.defId, p.size, p.col, p.row, toVisualTier(tier, star)).then(() => {
+        backpackView!.setItemTier(p.instanceId, toVisualTier(tier, star))
         drag?.refreshZone(backpackView!)
       })
       continue
@@ -1693,12 +2156,13 @@ function applyBackpackPlanWithTransferred(plan: PackPlacement[], transferredIds:
   const moveMs = getDebugCfg('squeezeMs')
   for (const p of plan) {
     const tier = getInstanceTier(p.instanceId)
+    const star = getInstanceTierStar(p.instanceId)
     if (backpackView.hasItem(p.instanceId)) {
       backpackView.animateToCell(p.instanceId, p.col, p.row, moveMs)
-      backpackView.setItemTier(p.instanceId, tier)
+      backpackView.setItemTier(p.instanceId, toVisualTier(tier, star))
     } else {
-      backpackView.addItem(p.instanceId, p.defId, p.size, p.col, p.row, tier).then(() => {
-        backpackView!.setItemTier(p.instanceId, tier)
+      backpackView.addItem(p.instanceId, p.defId, p.size, p.col, p.row, toVisualTier(tier, star)).then(() => {
+        backpackView!.setItemTier(p.instanceId, toVisualTier(tier, star))
         drag?.refreshZone(backpackView!)
       })
     }
@@ -1843,36 +2307,20 @@ function onShopDragMove(e: FederatedPointerEvent): void {
   const gx = e.globalX, gy = e.globalY
   const battleCell = battleView?.pixelToCellForItem(gx, gy, shopDragSize, 0)
   let synthTarget = dragSlot
-    ? findSynthesisTargetAtPointer(dragSlot.item.id, dragSlot.tier, gx, gy, shopDragSize)
+    ? findSynthesisTargetWithDragProbe(dragSlot.item.id, dragSlot.tier, 1, gx, gy, shopDragSize)
     : null
 
   if (synthTarget) {
-    if (dragSlot && sellPopup) {
-      const toTier = nextTier(dragSlot.tier)
-      if (toTier) sellPopup.showUpgradePreview(dragSlot.item, dragSlot.price, dragSlot.tier, toTier, 'buy')
-    }
-    battleView?.clearHighlight()
-    backpackView?.clearHighlight()
-    if (synthTarget.zone === 'battle' && battleSystem && battleView) {
-      const target = battleSystem.getItem(synthTarget.instanceId)
-      if (target) {
-        battleView.highlightCells(target.col, target.row, target.size, true, UPGRADE_HIGHLIGHT_COLOR)
-      }
-    } else if (synthTarget.zone === 'backpack' && backpackSystem && backpackView?.visible) {
-      const target = backpackSystem.getItem(synthTarget.instanceId)
-      if (target) {
-        backpackView.highlightCells(target.col, target.row, target.size, true, UPGRADE_HIGHLIGHT_COLOR)
-      }
-    }
+    highlightSynthesisTarget(synthTarget)
     return
   }
 
   if (dragSlot && sellPopup) {
-    sellPopup.show(dragSlot.item, dragSlot.price, 'buy', dragSlot.tier)
+    sellPopup.show(dragSlot.item, dragSlot.price, 'buy', toVisualTier(dragSlot.tier, 1), undefined, 'simple')
   }
 
   if (battleCell && battleSystem) {
-    const finalRow = shopDragSize !== '1x1' ? 0 : battleCell.row
+    const finalRow = battleCell.row
     let canDirect = canPlaceInVisibleCols(battleSystem, battleView!, battleCell.col, finalRow, shopDragSize)
 
     if (!canDirect) {
@@ -1951,7 +2399,7 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
 
   const gx = e.globalX, gy = e.globalY
   const size = shopDragSize
-  let synthTarget = findSynthesisTargetAtPointer(slot.item.id, slot.tier, gx, gy, size)
+  let synthTarget = findSynthesisTargetWithDragProbe(slot.item.id, slot.tier, 1, gx, gy, size)
   const battleCell = battleView?.pixelToCellForItem(gx, gy, size, 0)
   const bpCell = backpackView?.visible ? backpackView.pixelToCellForItem(gx, gy, size, 0) : null
   const overBattleArea = isPointInZoneArea(battleView, gx, gy)
@@ -1962,14 +2410,14 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
       showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
       _resetDrag(); return
     }
-    const synth = synthesizeTarget(slot.item.id, slot.tier, synthTarget.instanceId, synthTarget.zone)
+    const synth = synthesizeTarget(slot.item.id, slot.tier, 1, synthTarget.instanceId, synthTarget.zone)
     if (!synth) {
       showHintToast('backpack_full_buy', '合成目标无效', 0xff8f8f)
       refreshShopUI()
       _resetDrag(); return
     }
-    await playSynthesisAnimation(stage, slot, synth)
-    console.log(`[ShopScene] 合成升级 ${slot.item.name_cn} ${slot.tier} -> ${synth.toTier}`)
+    playSynthesisFlashEffect(stage, synth)
+    console.log(`[ShopScene] 合成升级 ${slot.item.name_cn} ${tierStarLabelCn(slot.tier, 1)} -> ${tierStarLabelCn(synth.toTier, synth.toStar)}`)
     refreshShopUI()
     _resetDrag(); return
   }
@@ -1981,7 +2429,7 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
   }
 
   // 战斗区放置
-  const battleFinalRow = battleCell ? (size !== '1x1' ? 0 : battleCell.row) : 0
+  const battleFinalRow = battleCell ? battleCell.row : 0
   const battleCanDirect = !!(battleCell && battleSystem && battleView
     && canPlaceInVisibleCols(battleSystem, battleView, battleCell.col, battleFinalRow, size))
   let battleSqueezeMoves: { instanceId: string; newCol: number; newRow: number }[] = []
@@ -2046,13 +2494,14 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
       }
       const id = nextId()
       battleSystem.place(battleCell.col, battleFinalRow, size, slot.item.id, id)
-      battleView!.addItem(id, slot.item.id, size, battleCell.col, battleFinalRow, slot.tier)
+      battleView!.addItem(id, slot.item.id, size, battleCell.col, battleFinalRow, toVisualTier(slot.tier, 1))
         .then(() => {
-          battleView!.setItemTier(id, slot.tier)
+          battleView!.setItemTier(id, toVisualTier(slot.tier, 1))
           drag?.refreshZone(battleView!)
         })
       instanceToDefId.set(id, slot.item.id)
       instanceToTier.set(id, slot.tier)
+      instanceToTierStar.set(id, 1)
       instanceToPermanentDamageBonus.set(id, 0)
       console.log(`[ShopScene] 购买→战斗区 ${slot.item.name_cn}，金币: ${shopManager.gold}`)
       refreshShopUI()
@@ -2066,7 +2515,7 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
   if (bpCell || onBpBtn) {
     const directCell = bpCell && backpackSystem && backpackView
       ? (() => {
-        const finalRow = size !== '1x1' ? 0 : bpCell.row
+        const finalRow = bpCell.row
         return canPlaceInVisibleCols(backpackSystem, backpackView, bpCell.col, finalRow, size)
           ? { col: bpCell.col, row: finalRow }
           : null
@@ -2088,13 +2537,14 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
 
     const id = nextId()
     backpackSystem!.place(targetCell.col, targetCell.row, size, slot.item.id, id)
-    backpackView!.addItem(id, slot.item.id, size, targetCell.col, targetCell.row, slot.tier)
+    backpackView!.addItem(id, slot.item.id, size, targetCell.col, targetCell.row, toVisualTier(slot.tier, 1))
       .then(() => {
-        backpackView!.setItemTier(id, slot.tier)
+        backpackView!.setItemTier(id, toVisualTier(slot.tier, 1))
         drag?.refreshZone(backpackView!)
       })
     instanceToDefId.set(id, slot.item.id)
     instanceToTier.set(id, slot.tier)
+    instanceToTierStar.set(id, 1)
     instanceToPermanentDamageBonus.set(id, 0)
     console.log(`[ShopScene] 购买→背包 ${slot.item.name_cn}，金币: ${shopManager.gold}`)
 
@@ -2141,42 +2591,6 @@ function isPointInZoneArea(view: GridZone | null, gx: number, gy: number): boole
 }
 
 // ============================================================
-// 测试物品：背包预置初始物品
-// ============================================================
-function placeInitialItems(): void {
-  const items  = getAllItems()
-  const pick   = (s: string, n: number) =>
-    items.filter(i => i.size.toLowerCase().includes(s)).slice(0, n)
-
-  const small  = pick('small',  2)
-  const medium = pick('medium', 1)
-
-  const bpItems = [
-    { defId: small[0]?.id ?? '',  rawSize: 'Small / 小型',  col: 0, row: 0 },
-    { defId: small[1]?.id ?? '',  rawSize: 'Small / 小型',  col: 1, row: 0 },
-    { defId: medium[0]?.id ?? '', rawSize: 'Medium / 中型', col: 2, row: 0 },
-  ]
-
-  for (const bp of bpItems) {
-    if (!bp.defId) continue
-    const id   = nextId()
-    const norm = normalizeSize(bp.rawSize)
-    const tier: TierKey = 'Bronze'
-    backpackSystem!.place(bp.col, bp.row, norm, bp.defId, id)
-    backpackView!.addItem(id, bp.defId, norm, bp.col, bp.row, tier)
-      .then(() => {
-        backpackView!.setItemTier(id, tier)
-        drag?.refreshZone(backpackView!)
-      })
-    instanceToDefId.set(id, bp.defId)
-    instanceToTier.set(id, tier)
-    instanceToPermanentDamageBonus.set(id, 0)
-  }
-
-  console.log('[ShopScene] 背包初始物品:', backpackSystem!.getAllItems().length)
-}
-
-// ============================================================
 // 主场景
 // ============================================================
 export const ShopScene: Scene = {
@@ -2190,7 +2604,13 @@ export const ShopScene: Scene = {
     const stage  = app.stage
     const canvas = app.canvas as HTMLCanvasElement
 
+    battlePassivePrevStats.clear()
+    battlePassiveResolvedStats.clear()
+    passiveJumpLayer = new Container()
+    passiveJumpLayer.eventMode = 'none'
+
     createHintToast(stage)
+    showingBackpack = true
 
     shopManager = new ShopManager(cfg, items, 1)
 
@@ -2202,28 +2622,66 @@ export const ShopScene: Scene = {
     battleAreaBg = new Graphics()
     stage.addChild(battleAreaBg)
 
+    const restartLabel = new Text({
+      text: '重新开始',
+      style: {
+        fontSize: cfg.textSizes.refreshCost,
+        fill: 0xffe8a3,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+      },
+    })
+    const restartBg = new Graphics()
+    const restartPadX = 18
+    const restartPadY = 10
+    const restartW = restartLabel.width + restartPadX * 2
+    const restartH = restartLabel.height + restartPadY * 2
+    restartBg.roundRect(0, 0, restartW, restartH, 14)
+    restartBg.fill({ color: 0x1f2940, alpha: 0.88 })
+    restartBg.stroke({ color: 0xffd25a, width: 2, alpha: 0.95 })
+    restartLabel.x = restartPadX
+    restartLabel.y = restartPadY
+    const restartCon = new Container()
+    restartCon.x = 16
+    restartCon.y = 16
+    restartCon.eventMode = 'static'
+    restartCon.cursor = 'pointer'
+    restartCon.hitArea = new Rectangle(0, 0, restartW, restartH)
+    restartCon.addChild(restartBg)
+    restartCon.addChild(restartLabel)
+    restartCon.on('pointerdown', (e: FederatedPointerEvent) => {
+      e.stopPropagation()
+      restartRunFromBeginning()
+    })
+    restartBtn = restartCon
+    stage.addChild(restartCon)
+
     // 商店面板
     shopPanel = new ShopPanelView()
     shopPanel.x = getDebugCfg('shopAreaX')
     shopPanel.y = getDebugCfg('shopAreaY')
     shopPanel.onDragStart = (slotIndex, e) => startShopDrag(slotIndex, e, stage)
+    shopPanel.visible = false
     stage.addChild(shopPanel)
 
     // 格子系统
     const activeCols = cfg.dailyBattleSlots[0] ?? 4
     battleSystem   = new GridSystem(6)
-    backpackSystem = new GridSystem(6)
+    backpackSystem = new GridSystem(6, 2)
     battleView     = new GridZone('战斗区', 6, activeCols, 1)
-    backpackView   = new GridZone('背包', 6, 6, 1)
+    backpackView   = new GridZone('背包', 6, 6, 2)
     backpackView.setAutoPackEnabled(false)
+    battleView.setStatBadgeMode('archetype')
+    backpackView.setStatBadgeMode('archetype')
     battleView.x   = getBattleZoneX(activeCols)
     battleView.y   = getDebugCfg('battleZoneY')
     backpackView.x = getBackpackZoneX(backpackView.activeColCount)
-    backpackView.y = getDebugCfg('backpackZoneY')
-    backpackView.visible = false
+    backpackView.y = getBackpackZoneYByBattle()
+    backpackView.visible = true
 
     stage.addChild(battleView)
     stage.addChild(backpackView)
+    if (passiveJumpLayer) battleView.addChild(passiveJumpLayer)
 
     drag = new DragController(stage, canvas)
     drag.addZone(battleSystem,  battleView)
@@ -2235,12 +2693,13 @@ export const ShopScene: Scene = {
       const item = getAllItems().find(i => i.id === defId)
       if (!item) return
       const tier = getInstanceTier(instanceId)
+      const star = getInstanceTierStar(instanceId)
       const sellPrice = shopManager.getSellPrice(item, tier)
       // 拖拽中视为选中：显示物品详情（不设置区域高亮，因物品已脱离格子）
       const inBattle = !!battleView?.hasItem(instanceId)
       currentSelection = { kind: inBattle ? 'battle' : 'backpack', instanceId }
       selectedSellAction = null  // 拖拽中暂不执行出售
-      sellPopup.show(item, sellPrice, 'sell', tier)
+      sellPopup.show(item, sellPrice, 'sell', toVisualTier(tier, star), undefined, 'simple')
       setSellButtonPrice(sellPrice)
       applySellButtonState()
 
@@ -2268,14 +2727,15 @@ export const ShopScene: Scene = {
 
       // 1.5) 拖到同装备同品质目标物品：执行合成（优先于挤出/普通落位）
       const fromTier = getInstanceTier(instanceId) ?? 'Bronze'
+      const fromStar = getInstanceTierStar(instanceId)
       if (fromTier !== 'Diamond') {
-        const synthTarget = findSynthesisTargetAtPointer(defId, fromTier, anchorGx, anchorGy, size)
+        const synthTarget = findSynthesisTargetWithDragProbe(defId, fromTier, fromStar, anchorGx, anchorGy, size)
         if (synthTarget) {
-          const synth = synthesizeTarget(defId, fromTier, synthTarget.instanceId, synthTarget.zone)
+          const synth = synthesizeTarget(defId, fromTier, fromStar, synthTarget.instanceId, synthTarget.zone)
           if (synth) {
             removeInstanceMeta(instanceId)
-            console.log(`[ShopScene] 拖拽合成 ${item.name_cn} ${fromTier} -> ${synth.toTier}`)
-            void playSynthesisAnimation(stage, { item: { id: item.id, name_cn: item.name_cn } }, synth)
+            console.log(`[ShopScene] 拖拽合成 ${item.name_cn} ${tierStarLabelCn(fromTier, fromStar)} -> ${tierStarLabelCn(synth.toTier, synth.toStar)}`)
+            playSynthesisFlashEffect(stage, synth)
             refreshShopUI()
             return true
           }
@@ -2299,8 +2759,9 @@ export const ShopScene: Scene = {
         applyBackpackAutoPackExisting(autoPlan.existing)
         backpackSystem.place(autoPlan.incoming.col, autoPlan.incoming.row, size, defId, instanceId)
         const tier = getInstanceTier(instanceId)
-        backpackView.addItem(instanceId, defId, size, autoPlan.incoming.col, autoPlan.incoming.row, tier).then(() => {
-          backpackView!.setItemTier(instanceId, tier)
+        const star = getInstanceTierStar(instanceId)
+        backpackView.addItem(instanceId, defId, size, autoPlan.incoming.col, autoPlan.incoming.row, toVisualTier(tier, star)).then(() => {
+          backpackView!.setItemTier(instanceId, toVisualTier(tier, star))
           drag?.refreshZone(backpackView!)
         })
         console.log(`[ShopScene] 拖拽转移→背包 ${item.name_cn}`)
@@ -2318,14 +2779,15 @@ export const ShopScene: Scene = {
 
       const defId = instanceToDefId.get(instanceId)
       const tier = getInstanceTier(instanceId)
+      const star = getInstanceTierStar(instanceId)
       if (!defId || !tier || tier === 'Diamond') {
         drag?.setSqueezeSuppressed(false)
         return
       }
 
-      const synthTarget = findSynthesisTargetAtPointer(defId, tier, anchorGx, anchorGy, size)
+      const synthTarget = findSynthesisTargetWithDragProbe(defId, tier, star, anchorGx, anchorGy, size)
       if (synthTarget) {
-        drag?.setSqueezeSuppressed(true)
+        drag?.setSqueezeSuppressed(true, true)
         highlightSynthesisTarget(synthTarget)
       } else {
         drag?.setSqueezeSuppressed(false)
@@ -2336,6 +2798,7 @@ export const ShopScene: Scene = {
       stopGridDragButtonFlash()
       applyInstanceTierVisuals()
       updateMiniMap()
+      refreshBattlePassiveStatBadges(true)
       clearSelection()
     }
 
@@ -2480,57 +2943,36 @@ export const ShopScene: Scene = {
       return { container, redraw, setCenter, setLabel, setSubLabel }
     }
 
-    // 背包按钮（左）
-    const bpBtn = makeCircleBtn(getDebugCfg('backpackBtnX'), getDebugCfg('backpackBtnY'), '背包', 0xffcc44, 0x44aaff)
-    bpBtn.container.on('pointerdown', () => {
-      if (!isShopInputEnabled()) return
-      showingBackpack = !showingBackpack
-      shopPanel!.visible    = !showingBackpack
-      backpackView!.visible = showingBackpack
-      bpBtn.redraw(showingBackpack)
-      ensureBottomHudVisibleAndOnTop(stage)
-      clearSelection()
-      applyLayoutFromDebug()
-      refreshUpgradeHints()
-    })
-    bpBtnHandle = bpBtn
-    btnRow.addChild(bpBtn.container)
+    bpBtnHandle = null
 
-    // 刷新按钮（中）
-    const refreshBtn = makeCircleBtn(getDebugCfg('refreshBtnX'), getDebugCfg('refreshBtnY'), '刷新', 0x44aaff, 0x44aaff)
+    // 购买按钮（中，矩形）
+    const refreshBtn = makePhaseRectBtn(
+      getDebugCfg('refreshBtnX'),
+      getDebugCfg('refreshBtnY'),
+      '购买',
+      0x44aaff,
+      0x44aaff,
+      cfg.textSizes.phaseButtonLabel,
+    )
     refreshBtn.container.on('pointerdown', () => {
       if (!isShopInputEnabled()) return
       clearSelection()
-      syncShopOwnedTierRules()
-      if (shopManager!.refresh()) {
-        console.log(`[ShopScene] 刷新，剩余: ${shopManager!.gold}G`)
-      } else {
-        showHintToast('no_gold_refresh', '金币不足，无法刷新', 0xff8f8f)
-      }
-      refreshShopUI()
-      // 视觉：按钮默认都保持红色描边（不因一次点击变色）
+      buyRandomBronzeToBoardOrBackpack()
       refreshBtn.redraw(false)
     })
     refreshBtnHandle = refreshBtn
     btnRow.addChild(refreshBtn.container)
 
-    // 刷新费用（刷新按钮圆圈正下方）
+    // 金币/购买费用（合并显示）
     refreshCostText = new Text({
-      text: `💰 ${shopManager.getRefreshPrice()}G`,
+      text: `💰 ${shopManager.gold}/${SHOP_QUICK_BUY_PRICE}`,
       style: { fontSize: cfg.textSizes.refreshCost, fill: 0xffd700, fontFamily: 'Arial', fontWeight: 'bold' },
     })
     refreshCostText.x = getDebugCfg('refreshBtnX') - refreshCostText.width / 2
     refreshCostText.y = getDebugCfg('refreshBtnY') + BTN_RADIUS + 6
     btnRow.addChild(refreshCostText)
 
-    // 金币（刷新按钮正下方）
-    goldText = new Text({
-      text: `💰 ${shopManager.gold}G`,
-      style: { fontSize: cfg.textSizes.gold, fill: 0xffd700, fontFamily: 'Arial', fontWeight: 'bold' },
-    })
-    goldText.x = getDebugCfg('goldTextCenterX') - goldText.width / 2
-    goldText.y = getDebugCfg('goldTextY')
-    btnRow.addChild(goldText)
+    goldText = null
 
     // 出售按钮（右）
     const sellBtn = makeCircleBtn(getDebugCfg('sellBtnX'), getDebugCfg('sellBtnY'), '出售', 0xcc3333, 0xcc3333)
@@ -2544,20 +2986,21 @@ export const ShopScene: Scene = {
     sellBtnHandle = sellBtn
     btnRow.addChild(sellBtn.container)
 
-    // 战斗切换按钮（阶段2.5 临时入口）
-    const phaseBtn = makePhaseRectBtn(
+    // 战斗切换按钮（圆形）
+    const phaseBtn = makeCircleBtn(
       getDebugCfg('phaseBtnX'),
       getDebugCfg('phaseBtnY'),
       '战斗',
       0xffcc44,
       0xffcc44,
-      cfg.textSizes.phaseButtonLabel,
+      cfg.textSizes.shopButtonLabel,
     )
     phaseBtn.container.on('pointerdown', () => {
       if (!isShopInputEnabled()) {
         SceneManager.goto('shop')
         return
       }
+      if (battleStartTransition) return
       clearBattleOutcome()
       const snapshot = buildBattleSnapshot()
       if (snapshot) {
@@ -2566,19 +3009,13 @@ export const ShopScene: Scene = {
       }
       pendingBattleTransition = true
       pendingAdvanceToNextDay = true
-      SceneManager.goto('battle')
+      beginBattleStartTransition()
     })
     phaseBtnHandle = phaseBtn
     btnRow.addChild(phaseBtn.container)
 
-    // 背包小地图（背包按钮正下方）
-    const miniCon = new Container()
-    miniCon.x = getDebugCfg('backpackBtnX') - MINI_W / 2
-    miniCon.y = getDebugCfg('backpackBtnY') + BTN_RADIUS + 8
-    miniMapGfx = new Graphics()
-    miniCon.addChild(miniMapGfx)
-    miniMapCon = miniCon
-    btnRow.addChild(miniCon)
+    miniMapGfx = null
+    miniMapCon = null
 
     stage.addChild(btnRow)
     ensureBottomHudVisibleAndOnTop(stage)
@@ -2604,9 +3041,12 @@ export const ShopScene: Scene = {
         : { kind: 'backpack', instanceId }
 
       const manager = shopManager
+      if (kind === 'battle') refreshBattlePassiveStatBadges(false)
       const tier = getInstanceTier(instanceId)
+      const star = getInstanceTierStar(instanceId)
       const sellPrice = manager.getSellPrice(item, tier)
-      sellPopup.show(item, sellPrice, 'sell', tier)
+      const infoMode = resolveInfoMode(`${kind}:${instanceId}:${tier}:${star}`)
+      sellPopup.show(item, sellPrice, 'sell', toVisualTier(tier, star), undefined, infoMode)
 
       selectedSellAction = () => {
         system.remove(instanceId)
@@ -2633,7 +3073,8 @@ export const ShopScene: Scene = {
       currentSelection = { kind: 'shop', slotIndex }
       selectedSellAction = null
 
-      sellPopup.show(slot.item, slot.price, 'buy', slot.tier)
+      const infoMode = resolveInfoMode(`shop:${slotIndex}:${slot.item.id}:${slot.tier}`)
+      sellPopup.show(slot.item, slot.price, 'buy', toVisualTier(slot.tier, 1), undefined, infoMode)
       applySellButtonState()
     }
 
@@ -2684,6 +3125,8 @@ export const ShopScene: Scene = {
         || key === 'shopItemPriceFontSize'
         || key === 'shopItemBoughtFontSize'
         || key === 'itemStatBadgeFontSize'
+        || key === 'itemTierStarFontSize'
+        || key === 'itemTierStarStrokeWidth'
         || key === 'itemStatBadgeOffsetY'
         || key === 'itemInfoNameFontSize'
         || key === 'itemInfoTierFontSize'
@@ -2691,6 +3134,7 @@ export const ShopScene: Scene = {
         || key === 'itemInfoPriceCornerFontSize'
         || key === 'itemInfoCooldownFontSize'
         || key === 'itemInfoDescFontSize'
+        || key === 'itemInfoSimpleDescFontSize'
         || key === 'battleOrbColorHp'
         || key === 'battleColorShield'
         || key === 'battleColorBurn'
@@ -2784,7 +3228,6 @@ export const ShopScene: Scene = {
       }
     } else {
       pendingAdvanceToNextDay = false
-      placeInitialItems()
     }
     refreshShopUI()
     applyPhaseInputLock()
@@ -2811,9 +3254,11 @@ export const ShopScene: Scene = {
     if (shopAreaBg)   stage.removeChild(shopAreaBg)
     if (backpackAreaBg) stage.removeChild(backpackAreaBg)
     if (battleAreaBg) stage.removeChild(battleAreaBg)
+    if (restartBtn)   stage.removeChild(restartBtn)
     if (btnRow)       stage.removeChild(btnRow)
     if (dayDebugCon)  stage.removeChild(dayDebugCon)
     if (hintToastCon) stage.removeChild(hintToastCon)
+    if (passiveJumpLayer?.parent) passiveJumpLayer.parent.removeChild(passiveJumpLayer)
 
     if (onStageTapHidePopup) {
       stage.off('pointerdown', onStageTapHidePopup)
@@ -2859,17 +3304,23 @@ export const ShopScene: Scene = {
       hintToastHideTimer = null
     }
 
+    battleStartTransition = null
+
     drag?.destroy()
     shopManager   = null; shopPanel    = null; sellPopup = null
     btnRow        = null
     goldText      = null; miniMapGfx   = null; miniMapCon = null
     shopAreaBg    = null; backpackAreaBg = null; battleAreaBg = null
+    restartBtn    = null
     bpBtnHandle   = null; refreshBtnHandle = null; sellBtnHandle = null
     phaseBtnHandle = null
     refreshCostText = null
     hintToastCon = null
     hintToastBg = null
     hintToastText = null
+    passiveJumpLayer = null
+    battlePassivePrevStats.clear()
+    battlePassiveResolvedStats.clear()
     if (expandTickFn) { Ticker.shared.remove(expandTickFn); expandTickFn = null }
     dayDebugText    = null
     dayPrevBtn      = null
@@ -2880,8 +3331,12 @@ export const ShopScene: Scene = {
     battleSystem = backpackSystem = battleView = backpackView = drag = null
     instanceToDefId.clear()
     instanceToTier.clear()
+    instanceToTierStar.clear()
     instanceToPermanentDamageBonus.clear()
+    battlePassiveResolvedStats.clear()
   },
 
-  update(_dt: number) {},
+  update(dt: number) {
+    tickBattleStartTransition(dt)
+  },
 }

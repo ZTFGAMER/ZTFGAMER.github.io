@@ -3,18 +3,27 @@ import { getConfig, getAllItems, getItemsByHero, validateData } from './DataLoad
 import { normalizeSize, parseTags } from '@/items/ItemDef'
 
 describe('DataLoader — game_config.json', () => {
-  it('读取 dailyGold 为 15', () => {
-    expect(getConfig().dailyGold).toBe(15)
+  it('读取 dailyGold 为 10', () => {
+    expect(getConfig().dailyGold).toBe(10)
+  })
+
+  it('dailyGoldByDay 配置为 20 天且逐日不下降', () => {
+    const byDay = getConfig().dailyGoldByDay
+    expect(byDay).toBeTruthy()
+    expect(byDay).toHaveLength(20)
+    for (let i = 1; i < (byDay?.length ?? 0); i++) {
+      expect(byDay![i]).toBeGreaterThanOrEqual(byDay![i - 1]!)
+    }
   })
 
   it('backpackSlots 为 6', () => {
     expect(getConfig().backpackSlots).toBe(6)
   })
 
-  it('dailyBattleSlots 按 4/5/6 配置', () => {
+  it('dailyBattleSlots 固定 6 格配置', () => {
     const slots = getConfig().dailyBattleSlots
     expect(slots).toHaveLength(3)
-    expect(slots).toEqual([4, 5, 6])
+    expect(slots).toEqual([6, 6, 6])
   })
 
   it('shopRefreshPrices 有 10 级递增', () => {
@@ -47,6 +56,14 @@ describe('DataLoader — game_config.json', () => {
     expect(chances[9]).toEqual([0, 30, 50, 20])
     expect(chances[19]).toEqual([0, 30, 50, 20])
   })
+
+  it('敌我 daily health 都配置为 20 天', () => {
+    const cfg = getConfig()
+    expect(cfg.dailyEnemyHealth).toBeTruthy()
+    expect(cfg.dailyPlayerHealth).toBeTruthy()
+    expect(cfg.dailyEnemyHealth).toHaveLength(20)
+    expect(cfg.dailyPlayerHealth).toHaveLength(20)
+  })
 })
 
 describe('DataLoader — vanessa_items.json', () => {
@@ -69,12 +86,11 @@ describe('DataLoader — vanessa_items.json', () => {
     expect(items).toEqual(expected)
   })
 
-  it('包含三种尺寸物品', () => {
+  it('包含基础尺寸物品（1x1/2x1）', () => {
     const items = getAllItems()
     const sizes = new Set(items.map(i => normalizeSize(i.size)))
     expect(sizes.has('1x1')).toBe(true)
     expect(sizes.has('2x1')).toBe(true)
-    expect(sizes.has('3x1')).toBe(true)
   })
 
   it('cooldown 均为非负数', () => {

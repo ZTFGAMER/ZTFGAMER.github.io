@@ -3,7 +3,19 @@ import type { TierKey } from '@/shop/ShopManager'
 
 export interface BattleSnapshotEntity extends CombatEntity {
   tier: TierKey
+  tierStar?: 1 | 2
   permanentDamageBonus?: number
+  baseStats?: {
+    cooldownMs: number
+    damage: number
+    heal: number
+    shield: number
+    burn: number
+    poison: number
+    regen: number
+    crit: number
+    multicast: number
+  }
 }
 
 export interface BattleSnapshotBundle {

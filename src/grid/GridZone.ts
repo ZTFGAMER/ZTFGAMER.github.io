@@ -19,7 +19,8 @@ import type { ItemSizeNorm, PlacedItem } from './GridSystem'
 import { getAllItems, getConfig as getGameConfig } from '@/core/DataLoader'
 import { getItemIconUrl } from '@/core/assetPath'
 import { getTierColor } from '@/config/colorPalette'
-import { createItemStatBadges } from '@/ui/itemStatBadges'
+import { createItemStatBadges, type ItemBadgeDisplayMode, type ItemStatBadgeOverride } from '@/ui/itemStatBadges'
+import { resolveItemTierBaseStats } from '@/items/itemTierStats'
 
 export const CELL_SIZE = 128
 export const CELL_HEIGHT = CELL_SIZE * 2
@@ -42,7 +43,7 @@ const SIZE_DIMS: Record<ItemSizeNorm, [number, number]> = {
 let tierByDefId: Map<string, string> | null = null
 
 function getTier(defId: string, tierOverride?: string): string {
-  if (tierOverride) return tierOverride
+  if (tierOverride) return tierOverride.split('#')[0] ?? tierOverride
   if (!tierByDefId) {
     tierByDefId = new Map<string, string>()
     for (const item of getAllItems()) {
@@ -53,6 +54,23 @@ function getTier(defId: string, tierOverride?: string): string {
   return tierByDefId.get(defId) ?? 'Bronze'
 }
 
+function parseTierStar(tierRaw?: string): number {
+  if (!tierRaw) return 1
+  const m = tierRaw.match(/#(\d+)/)
+  if (!m?.[1]) return 1
+  const n = Number(m[1])
+  return Number.isFinite(n) ? Math.max(1, Math.min(2, Math.round(n))) : 1
+}
+
+function tierToLevelLabel(tierRaw?: string): string {
+  const tier = getTier('', tierRaw)
+  const star = tier === 'Diamond' ? 1 : parseTierStar(tierRaw)
+  if (tier === 'Bronze') return `Lv${star}`
+  if (tier === 'Silver') return `Lv${star + 2}`
+  if (tier === 'Gold') return `Lv${star + 4}`
+  return 'Lv7'
+}
+
 // ---- ItemNode ----
 
 interface ItemNode {
@@ -61,11 +79,18 @@ interface ItemNode {
   bg:         Graphics
   selectedG:  Graphics
   statBadges: Container
+  ammoBadge: Container
+  ammoBadgeBg: Graphics
+  ammoIconText: Text
+  ammoText: Text
+  starText: Text
   upgradeArrow: Graphics
   upgradeBaseY: number
   sprite:     Sprite | null
   defId:      string
   tier?:      string
+  statOverride: ItemStatBadgeOverride | null
+  ammoOverride: { current: number; max: number } | null
   col:        number
   row:        number
   size:       ItemSizeNorm
@@ -73,6 +98,48 @@ interface ItemNode {
   origX:      number
   /** 放置时的像素原点 Y（相对于 GridZone） */
   origY:      number
+}
+
+function parseAvailableTiers(raw: string): string[] {
+  const s = (raw || '').trim()
+  if (!s) return ['Bronze', 'Silver', 'Gold', 'Diamond']
+  const out = s
+    .split('/')
+    .map((v) => parseTierName(v.trim()))
+    .filter((v): v is string => Boolean(v))
+  return out.length > 0 ? out : ['Bronze', 'Silver', 'Gold', 'Diamond']
+}
+
+function parseTierName(raw: string): string {
+  if (raw.includes('Silver')) return 'Silver'
+  if (raw.includes('Gold')) return 'Gold'
+  if (raw.includes('Diamond')) return 'Diamond'
+  return 'Bronze'
+}
+
+function tierIndexFromRaw(item: { available_tiers: string }, tierRaw?: string): number {
+  const tiers = parseAvailableTiers(item.available_tiers)
+  const tier = parseTierName(tierRaw ?? 'Bronze')
+  const baseIdx = Math.max(0, tiers.indexOf(tier))
+  return baseIdx + (parseTierStar(tierRaw) - 1)
+}
+
+function pickTierSeriesValue(series: string, tierIndex: number): number {
+  const parts = series.split('/').map((v) => v.trim()).filter(Boolean)
+  if (parts.length === 0) return 0
+  const idx = Math.max(0, Math.min(parts.length - 1, tierIndex))
+  const n = Number(parts[idx])
+  return Number.isFinite(n) ? n : 0
+}
+
+function ammoFromSkillLines(lines: string[], tierIndex: number): number {
+  for (const line of lines) {
+    const m = line.match(/弹药\s*[:：]\s*(\d+(?:\/\d+)*)/)
+    if (!m?.[1]) continue
+    const v = Math.round(pickTierSeriesValue(m[1], tierIndex))
+    if (v > 0) return v
+  }
+  return 0
 }
 
 export interface GridItemNodeView {
@@ -103,7 +170,10 @@ export class GridZone extends Container {
   private cellBorderWidth = 1
   private selectedId: string | null = null
   private statBadgeFontSize = getGameConfig().textSizes.itemStatBadge
+  private statBadgeMode: ItemBadgeDisplayMode = 'stats'
   private statBadgeOffsetY = 0
+  private tierStarFontSize = getGameConfig().textSizes.itemTierStar
+  private tierStarStrokeWidth = 2
   private upgradeHintIds = new Set<string>()
   private upgradeHintTick: (() => void) | null = null
   private upgradeHintT = 0
@@ -304,6 +374,46 @@ export class GridZone extends Container {
     statBadges.eventMode = 'none'
     this.badgeLayer.addChild(statBadges)
 
+    const ammoBadge = new Container()
+    ammoBadge.eventMode = 'none'
+    const ammoBadgeBg = new Graphics()
+    const ammoIconText = new Text({
+      text: '✹',
+      style: {
+        fontSize: Math.max(10, Math.round(this.statBadgeFontSize * 0.85)),
+        fill: 0xffd36b,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+      },
+    })
+    const ammoText = new Text({
+      text: '',
+      style: {
+        fontSize: Math.max(10, Math.round(this.statBadgeFontSize * 0.85)),
+        fill: 0xffffff,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        stroke: { color: 0x000000, width: 2 },
+      },
+    })
+    ammoBadge.addChild(ammoBadgeBg)
+    ammoBadge.addChild(ammoIconText)
+    ammoBadge.addChild(ammoText)
+    this.badgeLayer.addChild(ammoBadge)
+
+    const starText = new Text({
+      text: '',
+      style: {
+        fontSize: this.tierStarFontSize,
+        fill: 0xffffff,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        stroke: { color: 0xffffff, width: this.tierStarStrokeWidth },
+      },
+    })
+    starText.eventMode = 'none'
+    this.badgeLayer.addChild(starText)
+
     const upgradeArrow = new Graphics()
     upgradeArrow.visible = false
     // 2x 放大箭头（40x48）
@@ -331,11 +441,18 @@ export class GridZone extends Container {
       bg,
       selectedG,
       statBadges,
+      ammoBadge,
+      ammoBadgeBg,
+      ammoIconText,
+      ammoText,
+      starText,
       upgradeArrow,
       upgradeBaseY: 0,
       sprite,
       defId,
       tier,
+      statOverride: null,
+      ammoOverride: null,
       col,
       row,
       size,
@@ -380,6 +497,10 @@ export class GridZone extends Container {
     node.container.destroy({ children: true })
     if (node.statBadges.parent) node.statBadges.parent.removeChild(node.statBadges)
     node.statBadges.destroy({ children: true })
+    if (node.ammoBadge.parent) node.ammoBadge.parent.removeChild(node.ammoBadge)
+    node.ammoBadge.destroy({ children: true })
+    if (node.starText.parent) node.starText.parent.removeChild(node.starText)
+    node.starText.destroy()
     if (this.dragNode === node) this.dragNode = null
     if (this.selectedId === instanceId) this.selectedId = null
     this.upgradeHintIds.delete(instanceId)
@@ -407,6 +528,8 @@ export class GridZone extends Container {
     node.bg.visible = false
     node.selectedG.visible = false
     node.statBadges.visible = false
+    node.ammoBadge.visible = false
+    node.starText.visible = false
     node.upgradeArrow.visible = false
 
     // 拖拽视觉：固定 100% 大小 + 半透明
@@ -441,7 +564,9 @@ export class GridZone extends Container {
     node.bg.visible = true
     node.selectedG.visible = this.selectedId === instanceId
     node.statBadges.visible = true
+    node.starText.visible = true
     node.upgradeArrow.visible = this.upgradeHintIds.has(instanceId)
+    this.updateNodeAmmoBadge(node)
     this.updateStatBadgePosition(node)
 
     this.itemLayer.addChild(container)
@@ -464,7 +589,9 @@ export class GridZone extends Container {
     node.bg.visible = true
     node.selectedG.visible = this.selectedId === instanceId
     node.statBadges.visible = true
+    node.starText.visible = true
     node.upgradeArrow.visible = this.upgradeHintIds.has(instanceId)
+    this.updateNodeAmmoBadge(node)
 
     node.origX     = x
     node.origY     = y
@@ -483,6 +610,10 @@ export class GridZone extends Container {
     if (this.dragNode === node) this.dragNode = null
     if (node?.statBadges.parent) node.statBadges.parent.removeChild(node.statBadges)
     node?.statBadges.destroy({ children: true })
+    if (node?.ammoBadge.parent) node.ammoBadge.parent.removeChild(node.ammoBadge)
+    node?.ammoBadge.destroy({ children: true })
+    if (node?.starText.parent) node.starText.parent.removeChild(node.starText)
+    node?.starText.destroy()
     this.nodes.delete(instanceId)
   }
 
@@ -572,8 +703,29 @@ export class GridZone extends Container {
     }
   }
 
+  setStatBadgeMode(mode: ItemBadgeDisplayMode): void {
+    this.statBadgeMode = mode
+    for (const node of this.nodes.values()) {
+      this.redrawItemBorder(node)
+    }
+  }
+
   setStatBadgeOffsetY(offsetY: number): void {
     this.statBadgeOffsetY = offsetY
+    for (const node of this.nodes.values()) {
+      this.redrawItemBorder(node)
+    }
+  }
+
+  setTierStarFontSize(size: number): void {
+    this.tierStarFontSize = Math.max(8, size)
+    for (const node of this.nodes.values()) {
+      this.redrawItemBorder(node)
+    }
+  }
+
+  setTierStarStrokeWidth(_width: number): void {
+    this.tierStarStrokeWidth = 2
     for (const node of this.nodes.values()) {
       this.redrawItemBorder(node)
     }
@@ -594,6 +746,28 @@ export class GridZone extends Container {
     if (!node) return
     node.tier = tier
     this.redrawItemBorder(node)
+  }
+
+  setItemStatOverride(instanceId: string, override: ItemStatBadgeOverride | null): void {
+    const node = this.nodes.get(instanceId)
+    if (!node) return
+    node.statOverride = override
+    this.updateNodeStatBadges(node)
+  }
+
+  setItemAmmo(instanceId: string, current: number, max: number): void {
+    const node = this.nodes.get(instanceId)
+    if (!node) return
+    if (!Number.isFinite(max) || max <= 0) {
+      node.ammoOverride = null
+    } else {
+      node.ammoOverride = {
+        current: Math.max(0, Math.round(current)),
+        max: Math.max(1, Math.round(max)),
+      }
+    }
+    this.updateNodeAmmoBadge(node)
+    this.updateStatBadgePosition(node)
   }
 
   getItemTier(instanceId: string): string | undefined {
@@ -664,13 +838,14 @@ export class GridZone extends Container {
       node.sprite.height = Math.max(1, ph - spriteInset * 2)
     }
 
-    const itemDef = getAllItems().find((it) => it.id === node.defId)
-    node.statBadges.removeChildren()
-    if (itemDef) {
-      const badges = createItemStatBadges(itemDef, this.statBadgeFontSize, Math.max(44, pw - 8))
-      node.statBadges.addChild(badges)
-    }
+    this.updateNodeStatBadges(node)
+    this.updateNodeAmmoBadge(node)
     this.updateStatBadgePosition(node)
+
+    node.starText.text = tierToLevelLabel(node.tier)
+    node.starText.style.fill = 0xffffff
+    node.starText.style.stroke = { color: 0x000000, width: this.tierStarStrokeWidth }
+    node.starText.style.fontSize = this.tierStarFontSize
 
     // 箭头位于物品可视区域中心
     node.upgradeArrow.x = frameInset + frameW / 2 - 20
@@ -678,6 +853,71 @@ export class GridZone extends Container {
     node.upgradeArrow.y = node.upgradeBaseY
 
     if (node.selectedG.visible) this.redrawSelection(node)
+  }
+
+  private updateNodeStatBadges(node: ItemNode): void {
+    const { pw } = SIZE_PX[node.size]
+    const itemDef = getAllItems().find((it) => it.id === node.defId)
+    node.statBadges.removeChildren()
+    if (itemDef) {
+      const tierStats = resolveItemTierBaseStats(itemDef, node.tier)
+      const badges = createItemStatBadges(
+        itemDef,
+        this.statBadgeFontSize,
+        Math.max(44, pw - 8),
+        {
+          damage: tierStats.damage,
+          shield: tierStats.shield,
+          heal: tierStats.heal,
+          burn: tierStats.burn,
+          poison: tierStats.poison,
+          multicast: tierStats.multicast,
+          ...(node.statOverride ?? {}),
+        },
+        this.statBadgeMode,
+      )
+      node.statBadges.addChild(badges)
+    }
+    this.updateStatBadgePosition(node)
+  }
+
+  private updateNodeAmmoBadge(node: ItemNode): void {
+    const itemDef = getAllItems().find((it) => it.id === node.defId)
+    if (!itemDef) {
+      node.ammoBadge.visible = false
+      return
+    }
+
+    let maxAmmo = 0
+    let currentAmmo = 0
+    if (node.ammoOverride) {
+      maxAmmo = node.ammoOverride.max
+      currentAmmo = Math.min(maxAmmo, node.ammoOverride.current)
+    } else {
+      const tierIdx = tierIndexFromRaw(itemDef, node.tier)
+      maxAmmo = ammoFromSkillLines((itemDef.skills ?? []).map((s) => s.cn ?? ''), tierIdx)
+      currentAmmo = maxAmmo
+    }
+
+    if (!Number.isFinite(maxAmmo) || maxAmmo <= 0) {
+      node.ammoBadge.visible = false
+      return
+    }
+
+    node.ammoBadge.visible = true
+    node.ammoText.text = `${Math.max(0, currentAmmo)}/${Math.max(1, maxAmmo)}`
+    const padX = 6
+    const padY = 3
+    const gap = 4
+    node.ammoIconText.x = padX
+    node.ammoIconText.y = padY
+    node.ammoText.x = node.ammoIconText.x + node.ammoIconText.width + gap
+    node.ammoText.y = padY
+    const w = Math.ceil(node.ammoText.x + node.ammoText.width + padX)
+    const h = Math.ceil(Math.max(node.ammoIconText.height, node.ammoText.height) + padY * 2)
+    node.ammoBadgeBg.clear()
+    node.ammoBadgeBg.roundRect(0, 0, Math.max(24, w), Math.max(16, h), 7)
+    node.ammoBadgeBg.fill({ color: 0x000000, alpha: 0.45 })
   }
 
   private startUpgradeHintAnim(): void {
@@ -817,9 +1057,20 @@ export class GridZone extends Container {
   }
 
   private updateStatBadgePosition(node: ItemNode): void {
-    const { pw } = SIZE_PX[node.size]
+    const { pw, ph } = SIZE_PX[node.size]
+    const frameInset = this.getItemFrameInset()
+    const frameW = Math.max(1, pw - frameInset * 2)
+    const frameH = Math.max(1, ph - frameInset * 2)
+    const badgeYOffset = this.statBadgeMode === 'archetype' ? 14 : 0
     node.statBadges.x = node.container.x + pw / 2
-    node.statBadges.y = node.container.y + this.statBadgeOffsetY
+    node.statBadges.y = node.container.y + this.statBadgeOffsetY + badgeYOffset
+    node.starText.x = node.container.x + frameInset + frameW / 2 - node.starText.width / 2
+    node.starText.y = node.container.y + frameInset + frameH - node.starText.height - 8
+    const ammoLift = node.size === '1x1' ? 22 : 14
+    const ammoDefaultY = node.container.y + frameInset + frameH - node.ammoBadge.height - 6 - ammoLift
+    const ammoMaxY = node.starText.y - node.ammoBadge.height - 4
+    node.ammoBadge.x = node.container.x + frameInset + frameW - node.ammoBadge.width - 6
+    node.ammoBadge.y = Math.min(ammoDefaultY, ammoMaxY)
   }
 
 }

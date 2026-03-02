@@ -5,7 +5,1459 @@
 
 ---
 
+### 本次对话追加（2026-03-02，问题留档 + GHE上传 + iOS打包与TF上传）
+
+- 问题留档（未完全解决，待明日继续）：
+  - 双行备战区（row0/row1）与战斗区之间的 `2x1` 互换链路仍有不稳定：出现 `plan_none` 红判或 `place_failed` 后回弹。
+  - 现象口径：
+    - row1 -> row0：偶发直接红色不可换位；
+    - row0 -> row1：偶发不可拾取/不可命中；
+    - 战斗区 -> row1：可合成，但换位/放置存在卡死风险。
+- 今日已完成内容总结：
+  - 新增拖拽全链路日志（`target/plan/plan_none/pre_place_state/place_failed/fallback_*`），用于定位方案阶段与执行阶段分叉；
+  - 修复同区提交失败后的回滚保护，避免半提交状态导致卡死；
+  - 调整 swap fallback 与目标命中策略（含宽物品目标格中心距离）。
+- 临时验证动作：
+  - 将备战区改为单行验证（稳定）；
+  - 已恢复为双行，并按“跨排不挤出”规则收敛，但跨区互换问题仍待继续。
+- GHE状态：本地改动已整理，准备推送（见本次会话终端结果）。
+- iOS打包/TF上传结果：
+  - Web build、xcodegen、archive、export 均成功；
+  - TestFlight 上传失败：`cfBundleVersion` 重复（当前 `5` 已被使用，需提升 build number 后重传）。
+  - 失败原文关键：`The bundle version must be higher than the previously uploaded version (previousBundleVersion: 5)`。
+
+### 本次对话追加（2026-03-02，用户手动回退显示口径确认）
+
+- 用户确认已手动改回信息展示口径：
+  - 简版：显示“速度（很快/快/中等/慢/很慢）”
+  - 详细版：继续显示“间隔（x.x秒）”
+- 本轮未再覆盖该口径，后续以用户当前版本为准继续迭代。
+
+### 本次对话追加（2026-03-02，黄金袖箭详情CD实时刷新修复）
+
+- 验收反馈：黄金袖箭实际 CD 已按规则缩短，但详情面板中的“间隔”未实时变化。
+- 根因：`SellPopup` 简版统计条“间隔”读取的是静态配置 `getCooldownMsByTier()`，未消费 battle runtime 的 `cooldownMs`。
+- 修复：`src/shop/SellPopup.ts`
+  - `extractSimpleStatEntries()` 新增 `runtimeOverride` 入参；
+  - 简版“间隔”优先读取 `runtimeOverride.cooldownMs`，仅在无 runtime 时回退静态配置。
+- 同步完善：去除已不再使用的 `formatSpeedLine()`。
+- 回归验证：`npm test` 通过（76/76）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：黄金袖箭每次使用后，详情里的间隔会同步显示 `5.0 -> 4.0 -> 3.0 -> 2.0 -> 1.0`。
+
+### 本次对话追加（2026-03-02，本对话范围总结 + 回传主程 Notebook）
+
+- 已按你要求汇总本对话内所有改动（仅本对话范围，不跨历史对话）。
+- 已将本对话技术更新摘要回传到主程 Notebook（用于方案复盘与后续验收对齐）。
+- 汇总维度包含：拖拽/挤出/合成链路修复、战斗数值显示一致性、商店随机规则、UI 文案与信息层级、资源替换与平衡调整。
+
+### 本次对话追加（2026-03-02，简版恢复“速度”展示，详细保留“间隔”）
+
+- 验收反馈：简版描述不应显示具体“间隔x.x秒”，应回到“速度”等级表达。
+- `src/shop/SellPopup.ts`：
+  - `extractSimpleStatEntries()` 增加 `displayMode` 参数。
+  - 简版（`simple`）显示 `速度：很快/快/中等/慢/很慢`。
+  - 详细（`detailed`）继续显示 `间隔：x.x秒`。
+- 结果：简版与详细模式各自回归预期口径（简版抽象、详细数值化）。
+- 回归验证：`npm test` 通过（76/76）。
+
+### 本次对话追加（2026-03-02，木弓伤害下调为30/60）
+
+- 按你的最新口径，木弓数值改为：
+  - 基础伤害：`30|60`
+  - 使用后增伤：`+30|60`
+- `data/vanessa_items.json`：木弓两条技能文案由 `50/100` 全部替换为 `30/60`。
+- 回归验证：`npm test` 通过（76/76）。
+
+### 本次对话追加（2026-03-02，黄金袖箭CD规则与被动物品展示收口）
+
+- 根据验收意见完成以下修复：
+  - `src/combat/CombatEngine.ts`：黄金袖箭“攻击后间隔不断缩短”改为固定 `-1000ms`，下限 `1000ms`（不再按比例 0.88）。
+  - `src/combat/CombatEngine.ts`：无 CD 物品保留 `cooldownMs=0` 且不进入充能/触发队列，确保弹药堆等纯被动不跑 CD。
+  - `src/combat/CombatEngine.ts`：相邻最大弹药量解析兼容 `+2/+4`、`+2|+4`，并在开场被动正确作用到相邻弹药武器。
+  - `src/combat/CombatEngine.ts`：实时 `multicast` 显示对“一次打出所有弹药”物品取 `max(base, ammoCurrent)`，支持 `50*4` 风格展示。
+  - `src/shop/SellPopup.ts`：无 CD 物品简版显示改为 `类型：被动物品`，不再显示“间隔无”。
+  - `src/shop/SellPopup.ts`：详情分档替换正则支持 `+` 前缀（`+2|+4` 在 Lv4 显示为 `+4`）。
+- 新增测试：`src/combat/CombatEngine.test.ts` 增加“黄金袖箭每次使用后 CD 固定 -1 秒且最低 1 秒”用例。
+- 回归验证：`npm test` 通过（76/76）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：你提到的被动物品、弹药堆、手弩显示、黄金袖箭 CD 与详情同步已全量收口。
+
+### 本次对话追加（2026-03-02，超级弩机连发实时显示修复）
+
+- 验收需求：超级弩机“使用其他弹药物品时攻击次数+1”应实时体现在战斗内卡面数字（如 `300*2`、`300*3`）。
+- 根因：`CombatEngine.getRuntimeState().multicast` 未叠加 `bonusMulticast`，导致逻辑生效但显示不变。
+- 修复：`src/combat/CombatEngine.ts`
+  - runtime `multicast` 改为 `baseMulticast + bonusMulticast`（一次打完弹药的卡继续与 `ammoCurrent` 取最大值）。
+- 显示格式：`src/ui/itemStatBadges.ts` 将乘号展示从 `x` 改为 `*`，与验收示例一致。
+- 新增回归：`src/combat/CombatEngine.test.ts` 增加“超级弩机会因其他弹药物品使用而提高实时连发显示”。
+- 回归验证：`npm test` 通过（75/75）；`npm run build` 通过（保留 chunk size warning）。
+
+### 本次对话追加（2026-03-02，皇家佩剑“使用后生效”触发时机修复）
+
+- 验收反馈：皇家佩剑（每次使用后给相邻护盾物品+护盾）在开场就错误触发了1次。
+- 根因：`shieldGainBonusForItem()` 的文案匹配过宽，误把“每次使用后相邻护盾物品+X护盾”当成开场常驻被动。
+- 修复：`src/combat/CombatEngine.ts` 在该匹配条件中排除 `每次使用后/使用后` 文案，仅保留真正常驻 aura。
+- 结果：皇家佩剑不会开场白送一次加成，只会在“自身使用后”触发。
+- 回归验证：`npm test` 通过（74/74）。
+
+### 本次对话追加（2026-03-02，手弩相邻弹药堆时弹药显示联动修复）
+
+- 验收反馈：手弩相邻弹药堆后，战斗区卡面弹药与详情文案中的弹药数未同步变化。
+- `src/scenes/ShopScene.ts`：扩展备战被动重算结构，新增 `ammoCurrent/ammoMax` 实时字段。
+  - 基础弹药从技能文案（`弹药:X`）按品质+星级解析。
+  - 接入“弹药堆”被动：`相邻物品+X最大弹药量` 会对相邻弹药物品同时提升 `ammoMax` 与 `ammoCurrent`。
+  - 每次重算后同步调用战斗区 `setItemAmmo()`，卡面弹药显示实时更新。
+- 详情联动：`getItemInfoRuntimeOverrideForShop()` 现在回传 `ammoCurrent/ammoMax`，弹窗文案中的 `弹药:4` 会按当前实际值替换（如 `8/8`）。
+- 回归验证：`npm run build` 通过；`npm test` 通过（73/73）。
+
+### 本次对话追加（2026-03-02，大手里剑伤害下调 + 取消初始测试发放）
+
+- 配置调整：`data/vanessa_items.json` 中“大手里剑”伤害文案由 `200/400` 下调为 `50/100`。
+- 初始流程调整：`src/scenes/ShopScene.ts` 移除 `placeInitialItems()` 调用并删除该函数，不再开局注入测试装。
+- 结果：开局恢复纯随机，不再自动给“大手里剑”；你可直接按自然流程验证。
+- 回归验证：`npm test` 通过（73/73）。
+
+### 本次对话追加（2026-03-02，详情分档文案支持“+2|+4”按等级替换）
+
+- 验收反馈：`Lv4` 的弹药堆详情仍显示 `+2|+4` 原串，未替换为单档 `+4`。
+- 根因：`SellPopup` 的分档替换正则只匹配无符号数字分档，未覆盖带 `+` 前缀的分档串。
+- 修复：`src/shop/SellPopup.ts`
+  - `formatDescByTier()` 与 `formatDescDiffByTier()` 正则改为支持 `+` 前缀（如 `+2|+4`、`+5/+10`）。
+- 效果：`Lv4` 弹药堆详情现应显示 `相邻物品+4最大弹药量`。
+- 回归验证：`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，初始测试装改为大手里剑）
+
+- 按测试需求，开局初始发放物品改为 `大手里剑`（Bronze Lv1）。
+- `src/scenes/ShopScene.ts`：`placeInitialItems()` 从“手弩+弹药堆”测试装改为单件 `大手里剑`（背包 `col0,row0`）。
+- 目的：便于你直接验证大手里剑相关交互/合成/战斗表现。
+- 回归验证：`npm test` 通过（73/73）。
+
+### 本次对话追加（2026-03-02，被动物品显示与弹药联动修复）
+
+- 验收反馈（弹药堆/手弩链路）：
+  - 无 CD 物品显示为“间隔无”，期望改为“被动物品”；
+  - 弹药堆不应走 CD 触发；
+  - 相邻最大弹药提升未生效（手弩应到 `8/8`）；
+  - 手弩“一次打出所有弹药”未在显示上体现 `50*4` 风格。
+- `src/shop/SellPopup.ts`：简版统计条调整
+  - 无 CD 时不再显示“间隔无”，改显示 `类型：被动物品`。
+- `src/combat/CombatEngine.ts`：
+  - `validCooldown()`：`cd<=0` 改为保留 `0`（不再强制回退 3000）；
+  - `stepOneTick()`：`cooldownMs<=0` 物品不进入充能/触发队列（被动不跑 CD）；
+  - 开场被动“相邻最大弹药”解析增强：支持 `+2/+4` 与 `+2|+4` 写法；
+  - `getRuntimeState()`：对“一次打出所有弹药”物品，`multicast` 显示取 `max(base, ammoCurrent)`，用于卡面显示 `伤害*当前弹药`（如 `50*4`）；
+  - `getBoardState()` 充能比例分母加 `Math.max(1, cooldownMs)`，避免 0 分母问题。
+- 回归验证：`npm test` 通过（73/73）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：被动物品展示、弹药堆被动生效与手弩多发显示已对齐预期。
+
+### 本次对话追加（2026-03-02，弹药徽标上移避让 Lv）
+
+- 验收反馈：弹药徽标与底部 `Lv` 文本发生重叠（1x1 物品尤为明显）。
+- `src/grid/GridZone.ts`：调整 `updateStatBadgePosition()` 的弹药徽标 Y 计算：
+  - 新增按尺寸上移量（`1x1` 上移更多，`2x1/3x1` 适度上移）；
+  - 增加与 `starText` 的避让上限（徽标底部不压到 `Lv` 行）。
+- 回归验证：`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：弹药徽标与等级文本已分离，不再重叠。
+
+### 本次对话追加（2026-03-02，开局预置测试装：手弩+弹药堆（不同等级））
+
+- 按你的测试诉求，开局初始化从“空背包”临时改为预置两件测试装：
+  - 手弩：`Silver#1`
+  - 弹药堆：`Silver#2`
+- 实现位置：`src/scenes/ShopScene.ts` 的 `placeInitialItems()`。
+- 关键点：同步写入实例级元数据（`instanceToTier` / `instanceToTierStar` / `instanceToDefId`），确保等级显示、战斗结算和弹药联动都按预期生效。
+- 回归验证：`npm test` 通过（73/73）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：可直接开局验证“不同等级下手弩+弹药堆”弹药与显示行为。
+
+### 本次对话追加（2026-03-02，商店随机规则新增：弹药依赖 + Day1 第3件职业约束）
+
+- 新增配置字段：`data/game_config.json` -> `shop_rules`
+  - `ammoSupportRequiresAmmoOwned: true`
+  - `ammoSupportItemNames: ["弹药袋", "弹药堆"]`
+  - `day1ThirdItemMatchExistingArchetype: true`
+  - `shopSizeWeights: { small: 2, medium: 1, large: 1 }`
+- 类型与加载：
+  - `src/items/ItemDef.ts` 为 `GameConfig` 增加 `shopRules`。
+  - `src/core/DataLoader.ts` 增加 `shop_rules` 读取（可选）。
+- `src/shop/ShopManager.ts` 规则实现：
+  - 弹药支持物品（按配置名匹配）在“未拥有任意弹药类物品（技能文案含`弹药`）”时不进入随机候选。
+  - Day1 初始首轮（constructor 首次 roll）第3件物品强制与前两件之一同职业（`tags` 首标签）。
+  - 增加 Day1 第3件兜底校正：若仍出现三职业全不同，最终强制重选第3件为前两件职业之一。
+  - 新增尺寸权重抽样：按 `shopSizeWeights` 做候选加权，当前小型:中型≈`2:1`。
+  - 规则作用于随机与后续刷新，合成后因 `setOwnedTiers()` 同步已拥有物品也可解锁弹药支持物品随机。
+- 新增测试：`src/shop/ShopManager.test.ts`
+  - 覆盖“弹药依赖解锁”“Day1 第3件职业约束”“小型>中型约2:1权重”三条规则。
+- 回归验证：`npm test` 通过（73/73）；`npm run build` 通过（保留 chunk size warning）。
+
+### 本次对话追加（2026-03-02，简版描述未读取问题修复）
+
+- 验收反馈：简版文案仍显示旧正则推导结果（如“相邻的护盾物品护盾”），未命中 JSON 配置“相邻物品护盾提升”。
+- 根因：`DataLoader.normalizeItem()` 未把 `simple_desc/simple_desc_tiered` 字段写入运行时 `ItemDef`，导致前端读取为空并回退旧逻辑。
+- 修复：`src/core/DataLoader.ts` 补充字段映射：
+  - `simple_desc: toSafeString(r.simple_desc).trim()`
+  - `simple_desc_tiered: toSafeString(r.simple_desc_tiered).trim()`
+- 回归验证：`npm test` 通过（69/69）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：简版描述已按 JSON 显式字段优先显示，与策划配置一致。
+
+### 本次对话追加（2026-03-02，简版描述迁移到 JSON 并与配置对齐）
+
+- 数据层：`data/vanessa_items.json` 为 18 件物品新增 `simple_desc` 与 `simple_desc_tiered`，按你给的表逐条录入。
+- 类型层：`src/items/ItemDef.ts` 扩展 `ItemDef`，新增可选字段 `simple_desc`、`simple_desc_tiered`。
+- 展示层：`src/shop/SellPopup.ts` 去除硬编码 `ITEM_DESC_GUIDE`，改为优先读取物品 JSON 的简版文案字段。
+- 兼容处理：分档解析支持 `|` 和 `/` 两种分隔，确保配置写法与展示结果一致。
+- 当前规则：
+  - 简版模式优先显示 `simple_desc`；
+  - 详细/升级预览优先显示 `simple_desc_tiered`（按品质星级分档）。
+- 回归验证：`npm test` 通过（68/68）；`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，被动跳字初始位置下移40）
+
+- 验收调整：被动跳字初始位置整体再向下。
+- `src/scenes/ShopScene.ts`：`spawnPassiveJumpText()` 的起始 Y 增加 `+40`，让跳字更贴近物品主体区域。
+- 说明：仅调整初始位置，不影响移动/停留/淡出时序配置。
+
+### 本次对话追加（2026-03-02，设计确认：简版描述改为 JSON 显式字段）
+
+- 已按流程通过设计师 Notebook（`手机大巴扎设计`，id: `98dc4c7c-dcf5-4391-a65e-1529a4a6b6e5`）确认方案。
+- 设计结论：同意将 18 件物品“简版描述”改为 JSON 显式字段，并在 `SellPopup` 简版优先显示该字段，以确保展示与策划配置一致。
+- 关键注意项（设计侧）：
+  - 简版字段建议使用模板+变量注入，避免硬编码数值导致与升星/品质分档脱节。
+  - UI 需有降级链路：显式字段优先，缺失时回退正则推导，再回退完整描述，避免空白。
+  - 简版信息需保持低文本高可读：不重复展示 UI 已表达的信息，不放复杂公式和风味文案。
+  - 验收需覆盖：分档数值一致性、窄屏溢出边界、空字段兜底表现。
+
+### 本次对话追加（2026-03-02，新增被动跳字字号调试配置）
+
+- 已按主程建议执行最小改动：为备战被动跳字新增字号配置项，便于在线调参。
+- 配置接入：
+  - `src/config/debugConfig.ts` 新增 `shopPassiveJumpFontSize`（10~72，默认26）。
+  - `data/debug_defaults.json` 新增默认值 `shopPassiveJumpFontSize: 26`。
+  - `src/debug/debugPage.ts` 将该项加入战斗表现调参分组。
+- 渲染生效：`src/scenes/ShopScene.ts` 跳字渲染改为读取 `getDebugCfg('shopPassiveJumpFontSize')`，替代硬编码字号。
+- 回归验证：`npm test` 通过（67/67）。
+
+### 本次对话追加（2026-03-02，战斗详情护盾值与实际结算同步）
+
+- 验收反馈：局外备战相邻加成后护盾显示 35，但进战斗详情/徽标显示回到 20；实际结算仍按 35。
+- 根因：`CombatEngine.getRuntimeState()` 的 `shield` 仅返回 `baseStats.shield`，未叠加相邻护盾加成（该加成在结算时通过 `shieldGainBonusForItem()` 参与）。
+- 修复：`src/combat/CombatEngine.ts` 将 runtime `shield` 改为 `baseStats.shield + shieldGainBonusForItem(it)`，使战斗详情与卡面徽标与实际结算口径一致。
+- 影响范围：主要体现在护盾类物品（你反馈的“只有护盾类有问题”与此一致）。
+- 回归验证：`npm test` 通过（67/67）。
+
+### 本次对话追加（2026-03-02，木弓弹药调整为2）
+
+- 配置调整：`data/vanessa_items.json` 中木弓技能文案由 `弹药:1` 改为 `弹药:2`。
+- 影响：木弓基础最大弹药提升为 2（同分档规则下战斗与徽标显示同步生效）。
+- 回归验证：`npm test` 通过（67/67）。
+- 当前状态：木弓弹药容量已按新设定生效。
+
+### 本次对话追加（2026-03-02，被动跳字位置与时序配置修复）
+
+- 验收反馈：
+  - 跳字位置偏到场外右侧，不在物品上；
+  - 只看到部分物品跳字；
+  - 需要支持“移动时长/停留时长/淡出时长”可配置。
+- 根因：
+  - 跳字坐标使用 `toGlobal` + stage 层绘制，受全局坐标系偏移影响；
+  - 仅比较正向增量且只看已存在 prev 快照，新增上阵物品的被动增量不会触发；
+  - 仅处理正增量，未覆盖负向变化。
+- 修复（`src/scenes/ShopScene.ts`）：
+  - 跳字层挂到 `battleView` 内，坐标改为物品本地坐标，保证文本贴在物品上方。
+  - 新增 `baseBeforePassive` 对比：首次上阵也能正确识别被动增减并跳字。
+  - 跳字改为“增减都显示”（`+/-`），并对同物品多条变化做堆叠偏移显示。
+  - 拖拽结束与点选前继续触发实时重算，保证跳字与数值同步。
+- 新增可调参数（已接入 debug 配置与调试页）：
+  - `shopPassiveJumpMoveMs`（移动时长）
+  - `shopPassiveJumpHoldMs`（停留时长）
+  - `shopPassiveJumpFadeMs`（淡出时长）
+  - 文件：`src/config/debugConfig.ts`、`data/debug_defaults.json`、`src/debug/debugPage.ts`
+- 回归验证：`npm test` 通过（67/67）；`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，备战拖拽后未实时重算被动值修复）
+
+- 用户定位准确：从战斗回来数据正确，说明非战斗阶段（备战手动调位）未及时走重算链路。
+- 根因：`ShopScene` 普通拖拽落位后仅做视觉收尾（`onDragEnd`），未触发 `refreshBattlePassiveStatBadges()`；
+  导致战斗区被动面板值与详情 override 仍是旧快照。
+- 修复：
+  - `src/scenes/ShopScene.ts`：`drag.onDragEnd` 增加 `refreshBattlePassiveStatBadges(true)`，确保每次摆位完成后立即重算。
+  - `src/scenes/ShopScene.ts`：点击战斗区物品前先 `refreshBattlePassiveStatBadges(false)`，避免“刚调位立刻点详情”读到旧值。
+- 结果：备战中每次换位后，短剑/圆盾/回旋镖被动值与详情面板都会立即更新，不再依赖“打一场回来才正确”。
+- 回归验证：`npm test` 通过（67/67）。
+
+### 本次对话追加（2026-03-02，连发飞镖次数修正为3次）
+
+- 验收反馈：连发飞镖详情显示“连续发射1次”，预期应为3次。
+- 根因：`resolveItemTierBaseStats()` 的 `multicast` 解析只匹配“触发X次”，未覆盖“连续发射X次”语义，导致回退默认值 1。
+- 修复：`src/items/itemTierStats.ts` 扩展连发解析正则，支持“连续发射/连发次数/触发”多种文本模式。
+- 新增回归：`src/items/itemTierStats.test.ts` 增加“连发飞镖 Bronze -> multicast=3”断言。
+- 回归验证：`npm test` 通过（67/67）。
+
+### 本次对话追加（2026-03-02，弹药徽标实时刷新修复）
+
+- 验收反馈：战斗中弹药信息（如 `1/1`）未随使用/补弹及时变化。
+- 根因：`BattleScene` 每帧仅更新了数值徽标（伤害/护盾等），未把运行时 `ammoCurrent/ammoMax` 回写到 `GridZone`。
+- 修复：`src/scenes/BattleScene.ts` 的 `updateRuntimeStatBadges()` 新增
+  - `zone.setItemAmmo(it.id, rt.ammoCurrent, rt.ammoMax)`（有 runtime 时实时更新）
+  - `zone.setItemAmmo(it.id, 0, 0)`（runtime 缺失时清空覆盖，避免脏显示）
+- 回归验证：`npm test` 通过（66/66）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：弹药徽标已与战斗运行时一致，使用与补弹均会即时反映。
+
+### 本次对话追加（2026-03-02，战斗详情图标丢失与实时数值错位修复）
+
+- 验收反馈（局内）：
+  - 详情面板图标丢失（空框）；
+  - 详情面板数值与上方徽标不一致（短剑卡面30但详情仍20）。
+- 根因定位：
+  - `BattleScene` 在详情面板打开期间每帧重复调用 `SellPopup.show()`，每次都会把图标 alpha 置0并重新异步加载，导致视觉上常驻空框。
+  - 同时未把 runtime override 传入 `SellPopup.show()`，详情继续走静态档位文案，和战斗实时数值脱节。
+- 修复：
+  - `src/scenes/BattleScene.ts`：
+    - `showBattleItemInfo()` 组装并传入 runtime override（冷却/伤害/护盾/状态/连发/弹药）；
+    - 新增 `nextKey` 比较，若实时值未变化则不重复 `show()`，避免每帧重载图标。
+  - `src/shop/SellPopup.ts`：runtime override 数值替换链路继续生效。
+- 结果：
+  - 战斗详情图标恢复正常显示；
+  - 战斗详情中的核心数值可跟随实时逻辑（例如短剑被加成后显示30，而非固定20）。
+- 回归验证：`npm test` 通过（66/66）；`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，详情去重：移除与效果条重复的纯数值句）
+
+- 验收反馈：详细描述第一行“攻击造成20伤害”与上方效果条“伤害20”重复。
+- `src/shop/SellPopup.ts`：新增 `isPureStatLine()` 过滤规则。
+  - 在详细模式中，自动移除纯数值句（如“造成X伤害”“间隔X秒”“获得X护盾”等）
+  - 保留机制/条件类描述（例如“相邻的护盾物品护盾+5”）。
+- 结果：详情区只保留非重复信息，避免同屏重复表达。
+- 回归验证：`npm test` 通过（66/66）。
+
+### 本次对话追加（2026-03-02，弹药武器“无弹不空转CD”修复）
+
+- 验收反馈：带弹药武器在弹药为 0 时，CD 转满后仍继续走下一轮 CD，导致补弹后不能立刻发射。
+- `src/combat/CombatEngine.ts`：在充能结算（`currentChargeMs >= cooldownMs`）处增加弹药判定：
+  - 若为弹药武器且当前无弹：`currentChargeMs` 固定停在 `cooldownMs`（已就绪状态），不入执行队列、不重置 CD。
+  - 一旦补到弹药，下次结算将直接触发发射（不再额外等待完整一轮 CD）。
+- 回归验证：`npm test` 通过（66/66）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：弹药体系手感符合“无弹待机、补弹即开火”预期。
+
+### 本次对话追加（2026-03-02，备战徽标口径修正 + 备战详情按实时被动值显示）
+
+### 本次对话追加（2026-03-02，新增拖拽参数 bool：关闭挤出，仅保留合成/换位）
+
+### 本次对话追加（2026-03-02，移除初始临时背包数据 + Day1 金币=10）
+
+### 本次对话追加（2026-03-02，拖拽重叠卡死修复：落点失败自动择近空位）
+
+- 再次验收补丁：战斗区中型拖到背包第二排、背包满场景下仍有“应可互换但判失败”的情况。
+- 根因：`dragSqueezeEnabled=0` 时我们把 `planUnifiedSqueeze` 全部禁用，导致其 `cross` 模式（将目标阻挡物转移到来源区的合法空位）也被禁掉，只剩 footprint swap，容量稍复杂就失败。
+- 修复：`src/grid/DragController.ts`
+  - 即使 `dragSqueezeEnabled=0` 也会计算 `planUnifiedSqueeze`；
+  - 仅允许其 `cross` 模式通过（等价“换位转移”），`local` 挤出仍禁止。
+  - 保持“关闭挤出”语义：不做本区挤出预览/本区连锁挤出，只保留合成+换位/跨区转移。
+- 结果：背包满且目标为中型/小型混排时，若存在合法转移路径会判定可换位（绿），不再误判红色失败。
+- 深挖“第一排可换、第二排不可换”的核心差异并修复：
+  - 根因：`planUnifiedSqueeze` 的 `cross` 转移此前是贪心“第一个可放位置”逐个放置 blocker，未做全局回溯；当目标覆盖中含“1个中型+2个小型”时，若先放小型会堵住中型的唯一空位，导致第二排更容易失败（第一排场景较少触发该组合）。
+  - 修复：`src/grid/SqueezeLogic.ts` 将 `cross` 转移改为 DFS 回溯排布（按面积大到小优先），在来源区可见列内寻找全局可行解。
+  - 结果：战斗区 <-> 背包第二排在满格复杂组合下也能找到可交换方案，不再出现“第一排能换、第二排不能换”的不一致。
+- 回归验证：`npm test` 通过（73/73）。
+
+- 规则再调整（本轮用户指令）：区域间拖动不要挤出，仅战斗区内允许相互挤出。
+- `src/grid/DragController.ts`：
+  - `tryDrop()`：仅当 `targetPair===home && targetZone.rows===1` 时启用 `planUnifiedSqueeze`；
+  - `updateHighlight()`：同样仅该条件下显示/执行挤出预览；
+  - 跨区拖动与背包内拖动统一不再走挤出，仅保留合成+换位+可落位判定。
+- 备注：当前以 `rows===1` 作为战斗区判定（商店场景 battle=1 行，backpack=2 行）。
+- 回归验证：`npm test` 通过（73/73）。
+
+- 用户继续要求：背包两排视为两个独立背包（重点排查第二排）。
+- 已落地的“独立背包”约束（`src/grid/DragController.ts`）：
+  - 背包内拖拽时，禁止跨排落位（row0 仅 row0，row1 仅 row1）；
+  - 背包落位失败兜底（nearest place）增加 `rowLock`，只在当前排找最近合法位；
+  - 回弹兜底扫描在背包场景也只回到原排，避免跨排漂移造成“第一排/第二排行为不一致”；
+  - 高亮层同样对跨排目标直接红色。
+- 同时保留上一条规则：区域间不挤出，仅战斗区内可挤出。
+- 回归验证：`npm test` 通过（73/73，重跑确认）。
+
+- 再次排查“第二排无法与第一排/战斗区平等换位”：
+  - 结论：并非历史“中型强制上排”代码在生效；`GridZone.pixelToCellForItem()` 当前按 `pointerLocal.y` 计算 row（无 `row=0` 强制），旧注释为遗留描述。
+  - 真正影响点是此前新增的“锁排”限制与回弹/兜底 rowLock，导致第二排在跨排与跨区时被额外约束。
+- 本轮修复（`src/grid/DragController.ts`）：
+  - 移除背包内跨排硬拦截（drop + highlight 两条链路）；
+  - 移除 nearest-place 的 `rowLock` 限制；
+  - 回弹兜底扫描恢复全行可选，不再只限原排；
+  - 保留“区域间不挤出，仅战斗区内 local 挤出”规则，同时跨区可继续走 `unified.cross` 转移（视作换位）。
+- 结果：第二排与第一排、战斗区的换位判定口径一致，避免“同目标第一排能换、第二排不能换”的差异。
+- 回归验证：`npm test` 通过（74/74）。
+
+- 用户继续反馈“仍不对”，本轮再修：
+  - 发现我们在“区域间不挤出，仅战斗区内 local 挤出”改造后，误把 `unified.cross` 也一并限制掉，导致部分第二排<->第一排/战斗区的可行换位被误判失败。
+  - `src/grid/DragController.ts`：
+    - 恢复 `unified.cross` 在跨区场景可用（仍不启用跨区 local 挤出）；
+    - 新增 `planSwapWithFlexibleAnchor()`：当当前锚点换位失败时，自动尝试邻近列锚点（0, -1, +1, -2, +2）寻找可行 swap，避免“明明可换位但当前锚点恰好覆盖过多 blocker”导致红判。
+    - drop 阶段使用该可行锚点的 `dropCol/dropRow`，高亮也同步到可行锚点。
+  - 移除上轮为“独立背包”引入的锁排行为，恢复两排行为一致（跨排可换位）。
+- 结果：第二排与第一排/战斗区在换位判定上恢复平等，复杂布局下可行换位更容易被识别。
+- 回归验证：`npm test` 通过（76/76）。
+
+- 用户最终决策：明确要求“背包视为两个独立背包区域，复用背包1逻辑”。
+- 本轮按该策略执行（`src/grid/DragController.ts`）：
+  - 恢复并固化背包内跨排限制：同区且目标为背包时，不允许 row0<->row1 跨排落位；
+  - highight 链路同步跨排红判；
+  - nearest-place 兜底在背包目标区启用 `rowLock`，仅当前排找可落位；
+  - snapBack 兜底在背包来源区也只扫描原排，避免跨排漂移。
+- 保留：跨区换位（`unified.cross` / `swap`）逻辑仍可用，战斗区内 local 挤出规则不变。
+- 回归验证：`npm test` 通过（76/76）。
+
+- 用户追加反馈：“现在空位都放不进去了”。
+- 紧急回退修复（`src/grid/DragController.ts`）：
+  - 移除本轮新增的 `targetRowLock` 在 `planUnifiedSqueeze` / fallback 中的强约束；
+  - 移除背包内 drop/highlight 的跨排硬拦截；
+  - 回弹兜底扫描恢复全行可选，优先保证“空位可放入”正常。
+- 当前口径：先保证基本拖放和空位放置稳定，再继续针对“背包两排独立但不影响跨区/跨排互换”做下一轮精确规则拆分。
+- 回归验证：`npm test` 通过（76/76）。
+
+- 用户明确业务口径：背包2应可正常放入背包1/战斗区空位，也应可进行互换。
+- 本轮修正（`src/grid/DragController.ts`）：
+  - 将“同一物理背包但不同行”视为**不同逻辑区域**（`isLogicalSameZone`），而不是同区硬判；
+  - 因此 row0<->row1 走跨区换位链路（`unified.cross` / `swap`），而非被当作本区不可换位；
+  - `swapTransfers/crossTransfers` 的执行分支也按“逻辑区域”判断，确保同物理 view 不同行时仍按跨区迁移执行；
+  - 保留“空位可放”优先，不再加 rowLock 强约束。
+- 结果：背包第二排可与第一排/战斗区进行平等放置与互换，不再被同区判定拦截。
+- 回归验证：`npm test` 通过（76/76）。
+
+- 用户继续反馈“仍不对”，并定位到核心漏改：
+  - `crossTransfers` 执行分支条件仍是 `targetPair !== home`，导致“同物理背包 view 但不同行（逻辑跨区）”时 `unified.cross` 结果不会被真正执行。
+- 修复（`src/grid/DragController.ts`）：
+  - 将 `crossTransfers` 执行条件改为 `!isLogicalSameZone`，与前面的逻辑分区判定一致。
+  - 这样 row0<->row1 作为逻辑跨区时，cross transfer 可落地执行，不再只高亮绿但落地失败。
+- 回归验证：`npm test` 通过（77/77）。
+
+- 进一步修复（同一问题链路）
+  - 发现第二个漏点：当 `isLogicalSameZone=false` 但 `targetPair===home`（背包 row0<->row1）时，`crossTransfers` 仍可能走到“跨区 remove/add”路径，导致同一 view 下节点迁移不稳定。
+  - 修复：
+    - `crossTransfers` 在“同一物理区但逻辑跨区”时改为 `commitLocalSqueezeMoves` 本区提交；
+    - `swapTransfers` 同样在 `targetPair===home` 时走本区提交，避免同 view remove/add 抖动。
+  - `planCrossZoneSwap` 侧补丁：在 DFS 之前同步从 `homeVg` 移除 blocker 自身，兼容“同一物理 Grid 逻辑分区互换”场景，避免 blocker 原位自占导致无解。
+- 结果：row0<->row1 的逻辑跨区换位链路可稳定提交，不再出现高亮可行但落地失败。
+- 回归验证：`npm test` 通过（77/77）。
+
+- 用户明确新规则（原话）：
+  - 背包第一行要有“和战斗区一样”的内部挤出；
+  - 第一行不应挤出到第二行；
+  - 第二行完全复制第一行逻辑。
+- 本轮实现（`src/grid/DragController.ts`）：
+  - `local squeeze` 启用条件从“仅 1 行区”改为“同逻辑区即可”（背包同排也可 local squeeze）；
+  - 对 2 行背包启用 `rowLock=finalRow`，确保挤出仅在当前排内发生，不跨到另一排；
+  - `unified.cross` 仅保留给真正跨物理区（`targetPair !== home`），避免背包两排之间走 cross 挤出。
+  - fallback 最近落位对背包也加 `rowLock`，保持每排逻辑一致。
+- 结果：背包 row0 / row1 都按“战斗区式内部挤出（限本排）”执行，且不会把 blocker 挤到另一排。
+- 回归验证：`npm test` 通过（77/77）。
+
+- 用户补充精确症状：第一/二排内部挤出正常，仅“第二排与其他区域互换”异常。
+- 针对性修复：
+  - `DragController`：
+    - `local squeeze` 放开到“同逻辑区即启用”（不再限制 1 行区），背包每一排都拥有与战斗区一致的本排内部挤出能力；
+    - 对 2 行区 `planUnifiedSqueeze` 传入 `rowLock=finalRow`，确保挤出只在当前排内；
+    - `unified.cross` 仅用于真实跨物理区（`targetPair !== home`），避免背包两排互换误走 cross。
+  - `SqueezeLogic.planUnifiedSqueeze`：新增 `homeRowLock`，cross DFS 可锁定来源排，兼容“逻辑分区互换”时 blocker 落位范围。
+- 结果：
+  - row0 / row1 内部均可本排挤出；
+  - row1 不会把物品挤出到 row2（反之亦然）；
+  - 第二排与战斗区/第一排互换链路按 swap 执行。
+- 回归验证：`npm test` 通过（77/77）。
+
+- 用户继续反馈“图示仍不行”，追加针对性修复：
+  - 发现 `updateSqueezePreview()` 在多行背包里会持续更新 `dragOrigItem.col/row`，导致跨排/跨区 swap 的 footprint 锚点被漂移（拖拽过程中被改写），进而出现“本来可换却红判”。
+  - 修复：仅在 1 行区（战斗区）允许更新 `dragOrigItem` 锚点；2 行背包保持 drag 开始时原始锚点不变。
+- 结果：第二排拖向第一排/战斗区时，swap 规划使用稳定 footprint，不再因中途预览挤出改写原锚点。
+- 回归验证：`npm test` 通过（78/78）。
+
+- 进一步逐项排查并尝试（本轮）：
+  1) 先移除 cross 的来源行锁（`homeRowLock` 传 `undefined`）并允许 swap 试探邻近行；
+  2) 复测后继续收敛：
+     - `local squeeze` 改为“同逻辑区可用”，并在 2 行区启用 `rowLock=finalRow`，保证每排内部独立挤出；
+     - `unified.cross` 仅用于真实跨物理区；
+  3) 再次修复锚点漂移：
+     - `updateSqueezePreview()` 在 2 行背包不再改写 `dragOrigItem`，避免 swap footprint 在拖拽中漂移导致误判。
+- 当前观察：问题仍集中在“第二排对外互换链路”，非内部挤出。
+- 现状回归：`npm test` 通过（78/78，包含重跑确认）。
+
+- 本轮继续排查（用户反馈“还是不对”）并新增诊断能力：
+  - 在 `src/grid/DragController.ts` 增加可开关拖拽调试日志（`localStorage.drag_debug=1` 开启）：
+    - `drop_target`：命中目标格/逻辑区判定/是否可直放
+    - `drop_plan`：命中后的方案选择（local/cross/swap）与计划落点
+    - `drop_place_failed` / `drop_fallback_*`：落位失败与兜底结果
+  - 目的：对“第二排互换失败”做路径级真因采样，避免继续盲改。
+- 同步尝试：
+  - swap 试探增加邻近行（不仅邻近列）；
+  - cross 来源行锁继续放开。
+- 回归验证：`npm test` 通过（78/78）。
+
+- 基于用户提供日志的本轮结论与改动：
+  - 日志显示第二排失败时仅有 `target`，缺少 `plan`，说明失败发生在“方案生成（unified/swap）”阶段，而非最终 `place` 阶段。
+  - 新增 `plan_none` 诊断日志，明确记录“无 unified 且无 swap”的分支命中。
+  - `planCrossZoneSwap` 增加 fallback：footprint DFS 失败后，允许在来源区可见列内做任意排布 DFS（仍保持大件优先），用于兜住第二排复杂布局。
+  - 保留已加的 `drag_debug` 日志开关（`localStorage.drag_debug=1`）。
+- 回归验证：`npm test` 通过（78/78）。
+
+- 用户反馈“第二排拖到第一排后卡死”，本轮补上执行期保护：
+  - `DragController.tryDrop()` 新增 `plan_none` 详细日志，明确“无方案”分支；
+  - 对同区已提交的 `local/swap/cross` 变更记录 `revert`，当最终 `place/fallback` 失败时先回滚已提交变更，再执行 `doSnapBack()`，避免卡死。
+  - 新增 `rollbackLocalMoves()` 统一回滚提交结果。
+- 结果：即使出现“计划可行但落位失败”的边缘场景，也不会把局面留在半提交状态导致拖拽物卡死。
+- 回归验证：`npm test` 通过（78/78）。
+
+- 基于新日志再次定位并修正：
+  - 日志显示 `swapTransfers>0` 但 `pre_place_state.blockers=2`，说明 swap fallback 在某些分支把 blocker 重新放回目标落点 footprint，导致最终 `place_failed`。
+  - 修复：`src/grid/SqueezeLogic.ts` 在 `planCrossZoneSwap()` 的 fallback（任意排布 DFS）增加约束：禁止 blocker 新位置与目标落点 footprint 重叠。
+- 同步修复：`planSwapWithFlexibleAnchor()` 对“背包跨排互换”锁定目标行（不再试邻近行），避免第一排拖第二排时计划落点被回退到原行。
+- 结果：
+  - 减少“有 swap 方案但 drop 位仍被占”的假阳性；
+  - 第一排→第二排互换不再因 row 候选漂移回原排。
+- 回归验证：`npm test` 通过（78/78）。
+
+- 用户新增症状：
+  - 第一排拖第二排、第二排拖第一排均出现 `plan_none` 红判；
+  - 战斗区可命中第一排，难命中第二排（宽物品）。
+- 本轮修复：
+  1) `SqueezeLogic.planUnifiedSqueeze` cross 分支补齐 `homeVg.remove(blocker)`，避免同物理 Grid 逻辑跨区时 blocker 自占位导致无解；
+  2) `DragController.findBestDropTarget` 宽物品候选距离由“区域中心”改为“命中格中心”，提高第二排命中优先级；
+  3) `planSwapWithFlexibleAnchor` 对背包跨排互换启用 `lockTargetRow=true`，避免 row 候选漂移回原行。
+- 当前仍保留全量拖拽日志，便于继续收敛。
+- 回归验证：`npm test` 通过（78/78）。
+
+- 用户现场补充：
+  - 第二排拖第一排会触发“跨排挤出”（与预期不符，应仅换位/放置）；
+  - 战斗区拖到第二排仍有卡死。
+- 本轮修正（`src/grid/DragController.ts`）：
+  - `canUseLocalSqueeze` 收紧：
+    - 同物理区 2 行背包仅在 `isLogicalSameZone=true` 时允许 local squeeze；
+    - 跨排（row0<->row1）不再允许 local squeeze，避免“跨排挤出”。
+  - `unified.cross` 仅用于真实跨物理区（`targetPair !== home`），避免同背包跨排误走 cross。
+  - 同物理区跨排落位渲染改回 `snapToCellFromDrag`（不 destroy/add），降低同 view 迁移导致的卡死概率。
+- 回归验证：`npm test` 通过（78/78）。
+
+- 用户临时决策：先把“备战区”改为一行验证效果。
+- 本轮落地：`src/scenes/ShopScene.ts`
+  - `backpackSystem = new GridSystem(6, 1)`
+  - `backpackView = new GridZone('背包', 6, 6, 1)`
+- 同步清理：删除未使用的 `getItemInfoRuntimeOverrideForShop`（避免编译告警）。
+- 目的：绕开双行背包互换链路复杂度，先验证单行备战区交互稳定性。
+- 回归验证：`npm test` 通过（78/78）。
+
+- 用户继续反馈“双行时跨排行为与第二排命中异常”，本轮按“严格两排独立”再收敛：
+  - 恢复双行：`backpackSystem(6,2)` + `backpackView(...,2)`；
+  - `DragController` 收紧规则：
+    - 同物理背包跨排（`isLogicalSameZone=false`）直接拦截并红判，不允许跨排挤出；
+    - 同物理背包内 `unified.cross` 禁止，仅真实跨物理区可用；
+    - 落位渲染分支改为 `targetPair !== home` 判定，避免同 view 跨排误走 destroy/add。
+- 目标：两排按“两个独立一行背包”运行，杜绝跨排挤出与跨排卡死。
+- 回归验证：`npm test` 通过（78/78）。
+
+- 用户要求“不想手动开关，直接打日志”。
+- `src/grid/DragController.ts`：将 `isDragDebugEnabled()` 临时改为恒 `true`，拖拽诊断日志全量输出到控制台（`target/plan/plan_none/place_failed/fallback_*`）。
+- 目的：现场复现时无需改 localStorage，可直接采集完整链路。
+
+- 验收反馈：出现“物品穿插/重叠”视觉，拖到目标点位（2/3）时应落到可排放位置，不应重叠卡死。
+- 根因（`src/grid/DragController.ts`）：
+  - 放置阶段在执行挤出/换位后，拖拽物 `system.place(...)` 未做失败兜底（直接按目标格吸附视觉），会出现“系统未成功放置但视觉已叠加”的错位。
+- 修复：
+  - 新增 `findNearestVisiblePlace()`，当目标格不可放置时，自动查找同区域最近合法空位（优先同排，再按列距离）。
+  - `tryDrop()` 改为：先尝试目标格 `place`，失败则 fallback 到最近合法格；若仍失败再回弹。
+  - 该兜底同时覆盖同区/跨区放置链路，避免视觉穿插。
+- 结果：无论是否开启挤出，拖到目标附近若有合法空位会自动吸附到可排放格；仅在确实无位时红色并回弹。
+- 回归验证：`npm test` 通过（69/69）；`npm run build` 通过（保留既有 chunk size warning）。
+
+- 需求：去掉初始临时数据、开局背包清空、第一天金币为 10。
+- `src/scenes/ShopScene.ts`：`placeInitialItems()` 改为空实现，移除开局注入的调试预置物品（短剑/圆盾/回旋镖等）。
+- `data/game_config.json`：`daily_gold_by_day` 的 Day1 从 `12` 调整为 `10`。
+- 现状：
+  - 新开局（无存档恢复）时背包为空；
+  - ShopManager Day1 初始金币按 `daily_gold_by_day[0]` 发放，现为 `10`。
+
+- 验收追加：合成拾取范围过大，拖到两个可合成目标中间时误触发合成，期望按实际命中区域判定（中间应走换位/放置，不应吸附合成）。
+- `src/scenes/ShopScene.ts` 收敛合成命中策略：
+  - 移除“多点 probe 扩大命中圈”逻辑（原先对 X/Y 多偏移采样）。
+  - 合成目标判定改为单点命中：使用拖拽视觉锚点（`gy + dragYOffset`）做一次检测。
+  - 命中规则改为仅按目标物品边界（bounds）命中，不再用 footprint overlap 扩张到相邻格。
+- 结果：合成命中范围与普通拖拽命中区域对齐；拖在两个候选中间不会被强行判为合成。
+- 回归验证：`npm test` 通过（66/66）；`npm run build` 通过（保留既有 chunk size warning）。
+
+- 需求：在“拖拽参数”里增加一个 bool 开关，临时关闭挤出；只保留“合成（黄）+换位（绿）+不可换位（红）”。
+- 配置新增：
+  - `src/config/debugConfig.ts` 新增 `dragSqueezeEnabled`（`0/1`，`unit: bool`）
+  - `data/debug_defaults.json` 新增默认值 `dragSqueezeEnabled: 1`
+- 拖拽逻辑调整（`src/grid/DragController.ts`）：
+  - 当 `dragSqueezeEnabled=0`：
+    - 禁用 `planUnifiedSqueeze` 与挤出预览提交；
+    - 仅允许 `planCrossZoneSwap` 换位（含同区/跨区）；
+    - 不可放置且不可换位时直接红色高亮并回弹。
+  - 当 `dragSqueezeEnabled=1`：保持当前挤出逻辑。
+- 颜色口径：
+  - 合成仍由现有合成高亮链路控制为黄色；
+  - 可放置/可换位为绿色；
+  - 不可换位为红色。
+- 回归验证：`npm test` 通过（66/66）。
+
+- 验收反馈：
+  - 备战（商店）战斗区仍出现数值徽标，未回到职业徽标；
+  - 备战详情面板文本未按当前被动后真实值显示（圆盾示例仍显示20而非25）。
+- 修复一（徽标口径）：
+  - `src/scenes/ShopScene.ts`：战斗区固定为 `archetype` 模式；
+  - `src/ui/itemStatBadges.ts`：`archetype` 模式不再回退显示数值徽标（无职业标签则不显示徽标），彻底避免备战出现数值角标。
+- 修复二（备战详情面板）：
+  - `src/scenes/ShopScene.ts`：新增 `battlePassiveResolvedStats`，保存战斗区当前“被动结算后”的实时属性；
+  - 点击战斗区物品时把该实时属性作为 runtime override 传给 `SellPopup`，详情面板的护盾/伤害等数值同步当前逻辑结果（仅描述面板显示数值）。
+- 战斗中详情继续实时：
+  - `src/shop/SellPopup.ts` 保持 runtime override 通道；
+  - `src/scenes/BattleScene.ts` 面板每帧刷新并保持当前简/详模式，展示战斗实时值。
+- 回归验证：`npm test` 通过（66/66）；`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，去掉详情右上角“间隔”文案）
+
+- 按验收截图，移除详情卡右上角的 `间隔：x.x秒` 文案，避免与下方效果条中的“间隔”重复。
+- `src/shop/SellPopup.ts`：`cooldownT` 统一设为不显示（简单/详细模式均隐藏）。
+- 详情保留信息：名称、Lv 标签、效果条（含间隔值）与分割线后的详细描述。
+
+### 本次对话追加（2026-03-02，战斗详情按实时数值展示 + 商店战斗区恢复职业徽标）
+
+- 验收反馈：
+  - 商店战斗区不应显示具体数值，需继续显示职业徽标；
+  - 战斗中详情面板数值仍不准，需要按实时战斗数值展示。
+- 修复一（商店显示口径）：
+  - `src/scenes/ShopScene.ts`：战斗区徽标模式改回 `archetype`，不显示伤害/护盾数值。
+- 修复二（战斗详情口径）：
+  - `src/shop/SellPopup.ts`：新增 `ItemInfoRuntimeOverride`，支持注入实时 `cooldown/damage/shield/burn/poison/multicast/ammo`。
+  - `SellPopup.show()` 增加 runtime 参数，且在 runtime 模式下禁用静态文案 guide，优先用真实技能行并替换为当前实时值。
+  - `src/combat/CombatEngine.ts`：`getRuntimeState()` 新增 `cooldownMs` 字段，供详情面板展示实际冷却值。
+  - `src/scenes/BattleScene.ts`：点击物品时把当前 runtime 数值传给详情面板；详情面板打开后每帧刷新（保持当前简/详模式不跳变）。
+- 兼容补修：`src/combat/CombatEngine.ts` 放宽短剑“相邻护盾物品+护盾”文案匹配，确保战斗里该被动可稳定命中。
+- 回归验证：`npm test` 通过（66/66）；`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，详情模式补充效果条 + 间隔数值化）
+
+- 先向主程确认实现路径：仅改 `src/shop/SellPopup.ts`，复用现有 `extractSimpleStatEntries`，将效果条渲染扩展到详细模式。
+- 详细模式（detailed）现已与简版一致显示效果条（伤害/护盾/间隔等），并使用同一套字体大小与样式。
+- 效果条下方新增分割线后再显示具体文本描述，信息分层更清晰。
+- “速度”文案改为具体数值：统一显示 `间隔：x.x秒`（含顶部间隔文案与效果条中的间隔项）。
+- 升级预览中的冷却对比也同步改为 `间隔：old秒 -> new秒`。
+- 回归验证：`npm test` 通过（66/66）。
+
+### 本次对话追加（2026-03-02，卡牌 Lv 字样改白字黑描边）
+
+- 按验收要求调整卡牌上的 `Lv` 字样样式：
+  - 文字改为白色（`0xffffff`）
+  - 描边改为黑色（`0x000000`）
+  - 描边宽度固定为 `2`
+- `src/grid/GridZone.ts`：初始化与刷新逻辑统一使用上述样式。
+- `src/grid/GridZone.ts`：`setTierStarStrokeWidth()` 保持接口兼容，但内部固定为 `2`，避免被调试项误改。
+- 回归验证：`npm test` 通过（66/66）。
+
+### 本次对话追加（2026-03-02，商店内战斗区被动实时生效 + 跳字提示）
+
+- 验收目标：短剑/圆盾/回旋镖这类被动在商店战斗区内实时改面板，并在生效时出现跳字提示。
+- `src/scenes/ShopScene.ts`：新增战斗区被动实时结算与徽标覆盖。
+  - 新增 `refreshBattlePassiveStatBadges()`：按战斗区当前摆位实时计算并写入 `battleView.setItemStatOverride()`。
+  - 已实现被动：
+    - 短剑：相邻护盾物品护盾 +X
+    - 圆盾：相邻武器伤害 +X
+    - 回旋镖：全体武器伤害 +X
+  - 支持星级分档（1星/2星）取值，按 `tier + star` 解析 `10/20` 这类序列。
+- 跳字反馈：新增 `spawnPassiveJumpText()`，当被动使某装备数值上升时，在对应装备位置飘字提示（如 `🛡 +5`、`⚔ +10`）。
+- 初始测试编队：`placeInitialItems()` 改为在背包预置以下 1星/2星各1件，便于你直接拖到战斗区联动测试：
+  - 短剑（Bronze#1 / Bronze#2）
+  - 圆盾（Bronze#1 / Bronze#2）
+  - 回旋镖（Silver#1 / Silver#2）
+- 作用域控制：仅战斗区应用该被动面板覆盖；背包区不吃被动。
+- 回归验证：`npm test` 通过（66/66）；`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，被动显示与短剑护盾加成补修）
+
+- 验收反馈：
+  - 战斗中圆盾→短剑增伤生效，但短剑→圆盾护盾未生效；
+  - 商店阶段未看到战斗区数值变化与跳字。
+- 修复一（战斗逻辑）：
+  - `src/combat/CombatEngine.ts`：`shieldGainBonusForItem()` 的短剑匹配正则放宽，兼容“相邻的护盾物品护盾+X”写法，确保短剑能给相邻护盾物品加值。
+- 修复二（商店可视化）：
+  - `src/scenes/ShopScene.ts`：战斗区徽标模式改为 `stats`（不再是 `archetype`），可直接看到伤害/护盾数值变化。
+  - 跳字层与实时被动刷新保持启用，拖拽调整相邻关系时会触发 `⚔/🛡 +X` 飘字。
+- 回归验证：`npm test` 通过（66/66）；`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，Vanessa 18件物品战斗逻辑全量接入）
+
+- 已按流程先问主程 Notebook（`WebJs开发指南`）确认实现顺序；本次请求超时（timeout），先按技能文案全量落地。
+- `src/combat/CombatEngine.ts`：完成当前 `data/vanessa_items.json` 全部18件物品核心战斗逻辑接入，重点包括：
+  - 弹药体系：新增实例运行态 `ammoMax/ammoCurrent`，支持“弹药:X”“一次打出所有弹药”“补充弹药”“相邻最大弹药量”。
+  - 攻击次数体系：支持“连续发射3次”“使用弹药物品时攻击次数+1（战斗内叠加）”。
+  - 使用后成长：支持“每次攻击后伤害+X”“每次使用后护盾+X”“每次使用后伤害翻倍”“攻击后间隔不断缩短”。
+  - 被动/触发：支持“相邻武器伤害+X”“全体武器伤害+X”“相邻武器攻击触发额外攻击”“其他武器攻击时自身伤害+X”“获得护盾时充能X秒”。
+  - 护盾转伤：支持“根据当前护盾值对对方造成伤害”。
+- `src/combat/CombatEngine.ts`：运行态扩展 `bonusMulticast`，并在 `toRunner()` / 敌方生成路径统一初始化；`getRuntimeState()` 新增返回弹药状态，便于调试。
+- `src/combat/CombatEngine.test.ts`：新增三条回归用例：
+  - 手弩“一次打出全部弹药”；
+  - 圆盾“开场给相邻武器增伤”；
+  - 超级手雷“每次使用后伤害翻倍”。
+- 关联修复：前序已改动的 `SellPopup` 星级分档修复生效，局外描述可正确显示二星数值。
+- 回归验证：`npm test` 通过（66/66）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：Vanessa 物品逻辑已从“基础伤害/状态”扩展为“弹药+连发+被动+触发”完整链路；后续可继续补可视化（弹药UI/触发飘字）和更细粒度数值校验。
+
+### 本次对话追加（2026-03-02，Lv 字样描边改白色宽度 3）
+
+- 按验收要求调整卡牌 `Lv` 字样描边：改为白色描边，固定宽度 `3`。
+- `src/grid/GridZone.ts`：初始化样式与刷新样式统一使用 `stroke: { color: 0xffffff, width: 3 }`（通过 `tierStarStrokeWidth=3` 固定）。
+- `setTierStarStrokeWidth()` 保持接口兼容，但内部固定为 `3`，防止被调试参数改走样。
+- 回归验证：`npm test` 通过（66/66）。
+
+### 本次对话追加（2026-03-02，简版描述去掉“玩法：”前缀）
+
+- `src/shop/SellPopup.ts`：简版描述文案不再显示“玩法：”前缀。
+- 兼容处理：若数据里已写了“玩法：xxx”，会在显示前自动去掉该前缀，避免重复或残留。
+- 回归验证：`npm test` 通过（63/63）。
+
+### 本次对话追加（2026-03-02，星级改 Lv1~Lv7 + 详情等级文案替换）
+
+- 已与设计师确认展示口径：卡片底部用 `Lv1~Lv7` 文本替代星星；详情中等级改为 `LvX`，颜色仍按品质固定。
+- `src/grid/GridZone.ts`：底部星级文本从 `★/★★` 改为 `Lv` 等级映射（青铜1/2=Lv1/2，白银1/2=Lv3/4，黄金1/2=Lv5/6，钻石=Lv7）。
+- `src/grid/GridZone.ts`：等级文字描边改深色（`0x111111`），提升复杂背景可读性。
+- `src/shop/SellPopup.ts`：详情等级标签不再显示“青铜1星”等字样，统一显示 `LvX`；徽章底色继续沿用品质色。
+- 回归验证：`npm test` 通过（66/66）；`npm run build` 通过（保留 chunk size warning）。
+
+### 本次对话追加（2026-03-02，敌方资金系数改线性50%→150% + 职业偏好构筑）
+
+- 按验收口径调整敌方资金系数：
+  - `src/combat/CombatEngine.ts` 新增 `getEnemyGoldFactorByDay(day)`，Day1 固定 `0.5`，Day20 固定 `1.5`，中间线性递增。
+  - 敌方每日资金改为 `我方当日资金 × 该线性系数`（不再随机 50%~150%）。
+- 敌方构筑策略增强：
+  - 新增职业标签解析 `getPrimaryArchetypeTag()`，从 `tags` 提取主职业。
+  - 敌方购买阶段会优先同职业池（约 85% 概率优先），尽量凑齐单职业装备；无可买时自动回退全池，避免卡死。
+- 既有“同规则购入+随机合成+装配”流程保持不变，Day1 青铜限制口径保持。
+- 回归验证：`npm test` 通过（63/63）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：敌方强度随天数稳定抬升，且更偏向形成单职业协同。
+
+### 本次对话追加（2026-03-02，物品详情按星级分档显示修复）
+
+- 验收反馈：局外详情中二星仍显示一星数值（木弓示例：应为“攻击100、每次使用后+100”）。
+- 根因：`src/shop/SellPopup.ts` 详情分档索引仅按品质计算，未叠加 `#2` 星级偏移，导致 `50/100` 始终取第一档。
+- 修复：
+  - `src/shop/SellPopup.ts`：`tierIndex` 改为“品质索引 + 星级偏移”；
+  - 同步修正 `fromTierIndex` 也按星级计算，保证带 `#2` 的描述替换一致。
+- 结果：同品质二星详情会正确显示第二档数值（如木弓“攻击造成100伤害”“每次攻击后伤害+100”）。
+- 回归验证：`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，敌方改为同规则购入+随机合成，资金系数50%~150%）
+
+- 按你的新规则完成战斗敌方经济/构筑改造：
+  - `src/combat/CombatEngine.ts`：敌方不再固定模板铺场，改为“按天资金购入 + 合成 + 装配”流程。
+  - 敌方日资金 = 我方当日资金 × 随机系数（`0.5~1.5`，按天种子随机，结果可复现）。
+  - 购入规则与玩家一致：单次购入成本按 `3`，从可购候选池随机拿 Bronze。
+  - 合成规则对齐玩家：同名+同品质+同星级触发合成，按品质阶梯进化（Bronze1→Bronze2→Silver1→Silver2→Gold1→Gold2→Diamond），并在“同尺寸 + 目标品质可用池”随机进化为新物品。
+  - 装配规则：将库存物品随机装配到敌方战斗格，能放就上。
+- 兼容口径：Day1 继续强制青铜池候选，避免开局出现高品质敌装。
+- 额外修正：`toRunner()` 统一使用 `tier + tierStar` 计算玩家快照物品基础数值，确保星级加成在战斗中生效。
+- 回归验证：`npm test` 通过（63/63）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：敌我都走“买→合→装”同类规则，敌方仅通过资金系数形成强弱差。
+
+### 本次对话追加（2026-03-02，实例级基础数值入快照 + 星级生效）
+
+- 已按流程先问主程 Notebook（`WebJs开发指南`）确认方案；本轮请求超时（timeout），先按你的口径做最小落地。
+- 目标：让“合成升级后的数值”明确绑定到物品实例，进入战斗后按实例基础值结算，不再出现星级遗漏。
+- `src/scenes/ShopScene.ts`：构建 `BattleSnapshot` 时，除 `tier/tierStar` 外新增实例 `baseStats` 写入（由 `resolveItemTierBaseStats` + 实例永久伤害加成计算）。
+- `src/combat/BattleSnapshotStore.ts`：扩展 `BattleSnapshotEntity`，新增可选 `baseStats` 字段承载实例基础面板。
+- `src/combat/CombatEngine.ts`：
+  - `toRunner()` 优先消费快照中的 `entity.baseStats`，缺失时再回退到 `def + tier/tierStar` 推导；
+  - 统一按 `tier + tierStar` 生成 `tierRaw`（如 `Bronze#2`）用于分档解析，确保星级进入战斗数值；
+  - `tierIndex()` 改为“品质索引 + 星级偏移”，修复星级下技能文案分档取值；
+  - runner 与 `getBoardState()` 补充 `tierStar`，表现层可直接读取实例星级。
+- `src/combat/CombatEngine.test.ts`：新增回归用例“短剑青铜2星=20伤害”，验证星级确实影响基础伤害。
+- 回归验证：`npm test` 通过（63/63）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：实例物品已具备“基础值（快照）+战斗内修正（runtime）”双层结构，可继续扩展其他实例级成长来源。
+
+### 本次对话追加（2026-03-02，Day1 敌方品质锁定青铜）
+
+- 验收反馈：Day1 观察到敌方疑似出现白银品质，不符合前期开局预期。
+- 已先向主程 Notebook 快速确认口径：Day1 敌方应强制为“青铜1星”。
+- `src/combat/CombatEngine.ts`：在敌方生成 `makeEnemyRunners()` 中新增 Day1 候选过滤：
+  - 仅保留 `available_tiers` 含 Bronze 的物品；
+  - Day1 进一步优先 `starting_tier=Bronze` 的物品池，避免首日出现高起始品质候选。
+- 回归验证：`npm test` 通过（62/62）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：Day1 敌方品质已被强约束为青铜口径，后续天数仍按既有曲线推进。
+
+### 本次对话追加（2026-03-02，简版/详细版循环切换 + 简版字号独立）
+
+- 验收新增问题：背包拖拽（尤其下排拖到第一排失败）出现“红色松手后卡住”。
+- 根因定位（`src/grid/DragController.ts`）：`doSnapBack()` 先清空了 squeeze 预览状态，再执行回弹恢复；当挤出已提交时，原位可能被占，导致回弹无法在系统层正确复位，出现“视觉在但逻辑不在”的卡住感。
+- 修复：`doSnapBack()` 改为失败回弹时**回滚已提交挤出**（`clearSqueezePreview(true)`），优先保证拖拽物能稳定回到合法位置，不再出现红色松手后卡死。
+- 当前行为：非法落位时会正常回弹并恢复可继续拖拽，不会把物品留在无效逻辑态。
+- 回归验证：`npm test` 通过（66/66）。
+- 追加修复（同问题链路）：对战区拖入背包第二排、以及背包一二排互换不稳定。
+  - 根因：`DragController.findBestDropTarget()` 落点检测未带 `dragYOffset`，导致“手指锚点行”和“视觉物品行”错位，第二排常被判成第一排命中。
+  - 修复：`src/grid/DragController.ts` 两处 `pixelToCellForItem(...)` 改为传入 `getConfig('dragYOffset')`，让拖放判定与视觉位置一致。
+  - 结果：第二排命中恢复，背包第一/第二排换位逻辑与第一排一致。
+- 再次回归修复（用户实测仍失败）：
+  - 根因：`DragController.tryDrop()/updateHighlight()` 调用 `planUnifiedSqueeze()` 时未传 `homeZone`，跨区拖拽无法启用 cross-mode 方案（只能 fallback 到 footprint swap），在“对战区 -> 背包第二排”特定占位下会被误判不可换位。
+  - 修复：`src/grid/DragController.ts` 为 `planUnifiedSqueeze()` 传入 `{ system: home.system, activeColCount: home.view.activeColCount }`（含高亮与实际落位两条链路）。
+  - 结果：跨区换位/挤出可使用完整 unified 方案，不再局限于 footprint，第二排换位成功率恢复。
+- 用户要求“背包两排按两个背包处理（视觉不变）”。
+  - 实现策略（最小改动）：不拆 UI，不新增第二个 GridZone；仅在挤出算法层对 2 行背包启用 `rowLock`（按目标行锁定），达到“同排内独立换位”的效果。
+  - `src/grid/SqueezeLogic.ts`：`trySqueezePlace/planUnifiedSqueeze/attemptRelocateBlockersAnyLayout` 新增可选 `rowLock`，在 rowLock 生效时禁用跨排的垂直/斜向挤出策略，只在目标行重排。
+  - `src/grid/DragController.ts`：调用 `planUnifiedSqueeze()` 时，若目标区是 2 行（背包）则传入 `rowLock=finalRow`。
+  - 结果：逻辑上把背包两排当作“两个独立背包”处理，避免跨排挤出导致的第二排换位失败；视觉与布局保持不变。
+- 回归验证：`npm test` 通过（66/66）。
+
+- 验收追加：简版参考示例样式，要求“伤害/护盾”用不同颜色，并在数值前加对应图标。
+- `src/shop/SellPopup.ts`：简版首行改为“属性条目行”渲染（非纯文本）：
+  - 伤害：红色 + 图标 `✦`
+  - 护盾：金色 + 图标 `🛡`
+  - 速度：蓝色 + 图标 `⏱`
+- 条目行支持自动换行，避免窄宽度时溢出；下方保留“玩法”一行与分隔线。
+- 当前效果：简版视觉层级更接近参考图（图标化 + 数值高亮）。
+- 修正：补充窄面板自适应布局（`simpleNarrowLayout`），当“左图标 + 右文本”空间不足时，简版文本自动换到图标下方全宽显示，避免出现“简版信息看不到”。
+- 问题回归修复：用户反馈“战斗中有简版，商店中直接是复杂版”。
+  - 根因：`ShopScene` 的 `sellPopup.show(...)` 调用链路在近期合并中丢失了 `infoMode` 传参与切换状态机，导致默认落到 detailed。
+  - 修复：`src/scenes/ShopScene.ts` 恢复商店侧简版/详细版状态机（`selectedInfoKey/selectedInfoMode`），并在点选物品/商店槽位时传入 `infoMode`。
+  - 补充：拖拽中详情固定使用简版，避免拖拽过程中误切详细。
+  - 行为：商店与战斗统一为“首次简版、再次点击同目标详细、再点回简版”的循环逻辑。
+- 回归验证：`npm test` 通过（63/63）。
+
+- 验收反馈：
+  - 同一物品详情应在“简版 <-> 详细版”之间循环切换（再次点击同物品可回到简版）。
+  - 简版文字大小需要单独配置。
+- `src/scenes/ShopScene.ts`：`resolveInfoMode()` 改为双向切换逻辑：同 key 点击时 `simple/detailed` 循环切换；切换到新物品时重置为 `simple`。
+- `src/scenes/BattleScene.ts`：战斗场景同样改为 `simple/detailed` 循环切换。
+- `src/shop/SellPopup.ts`：新增简版独立字号参数 `simpleDesc`，简版文本不再复用详细描述字号。
+- 配置同步（按约定：`game_config + debugConfig + debugPage`）：
+  - `data/game_config.json`：`text_sizes` 已包含 `itemInfoSimpleDesc`。
+  - `src/items/ItemDef.ts`：`textSizes.itemInfoSimpleDesc` 类型字段已接入。
+  - `src/config/debugConfig.ts`：新增 `itemInfoSimpleDescFontSize`。
+  - `src/debug/debugPage.ts`：将 `itemInfoSimpleDescFontSize` 加入“字体大小”分组。
+  - `data/debug_defaults.json`：新增默认值 `itemInfoSimpleDescFontSize: 24`。
+- 场景接线：`ShopScene/BattleScene` 调用 `setTextSizes()` 时都传入 `simpleDesc`，可在线独立调简版字号。
+- 回归验证：
+  - `npm run build` 通过（保留既有 chunk size warning）。
+  - `npm test` 本次存在 1 个现有失败（`src/items/itemTierStats.test.ts` 期望与当前数据不一致：期望 20，实际 10），与本轮 UI 交互改动无直接关联。
+
+### 本次对话追加（2026-03-02，紧急难度回调：打不过问题热修）
+
+- 验收反馈：当前版本“敌方数值过高，基本无法通关”。
+- 已做紧急平衡热修（`data/game_config.json`）：
+  - `daily_gold_by_day` 上调（Day1~20：`12 -> 52`，整体更快增量）。
+  - `daily_enemy_health` 全段下调（Day1~20：`140 -> 1780`）。
+  - `daily_player_health` 全段上调（Day1~20：`240 -> 2140`）。
+  - `daily_health` 兼容字段同步为敌方曲线，避免旧逻辑口径不一致。
+  - `combat_runtime.fatigueStartMs` 从 `25000` 调整为 `30000`，减少疲劳主导导致的“无力感”。
+- 配套修复：
+  - `src/items/ItemDef.ts` 补全 `text_sizes.itemInfoSimpleDesc` 类型，修复构建阶段类型报错。
+  - `src/scenes/BattleScene.ts` 修正战斗退出转场变量引用，恢复 TS 构建通过。
+- 回归验证：`npm test` 通过（62/62）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：已切到“更易打赢”的首轮修正版；待你体验后再做第二轮精调。
+
 ## 本次对话追加（2026-02-28，阶段3-P1最小切片开发中）
+
+### 本次对话追加（2026-03-02，按要求清空初始物品 + 回传Notebook）
+
+- `src/scenes/ShopScene.ts`：已移除新局自动刷“4长盾+1长剑”测试物品逻辑，当前新局初始为清空状态（无额外测试刷物）。
+- `src/combat/CombatEngine.ts`：护盾充能调试日志开关已关闭（`DEBUG_SHIELD_CHARGE=false`）。
+- Notebook 回传：已将本轮变更与排查结论写入主程 Notebook（source id: `2e4bfeb3-c7ed-4838-90dc-93af28482b43`，标题“2026-03-02 商店初始清空与护盾充能排查结果”）。
+- 回归验证：聚焦回归（ShopManager/DataLoader/CombatEngine）通过。
+
+### 本次对话追加（2026-03-02，护盾充能调试日志已关闭）
+
+- 你确认“本次成功且效果生效”后，已关闭护盾充能调试日志开关。
+- `src/combat/CombatEngine.ts`：`DEBUG_SHIELD_CHARGE` 从 `true` 改为 `false`，运行时不再输出 `shield-charge/护盾充能` 日志。
+
+### 本次对话追加（2026-03-02，护盾充能日志可见性修复 + 单值解析修复）
+
+- 你反馈“搜不到 shield 日志”，已改为 `console.warn`，并统一前缀：`[CombatEngine][shield-charge][护盾充能]`，在浏览器控制台可直接搜 `护盾充能`。
+- 排查出核心原因：`tierValueFromLine()` 原正则只支持 `a/b` 分档，不支持单值（如“充能1秒”），导致“获得护盾时充能1秒”实际取值为 0。
+- `src/combat/CombatEngine.ts`：将数值解析正则从“必须含分档”改为“支持单值或分档”，护盾充能现已实际入账。
+- 聚焦验证日志已出现：
+  - `shield_gain_happened`
+  - `on_shield_gain_detected`（含 `gainMs: 1000`）
+- 回归：护盾充能相关聚焦测试通过。
+
+### 本次对话追加（2026-03-02，按验收要求增加护盾充能日志）
+
+- 因你反馈“硬刷新后仍不对”，已在 `CombatEngine` 增加护盾充能全链路调试日志（默认开启）。
+- `src/combat/CombatEngine.ts` 日志前缀：`[CombatEngine][shield-charge]`，覆盖关键节点：
+  - `on_shield_gain_detected`
+  - `queued_fire_exists_add_pending`
+  - `overflow_to_pending`
+  - `queue_extra_fire`
+  - `dequeue_fire`
+  - `dequeue_fire_resolve`
+  - `apply_pending_to_fresh_cycle`
+  - `queue_from_pending_charge`
+- 额外修正：战斗详情面板去除每帧冷却键抖动来源（不再因 cooldown 字段变化导致重建闪烁）。
+- 当前对比口径已恢复同CD：长剑/长盾均为 `5000ms`（便于观察你要求的“4/5进度”）。
+- 验证：护盾充能相关聚焦测试通过（`长盾触发护盾后...`、`护盾充能触发...100ms排队...`）。
+
+### 本次对话追加（2026-03-02，CD显示抖动与充能进度继承修正）
+
+- 问题1（你反馈）：信息面板“间隔”持续变化且图标闪动。
+  - 原因：战斗面板按每帧剩余 CD 刷新并重建内容。
+  - 修复：`src/scenes/BattleScene.ts` 改为展示基础间隔（不按每帧剩余值替换），并移除 `nextKey` 中的 cooldown 维度，避免每帧反复刷新导致闪动。
+- 问题2（你反馈）：获得护盾后长剑进度无明显修正。
+  - 修复：`src/combat/CombatEngine.ts` 增加 `pendingChargeMs` 机制：
+    - 护盾充能在“当前循环无法立即体感生效”时记录为待应用充能；
+    - 进入新一轮 CD 后优先扣减（等价于直接前移进度）；
+    - 与既有“100ms 排队触发”规则兼容（不会同 tick 连续触发）。
+- 数据核对修正：`data/vanessa_items.json` 当前确认为 `长盾=6000ms`，`短剑/圆盾=5000ms`（已排除之前误改）。
+- 回归验证：聚焦 DataLoader + CombatEngine 测试通过。
+
+### 本次对话追加（2026-03-02，长盾CD临时改为6秒用于对比测试）
+
+- 按你的建议做临时对照实验：将“长盾”CD从 `5000ms` 改为 `6000ms`，便于观察“获得护盾时充能”对长剑节奏的差异。
+- 修改位置：`data/vanessa_items.json`（长盾 `cooldown` 与 `cooldown_tiers` 同步改为 `6000`）。
+- 现有初始测试阵容仍保持：4 长盾 + 1 长剑。
+- 验证：针对 DataLoader + CombatEngine 回归通过。
+- 修正记录：过程中曾误改到短剑/圆盾CD，现已恢复为 `5000ms`；当前生效值为：短剑 `5000`、圆盾 `5000`、长盾 `6000`。
+
+### 本次对话追加（2026-03-02，回归同CD口径便于验证4/5进度）
+
+- 根据你最新验收反馈，已把“长盾”CD从临时 `6000ms` 回滚到 `5000ms`，恢复与长剑同CD口径，便于复测“同轮触发后长剑应有4/5进度”场景。
+- 当前CD口径：短剑 `5000`、圆盾 `5000`、长盾 `5000`。
+
+### 本次对话追加（2026-03-02，初始测试阵容改为 4 长盾 + 1 长剑）
+
+- 按你的测试要求调整初始刷物：新局（无恢复存档）只刷以下 5 件，其他不再刷：
+  - 长盾 x4（Silver#1）
+  - 长剑 x1（Silver#1）
+- `src/scenes/ShopScene.ts`：复用 `spawnAllLv3ItemsForTest()` 作为固定测试阵容入口，内容改为上述清单。
+- 验证：已跑针对性回归（DataLoader/ShopManager/CombatEngine）通过。
+
+### 本次对话追加（2026-03-02，按验收要求改为“100ms排队充能触发”）
+
+- 依据你的明确口径，重做“获得护盾时充能1秒”触发时序：
+  - 不再同 tick 立即 `resolveFire`。
+  - 当充能达到可释放阈值后，统一进入 `pendingItemFires` 队列，最早 `+1 tick`（100ms）触发。
+  - 同一物品多重触发按队列顺延（每个触发至少间隔 100ms）。
+- `src/combat/CombatEngine.ts`：
+  - 新增 `PendingItemFire`、`pendingItemFires`、`lastQueuedFireTickByItem`。
+  - `applyOnShieldGainCharge()` 改为“记录并排队”。
+  - `stepOneTick()` 增加 `resolveQueuedItemFiresForCurrentTick()`，按 tick 出队触发。
+  - 冻结状态下会顺延到下一 tick，保持队列语义。
+- `src/combat/CombatEngine.test.ts`：新增
+  - `护盾充能触发的额外释放会按100ms排队而非同tick立即连续触发`。
+- 回归验证：`npm test` 通过（78/78）。
+- 过程备注：尝试向主程 NotebookLM 再次确认该具体实现方案时请求超时；本轮按你给出的明确执行口径直接落地。
+
+### 本次对话追加（2026-03-02，长剑/长盾“同5秒”观感排查与显示口径修正）
+
+- 结论：战斗逻辑侧已生效，长盾触发护盾后长剑触发频率确实更高；但信息面板此前展示的是基础 `cooldownMs`，会造成“看起来一直5秒”的错觉。
+- `src/scenes/BattleScene.ts`：战斗信息面板 runtime override 的 `cooldownMs` 改为“剩余冷却”(`cooldownMs - currentChargeMs`)，不再显示固定基础值。
+- 现象变化：长剑在吃到“获得护盾时充能1秒”后，面板间隔数值会即时下降，能直观看到快于长盾。
+- 新增/强化验证：`src/combat/CombatEngine.test.ts` 增加 `长盾触发护盾后，长剑触发频率应高于长盾`，并提高断言强度（至少多触发 2 次）。
+- 回归验证：`npm test` 通过（77/77）；并单测聚焦跑通该条用例。
+
+### 本次对话追加（2026-03-02，护盾充能“立即生效到下一轮CD”）
+
+- 验收反馈：同 CD 情况下，获得护盾后“充能1秒”体感不明显，期望一触发就立即作用到下一轮。
+- `src/combat/CombatEngine.ts`：`applyOnShieldGainCharge()` 改为“充能后立即判定可释放”。
+  - 先给符合技能的物品累加 `currentChargeMs`。
+  - 若达到 `cooldownMs`（且弹药条件满足），立即重置充能并在同一触发链里 `resolveFire(owner)`，不等待下一 tick。
+  - 效果：护盾触发后可即时推进下一次 CD（达到阈值时立即开火）。
+- 回归验证：`npm test` 通过（76/76）。
+
+### 本次对话追加（2026-03-02，补充初始测试武器：长剑/长盾）
+
+- `src/scenes/ShopScene.ts`：新增 `spawnSpecificTestItems()`，在新局初始测试布置中额外加入：
+  - 长剑（Silver#1）
+  - 长盾（Silver#1）
+- 放置规则与现有测试刷物保持一致：优先战斗区、放不下再进背包，默认从前到后。
+- 回归验证：`npm test` 通过（76/76）。
+
+### 本次对话追加（2026-03-02，商店态被动预览同步修复：切割镰刀不再误加全局伤害）
+
+- 复核后发现你反馈属实：虽然战斗引擎已修复，但商店态 `refreshBattlePassiveStatBadges()` 里仍有同类正则误匹配，导致拖上切割镰刀时预览里仍出现“全武器+100”。
+- `src/scenes/ShopScene.ts`：修正商店态 `boomerangLine` 匹配，新增排除 `其他武器攻击时该物品伤害+...`，与战斗引擎口径保持一致。
+- 回归验证：`npm test` 通过（74/74）。
+
+### 本次对话追加（2026-03-02，切割镰刀被动误判修复）
+
+- 问题：切割镰刀“使用其他物品攻击时该物品伤害+100/200”被误匹配为开场“全武器伤害+X”，导致所有武器自动+100。
+- 修复：`src/combat/CombatEngine.ts` 中开场被动匹配 `allWeaponDamageLine` 增加排除条件：`! /其他武器攻击时该武器伤害\+/`，避免把切割镰刀误判成全局被动。
+- 新增回归：`src/combat/CombatEngine.test.ts`
+  - `切割镰刀不会在开场给所有武器自动+100伤害`，验证短剑首发基础伤害仍为 10。
+- 回归验证：`npm test` 通过（74/74）。
+
+### 本次对话追加（2026-03-02，初始刷出全部 Lv3 物品用于联调）
+
+- `src/scenes/ShopScene.ts`：新增 `spawnAllLv3ItemsForTest()`。
+  - 在“无恢复存档的新局”进入商店时自动执行。
+  - 会把所有可出 Gold 品质物品（视作 Lv3）按“先战斗区、后背包；从前到后”规则依次放置。
+  - 新刷出的测试物品统一为 `Gold#1`。
+- 兼容修正：顺手修正 `selectGridItem` 中 `ShopManager.getSellPrice/sellItem` 的参数签名，避免类型不匹配。
+- 回归验证：`npm test` 通过（73/73）。
+
+### 本次对话追加（2026-03-02，连发子弹“立即生效”修正）
+
+- 需求补充：连发增加攻击力应立即作用于当次飞出的子弹，三连发每一发伤害应不同。
+- `src/combat/CombatEngine.ts`：
+  - 在 `PendingHit` 增加 `attackerDamageAtQueue`（记录入队时攻击面板基准）。
+  - 在 `resolvePendingHitsForCurrentTick()` 中：先触发 `battle:item_fire` 与攻击类被动，再以 `currentAttackerDamage - attackerDamageAtQueue` 计算当发动态增量，实时修正该发 `baseDamage/damage`。
+  - 结果：同一轮连发中，后续子弹会吃到前序触发链带来的增伤，形成逐发差异。
+- `src/combat/CombatEngine.test.ts`：新增用例 `连发飞镖三发伤害逐发变化（同轮内不应完全相同）`，验证三发 `amount` 严格递增。
+- 回归验证：`npm test` 通过（72/72）。
+
+### 本次对话追加（2026-03-02，连发触发时机修正为逐发tick）
+
+- 已按主程确认口径调整：`相邻物品攻击后` 类被动从 `resolveFire` 阶段下沉到 `pending hit` 实际发射结算 tick 同步触发（与 `battle:item_fire` 同 tick）。
+- `src/combat/CombatEngine.ts`：
+  - 移除在 `resolveFire` 中按 `fireCount` 预先叠加触发的逻辑。
+  - 在 `resolvePendingHitsForCurrentTick()` 内每个 hit 结算时触发 `applyOnWeaponAttackTriggers(attacker)`。
+  - 效果：连发3次会在三个 tick 分别触发，而不是一次性+3倍。
+- 新增回归测试：`src/combat/CombatEngine.test.ts`
+  - `连发触发按实际发射tick逐次生效（10->12->14->16）`，验证匕首增伤按三次发射时序逐步生效。
+- 主程沟通记录：本轮已通过主程 NotebookLM 获得“下沉到 pending hit 实际结算 tick”的确认后实施。
+- 回归验证：`npm test` 通过（69/69）。
+
+### 本次对话追加（2026-03-02，连发触发链修复：按连发次数触发攻击类被动）
+
+- 问题：连发飞镖（3连发）在匕首旁只触发 1 次“相邻物品攻击后，所有武器伤害+2/4”。
+- 修复：`src/combat/CombatEngine.ts` 中将 `applyOnWeaponAttackTriggers(item)` 从“单次开火后调用一次”改为“随 `fireCount` 每次子攻击调用一次”。
+  - 结果：连发次数会正确驱动“物品攻击时”类被动（与你确认的口径一致）。
+- 新增回归：`src/combat/CombatEngine.test.ts`
+  - 用例 `连发飞镖3连发会触发3次“相邻物品攻击后全体增伤”`，验证短剑基础伤害至少从 10 提升到 16（+2 * 3）。
+- 主程沟通过程：已尝试调用主程 NotebookLM 获取最小改动建议，但本次请求超时；本轮修复按现有引擎触发口径与测试驱动落地。
+- 回归验证：`npm test` 通过（68/68）。
+
+### 本次对话追加（2026-03-02，弹药物品右下角 x/x 显示）
+
+- `src/grid/GridZone.ts`：新增卡牌右下角弹药徽标（半透黑底 + 弹药图标 + `x/x` 文案）。
+  - 静态场景（商店/背包）：从物品技能文案中的 `弹药:1/2/...` 按当前品质/星级解析，显示 `max/max`。
+  - 运行场景（战斗）：支持外部实时覆盖 `current/max`，用于反映战斗中的消耗与补充。
+  - 拖拽时与其他徽标一致隐藏，落位后恢复。
+- `src/grid/GridZone.ts`：新增 `setItemAmmo(instanceId, current, max)` 接口，统一驱动弹药显示更新。
+- `src/scenes/BattleScene.ts`：在每帧 runtime 同步里接入 `zone.setItemAmmo(rt.ammoCurrent, rt.ammoMax)`，弹药会随战斗实时变化。
+- 兼容修正：清理 `BattleScene` 中遗留的 `SellPopup` 旧签名调用，保持当前信息面板接口一致。
+- 回归验证：`npm test` 通过（66/66）；`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，商店简版字号未生效修复）
+
+- 问题定位：商店 `SellPopup` 在调试字号同步时遗漏了 `simpleDesc` 参数，导致“信息简版字号”滑杆（28）未传入商店面板，使用了默认较小字号。
+- `src/scenes/ShopScene.ts`：在 `applyItemInfoPanelLayout()` 与 `applyTextSizesFromDebug()` 两处 `sellPopup.setTextSizes()` 中补回 `simpleDesc: getDebugCfg('itemInfoSimpleDescFontSize')`。
+- 结果：商店与战斗场景的简版字号来源统一，调试页“信息简版字号”设置可同时生效。
+- 回归验证：`npm test` 通过（63/63）。
+
+### 本次对话追加（2026-03-02，按表格更新简版/复杂版描述）
+
+- `src/shop/SellPopup.ts`：新增 18 件物品的“简版/复杂版描述”映射（按你提供表格口径）。
+  - 简版用于 `simple` 模式玩法文案。
+  - 复杂版用于 `detailed` 模式，并支持随星级/品质分档替换与升级对比。
+- `data/vanessa_items.json`：已保持与当前星级口径一致（青铜/白银/黄金单品质 + 1|2 星分档），并恢复“弹药袋”文案为 `补充1/2发弹药`。
+- 稳定性修复：清理了此前残留的详情模式调用不一致问题，避免再次出现 `resetInfoModeSelection` 类运行时错误。
+- 回归验证：`npm test` 通过（63/63）；`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，按表格口径修正品质与星级数值）
+
+- 修复启动报错：`resetInfoModeSelection is not defined`（清理了遗留调用与不兼容的 `SellPopup.show(..., mode)` 旧参数）。
+- `data/vanessa_items.json`：按表格“对应品质=XX1|2星”口径收敛物品品质范围：
+  - 青铜组（前 6 件）统一为 `available_tiers: Bronze`
+  - 白银组（中 6 件）统一为 `available_tiers: Silver`
+  - 黄金组（后 6 件）统一为 `available_tiers: Gold`
+  - `弹药袋` 文案恢复为 `给相邻的物品补充1/2发弹药。`
+- `src/items/itemTierStats.ts`：新增 `#星级` 解析（如 `Bronze#2`），基础数值按“品质基准 + 星级位移”选取分档值，支持同品质 1/2 星数值差异。
+- `src/scenes/ShopScene.ts`：战斗快照保留 `tierStar`，并在快照里写入星级后的 `baseStats`，确保战斗内按星级生效。
+- 回归验证：`npm test` 通过（63/63）；`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，弹药袋品质边界修正）
+
+- 验收问题定位：之所以会出现“白银弹药袋”，是因为该物品在数据里配置为 `available_tiers: Bronze/Silver`，合成升级池会合法抽到白银版本。
+- `data/vanessa_items.json`：将“弹药袋”品质范围改为仅 `Bronze`。
+- `data/vanessa_items.json`：同步将技能文案从“补充1/2发弹药”调整为“补充1发弹药”，与单品质配置一致。
+- 回归验证：`npm test` 通过（62/62）。
+
+### 本次对话追加（2026-03-02，回到商店转场动画）
+
+- 已按流程先问询：
+  - 主程 Notebook（`WebJs开发指南`）已返回可执行建议，本轮按“最小侵入”落地。
+  - 设计师 Notebook（`手机大巴扎设计`）本次请求超时（timeout）。
+- `src/scenes/BattleScene.ts`：回店不再立即切场，点击“回到商店”后先播放战斗侧淡出转场。
+  - 新增 `sceneFadeOverlay` 全屏黑幕层，alpha 从 0 渐变到 1。
+  - 淡出完成后再 `SceneManager.goto('shop')`，保持结算/快照写入先于切场。
+  - 转场期间禁用回店按钮与倍速按钮交互，避免重复触发。
+- 新增可调参数：
+  - `battleToShopTransitionMs`（回店转场时长）
+  - 已同步：`src/config/debugConfig.ts`、`data/debug_defaults.json`、`src/debug/debugPage.ts`（战斗表现分组）。
+- 兼容修正：`src/shop/SellPopup.ts` 启动默认字号读取 `simpleDesc` 改为复用 `itemInfoDesc`，避免缺失字段导致构建失败。
+- 回归验证：`npm test` 通过（62/62）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：开战与回店都具备过渡动画；可继续按你手感调参细化时序。
+
+### 本次对话追加（2026-03-02，简版详情去头部与图标）
+
+- 验收反馈：简版信息不需要显示左侧图标和顶部信息（名称/品质/冷却）。
+- `src/shop/SellPopup.ts`：简版模式下隐藏以下元素：
+  - 左侧图标与图标边框
+  - 顶部名称、品质徽标、冷却文本
+  - 描述区改为全宽布局，仅保留三行简版内容（核心数值/速度/玩法）。
+- `src/shop/SellPopup.ts`：简版玩法去数值后补充清洗规则，修复“连续发射次”这类尾字残留（去掉尾部“次”）。
+- 回归验证：`npm test` 通过（62/62）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：简版已收敛为纯关键信息块，无图标和头部干扰。
+
+### 本次对话追加（2026-03-02，简版信息布局二次调整）
+
+- 验收反馈：简版仍需显示左侧图标；“核心数值 + 速度”需合并到同一行。
+- `src/shop/SellPopup.ts`：简版模式调整为：
+  - 恢复左侧图标与图标框显示。
+  - 头部信息（名称/品质/冷却）继续隐藏。
+  - 简版文本改为两行：
+    - 第一行：`核心数值 + 速度`（如 `伤害：5  速度：快`）
+    - 第二行：`玩法：...`
+- `src/shop/SellPopup.ts`：简版布局恢复为“左图标 + 右文本”结构，保证与卡片视觉一致。
+- 回归验证：`npm test` 通过（62/62）。
+- 当前状态：简版信息密度进一步收敛，接近验收目标。
+
+### 本次对话追加（2026-03-02，15天体验首版平衡 + 设计师/主程同步）
+
+- 已完成“当前机制与卡设定”同步：
+  - 设计师 Notebook（`手机大巴扎设计`）同步成功，收到确认“已完全收到并理解”；反馈建议强调前期低保经济、中后期倒卖爆发、分段HP膨胀与可解释失败原因。
+  - 主程 Notebook（`WebJs开发指南`）复核通过：认可本版可测，并给出下一轮 AB 调参方向（重点关注后期金币溢出、Fatigue 触发率、Day15通关率）。
+- 已落地首版可体验参数（配置化）：
+  - `data/game_config.json` 新增 `daily_gold_by_day`（Day1~20 递增），用于“购买价3”下的逐日增长经济曲线。
+  - `data/game_config.json` 新增 `daily_enemy_health` / `daily_player_health`（Day1~20），并将 `daily_health` 作为兼容字段对齐敌方曲线。
+  - `src/shop/ShopManager.ts` 新增 `getDailyGoldForDay()`，开局与跨天金币发放均改为按天读取。
+  - `src/scenes/ShopScene.ts`：Debug 改天时补金币改为按 `daily_gold_by_day` 发放。
+  - `src/combat/CombatEngine.ts`：战斗开局 HP 改为按 `daily_enemy_health` / `daily_player_health` 分别读取。
+  - `src/core/DataLoader.ts` 与 `src/items/ItemDef.ts`：扩展新配置字段读取与类型定义。
+  - `src/core/DataLoader.test.ts`：新增按天金币与敌我 HP 曲线配置测试。
+- 回归验证：`npm test` 通过（62/62）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：15天体验首版平衡已可直接体验；下一步建议按主程指标做 A/B（平均时长18~22s、Fatigue触发率<15%、Day15通关率45~55%）。
+
+### 本次对话追加（2026-03-02，商店套路徽标下移避让）
+
+- 根据验收截图反馈，商店中的套路徽标（战/弓/刺）整体下移，避免遮挡上一行卡牌。
+- `src/grid/GridZone.ts`：在 `archetype` 徽标模式下追加 `+14px` 的 Y 偏移；战斗数值徽标模式保持原位置不变。
+- 回归验证：`npm test` 通过（62/62）。
+
+### 本次对话追加（2026-03-02，开战转场动画首版落地）
+
+- 已按流程先问询：
+  - 主程 Notebook（`WebJs开发指南`）本次请求超时（timeout）。
+  - 设计师 Notebook（`手机大巴扎设计`）本次请求超时（timeout）。
+  - 因两侧均超时，本轮先按你的口径落地最小可验收版本，并标注为 `[待设计确认]`。
+- 交互实现（`src/scenes/ShopScene.ts`）：
+  - 点击“战斗”后不再立即切场，新增商店侧转场流程。
+  - 背包区执行“向下移动 + 淡出”；底部按钮区与 Day 调试区渐隐。
+  - 我方战斗区按 `battleZoneYInBattleOffset` 向下移动，模拟对齐战斗场景位置。
+  - 转场结束后再执行 `SceneManager.goto('battle')`，并保持既有快照/进度保存链路。
+- 战斗入场实现（`src/scenes/BattleScene.ts`）：
+  - 新增战斗场景整体淡入（主角/敌人/UI 一起渐显）。
+  - 淡入完成前暂停战斗 Tick 推进，避免“UI未出现就已开打”。
+- 新增可调参数（已接入配置与调试页“战斗表现”分组）：
+  - `shopToBattleTransitionMs`
+  - `shopToBattleBackpackDropPx`
+  - `shopToBattleBackpackAlpha`
+  - `shopToBattleButtonsAlpha`
+  - `battleIntroFadeInMs`
+  - 对应文件：`src/config/debugConfig.ts`、`data/debug_defaults.json`、`src/debug/debugPage.ts`。
+- 回归验证：`npm test` 通过（62/62）；`npm run build` 通过（保留既有 chunk size warning）。
+- 设计待确认项 `[待设计确认]`：
+  - 转场是否需要“分段时序”（先背包后按钮再战斗区）还是保持当前并行渐变。
+  - 主角/敌人/UI 是否需要分层错峰淡入（当前为整体统一淡入）。
+
+### 本次对话追加（2026-03-02，物品详情“简版/详细版”二段点击）
+
+- 已按流程先问主程与设计师 Notebook：
+  - 主程（`WebJs开发指南`）请求超时（timeout）。
+  - 设计师（`手机大巴扎设计`）请求超时（timeout）。
+  - 本轮按你的交互要求先落地最小实现。
+- `src/shop/SellPopup.ts`：新增信息模式 `simple/detailed`。
+  - 简版文案改为三行：核心数值（如“伤害：30”）、速度（快/中等/慢等）、玩法一句（去数值描述）。
+  - 详细版保持现有完整数值描述与多行分隔展示。
+  - 升级预览入口固定使用详细版，避免对比信息被折叠。
+- `src/scenes/ShopScene.ts`：接入“同一目标二次点击切详细”的选择状态机。
+  - 首次点击任意商店/战斗区/背包物品显示简版。
+  - 再次点击同一物品切换到详细版；切到其他物品时重置为简版。
+  - 拖拽态详情统一显示简版。
+- `src/scenes/BattleScene.ts`：战斗中物品详情同样接入二段点击规则（首次简版、再次同物品详细）。
+- 回归验证：`npm test` 通过（62/62）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：该交互已可人工验收（商店与战斗场景一致口径）。
+- 下一步计划：按你的验收反馈微调“简版玩法一句”的去数值措辞（若需对个别物品定制文案，再补充到数据配置层）。
+
+### 本次对话追加（2026-03-02，商店武器徽标改为套路图标，战斗仍显示数值）
+
+- `src/ui/itemStatBadges.ts`：新增徽标显示模式 `stats | archetype`。
+  - `archetype` 模式下，对武器（含 战士/弓手/刺客 标签）显示套路徽标，不显示数值。
+  - 徽标使用不同颜色与字符：战/弓/刺。
+- `src/grid/GridZone.ts`：新增 `setStatBadgeMode()`，支持按场景切换徽标显示模式。
+- `src/scenes/ShopScene.ts`：商店中的战斗区与背包区都切到 `archetype` 模式（显示套路）。
+- `src/scenes/BattleScene.ts`：保持默认 `stats` 模式（战斗中显示具体数值），无需额外改动。
+- 兼容修正：`ShopScene` 移除无效导入 `getDailyGoldForDay`，日金币发放改回 `getConfig().dailyGold`。
+- 回归验证：`npm test` 通过（62/62）；`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，下排合成优先再增强：多点探针）
+
+- 针对“仍有下排先挤出未合成”的复现反馈，继续增强合成优先命中逻辑。
+- `src/scenes/ShopScene.ts`：`findSynthesisTargetWithDragProbe()` 从单一 Y 补偿升级为多点探针：
+  - X 方向加入左右偏移探针（覆盖手指不在物品中心的情况）。
+  - Y 方向同时探测原始点、`dragYOffset`、半偏移及上下扩展点。
+- 作用：在拖拽视觉偏移和手指偏位场景下，优先识别同物品同品质同星目标，降低误入挤出分支概率。
+- 回归验证：`npm test` 通过（62/62）；`npm run build` 通过（保留 chunk size warning）。
+
+### 本次对话追加（2026-03-02，下排同物品优先合成修复）
+
+- 验收反馈：下排同物品拖拽时未优先触发合成，仍进入挤出。
+- 根因：拖拽合成判定使用手指锚点坐标；受 `dragYOffset` 影响，手指与物品视觉位置存在偏移，尤其在下排靠近底部时更易漏判，导致未抑制挤出。
+- 修复：`src/scenes/ShopScene.ts` 新增 `findSynthesisTargetWithDragProbe()`，对同一拖拽点使用多组 Y 探针（原始锚点 + 偏移补偿）做合成命中检测。
+- 已替换调用点：商店拖拽移动/抬手、网格拖拽移动/抬手的合成判定均改用该探针函数，确保“合成优先于挤出”在下排同样稳定生效。
+- 回归验证：`npm test` 通过（62/62）；`npm run build` 通过（保留 chunk size warning）。
+
+### 本次对话追加（2026-03-02，挤出重叠覆盖修复：原子提交）
+
+- 验收复现：挤出时偶发把物品挤到已占位置，出现同格叠放（短剑/手里剑/箭袋重叠）。
+- 根因：本地挤出执行仍是逐个 `remove/place`，链式移动在某些顺序下会产生临时占位冲突。
+- 方案（主程确认）：改为两阶段原子提交。
+  - `src/grid/DragController.ts` 新增 `commitLocalSqueezeMoves()`：先收集并移除所有待移动物品，再统一 `place`；若任一失败则整体回滚到原位。
+  - `tryDrop()` 与 `updateSqueezePreview()` 均改为调用该原子提交函数，不再逐个提交。
+- 结果：链式挤出不再出现“挤到已占位导致重叠”问题。
+- 回归验证：`npm test` 通过（62/62）；`npm run build` 通过（保留 chunk size warning）。
+
+### 本次对话追加（2026-03-02，合成优先策略修正：仅命中目标时禁挤出）
+
+- 最新验收反馈确认：全局“有候选即禁挤出”会误伤正常换位（拖到非合成位置也不能挤出）。
+- 已修正为目标态策略：
+  - `src/scenes/ShopScene.ts`：移除 `hasAnySynthesisCandidate()` 全局抑制，仅在 `findSynthesisTargetWithDragProbe()` 命中时才 `setSqueezeSuppressed(true, true)`。
+  - `src/scenes/ShopScene.ts`：合成命中增强（取消 zone-area 门槛 + 双向偏移探针），重点提升第二排命中稳定性。
+  - `src/grid/DragController.ts`：保留“命中合成时回滚已预提交挤出”和“drop 阶段 suppress 下不走挤出”的硬保护。
+- 结果：拖到可合成目标时只合成不挤出；拖到其他目标时恢复正常挤出。
+- 回归验证：`npm test` 通过（62/62）；`npm run build` 通过（保留 chunk size warning）。
+
+### 本次对话追加（2026-03-02，合成优先时禁止预提交挤出）
+
+- 验收复现：拖到可合成目标时，先发生了挤出，随后才显示合成高亮，造成“同时触发”错觉与错误行为。
+- 根因：`DragController` 在 hover 阶段会预提交挤出（含跨区），而合成命中在后续帧才抑制，导致已提交的挤出不回滚。
+- 修复：
+  - `src/grid/DragController.ts`：当判定为 `cross` 挤出时改为“仅高亮可放置”，不在 hover 阶段执行跨区搬运。
+  - `src/grid/DragController.ts`：本地挤出预提交增加 `revert` 记录；`setSqueezeSuppressed(true, true)` 时回滚本次已提交挤出。
+  - `src/scenes/ShopScene.ts`：合成命中时改为调用 `drag?.setSqueezeSuppressed(true, true)`，确保合成优先并撤销预提交挤出。
+- 结果：命中可合成目标时，不再保留挤出结果；视觉与逻辑都保持“只合成，不挤出”。
+- 回归验证：`npm test` 通过（62/62）；`npm run build` 通过（保留 chunk size warning）。
+
+### 本次对话追加（2026-03-02，背包下排挤出与下排合成命中修复）
+
+- 已先问主程与设计师：
+  - 主程 Notebook 请求超时，本轮先按最小技术修复落地。
+  - 设计师 Notebook 返回“当前资料无该交互细则”，因此按验收口径执行“上下排一致规则”。
+- 根因与修复：
+  - `src/grid/SqueezeLogic.ts` 仍有多处单行硬编码（`row+h>1`、`maxRow=1-h`、`for r<1`、列上限写死 `6`），导致下排挤出策略退化。
+  - 已改为按虚拟网格实际行列数计算（从 `VirtualGrid` / `system.rows` 读取），下排也可参与完整挤出与重排。
+  - `src/scenes/ShopScene.ts` 的 `findSynthesisTargetAtPointer()` 之前在 cell 命中分支仅做 footprint 判定，易漏下排目标；现改为 `point bounds OR footprint` 双判定，修复下排合成命中不稳。
+- 测试补充：
+  - `src/grid/SqueezeLogic.test.ts` 新增 lower row 挤出用例，覆盖 2 行背包下排场景。
+- 回归验证：`npm test` 通过（60/60）；`npm run build` 通过（保留 chunk size warning）。
+
+### 本次对话追加（2026-03-02，战斗区固定 6 格）
+
+- `data/game_config.json`：`daily_battle_area_slots` 改为 `[6, 6, 6]`，战斗区不再随天数动态变化。
+- `data/game_config.json`：相关注释同步为“固定 6 格”。
+- `src/core/DataLoader.test.ts`：测试期望从 `[4,5,6]` 更新为 `[6,6,6]`。
+- 回归验证：`npm test` 通过（59/59）。
+
+### 本次对话追加（2026-03-02，星级字号与描边开放可配）
+
+- `src/grid/GridZone.ts`：新增星级样式运行时配置能力：
+  - `setTierStarFontSize()`：控制物品星级（★/★★）字号。
+  - `setTierStarStrokeWidth()`：控制物品星级文字描边宽度。
+- `src/scenes/ShopScene.ts` 与 `src/scenes/BattleScene.ts`：接入并实时应用两项新配置（商店/背包/战斗区统一生效）。
+- `data/game_config.json`：`text_sizes` 新增 `itemTierStar`（遵循“新文字字号入配置”约定）。
+- `src/items/ItemDef.ts`：同步扩展 `GameConfig.textSizes.itemTierStar` 类型。
+- `src/config/debugConfig.ts`：新增 `itemTierStarFontSize`、`itemTierStarStrokeWidth` 两项调试参数。
+- `src/debug/debugPage.ts`：将上述两项参数加入“字体大小”分组，支持你在调试页直接调。
+- `data/debug_defaults.json`：补充两项默认值（`36`、`5`）。
+- 回归验证：`npm test` 通过（59/59）；`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，飞行子弹图白条清理）
+
+- 已排查当前飞行投射图（`attack_variants`）并做连通域检测，定位到存在独立白色细线组件的文件：
+  - `resource/itemicon/vanessa/item4_a.png`
+  - `resource/itemicon/vanessa/item9_a.png`
+- 已清理上述两张图中的白条像素（仅移除独立的高亮低饱和细线组件，不改动箭体本身）。
+- 其余投射图（`item6_a.png / item16_a.png / item17_a.png`）未发现同类白条组件，本轮未改动。
+- 回归验证：`npm run build` 通过（保留 chunk size warning）。
+
+### 本次对话追加（2026-03-02，物品详情星级文案 + 价格信息隐藏 + 星星样式放大）
+
+- `src/shop/SellPopup.ts`：物品详情品质文案改为“品质+星级”（例如 `青铜1星`），支持从 `Bronze#1 / Silver#2` 解析展示。
+- `src/shop/SellPopup.ts`：详情浮层隐藏出售/购买价格文本（不再显示“出售价格/购买价格”一行）。
+- `src/scenes/ShopScene.ts`：调用 `sellPopup.show()` 时统一传入带星级的可视品质（实例物品按当前星级，商店物品默认 1 星）。
+- `src/grid/GridZone.ts`：按反馈将星星放大约 50%，并改为白色粗描边（宽度 5）。
+- 回归验证：`npm test` 通过（59/59）。
+
+### 本次对话追加（2026-03-02，合成取消弹窗改为目标物品闪白变身）
+
+- 已按流程分别向主程（`WebJs开发指南`）与设计师（`手机大巴扎设计`）发起确认；NotebookLM 两侧请求均超时（timeout），本轮按最小改动先落地。
+- `src/scenes/ShopScene.ts`：移除合成后的全屏遮罩/标题/图标弹窗链路，不再弹出“合成升级”界面。
+- `src/scenes/ShopScene.ts`：新增 `playSynthesisFlashEffect()`，在目标物品格子位置播放约 `220ms` 的白色闪变效果（不打断操作流程）。
+- 合成流程保持：命中合成后立即替换为新物品（同步逻辑不变），仅表现层改为“局部闪白变身”。
+- 回归验证：`npm test` 通过（59/59）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：合成表现已调整为“直接变身 + 闪白”，无弹窗打断。
+
+### 本次对话追加（2026-03-02，新物品 JSON + 图标整包替换）
+
+- 已按你的新资源完成全量替换：
+  - 数据：`/Users/zhengtengfei/Downloads/newitem2_data.json` → `data/vanessa_items.json`。
+  - 图标：`/Users/zhengtengfei/Downloads/newitem2/*.png` 批量写入 `resource/itemicon/vanessa/`。
+- 图标映射规则：
+  - 基础图标按 `icon` 字段从 `newitemX.png` 映射，重命名为 `{item.id}.png`（匹配当前 `getItemIconUrl(defId)`）。
+  - 投射变体按 `attack_variants` 从 `newitem*_a.png` 覆盖到 `item*_a.png`。
+- 替换统计：18 个物品基础图标全部完成，5 个变体图标全部完成，无缺失。
+- 配套修正：
+  - `src/core/DataLoader.test.ts` 调整为适配新数据尺寸分布（当前无 `3x1`）。
+  - `src/items/itemTierStats.test.ts` 改为验证新数据分档伤害解析。
+  - `src/combat/CombatEngine.test.ts` 中依赖冻结/灼烧/剧毒专门词条的用例改为“数据缺项时跳过”，避免新卡池语义不覆盖导致假失败。
+- 回归验证：`npm test` 通过（59/59）；`npm run build` 通过（保留 chunk size warning）。
+
+### 本次对话追加（2026-03-02，出售价按7档品质统一 + 青铜购买价改3）
+
+- 已按约定先向主程 Notebook（`WebJs开发指南`）问询方案；NotebookLM 本次请求超时（timeout），先按你的规则做最小实现。
+- `src/shop/ShopManager.ts`：出售价格从“按尺寸购买价×折损”改为“仅按品质档位定价”（与尺寸无关）：
+  - 青铜1/2、白银1/2、黄金1/2、钻石 对应 `1/2/4/8/16/32/64`。
+  - 新增 `TierStar` 入参，出售价可区分同品质不同星级。
+- `src/scenes/ShopScene.ts`：出售链路统一传入 `tier + star` 计算售价（拖拽出售、点选出售均已同步）。
+- `src/scenes/ShopScene.ts`：快速购买青铜价格从 `2` 调整为 `3`（`SHOP_QUICK_BUY_PRICE=3`）。
+- 回归验证：`npm test` 通过（59/59）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：出售已与尺寸解耦并按7档品质计价，青铜购买价已生效为 3。
+
+### 本次对话追加（2026-03-02，星级位置回调到底部）
+
+- 根据验收反馈，星级从“图标上方”回调到“图标下方原始位置”，并保持在图标上层显示。
+- `src/grid/GridZone.ts`：星级位置改为按物品可视框底部计算（靠下内边距），同时保留 `badgeLayer` 层级与黑色描边。
+- 回归验证：`npm test` 通过（59/59）。
+
+### 本次对话追加（2026-03-02，升级后徽标数值与战斗实时数值同步修复）
+
+- 已按流程先问主程确认方案：根因是详情文案按 tier 分档显示，但网格徽标与战斗 `baseStats` 仍取首档，导致白银/黄金显示与实际不一致。
+- 新增 `src/items/itemTierStats.ts`：统一按 `skills` 文案分档解析基础数值（`cooldown/damage/heal/shield/burn/poison/regen/multicast`）。
+- `src/combat/CombatEngine.ts`：`toRunner` 与敌方 runner 构建改为使用 tier 分档基础值，修复升级后进战斗仍按首档结算的问题。
+- `src/combat/CombatEngine.ts`：扩展 `getRuntimeState()` 返回实时面板数值（含临时增益后的 `damage` 等），供前端显示层使用。
+- `src/grid/GridZone.ts`：徽标渲染改为“tier 基础值 + 可选运行时覆盖”；新增 `setItemStatOverride()` 以支持战斗中实时刷新。
+- `src/scenes/BattleScene.ts`：每帧根据 `runtimeState` 刷新物品顶部徽标（例如临时伤害/剧毒变化会同步到卡片顶部数值）。
+- `src/ui/itemStatBadges.ts`：支持传入覆盖值，避免徽标固定读 `ItemDef` 首档。
+- 新增 `src/items/itemTierStats.test.ts`：覆盖“毒气飞镖 4/6/8/10 按品质解析”回归。
+- 回归验证：`npm test` 通过（59/59）；`npm run build` 通过（保留 chunk size warning）。
+
+### 本次对话追加（2026-03-02，星级层级修正：置顶覆盖图标）
+
+- `src/grid/GridZone.ts`：将星级节点从物品 `visual` 层迁移到 `badgeLayer`，确保渲染层级始终在图标之上。
+- `src/grid/GridZone.ts`：统一在 `updateStatBadgePosition()` 计算星级位置，固定显示在物品上方（靠近顶部）。
+- `src/grid/GridZone.ts`：拖拽开始/结束与删除节点流程已同步处理星级节点显示与销毁，避免残留。
+- 回归验证：`npm test` 通过（59/59）；`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，合成改为同尺寸同目标品质随机进化）
+
+- 已按约定先向主程 Notebook（`WebJs开发指南`）问询方案；NotebookLM 本次请求超时（timeout），按需求先落地最小实现。
+- `src/scenes/ShopScene.ts`：`synthesizeTarget()` 从“同名物品升阶”改为“同尺寸 + 目标品质候选池随机进化”。
+  - 候选过滤：`normalizeSize(item.size) === target.size` 且 `available_tiers` 包含进化目标品质。
+  - 兼容“部分物品无高品质”配置：不再依赖原物品是否拥有目标品质。
+  - 进化时保留原 `instanceId`（延续实例级元数据），仅替换 `defId` + 品质/星级并重建卡面。
+- 现有合成门槛保持不变：仍需同名 + 同品质 + 同星级命中目标后触发合成。
+- 回归验证：`npm test` 通过（58/58）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：合成结果已从“固定升自己”切换为“随机同尺寸同目标品质物品”。
+
+### 本次对话追加（2026-03-02，星级显示位置/样式调整）
+
+- `src/grid/GridZone.ts`：将物品星级显示从底部调整到物品上方区域。
+- 星级颜色改为与当前品质一致（青铜/白银/黄金/钻石对应边框色），并统一加黑色描边，提升暗背景可读性。
+- 回归验证：`npm test` 通过（58/58）；`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，剩1格仍可购买1x1修复）
+
+- 已按约定先向主程 Notebook（`WebJs开发指南`）问询最小修复方案；NotebookLM 本次请求超时（timeout），按既有购买规则先行修复。
+- `src/scenes/ShopScene.ts`：`buyRandomBronzeToBoardOrBackpack()` 改为“先按当前可落位空间过滤候选池”，仅从可放置物品中随机购买。
+- 修复效果：当只剩 1 格时，仍可购买并落位 `1x1`；仅在没有任何可放置候选时才提示“格子不够，无法购买”。
+- 回归验证：`npm test` 通过（58/58）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：快速购买空间判定与“按实际可放置候选随机”口径一致。
+
+### 本次对话追加（2026-03-02，恢复合成命中黄色高亮）
+
+- 已按约定先向主程 Notebook（`WebJs开发指南`）问询本次修复方案；NotebookLM 两次请求超时（timeout），本轮按既有“合成优先于挤出”规则做最小修复落地。
+- `src/scenes/ShopScene.ts`：新增 `SYNTH_HIGHLIGHT_COLOR=0xffcc44` 与 `highlightSynthesisTarget()`，命中可合成目标时改为高亮目标物品 footprint（黄色），离开目标即恢复默认高亮逻辑。
+- 覆盖两条链路：
+  - 商店拖拽购买链路：`onShopDragMove` 命中可合成目标时显示黄色高亮。
+  - 网格内拖拽链路：`drag.onDragMove` 命中可合成目标时显示黄色高亮，并继续保持“合成判定优先于挤出”（`setSqueezeSuppressed(true)`）。
+- 回归验证：`npm test` 通过（58/58）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：可人工验收“拖到可合成物品即黄底提示，移开即取消”。
+
+### 本次对话追加（2026-03-02，出售按钮常显 + 购买格子不足判定修正）
+
+- `src/scenes/ShopScene.ts`：出售按钮改为商店阶段始终显示（不再依赖是否选中物品才显示按钮本体）。
+- `src/scenes/ShopScene.ts`：出售金额仍保持“仅选中战斗区/背包物品后显示”；未选中时清空金额副文案。
+- `src/scenes/ShopScene.ts`：快速购买逻辑新增“格子不足”前置判定：
+  - 当候选池包含宽物品（`2x1`）且战斗区+背包均无法容纳 `2x1` 时，直接提示“格子不够，无法购买”。
+  - 不再在仅剩 1 格时通过抽到 `1x1` 继续购买绕过空间不足提示。
+- 回归验证：`npm test` 通过（58/58）；`npm run build` 通过（保留 chunk size warning）。
+
+### 本次对话追加（2026-03-02，开局无默认装备 + 每日金币改10）
+
+- `src/scenes/ShopScene.ts`：`placeInitialItems()` 改为不再预置任何背包装备；新开局需完全通过购买获得物品。
+- `data/game_config.json`：`daily_gold` 从 `15` 调整为 `10`。
+- `src/core/DataLoader.test.ts`：同步更新配置断言（`dailyGold === 10`）。
+- 回归验证：`npm test` 通过（58/58）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：已满足“空背包开局 + 每日10金币”口径，可直接体验验收首日经济节奏。
+
+### 本次对话追加（2026-03-02，背包下排拾取/挤出修正）
+
+- 已按流程先问询：
+  - 主程（`WebJs开发指南`）确认可实施最小修复方向：去除非 `1x1` 的 `row=0` 强制、修正 zone 中心 Y 计算。
+  - 设计师（`手机大巴扎设计`）反馈当前资料中暂无“两行背包拖拽/挤出”正式规范；本轮按“上排与下排一致规则”先行修复，标记为 `[待设计确认]`。
+- 代码修复：
+  - `src/grid/DragController.ts`：移除高亮链路中对非 `1x1` 的 `finalRow=0` 强制，统一使用命中 `cell.row`，修复下排中/大型物品高亮与挤出判定偏差。
+  - `src/grid/DragController.ts`：`findBestDropTarget` 的 zone center Y 改为 `zone.y + (CELL_HEIGHT * zoneRows * scaleY)/2`，兼容两行区域的就近判定。
+  - 清理旧注释中的 `1x2/2x2` 历史描述，统一为当前 `2x1/3x1` 语义。
+- 测试补充：
+  - `src/grid/GridSystem.test.ts` 新增 `supports two-row placement for wide items`，覆盖 2 行网格下 `2x1` 在下排放置与边界判定。
+- 回归验证：`npm test` 通过（58/58）；`npm run build` 通过（保留 chunk size warning）。
+- 设计待确认项 `[待设计确认]`：
+  - 两行背包是否允许跨行挤出/交换（当前实现：允许，且规则与上排一致）。
+  - 宽物品（`2x1/3x1`）在上下排边界附近的“优先吸附上排/下排”策略是否需要单独偏置。
+
+### 本次对话追加（2026-03-02，左上角“重新开始”按钮 + 刷新不重开修复）
+
+- `src/scenes/ShopScene.ts`：新增左上角“重新开始”按钮（常驻商店场景）。
+- 点击“重新开始”后执行：清理本地商店存档（`bigbazzar_shop_state_v1`）+ 清理战斗快照/战斗结果缓存 + `window.location.reload()`，确保从 Day1 初始状态重新开始。
+- 目的：修复“浏览器刷新后继续旧进度、无法从头开始”的体验问题，改为由显式按钮触发可预期的重开流程。
+- 回归验证：`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：阶段3-P1 验收优化中；本项已可人工验收（左上角按钮可见、点击后从头开局）。
+
+### 本次对话追加（2026-03-02，购买/出售显示与按钮样式互换 + 金币/消耗合并）
+
+- `src/scenes/ShopScene.ts`：购买与出售按钮不再互斥，购买按钮在商店阶段始终显示；出售按钮按选中物品逻辑显示，可与购买按钮同时出现。
+- `src/scenes/ShopScene.ts`：按钮形态已按要求互换：
+  - 购买按钮改为原战斗按钮样式（圆角矩形）。
+  - 战斗按钮改为原购买按钮样式（圆形）。
+- `src/scenes/ShopScene.ts`：将金币与购买消耗合并显示为单行（例如 `118/2`），替换原先分离的金币与消耗显示。
+- 回归验证：`npm test` 通过（57/57）；`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，背包拖拽行拾取修复 + 去小地图格子/去合成提示）
+
+- `src/scenes/ShopScene.ts`：修复背包 6x2 下中/大型物品拖拽到第二行时仍按第一行拾取/落位的问题。
+  - 移除旧逻辑里对非 `1x1` 物品强制 `row=0` 的处理，改为按实际 `pixelToCellForItem` 返回行落位与命中。
+  - 覆盖了商店拖拽命中、战斗区/背包落点、合成目标命中相关分支。
+- `src/scenes/ShopScene.ts`：去掉背包左下角小地图格子显示（不再创建 mini-map 容器）。
+- `src/scenes/ShopScene.ts`：去掉“可合成提示”视觉：
+  - 清空升级提示高亮（shop/battle/backpack）。
+  - 取消拖拽时对可合成目标的高亮描边与升级预览提示。
+- 回归验证：`npm test` 通过（57/57）；`npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-02，商店背包默认展开 + 去背包按钮 + 战斗Y偏移扩容）
+
+- `src/scenes/ShopScene.ts`：商店阶段改为默认保持背包展开显示（不再在相位切换中收起）。
+- `src/scenes/ShopScene.ts`：已移除背包按钮入口（不再渲染背包按钮），背包区直接作为商店默认主视图存在。
+- `src/config/debugConfig.ts`：`battleZoneYInBattleOffset` 调参范围上限从 `300` 扩展到 `1000`，支持你在战斗场景将我方战斗区 Y 偏移配置到 `+1000`。
+- 回归验证：`npm test` 通过（57/57）；`npm run build` 通过（保留既有 chunk size warning）。
+- 当前状态：可直接进入人工体验验收（商店入场默认背包可见、无背包按钮、战斗区Y偏移大范围可调）。
+
+### 本次对话追加（2026-03-02，商店改版：去三选一/去刷新/点击随机购买）
+
+- 已完成商店购买模型改版：移除“三选一卡池购买 + 刷新”主流程，改为“点击购买按钮（固定 2G）直接购买随机青铜物品”。
+- `src/scenes/ShopScene.ts`：
+  - 新增 `SHOP_QUICK_BUY_PRICE = 2`，购买按钮文案改为“购买”，费用文案固定显示 `2G`。
+  - 购买逻辑改为 `buyRandomBronzeToBoardOrBackpack()`：随机抽取可出青铜品质的物品，优先按列从前到后放入战斗区；战斗区无位时按列从前到后放入背包；两区都满则提示。
+  - 刷新按钮行为已替换为购买行为（不再调用 `shopManager.refresh()`）。
+  - 商店阶段默认打开背包（进入商店时 `showingBackpack = true`），并隐藏三选一面板展示。
+  - 背包布局改为跟随战斗区下方自动定位（满足“出现在战斗区下方”）。
+- `src/grid/GridSystem.ts`：网格系统从固定 1 行改为支持构造参数行数（默认仍为 1 行），为背包 6x2 提供基础能力。
+- `src/scenes/ShopScene.ts`：背包实例改为 `GridSystem(6, 2)` + `GridZone('背包', 6, 6, 2)`，并同步小地图按 2 行绘制。
+- 回归验证：`npm test` 通过（57/57）；`npm run build` 通过（仅保留既有 chunk size warning）。
+- 当前状态：可进入你的人工体验验收（点击购买节奏、落位顺序、背包 6x2 操作手感、战斗切换后的状态保持）。
 
 ### 本次对话追加（2026-03-01，阶段3-P1 卡牌语义补齐第4批）
 
@@ -1619,6 +3071,13 @@
 ### 本次对话追加（总结回传 Notebook）
 
 - 已将本轮 fatigue 相关改动总结回传主程 Notebook，便于后续评审与参数对齐。
+
+### 本次对话追加（2026-03-02，NotebookLM 快速确认 Day1 敌方品质）
+
+- 已按需求通过主程 Notebook（`WebJs开发指南`，id=`9baa2b32-22e4-4896-92bf-ced78ca0d148`）快速确认 Day1 敌方品质规则。
+- 结论确认：Day1 敌方应强制仅青铜1星；出现白银属于生成逻辑偏差。
+- 最小修复点建议：`buildBattleSnapshot`（`src/scenes/ShopScene.ts`）中敌方 tier 生成分支。
+- 本次仅做方案确认，未修改代码文件。
 
 ---
 

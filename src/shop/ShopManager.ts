@@ -9,6 +9,16 @@ import { normalizeSize }   from '@/items/ItemDef'
 
 const TIER_ORDER = ['Bronze', 'Silver', 'Gold', 'Diamond'] as const
 export type TierKey = typeof TIER_ORDER[number]
+export type TierStar = 1 | 2
+
+export function getDailyGoldForDay(config: GameConfig, day: number): number {
+  const byDay = config.dailyGoldByDay
+  if (Array.isArray(byDay) && byDay.length > 0) {
+    const idx = Math.max(0, Math.min(byDay.length - 1, Math.floor(day) - 1))
+    return byDay[idx] ?? byDay[0] ?? config.dailyGold
+  }
+  return config.dailyGold
+}
 
 /** 从原始 tier 字段提取英文品质名，例如 "Bronze / 青铜" → "Bronze" */
 export function extractTier(raw: string): TierKey {
@@ -41,14 +51,15 @@ export class ShopManager {
 
   private config:   GameConfig
   private allItems: ItemDef[]
+  private ownedDefIds = new Set<string>()
 
   constructor(config: GameConfig, allItems: ItemDef[], day = 1) {
     this.config    = config
     this.allItems  = allItems
     this.day       = day
-    this.gold      = config.dailyGold   // 每天开始时发放金币
+    this.gold      = getDailyGoldForDay(config, day)   // 每天开始时发放金币
     this.refreshIndex = 0
-    this.pool      = this.rollPool()
+    this.pool      = this.rollPool(true)
   }
 
   // ---- 价格计算 ----
@@ -65,8 +76,14 @@ export class ShopManager {
   }
 
   /** 计算出售价格（购买价 × sellPriceRatio，向下取整） */
-  getSellPrice(item: ItemDef, tierOverride?: TierKey): number {
-    return Math.floor(this.getItemPrice(item, tierOverride) * this.config.sellPriceRatio)
+  getSellPrice(item: ItemDef, tierOverride?: TierKey, starOverride: TierStar = 1): number {
+    void item
+    const tier = tierOverride ?? 'Bronze'
+    const star = tier === 'Diamond' ? 1 : starOverride
+    const tierIdx = TIER_ORDER.indexOf(tier)
+    if (tierIdx < 0) return 1
+    const level = tierIdx * 2 + (star === 2 ? 1 : 0)
+    return 2 ** level
   }
 
   // ---- 刷新 ----
@@ -86,7 +103,7 @@ export class ShopManager {
     if (!this.canRefresh()) return false
     this.gold        -= this.getRefreshPrice()
     this.refreshIndex = Math.min(this.refreshIndex + 1, this.config.shopRefreshPrices.length - 1)
-    this.pool         = this.rollPool()
+    this.pool         = this.rollPool(false)
     return true
   }
 
@@ -107,8 +124,8 @@ export class ShopManager {
   // ---- 出售 ----
 
   /** 出售物品，增加金币，返回获得金币数 */
-  sellItem(item: ItemDef, tierOverride?: TierKey): number {
-    const gained = this.getSellPrice(item, tierOverride)
+  sellItem(item: ItemDef, tierOverride?: TierKey, starOverride: TierStar = 1): number {
+    const gained = this.getSellPrice(item, tierOverride, starOverride)
     this.gold   += gained
     return gained
   }
@@ -118,21 +135,21 @@ export class ShopManager {
   /** 进入下一天：发金币、重置刷新价格、重滚卡池 */
   startNewDay(): void {
     this.day++
-    this.gold        += this.config.dailyGold
+    this.gold        += getDailyGoldForDay(this.config, this.day)
     this.refreshIndex = 0
-    this.pool         = this.rollPool()
+    this.pool         = this.rollPool(false)
   }
 
   /** Debug/切天用：直接跳到指定天数并重滚卡池（不发金币；刷新价格重置为首档） */
   setDay(day: number): void {
     this.day  = Math.max(1, Math.min(20, day))
     this.refreshIndex = 0
-    this.pool = this.rollPool()
+    this.pool = this.rollPool(false)
   }
 
   /** 兼容调用链：当前版本刷新不再按已持有品质过滤 */
   setOwnedTiers(map: Map<string, TierKey>): void {
-    void map
+    this.ownedDefIds = new Set(map.keys())
   }
 
   // ---- 卡池滚动 ----
@@ -144,10 +161,100 @@ export class ShopManager {
     return 3
   }
 
-  private rollPool(): ShopSlot[] {
+  private parsePrimaryArchetype(item?: ItemDef): string {
+    if (!item) return ''
+    const raw = (item.tags || '').trim()
+    if (!raw) return ''
+    const first = raw.split(/[，,\/\s]+/).map((s) => s.trim()).filter(Boolean)[0]
+    return first ?? ''
+  }
+
+  private hasOwnedAmmoItem(): boolean {
+    for (const defId of this.ownedDefIds) {
+      const item = this.allItems.find((it) => it.id === defId)
+      if (!item) continue
+      const text = (item.skills ?? []).map((s) => s.cn ?? '').join(' ')
+      if (/弹药/.test(text)) return true
+    }
+    return false
+  }
+
+  private isAmmoSupportItem(item: ItemDef): boolean {
+    const names = this.config.shopRules?.ammoSupportItemNames ?? []
+    if (names.includes(item.name_cn)) return true
+    return false
+  }
+
+  private getShopSizeWeight(item: ItemDef): number {
+    const weights = this.config.shopRules?.shopSizeWeights
+    const size = normalizeSize(item.size)
+    const v = size === '1x1' ? weights?.small : size === '2x1' ? weights?.medium : weights?.large
+    const n = typeof v === 'number' ? v : 1
+    return Number.isFinite(n) && n > 0 ? n : 1
+  }
+
+  private pickItemWeighted(candidates: ItemDef[]): ItemDef | null {
+    if (candidates.length === 0) return null
+    let total = 0
+    const ws = candidates.map((it) => {
+      const w = this.getShopSizeWeight(it)
+      total += w
+      return w
+    })
+    if (total <= 0) return candidates[Math.floor(Math.random() * candidates.length)] ?? null
+    let r = Math.random() * total
+    for (let i = 0; i < candidates.length; i++) {
+      r -= ws[i] ?? 0
+      if (r <= 0) return candidates[i] ?? null
+    }
+    return candidates[candidates.length - 1] ?? null
+  }
+
+  private enforceDay1ThirdArchetypeIfNeeded(slots: ShopSlot[]): ShopSlot[] {
+    if (!(this.config.shopRules?.day1ThirdItemMatchExistingArchetype)) return slots
+    if (this.day !== 1 || slots.length < 3) return slots
+
+    const a1 = this.parsePrimaryArchetype(slots[0]?.item)
+    const a2 = this.parsePrimaryArchetype(slots[1]?.item)
+    const a3 = this.parsePrimaryArchetype(slots[2]?.item)
+    if (!a1 || !a2 || !a3) return slots
+    if (a3 === a1 || a3 === a2) return slots
+
+    const used = new Set(slots.map((s) => s.item.id))
+    const widthUsedByFirstTwo = this.getShopWidthCells(slots[0].item) + this.getShopWidthCells(slots[1].item)
+    const maxWidthForThird = 6 - widthUsedByFirstTwo
+    const thirdTier = slots[2].tier
+
+    const sameTier = this.allItems.filter((it) => {
+      if (used.has(it.id)) return false
+      if (this.getShopWidthCells(it) > maxWidthForThird) return false
+      if (!parseAvailableTiers(it.available_tiers).includes(thirdTier)) return false
+      const a = this.parsePrimaryArchetype(it)
+      return a === a1 || a === a2
+    })
+    const fallbackAnyTier = this.allItems.filter((it) => {
+      if (used.has(it.id)) return false
+      if (this.getShopWidthCells(it) > maxWidthForThird) return false
+      const a = this.parsePrimaryArchetype(it)
+      return a === a1 || a === a2
+    })
+    const useSameTier = sameTier.length > 0
+    const replacement = this.pickItemWeighted(useSameTier ? sameTier : fallbackAnyTier)
+    if (!replacement) return slots
+    const replacementTier = useSameTier
+      ? thirdTier
+      : (parseAvailableTiers(replacement.available_tiers)[0] ?? 'Bronze')
+    slots[2] = { item: replacement, tier: replacementTier, price: this.getItemPrice(replacement, replacementTier), purchased: false }
+    return slots
+  }
+
+  private rollPool(isInitialRoll: boolean): ShopSlot[] {
     const slots: ShopSlot[]  = []
     const usedItemIds        = new Set<string>()
     let usedWidthCells = 0
+    const hasAmmoOwned = this.hasOwnedAmmoItem()
+    const restrictAmmoSupport = this.config.shopRules?.ammoSupportRequiresAmmoOwned === true
+    const enforceDay1ThirdArchetype = this.config.shopRules?.day1ThirdItemMatchExistingArchetype === true
 
     // 构建当天品质权重（青铜/白银/黄金/钻石）
     const chances = this.config.shopTierChancesByDay
@@ -201,7 +308,21 @@ export class ShopManager {
       }
       for (const tier of TIER_ORDER) {
         const pool = candidatesByTier[tier]
-        feasibleByTier[tier] = pool.filter((it) => !usedItemIds.has(it.id) && this.getShopWidthCells(it) <= maxWidthForCurrent)
+        feasibleByTier[tier] = pool.filter((it) => {
+          if (usedItemIds.has(it.id)) return false
+          if (this.getShopWidthCells(it) > maxWidthForCurrent) return false
+          if (restrictAmmoSupport && !hasAmmoOwned && this.isAmmoSupportItem(it)) return false
+
+          if (enforceDay1ThirdArchetype && isInitialRoll && this.day === 1 && slots.length === 2) {
+            const a1 = this.parsePrimaryArchetype(slots[0]?.item ?? it)
+            const a2 = this.parsePrimaryArchetype(slots[1]?.item ?? it)
+            const allowed = new Set([a1, a2].filter(Boolean))
+            const current = this.parsePrimaryArchetype(it)
+            if (allowed.size > 0 && (!current || !allowed.has(current))) return false
+          }
+
+          return true
+        })
       }
 
       const tier = pickTier(feasibleByTier)
@@ -210,7 +331,8 @@ export class ShopManager {
       const candidates = feasibleByTier[tier]
       if (!candidates || candidates.length === 0) continue
 
-      const item = candidates[Math.floor(Math.random() * candidates.length)]!
+      const item = this.pickItemWeighted(candidates)
+      if (!item) continue
       if (usedItemIds.has(item.id)) continue
 
       usedItemIds.add(item.id)
@@ -218,6 +340,6 @@ export class ShopManager {
       slots.push({ item, tier, price: this.getItemPrice(item, tier), purchased: false })
     }
 
-    return slots
+    return this.enforceDay1ThirdArchetypeIfNeeded(slots)
   }
 }

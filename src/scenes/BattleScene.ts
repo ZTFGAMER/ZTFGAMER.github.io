@@ -10,7 +10,7 @@ import { getAllItems, getConfig as getGameCfg } from '@/core/DataLoader'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import type { ItemDef, ItemSizeNorm } from '@/items/ItemDef'
 import { EventBus } from '@/core/EventBus'
-import { SellPopup } from '@/shop/SellPopup'
+import { SellPopup, type ItemInfoMode, type ItemInfoRuntimeOverride } from '@/shop/SellPopup'
 import { getBattleEffectColor, getBattleFloatTextColor, getBattleOrbColor } from '@/config/colorPalette'
 import { getItemIconUrl, getItemIconUrlByName, getSceneImageUrl } from '@/core/assetPath'
 
@@ -24,6 +24,7 @@ let backBtn: Container | null = null
 let speedBtn: Container | null = null
 let speedBtnText: Text | null = null
 let battleEndMask: Graphics | null = null
+let sceneFadeOverlay: Graphics | null = null
 let heroHudG: Graphics | null = null
 let enemyHpInfoCon: Container | null = null
 let playerHpInfoCon: Container | null = null
@@ -43,6 +44,9 @@ let offFatigueStartEvent: (() => void) | null = null
 let onStageTapHidePopup: (() => void) | null = null
 let itemInfoPopup: SellPopup | null = null
 let selectedItemId: string | null = null
+let selectedItemSide: 'player' | 'enemy' | null = null
+let selectedItemInfoKey: string | null = null
+let selectedItemInfoMode: ItemInfoMode = 'simple'
 let fatigueToastCon: Container | null = null
 let fatigueToastBg: Graphics | null = null
 let fatigueToastText: Text | null = null
@@ -62,6 +66,10 @@ let enemyPresentationVisible = true
 let battleSpeed = 1
 let battleDay = 1
 let enteredSnapshot: ReturnType<typeof getBattleSnapshot> = null
+let battleIntroElapsedMs = 0
+let battleIntroDurationMs = 0
+let battleExitTransitionElapsedMs = 0
+let battleExitTransitionDurationMs = 0
 const BATTLE_SPEED_STEPS = [1, 2, 4, 8] as const
 const FX_MAX_PROJECTILES = 40
 const FX_MAX_FLOATING_NUMBERS = 30
@@ -173,6 +181,56 @@ function getEnemyAreaScale(): number {
 
 function getEnemyHpBarScale(): number {
   return getDebugCfg('enemyHpBarScale')
+}
+
+function tickBattleIntro(dtMs: number): boolean {
+  if (!root) return true
+  if (battleIntroDurationMs <= 0) {
+    root.alpha = 1
+    return true
+  }
+  battleIntroElapsedMs += Math.max(0, dtMs)
+  const p = Math.max(0, Math.min(1, battleIntroElapsedMs / battleIntroDurationMs))
+  const eased = 1 - Math.pow(1 - p, 3)
+  root.alpha = eased
+  return p >= 1
+}
+
+function beginBattleExitTransition(): void {
+  if (battleExitTransitionDurationMs > 0) return
+  setBattleOutcome({
+    result: engine?.getResult() ?? null,
+    snapshot: enteredSnapshot,
+    finishedAtMs: Date.now(),
+  })
+  battleExitTransitionElapsedMs = 0
+  battleExitTransitionDurationMs = Math.max(1, getDebugCfg('battleToShopTransitionMs'))
+  if (sceneFadeOverlay) {
+    sceneFadeOverlay.visible = true
+    sceneFadeOverlay.alpha = 0
+  }
+  if (backBtn) {
+    backBtn.eventMode = 'none'
+    backBtn.cursor = 'default'
+  }
+  if (speedBtn) {
+    speedBtn.eventMode = 'none'
+  }
+}
+
+function tickBattleExitTransition(dtMs: number): boolean {
+  if (battleExitTransitionDurationMs <= 0) return false
+  battleExitTransitionElapsedMs += Math.max(0, dtMs)
+  const p = Math.max(0, Math.min(1, battleExitTransitionElapsedMs / battleExitTransitionDurationMs))
+  const eased = 1 - Math.pow(1 - p, 3)
+  if (sceneFadeOverlay) sceneFadeOverlay.alpha = eased
+  if (p >= 1) {
+    battleExitTransitionElapsedMs = 0
+    battleExitTransitionDurationMs = 0
+    SceneManager.goto('shop')
+    return true
+  }
+  return true
 }
 
 function getPlayerZoneX(activeCols: number): number {
@@ -859,12 +917,7 @@ function makeBackButton(): Container {
   con.eventMode = 'static'
   con.cursor = 'pointer'
   con.on('pointerdown', () => {
-    setBattleOutcome({
-      result: engine?.getResult() ?? null,
-      snapshot: enteredSnapshot,
-      finishedAtMs: Date.now(),
-    })
-    SceneManager.goto('shop')
+    beginBattleExitTransition()
   })
   return con
 }
@@ -994,6 +1047,8 @@ function applyZoneVisualStyle(zone: GridZone): void {
   zone.setCellBorderWidth(getDebugCfg('gridCellBorderWidth'))
   zone.setLabelVisible(false)
   zone.setStatBadgeFontSize(getDebugCfg('itemStatBadgeFontSize'))
+  zone.setTierStarFontSize(getDebugCfg('itemTierStarFontSize'))
+  zone.setTierStarStrokeWidth(getDebugCfg('itemTierStarStrokeWidth'))
   zone.setStatBadgeOffsetY(getDebugCfg('itemStatBadgeOffsetY'))
 }
 
@@ -1034,6 +1089,30 @@ function drawCooldownOverlay(
     const sh = coverH * scale
     overlay.roundRect(sx, sy, sw, sh, 8)
     overlay.fill({ color: 0x0b1020, alpha: 0.48 })
+  }
+}
+
+function updateRuntimeStatBadges(
+  zone: GridZone,
+  items: CombatBoardItem[],
+  runtimeById: Map<string, ReturnType<CombatEngine['getRuntimeState']>[number]>,
+): void {
+  for (const it of items) {
+    const rt = runtimeById.get(it.id)
+    if (!rt) {
+      zone.setItemStatOverride(it.id, null)
+      zone.setItemAmmo(it.id, 0, 0)
+      continue
+    }
+    zone.setItemStatOverride(it.id, {
+      damage: Math.max(0, rt.damage),
+      heal: Math.max(0, rt.heal),
+      shield: Math.max(0, rt.shield),
+      burn: Math.max(0, rt.burn),
+      poison: Math.max(0, rt.poison),
+      multicast: Math.max(1, rt.multicast),
+    })
+    zone.setItemAmmo(it.id, Math.max(0, rt.ammoCurrent), Math.max(0, rt.ammoMax))
   }
 }
 
@@ -1131,12 +1210,15 @@ function getBattleInfoPanelCenterY(): number {
 
 function clearBattleItemSelection(): void {
   selectedItemId = null
+  selectedItemSide = null
+  selectedItemInfoKey = null
+  selectedItemInfoMode = 'simple'
   enemyZone?.setSelected(null)
   playerZone?.setSelected(null)
   itemInfoPopup?.hide()
 }
 
-function showBattleItemInfo(instanceId: string, side: 'player' | 'enemy'): void {
+function showBattleItemInfo(instanceId: string, side: 'player' | 'enemy', keepMode = false): void {
   if (!engine || !itemInfoPopup) return
   const board = engine.getBoardState()
   const hit = board.items.find((it) => it.id === instanceId && it.side === side)
@@ -1145,6 +1227,33 @@ function showBattleItemInfo(instanceId: string, side: 'player' | 'enemy'): void 
   if (!item) return
 
   selectedItemId = instanceId
+  selectedItemSide = side
+  const runtimeState = engine.getRuntimeState().find((it) => it.id === instanceId)
+  const runtimeOverride: ItemInfoRuntimeOverride | undefined = runtimeState
+    ? {
+      cooldownMs: Math.max(0, runtimeState.cooldownMs),
+      damage: Math.max(0, runtimeState.damage),
+      shield: Math.max(0, runtimeState.shield),
+      heal: Math.max(0, runtimeState.heal),
+      burn: Math.max(0, runtimeState.burn),
+      poison: Math.max(0, runtimeState.poison),
+      multicast: Math.max(1, runtimeState.multicast),
+      ammoCurrent: Math.max(0, runtimeState.ammoCurrent),
+      ammoMax: Math.max(0, runtimeState.ammoMax),
+    }
+    : undefined
+  const nextKey = `${side}:${instanceId}:${hit.tier}:${runtimeOverride?.damage ?? -1}:${runtimeOverride?.shield ?? -1}:${runtimeOverride?.multicast ?? -1}:${runtimeOverride?.ammoCurrent ?? -1}:${runtimeOverride?.ammoMax ?? -1}`
+  if (keepMode && selectedItemInfoKey === nextKey) return
+  if (!keepMode) {
+    if (selectedItemInfoKey === nextKey) {
+      selectedItemInfoMode = selectedItemInfoMode === 'simple' ? 'detailed' : 'simple'
+    } else {
+      selectedItemInfoKey = nextKey
+      selectedItemInfoMode = 'simple'
+    }
+  } else {
+    selectedItemInfoKey = nextKey
+  }
   enemyZone?.setSelected(side === 'enemy' ? instanceId : null)
   playerZone?.setSelected(side === 'player' ? instanceId : null)
 
@@ -1158,9 +1267,10 @@ function showBattleItemInfo(instanceId: string, side: 'player' | 'enemy'): void 
     cooldown: getDebugCfg('itemInfoCooldownFontSize'),
     priceCorner: getDebugCfg('itemInfoPriceCornerFontSize'),
     desc: getDebugCfg('itemInfoDescFontSize'),
+    simpleDesc: getDebugCfg('itemInfoSimpleDescFontSize'),
   })
   itemInfoPopup.setCenterY(getBattleInfoPanelCenterY())
-  itemInfoPopup.show(item, 0, 'none', hit.tier)
+  itemInfoPopup.show(item, 0, 'none', hit.tier, undefined, selectedItemInfoMode, runtimeOverride)
 }
 
 export const BattleScene: Scene = {
@@ -1183,6 +1293,11 @@ export const BattleScene: Scene = {
     root = new Container()
     root.sortableChildren = true
     stage.addChild(root)
+    battleIntroElapsedMs = 0
+    battleIntroDurationMs = Math.max(0, getDebugCfg('battleIntroFadeInMs'))
+    battleExitTransitionElapsedMs = 0
+    battleExitTransitionDurationMs = 0
+    root.alpha = battleIntroDurationMs > 0 ? 0 : 1
 
     titleText = new Text({
       text: '战斗阶段',
@@ -1338,6 +1453,15 @@ export const BattleScene: Scene = {
     battleEndMask.eventMode = 'static'
     battleEndMask.visible = false
     root.addChild(battleEndMask)
+
+    sceneFadeOverlay = new Graphics()
+    sceneFadeOverlay.zIndex = 220
+    sceneFadeOverlay.eventMode = 'none'
+    sceneFadeOverlay.rect(0, 0, CANVAS_W, CANVAS_H)
+    sceneFadeOverlay.fill({ color: 0x000000, alpha: 1 })
+    sceneFadeOverlay.alpha = 0
+    sceneFadeOverlay.visible = false
+    root.addChild(sceneFadeOverlay)
 
     speedBtn = makeSpeedButton()
     root.addChild(speedBtn)
@@ -1522,6 +1646,7 @@ export const BattleScene: Scene = {
     speedBtn = null
     speedBtnText = null
     battleEndMask = null
+    sceneFadeOverlay = null
     heroHudG = null
     enemyHpInfoCon = null
     playerHpInfoCon = null
@@ -1543,6 +1668,9 @@ export const BattleScene: Scene = {
     offFatigueStartEvent?.(); offFatigueStartEvent = null
     itemInfoPopup = null
     selectedItemId = null
+    selectedItemSide = null
+    selectedItemInfoKey = null
+    selectedItemInfoMode = 'simple'
     fatigueToastCon = null
     fatigueToastBg = null
     fatigueToastText = null
@@ -1560,6 +1688,10 @@ export const BattleScene: Scene = {
     playerHeroHitElapsedMs = -1
     playerHeroIdleElapsedMs = 0
     battleDay = 1
+    battleIntroElapsedMs = 0
+    battleIntroDurationMs = 0
+    battleExitTransitionElapsedMs = 0
+    battleExitTransitionDurationMs = 0
     enteredSnapshot = null
     battleSpeed = 1
     activeProjectileCount = 0
@@ -1585,9 +1717,11 @@ export const BattleScene: Scene = {
   },
   update(dt: number) {
     if (!engine || !enemyZone || !playerZone || !enemyCdOverlay || !playerCdOverlay || !enemyFreezeOverlay || !playerFreezeOverlay || !enemyStatusLayer || !playerStatusLayer) return
+    if (tickBattleExitTransition(dt * 1000)) return
     const speed = Math.max(1, battleSpeed)
     const simDt = dt * speed
-    engine.update(simDt)
+    const introDone = tickBattleIntro(simDt * 1000)
+    if (introDone) engine.update(simDt)
     enemyPresentationVisible = !engine.isFinished()
     enemyZone.visible = enemyPresentationVisible
     if (enemyBossSprite) enemyBossSprite.visible = enemyPresentationVisible
@@ -1607,6 +1741,8 @@ export const BattleScene: Scene = {
     drawCooldownOverlay(playerZone, playerCdOverlay, playerItems, runtimeChargePercentById)
     drawCooldownOverlay(enemyZone, enemyCdOverlay, enemyItems, runtimeChargePercentById)
     const runtimeById = new Map(runtime.map((it) => [it.id, it]))
+    updateRuntimeStatBadges(playerZone, playerItems, runtimeById)
+    updateRuntimeStatBadges(enemyZone, enemyItems, runtimeById)
     updateZoneStatusFx(playerZone, 'player', playerItems, runtimeById, playerFreezeOverlay, playerStatusLayer)
     updateZoneStatusFx(enemyZone, 'enemy', enemyItems, runtimeById, enemyFreezeOverlay, enemyStatusLayer)
 
@@ -1658,9 +1794,10 @@ export const BattleScene: Scene = {
 
     if (itemInfoPopup?.visible) {
       itemInfoPopup.setCenterY(getBattleInfoPanelCenterY())
-      if (selectedItemId) {
-        const runtimeHit = runtime.find((it) => it.id === selectedItemId)
-        if (!runtimeHit) clearBattleItemSelection()
+      if (selectedItemId && selectedItemSide) {
+        const boardHit = board.items.find((it) => it.id === selectedItemId && it.side === selectedItemSide)
+        if (!boardHit) clearBattleItemSelection()
+        else showBattleItemInfo(selectedItemId, selectedItemSide, true)
       }
     }
   },
