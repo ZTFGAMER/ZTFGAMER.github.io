@@ -26,6 +26,17 @@
   - TestFlight 上传失败：`cfBundleVersion` 重复（当前 `5` 已被使用，需提升 build number 后重传）。
   - 失败原文关键：`The bundle version must be higher than the previously uploaded version (previousBundleVersion: 5)`。
 
+### 本次对话追加（2026-03-02，GHE已推送 + TestFlight上传成功）
+
+- 处理结果更新：
+  - 已将 iOS build number 从 `5` 提升到 `6`（`ios/project.yml` 的 `CURRENT_PROJECT_VERSION`）。
+  - 重新执行 `xcodegen -> archive -> export -> upload` 后，TestFlight 上传成功。
+  - 上传成功回执：`Delivery UUID: 34f8eb2a-1b9b-45b2-89d0-6cc698834206`。
+- 代码仓库：
+  - 已提交并推送到 GHE `main` 分支。
+  - commit: `ce5f0da` (`feat: stabilize drag interactions and publish iOS build 6`)。
+- 备注：`ios/packaging.config.local.json` 含本机本地打包参数，保留未入库（当前为 untracked）。
+
 ### 本次对话追加（2026-03-02，用户手动回退显示口径确认）
 
 - 用户确认已手动改回信息展示口径：
