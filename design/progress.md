@@ -13,8 +13,9 @@
 - 已完成工程验证：`npm test` 通过（83/83）。
 - 当前收口动作：
   - [x] 更新进度文档（本条）
-  - [ ] 上传 GHE（commit + push）
-  - [ ] 执行 TestFlight 打包并记录结果
+  - [x] 上传 GHE（commit + push）
+  - [x] 执行 TestFlight 打包并记录结果
+  - 结果：首次上传因 build number=6 重复被拒；已提升到 build number=7 并重新打包上传成功。
 
 ### 本次对话追加（2026-03-03，Demo设计文档定稿）
 
