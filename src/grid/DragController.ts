@@ -25,6 +25,7 @@ import type { ItemSizeNorm }   from './GridSystem'
 import { getConfig } from '@/config/debugConfig'
 import { trySqueezePlace, planUnifiedSqueeze, planCrossZoneSwap } from './SqueezeLogic'
 import type { SqueezePlan } from './VirtualGrid'
+import { BackpackLogic } from './BackpackLogic'
 
 // ---- 内部工具 ----
 
@@ -37,6 +38,11 @@ function getSizeCellDim(size: ItemSizeNorm): { w: number; h: number } {
 interface ZonePair {
   system: GridSystem
   view:   GridZone
+}
+
+interface CrossSwapRepackPlan {
+  transfers: Array<{ instanceId: string; newCol: number; newRow: number }>
+  existing: Array<{ instanceId: string; defId: string; size: ItemSizeNorm; col: number; row: number }>
 }
 
 export interface DragMovePayload {
@@ -59,6 +65,7 @@ export interface SpecialDropPayload {
 // ============================================================
 export class DragController {
   private pairs: ZonePair[] = []
+  private backpackLogic = new BackpackLogic()
   private enabled = true
   onDragStart: (instanceId: string) => void = () => {}
   onDragMove:  (payload: DragMovePayload) => void = () => {}
@@ -113,7 +120,7 @@ export class DragController {
   }
 
   private isDragDebugEnabled(): boolean {
-    return true
+    return false
   }
 
   private dragDebug(event: string, payload: Record<string, unknown>): void {
@@ -295,23 +302,20 @@ export class DragController {
     const { pair: targetPair, cell } = best
     const container = this.dragContainer
 
-    // 行号按命中格 cell.row 走（背包 2 行场景可正常放下排）
+    // 行号按命中格 cell.row 走（背包 2 行允许自由重排）
     const finalRow = cell.row
-    const homeLogicalRow = home.system.rows > 1 ? this.dragOrigItem.row : null
-    const targetLogicalRow = targetPair.system.rows > 1 ? finalRow : null
-    const isLogicalSameZone = targetPair === home && homeLogicalRow === targetLogicalRow
-    if (targetPair === home && home.system.rows > 1 && !isLogicalSameZone) {
-      this.dragDebug('cross_row_blocked', { id, fromRow: homeLogicalRow, toRow: targetLogicalRow })
-      this.doSnapBack()
+    const isLogicalSameZone = targetPair === home
+
+    if (targetPair.system.rows > 1 && targetPair === home) {
+      const handled = this.tryDropToBackpack(targetPair, home, item, container, finalRow, cell.col)
+      if (!handled) this.doSnapBack()
       return
     }
+
     const canDrop  = this.canPlaceInVisibleCols(targetPair, cell.col, finalRow, item.size, id)
     this.dragDebug('target', {
       id,
-      homeRows: home.system.rows,
-      targetRows: targetPair.system.rows,
-      homeLogicalRow,
-      targetLogicalRow,
+      mode: 'battle',
       isLogicalSameZone,
       col: cell.col,
       row: finalRow,
@@ -324,6 +328,7 @@ export class DragController {
     let squeezeMoves: { instanceId: string; newCol: number; newRow: number }[] = []
     let crossTransfers: { instanceId: string; newCol: number; newRow: number }[] = []
     let swapTransfers: { instanceId: string; newCol: number; newRow: number }[] = []
+    let swapRepackPlan: CrossSwapRepackPlan | null = null
     const localCommits: Array<{ pair: ZonePair; revert: Array<{ instanceId: string; fromCol: number; fromRow: number; toCol: number; toRow: number }> }> = []
     let plannedDropCol = cell.col
     let plannedDropRow = finalRow
@@ -361,12 +366,28 @@ export class DragController {
           this.dragOrigItem.col,
           this.dragOrigItem.row,
           this.dragOrigItem.size,
-          targetPair === home && targetPair.system.rows > 1 && !isLogicalSameZone,
+          targetPair.system.rows > 1,
         )
         if (swap) {
           swapTransfers = swap.transfers
           plannedDropCol = swap.dropCol
           plannedDropRow = swap.dropRow
+        }
+      }
+
+      if (!unified && swapTransfers.length === 0) {
+        const repackPlan = this.planCrossSwapViaBackpackRepack(
+          targetPair,
+          home,
+          cell.col,
+          finalRow,
+          item.size,
+          id,
+          this.dragOrigItem.row,
+        )
+        if (repackPlan && repackPlan.transfers.length > 0) {
+          swapTransfers = repackPlan.transfers
+          swapRepackPlan = repackPlan
         }
       }
 
@@ -449,6 +470,13 @@ export class DragController {
       } else {
         const sourcePair = targetPair
         const destPair = home
+        if (swapRepackPlan && destPair.system.rows > 1) {
+          const moved = this.backpackLogic.applyPlacementPlan(destPair.system, swapRepackPlan.existing)
+          const squeezeMs = getConfig('squeezeMs')
+          for (const mv of moved) {
+            destPair.view.animateToCell(mv.instanceId, mv.toCol, mv.toRow, squeezeMs)
+          }
+        }
         for (const tr of swapTransfers) {
           const movedItem = sourcePair.system.getItem(tr.instanceId)
           if (!movedItem) continue
@@ -599,11 +627,71 @@ export class DragController {
     this.onDragEnd()
   }
 
+  private tryDropToBackpack(
+    targetPair: ZonePair,
+    home: ZonePair,
+    item: { instanceId: string; defId: string; size: ItemSizeNorm },
+    container: Container,
+    preferredRow: number,
+    preferredCol: number,
+  ): boolean {
+    const plan = this.backpackLogic.buildDropPlan(
+      targetPair.system,
+      targetPair.view.activeColCount,
+      {
+        instanceId: item.instanceId,
+        defId: item.defId,
+        size: item.size,
+      },
+      { col: preferredCol, row: preferredRow },
+    )
+    if (!plan) return false
+
+    this.clearSqueezePreview()
+    this.dragContainer = null
+
+    home.system.remove(item.instanceId)
+    const moved = this.backpackLogic.applyDropPlan(targetPair.system, plan)
+
+    const squeezeMs = getConfig('squeezeMs')
+    for (const mv of moved) {
+      if (mv.instanceId === item.instanceId) continue
+      targetPair.view.animateToCell(mv.instanceId, mv.toCol, mv.toRow, squeezeMs)
+    }
+
+    if (targetPair !== home) {
+      const draggedTier = home.view.getItemTier(item.instanceId)
+      this.dragLayer.removeChild(container)
+      container.destroy({ children: true })
+      home.view.forgetDraggedItem(item.instanceId)
+      targetPair.view.addItem(
+        item.instanceId,
+        item.defId,
+        item.size,
+        plan.incoming.col,
+        plan.incoming.row,
+        draggedTier,
+      ).then(() => {
+        targetPair.view.setItemTier(item.instanceId, draggedTier)
+        this.refreshZone(targetPair.view)
+      })
+    } else {
+      this.dragLayer.removeChild(container)
+      home.view.snapToCellFromDrag(item.instanceId, container, plan.incoming.col, plan.incoming.row)
+    }
+
+    this.onDragEnd()
+    return true
+  }
+
   // ---- 高亮层 ----
 
   private updateHighlight(): void {
     if (!this.dragSize || !this.activeId || !this.homeZone || !this.dragContainer || !this.dragOrigItem) return
-    if (this.suppressSqueeze) this.clearSqueezePreview()
+    if (this.suppressSqueeze) {
+      this.clearSqueezePreview()
+      return
+    }
     // 优先从 system 读取，fallback 到 dragOrigItem（挤出计时器提交后 DRAG 可能不在 system）
     const item = this.homeZone.system.getItem(this.activeId) ?? { instanceId: this.activeId, ...this.dragOrigItem }
 
@@ -614,12 +702,22 @@ export class DragController {
     if (best) {
       const { pair, cell } = best
       const finalRow = cell.row
-      const homeLogicalRow = this.homeZone.system.rows > 1 ? this.dragOrigItem.row : null
-      const targetLogicalRow = pair.system.rows > 1 ? finalRow : null
-      const isLogicalSameZone = pair === this.homeZone && homeLogicalRow === targetLogicalRow
-      if (pair === this.homeZone && this.homeZone.system.rows > 1 && !isLogicalSameZone) {
+      const isLogicalSameZone = pair === this.homeZone
+      if (pair.system.rows > 1 && pair === this.homeZone) {
         this.clearSqueezePreview()
-        pair.view.highlightCells(cell.col, finalRow, item.size, false)
+        const plan = this.backpackLogic.buildDropPlan(
+          pair.system,
+          pair.view.activeColCount,
+          {
+            instanceId: this.activeId,
+            defId: item.defId,
+            size: item.size,
+          },
+          { col: cell.col, row: finalRow },
+        )
+        for (const other of this.pairs)
+          if (other !== pair) other.view.clearHighlight()
+        pair.view.highlightCells(cell.col, finalRow, item.size, !!plan)
         return
       }
       const canDrop  = this.canPlaceInVisibleCols(pair, cell.col, finalRow, item.size, this.activeId)
@@ -670,11 +768,26 @@ export class DragController {
           this.dragOrigItem.col,
           this.dragOrigItem.row,
           this.dragOrigItem.size,
-          pair === this.homeZone && pair.system.rows > 1 && !isLogicalSameZone,
+          pair.system.rows > 1,
         )
         if (swap) {
           this.clearSqueezePreview()
           pair.view.highlightCells(swap.dropCol, swap.dropRow, item.size, true)
+          return
+        }
+
+        const repackTransfers = this.planCrossSwapViaBackpackRepack(
+          pair,
+          home,
+          cell.col,
+          finalRow,
+          item.size,
+          this.activeId,
+          this.dragOrigItem.row,
+        )
+        if (repackTransfers && repackTransfers.transfers.length > 0) {
+          this.clearSqueezePreview()
+          pair.view.highlightCells(cell.col, finalRow, item.size, true)
           return
         }
 
@@ -994,6 +1107,52 @@ export class DragController {
       }
     }
     return null
+  }
+
+  private planCrossSwapViaBackpackRepack(
+    targetPair: ZonePair,
+    homePair: ZonePair,
+    dropCol: number,
+    dropRow: number,
+    draggedSize: ItemSizeNorm,
+    draggedId: string,
+    preferredIncomingRow?: number,
+  ): CrossSwapRepackPlan | null {
+    if (targetPair === homePair) return null
+    if (targetPair.system.rows !== 1) return null
+    if (homePair.system.rows <= 1) return null
+
+    const blockerIds = this.listOverlapIds(targetPair, dropCol, dropRow, draggedSize, draggedId)
+    if (blockerIds.length === 0) return null
+
+    const incoming = blockerIds.flatMap((id) => {
+      const it = targetPair.system.getItem(id)
+      if (!it) return []
+      return [{ instanceId: it.instanceId, defId: it.defId, size: it.size }]
+    })
+    if (incoming.length === 0) return null
+
+    const plan = this.backpackLogic.buildTransferPlan(
+      homePair.system,
+      homePair.view.activeColCount,
+      incoming,
+      preferredIncomingRow,
+    )
+    if (!plan) return null
+
+    const posById = new Map(plan.map((p) => [p.instanceId, p] as const))
+    const transfers: Array<{ instanceId: string; newCol: number; newRow: number }> = []
+    for (const it of incoming) {
+      const p = posById.get(it.instanceId)
+      if (!p) return null
+      transfers.push({ instanceId: it.instanceId, newCol: p.col, newRow: p.row })
+    }
+
+    const incomingSet = new Set(incoming.map((it) => it.instanceId))
+    const existing = plan
+      .filter((p) => !incomingSet.has(p.instanceId))
+      .map((p) => ({ instanceId: p.instanceId, defId: p.defId, size: p.size, col: p.col, row: p.row }))
+    return { transfers, existing }
   }
 
   private isSqueezePlanVisible(

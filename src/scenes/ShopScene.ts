@@ -90,8 +90,13 @@ let expandTickFn:   (() => void) | null = null
 let flashOverlay:   Graphics     | null = null
 let gridDragFlashTick: (() => void) | null = null
 let gridDragFlashOverlay: Graphics | null = null
+let gridDragSellZoneCon: Container | null = null
+let gridDragSellZoneBg: Graphics | null = null
+let gridDragSellZoneText: Text | null = null
 let gridDragCanSell = false
 let gridDragCanToBackpack = false
+let gridDragSellPrice = 0
+let gridDragSellHot = false
 let offDebugCfg:    (() => void) | null = null
 let offPhaseChange: (() => void) | null = null
 let onStageTapHidePopup: ((e: FederatedPointerEvent) => void) | null = null
@@ -1348,6 +1353,11 @@ function refreshShopUI(): void {
     refreshCostText.x    = getDebugCfg('refreshBtnX') - refreshCostText.width / 2
     refreshCostText.style.fill = shopManager.gold >= SHOP_QUICK_BUY_PRICE ? 0xffd700 : 0xff4444
   }
+  if (refreshBtnHandle) {
+    refreshBtnHandle.setSubLabel(`💰 ${shopManager.gold}/${SHOP_QUICK_BUY_PRICE}`)
+    const sub = refreshBtnHandle.container.getChildByName('sell-price') as Text | null
+    if (sub) sub.style.fill = shopManager.gold >= SHOP_QUICK_BUY_PRICE ? 0xffd700 : 0xff6666
+  }
   updateMiniMap()
   refreshUpgradeHints()
   refreshBattlePassiveStatBadges(true)
@@ -2173,24 +2183,82 @@ function applyBackpackPlanWithTransferred(plan: PackPlacement[], transferredIds:
   playBackpackTransferMiniAnim(transferAnimSeeds)
 }
 
-function _isOverSellBtn(gx: number, gy: number): boolean {
-  const cx = getDebugCfg('sellBtnX')
-  const cy = getDebugCfg('sellBtnY')
-  const r  = BTN_RADIUS + 24
-  const c = getApp().stage.toGlobal({ x: cx, y: cy })
-  return (gx - c.x) ** 2 + (gy - c.y) ** 2 <= r * r
+function getGridDragSellAreaTopLocalY(): number {
+  const yTop = Math.min(
+    getDebugCfg('sellBtnY'),
+    getDebugCfg('refreshBtnY'),
+    getDebugCfg('phaseBtnY'),
+  )
+  return yTop - Math.round(BTN_RADIUS * 0.72)
 }
 
-function startGridDragButtonFlash(stage: Container, canSell: boolean, canToBackpack: boolean): void {
+function isOverGridDragSellArea(gx: number, gy: number): boolean {
+  const stage = getApp().stage
+  const top = stage.toGlobal({ x: 0, y: getGridDragSellAreaTopLocalY() })
+  const left = stage.toGlobal({ x: 0, y: 0 })
+  const right = stage.toGlobal({ x: CANVAS_W, y: 0 })
+  const x0 = Math.min(left.x, right.x)
+  const x1 = Math.max(left.x, right.x)
+  return gy >= top.y && gx >= x0 && gx <= x1
+}
+
+function isOverAnyGridDropTarget(gx: number, gy: number, size: ItemSizeNorm): boolean {
+  const dragOffsetY = getDebugCfg('dragYOffset')
+  const overBattle = battleView?.pixelToCellForItem(gx, gy, size, dragOffsetY)
+  if (overBattle) return true
+  const overBackpack = backpackView?.pixelToCellForItem(gx, gy, size, dragOffsetY)
+  return !!overBackpack
+}
+
+function updateGridDragSellAreaHover(gx: number, gy: number, size: ItemSizeNorm): void {
+  if (!gridDragCanSell) {
+    gridDragSellHot = false
+    return
+  }
+  const hot = isOverGridDragSellArea(gx, gy) && !isOverAnyGridDropTarget(gx, gy, size)
+  gridDragSellHot = hot
+}
+
+function startGridDragButtonFlash(stage: Container, canSell: boolean, canToBackpack: boolean, sellPrice = 0): void {
   stopGridDragButtonFlash()
   gridDragCanSell = canSell
   gridDragCanToBackpack = canToBackpack
+  gridDragSellPrice = sellPrice
+  gridDragSellHot = false
   if (!gridDragCanSell && !gridDragCanToBackpack) return
+
+  if (gridDragCanSell) {
+    if (refreshBtnHandle) refreshBtnHandle.container.visible = false
+    if (sellBtnHandle) sellBtnHandle.container.visible = false
+    if (phaseBtnHandle) phaseBtnHandle.container.visible = false
+  }
 
   const overlay = new Graphics()
   const dragIdx = stage.children.length - 1
   stage.addChildAt(overlay, Math.max(0, dragIdx))
   gridDragFlashOverlay = overlay
+
+  if (gridDragCanSell) {
+    const zone = new Container()
+    const bg = new Graphics()
+    const txt = new Text({
+      text: '',
+      style: {
+        fontSize: getDebugCfg('shopButtonLabelFontSize'),
+        fill: 0xffb3b3,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        align: 'center',
+      },
+    })
+    txt.anchor.set(0.5)
+    zone.addChild(bg)
+    zone.addChild(txt)
+    stage.addChildAt(zone, Math.max(0, dragIdx))
+    gridDragSellZoneCon = zone
+    gridDragSellZoneBg = bg
+    gridDragSellZoneText = txt
+  }
 
   let t = 0
   gridDragFlashTick = () => {
@@ -2215,6 +2283,22 @@ function startGridDragButtonFlash(stage: Container, canSell: boolean, canToBackp
       overlay.circle(cx, cy, BTN_RADIUS + 14)
       overlay.stroke({ color: 0xffcc44, width: 3, alpha: a * 2.4 })
     }
+
+    if (gridDragSellZoneBg && gridDragSellZoneText) {
+      const top = getGridDragSellAreaTopLocalY()
+      const h = Math.max(40, CANVAS_H - top)
+      const hot = gridDragSellHot
+      gridDragSellZoneBg.clear()
+      gridDragSellZoneBg.roundRect(0, top, CANVAS_W, h, 16)
+      gridDragSellZoneBg.fill({ color: 0xaa2222, alpha: hot ? 0.46 : 0.28 })
+      gridDragSellZoneBg.stroke({ color: 0xff5f5f, width: hot ? 4 : 2, alpha: hot ? 0.9 : 0.55 })
+
+      gridDragSellZoneText.style.fill = hot ? 0xfff0f0 : 0xffb3b3
+      gridDragSellZoneText.style.fontSize = getDebugCfg('shopButtonLabelFontSize')
+      gridDragSellZoneText.text = `拖动到此处出售\n💰 ${gridDragSellPrice}G`
+      gridDragSellZoneText.x = CANVAS_W / 2
+      gridDragSellZoneText.y = top + h / 2
+    }
   }
   Ticker.shared.add(gridDragFlashTick)
 }
@@ -2222,8 +2306,19 @@ function startGridDragButtonFlash(stage: Container, canSell: boolean, canToBackp
 function stopGridDragButtonFlash(): void {
   if (gridDragFlashTick) { Ticker.shared.remove(gridDragFlashTick); gridDragFlashTick = null }
   if (gridDragFlashOverlay) { gridDragFlashOverlay.destroy(); gridDragFlashOverlay = null }
+  if (gridDragSellZoneCon) { gridDragSellZoneCon.destroy({ children: true }); gridDragSellZoneCon = null }
+  gridDragSellZoneBg = null
+  gridDragSellZoneText = null
   gridDragCanSell = false
   gridDragCanToBackpack = false
+  gridDragSellPrice = 0
+  gridDragSellHot = false
+
+  const inShop = isShopInputEnabled()
+  if (refreshBtnHandle) refreshBtnHandle.container.visible = inShop
+  if (sellBtnHandle) sellBtnHandle.container.visible = inShop
+  if (phaseBtnHandle) phaseBtnHandle.container.visible = true
+  applySellButtonState()
 }
 
 
@@ -2707,15 +2802,15 @@ export const ShopScene: Scene = {
       const canSell = true
       const canToBackpack = inBattle && !showingBackpack
         && canBackpackAcceptByAutoPack(item.id, normalizeSize(item.size))
-      startGridDragButtonFlash(stage, canSell, canToBackpack)
+      startGridDragButtonFlash(stage, canSell, canToBackpack, sellPrice)
     }
     drag.onSpecialDrop = ({ instanceId, anchorGx, anchorGy, size, homeSystem, homeView, defId }) => {
       if (!shopManager) return false
       const item = getAllItems().find(i => i.id === defId)
       if (!item) return false
 
-      // 1) 拖到出售按钮：直接出售
-      if (_isOverSellBtn(anchorGx, anchorGy)) {
+      // 1) 拖到下方出售区域：直接出售（若命中任意格子候选，优先走落位/换位）
+      if (isOverGridDragSellArea(anchorGx, anchorGy) && !isOverAnyGridDropTarget(anchorGx, anchorGy, size)) {
         homeSystem.remove(instanceId)
         const tier = getInstanceTier(instanceId)
         removeInstanceMeta(instanceId)
@@ -2772,6 +2867,8 @@ export const ShopScene: Scene = {
       return false
     }
     drag.onDragMove = ({ instanceId, anchorGx, anchorGy, size }) => {
+      updateGridDragSellAreaHover(anchorGx, anchorGy, size)
+
       // 可用状态随时重算（例如拖拽过程中背包可见状态变化）
       if (gridDragCanToBackpack) {
         gridDragCanToBackpack = !showingBackpack
@@ -2844,10 +2941,13 @@ export const ShopScene: Scene = {
         g.stroke({ color: active ? activeColor : inactiveColor, width: 3 })
         if (active) g.fill({ color: activeColor, alpha: 0.15 })
         txt.style.fill = active ? activeColor : inactiveColor
+        const gap = Math.max(2, Math.round(txt.height * 0.08))
+        const groupH = sub.visible ? (txt.height + gap + sub.height) : txt.height
+        const groupTop = curCy - groupH / 2
         txt.x = curCx - txt.width / 2
-        txt.y = curCy - txt.height / 2
+        txt.y = groupTop
         sub.x = curCx - sub.width / 2
-        sub.y = curCy + BTN_RADIUS + 6
+        sub.y = txt.y + txt.height + gap
         container.hitArea = new Rectangle(curCx - BTN_RADIUS, curCy - BTN_RADIUS, BTN_RADIUS * 2, BTN_RADIUS * 2)
       }
 
@@ -2915,10 +3015,13 @@ export const ShopScene: Scene = {
         g.stroke({ color: drawColor, width: 3 })
         g.fill({ color: drawColor, alpha: 0.18 })
         txt.style.fill = drawColor
+        const gap = Math.max(2, Math.round(txt.height * 0.08))
+        const groupH = sub.visible ? (txt.height + gap + sub.height) : txt.height
+        const groupTop = curCy - groupH / 2
         txt.x = curCx - txt.width / 2
-        txt.y = curCy - txt.height / 2
+        txt.y = groupTop
         sub.x = curCx - sub.width / 2
-        sub.y = top + PHASE_BTN_H + 6
+        sub.y = txt.y + txt.height + gap
         container.hitArea = new Rectangle(left, top, PHASE_BTN_W, PHASE_BTN_H)
       }
 
@@ -2963,14 +3066,10 @@ export const ShopScene: Scene = {
     refreshBtnHandle = refreshBtn
     btnRow.addChild(refreshBtn.container)
 
-    // 金币/购买费用（合并显示）
-    refreshCostText = new Text({
-      text: `💰 ${shopManager.gold}/${SHOP_QUICK_BUY_PRICE}`,
-      style: { fontSize: cfg.textSizes.refreshCost, fill: 0xffd700, fontFamily: 'Arial', fontWeight: 'bold' },
-    })
-    refreshCostText.x = getDebugCfg('refreshBtnX') - refreshCostText.width / 2
-    refreshCostText.y = getDebugCfg('refreshBtnY') + BTN_RADIUS + 6
-    btnRow.addChild(refreshCostText)
+    refreshBtn.setSubLabel(`💰 ${shopManager.gold}/${SHOP_QUICK_BUY_PRICE}`)
+
+    // 保留占位引用，避免旧流程空指针
+    refreshCostText = null
 
     goldText = null
 

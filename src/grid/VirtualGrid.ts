@@ -22,7 +22,8 @@ export interface SqueezePlan {
 
 // ============================================================
 export class VirtualGrid {
-  readonly cols = 6
+  readonly cols: number
+  readonly rows: number
   // grid[col][row] = instanceId | null
   grid: (string | null)[][]
   items: Map<string, PlacedItem>
@@ -31,6 +32,8 @@ export class VirtualGrid {
     grid:  (string | null)[][],
     items: Map<string, PlacedItem>,
   ) {
+    this.cols = grid.length
+    this.rows = grid[0]?.length ?? 1
     this.grid  = grid
     this.items = items
   }
@@ -65,7 +68,7 @@ export class VirtualGrid {
   /** 放置物品（不做冲突检测，由调用方保证目标格已清空） */
   place(col: number, row: number, size: ItemSizeNorm, defId: string, instanceId: string): boolean {
     const { w, h } = VSIZE_MAP[size]
-    if (col < 0 || col + w > this.cols || row < 0 || row + h > 1) return false
+    if (col < 0 || col + w > this.cols || row < 0 || row + h > this.rows) return false
     for (let c = col; c < col + w; c++)
       for (let r = row; r < row + h; r++)
         this.grid[c][r] = instanceId
@@ -76,7 +79,7 @@ export class VirtualGrid {
   /** 检测 col/row 处能否放置 size，排除 excludeId 自身 */
   canPlaceExcluding(col: number, row: number, size: ItemSizeNorm, excludeId: string): boolean {
     const { w, h } = VSIZE_MAP[size]
-    if (col < 0 || col + w > this.cols || row < 0 || row + h > 1) return false
+    if (col < 0 || col + w > this.cols || row < 0 || row + h > this.rows) return false
     for (let c = col; c < col + w; c++)
       for (let r = row; r < row + h; r++) {
         const cell = this.grid[c][r]

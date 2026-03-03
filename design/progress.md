@@ -5,6 +5,195 @@
 
 ---
 
+### 本次对话追加（2026-03-03，阶段验收通过：准备回传主程 + GHE更新 + 打包）
+
+- 验收结果：
+  - 背包第二排与战斗区换位链路通过；
+  - 拖拽出售大区视觉/交互通过；
+  - 按钮主副文案布局通过。
+- 本次收口动作：
+  - [x] 更新进度文档（本条）；
+  - [ ] 回传主程 Notebook 做阶段 Review 归档；
+  - [ ] 更新 GHE（提交并推送当前分支）；
+  - [ ] 执行打包并记录结果。
+- 下一步计划：
+  - 完成 Notebook 回传、GHE 推送与打包后，等待下一阶段需求输入。
+
+### 本次对话追加（2026-03-03，出售大区下移 + 第二排下沿拾取进一步收窄）
+
+- 用户反馈：
+  - 红色出售大区视觉仍偏高，压到背包边缘；
+  - 背包第二排下侧拾取仍需再小一点。
+- 调整：
+  - `src/scenes/ShopScene.ts`
+    - 出售大区上边界继续下移：`getGridDragSellAreaTopLocalY()` 从 `yTop - BTN_RADIUS - 16` 进一步调整为 `yTop - BTN_RADIUS*0.72`，减少与背包区视觉重叠。
+  - `src/grid/GridZone.ts`
+    - 多行区域下沿拾取裁切从 `0.2*CELL_SIZE` 提升到 `0.32*CELL_SIZE`，第二排下沿误拾取进一步降低。
+- 回归验证：`npm test` 通过（82/82）。
+
+### 本次对话追加（2026-03-03，拖拽出售大区改造 + 背包下沿拾取缩小）
+
+- 用户需求：
+  - 背包第二排下方拾取区域减小，降低误触；
+  - 拖拽中下方整块区域都视为出售；
+  - 拖拽时隐藏底部按钮，改为红色大出售区；
+  - 悬停到出售区时出现红色强化特效与文案“拖动到此处出售 + 售价”。
+- 已实现：
+  - `src/grid/GridZone.ts`
+    - 多行网格物品 hitArea 下边缘缩小（`MULTI_ROW_PICKUP_BOTTOM_TRIM`），减少背包下沿误触拾取。
+  - `src/scenes/ShopScene.ts`
+    - 新增拖拽出售大区判定 `isOverGridDragSellArea()` 与 hover 判定 `updateGridDragSellAreaHover()`；
+    - `onSpecialDrop` 改为“命中下方出售大区且未命中任何格子候选”才出售（保持先识别放置再识别出售）；
+    - `startGridDragButtonFlash` 升级：拖拽可出售时隐藏底部按钮，并绘制全宽红色出售区 + 价格文案；
+    - 悬停出售区时红色高亮强化（边框/底色/文案颜色增强）；
+    - `stopGridDragButtonFlash` 结束拖拽后恢复底部按钮可见性。
+- 额外同步：
+  - 拖拽调试日志持续关闭（`DragController.isDragDebugEnabled() = false`）。
+- 回归验证：
+  - `npm test` 通过（82/82）；
+  - `npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-03，按钮主副文案共同居中）
+
+- 用户反馈：购买/出售按钮中，主文案在按钮中心、副文案在下方，整体视觉偏下；希望“主文案+金币副文案”作为整体上下居中。
+- 修复：`src/scenes/ShopScene.ts`
+  - `makeCircleBtn` 与 `makePhaseRectBtn` 的 `redraw()` 改为按“主文案+副文案”整体计算组高并居中布局；
+  - 当副文案隐藏时回退为主文案单独居中。
+- 金币字号：两个按钮副文案继续统一使用同一字号配置 `sellButtonSubPriceFontSize`。
+- 回归验证：`npm test` 通过（82/82）。
+
+### 本次对话追加（2026-03-03，购买/出售按钮金币文案内置显示）
+
+- 用户需求：
+  - 出售按钮金币数恢复并显示在按钮内部；
+  - 购买按钮也显示金币文案，位于“购买”字样下方，居中对齐。
+- 已实现：`src/scenes/ShopScene.ts`
+  - 将按钮副标题（金币文案）位置改为按钮内部、主标题下方居中：
+    - 圆形按钮 `makeCircleBtn`；
+    - 矩形按钮 `makePhaseRectBtn`。
+  - 购买按钮启用副标题：`refreshBtn.setSubLabel(💰 当前金币/购买价)`；
+  - `refreshShopUI()` 实时更新购买按钮金币文案，并按金币是否足够切换副标题颜色；
+  - 旧的按钮外部 `refreshCostText` 停用（改为按钮内显示，避免重复）。
+- 同步完成：
+  - 关闭拖拽调试日志：`DragController.isDragDebugEnabled()` 返回 `false`。
+- 回归验证：`npm test` 通过（82/82）。
+
+### 本次对话追加（2026-03-03，关闭拖拽日志 + 出售误触防护）
+
+- 用户验收通过：第二排与战斗区换位问题已修复，要求关闭相关调试日志并优化出售误触。
+- 出售误触修复：`src/scenes/ShopScene.ts`
+  - 缩小出售按钮拖放判定半径：`BTN_RADIUS + 24` -> `BTN_RADIUS + 8`；
+  - 新增 `isOverAnyGridDropTarget(gx, gy, size)`，当拖拽指针命中任意格子候选时，优先走落位/换位，不触发出售。
+  - `onSpecialDrop` 出售分支增加保护条件：仅“命中出售按钮且未命中任何格子候选”才执行出售。
+- 用户诉求“先识别放置再识别出售”已落地：与格子重叠时不再误卖。
+- 回归验证：`npm test` 通过（82/82）。
+
+### 本次对话追加（2026-03-03，根因修复：VirtualGrid 单行硬编码导致第二排换位全红）
+
+- 用户日志：`plan_none { reason: no_unified_and_no_swap, row: 1, size: 2x1 }`，战斗区中型拖到背包第二排（目标为中型或两个小型）均红判。
+- 根因定位：`src/grid/VirtualGrid.ts` 仍存在历史单行硬编码：
+  - `place()` / `canPlaceExcluding()` 使用 `row + h > 1`；
+  - 这会使 `SqueezeLogic.planCrossZoneSwap()` 在第二排场景必然失败，进而触发 `plan_none`。
+- 修复：
+  - `VirtualGrid` 增加动态 `rows`（由 snapshot grid 推导）；
+  - 行边界判断改为 `row + h > this.rows`；
+  - `cols` 同步由 snapshot grid 推导，避免固定值隐患。
+- 新增回归用例：`src/grid/SqueezeLogic.test.ts`
+  - `supports cross swap when dropping to backpack lower row`，覆盖“战斗区 2x1 -> 背包第二排（两个 1x1）”换位。
+- 结果：战斗区拖到背包第二排占位目标时，换位不再全红。
+- 回归验证：
+  - `npm test` 通过（82/82）；
+  - `npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-03，战斗区->背包第二排换位不触发修复）
+
+- 用户反馈：战斗区拖到背包第二排目标点时，空位/合成正常，但占位换位常出现“不拾取”。
+- 根因定位：跨区 swap 候选在多行目标区会尝试邻近行（`targetRow-1/+1`），导致第二排目标点未被强约束，换位计划可能偏离实际命中行，进而表现为目标位不触发换位。
+- 修复：`src/grid/DragController.ts`
+  - 对 `planSwapWithFlexibleAnchor(...)` 在多行目标区统一启用 `lockTargetRow`；
+  - 这样战斗区 -> 背包第二排换位只在第二排求解，不再串到第一排候选。
+- 结果：战斗区拖到背包第二排占位点时，换位触发与落点一致。
+- 回归验证：
+  - `npm test` 通过（81/81）；
+  - `npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-03，跨区换位行锁修复：第二排换下物品优先回第二排）
+
+- 用户反馈：第二排跨区换位时，若第一排有空位，被换下物品会被放到第一排；期望应回到第二排。
+- 根因：跨区换位兜底 `planCrossSwapViaBackpackRepack()` 使用背包重排时，未对“换下物品”的目标行做约束，求解会优先命中第一排空位。
+- 修复：
+  - `src/grid/DragController.ts`：将拖拽源行（`dragOrigItem.row`）传入跨区换位兜底规划；
+  - `src/grid/BackpackLogic.ts`：`buildTransferPlan()` 新增 `lockedIncomingRow`，当传入时对 incoming blocker 做严格行锁（并提高 incoming 排布优先级），确保“第二排拖出，换下来的也回第二排”。
+- 结果：一中换2小场景下，被换下的两个小件不会再跑到第一排，优先回拖拽来源排（第二排）。
+- 回归验证：`npm test` 通过（81/81）。
+
+### 本次对话追加（2026-03-03，第二排跨区换位补丁：背包重排兜底）
+
+- 用户提供日志定位：`plan_none { reason: no_unified_and_no_swap }` 仍在背包第二排跨区换位出现。
+- 日志结论：当前 cross/swap 在部分 `2x1` 场景无法生成方案（尤其 battle 目标被占时），导致直接红判。
+- 本轮修复：`src/grid/DragController.ts`
+  - 新增 `planCrossSwapViaBackpackRepack()`：
+    - 当“跨区拖拽 + 目标战斗区被 blocker 占用 + 来源是多行背包”时，
+    - 不再强依赖 footprint swap，而是把目标 blocker 集合作为 `incoming`，调用背包重排求解；
+    - 若背包可吸纳，则生成 `swapTransfers`，跨区按真实换位提交。
+  - `tryDrop()` 与 `updateHighlight()` 同步接入该兜底，避免“高亮/落地判定不一致”。
+- 同步扩展：`src/grid/BackpackLogic.ts`
+  - 新增 `buildTransferPlan()`，用于“背包吸纳多件跨区转移 blocker”的统一重排求解。
+- 结果：第二排跨区换位在“旧 cross/swap 无解但背包可重排吸纳”时可继续成功，不再直接 `plan_none`。
+- 回归验证：
+  - `npm test` 通过（81/81）；
+  - `npm run build` 通过（保留既有 chunk size warning）。
+
+### 本次对话追加（2026-03-03，跨区换位恢复：背包仅同区走新逻辑）
+
+- 验收反馈：仅“背包第一行 -> 战斗区”可换位；其余（背包内、背包第二行 -> 战斗区、战斗区 -> 背包）换位异常。
+- 已先向主程 Notebook 确认边界：
+  - 背包内拖动（同一背包 zone）走 `BackpackLogic`；
+  - 背包 <-> 战斗区（跨区）恢复走 `DragController + SqueezeLogic` 的 cross/swap 换位链路。
+- 代码修复：`src/grid/DragController.ts`
+  - `tryDrop()`：仅在 `targetPair.system.rows > 1 && targetPair === home` 时才走 `tryDropToBackpack()`；
+  - 跨区拖到背包不再提前进入背包重排分支，改回旧 cross/swap 方案。
+  - `updateHighlight()`：同样仅“背包同区拖动”使用 `BackpackLogic` 高亮判定；跨区仍按换位链路高亮。
+- 结果：
+  - 背包同区移动继续使用新背包重排；
+  - 背包第二行 <-> 战斗区、战斗区 -> 背包恢复真正跨区换位判定。
+- 回归验证：`npm test` 通过（81/81）。
+
+### 本次对话追加（2026-03-03，合成高亮颜色修复）
+
+- 验收反馈：拖拽命中可合成目标时，应显示黄色高亮，当前被绿色覆盖。
+- 根因：`ShopScene` 的 `highlightSynthesisTarget()` 先画黄框，但随后 `DragController.updateHighlight()` 继续执行默认可放置高亮，覆盖为绿色。
+- 修复：`src/grid/DragController.ts`
+  - `updateHighlight()` 在 `suppressSqueeze=true`（合成预览态）时直接返回，不再执行默认高亮覆盖；
+  - 保留已存在的 `clearSqueezePreview()`，避免预览残留。
+- 结果：拖到可合成物品上时，黄色高亮稳定显示，不再被绿色刷掉。
+- 回归验证：`npm test` 通过（81/81）。
+
+### 本次对话追加（2026-03-03，背包拖拽逻辑重写：新类接管）
+
+- 已按流程先向主程 Notebook（`WebJs开发指南`）询问并确认方案：采用“新类 + 适配接管”，不再在旧背包分支上继续补丁。
+- 本次完成：
+  - [x] 新增 `src/grid/BackpackLogic.ts`，把背包落位重排收敛为独立类：
+    - `buildDropPlan()`：基于 `planAutoPack` 生成“现有物品+拖拽物”的一次性排布方案；
+    - `applyDropPlan()`：原子重建背包格子并返回移动明细。
+  - [x] `src/grid/DragController.ts` 接入新逻辑：
+    - 目标区为背包（2行）时，统一走 `tryDropToBackpack()`，不再走历史 `rowLock/cross/swap` 背包分支；
+    - 背包高亮改为“是否存在可行重排方案”的直接判定。
+  - [x] 删除旧背包关键分支（跨排拦截与逻辑分区判定链路），背包不再依赖历史补丁路径。
+  - [x] 新增 `src/grid/BackpackLogic.test.ts`，覆盖偏好落点、可重排吸纳、方案应用三个核心场景。
+- 验证结果：
+  - `npm test` 通过（81/81）。
+  - `npm run build` 通过（保留既有 chunk size warning）。
+- 当前阶段：
+  - 背包“落位/重排”主链路已切换到新类；战斗区拖拽链路保持原逻辑。
+- 下一步计划：
+  - 对“背包 -> 战斗区（目标被占）”链路做专项验收，确认 battle 侧换位/挤出口径与当前版本一致。
+- 问题与技术债：
+  - `DragController` 内 battle 路径仍保留历史挤出实现（`planUnifiedSqueeze/planCrossZoneSwap`），后续可继续拆分成 battle-only controller。
+- 重要决定记录：
+  - 背包采用“全局重排求解”替代“局部挤出补丁”；
+  - 保持“战斗区不动、背包重写”的边界，避免回归战斗区已稳定行为。
+
 ### 本次对话追加（2026-03-02，问题留档 + GHE上传 + iOS打包与TF上传）
 
 - 问题留档（未完全解决，待明日继续）：

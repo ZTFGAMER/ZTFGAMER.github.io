@@ -93,4 +93,22 @@ describe('SqueezeLogic (1D)', () => {
     expect(plan).not.toBeNull()
     expect(plan!.moves.some((m) => m.instanceId === 'B')).toBe(true)
   })
+
+  it('supports cross swap when dropping to backpack lower row', () => {
+    const home = setup([['DRAG', 'd', '2x1', 2, 0]], 1)
+    const target = setup([['B1', 'd', '1x1', 2, 1], ['B2', 'd', '1x1', 3, 1]], 2)
+    const plan = planCrossZoneSwap(
+      { system: target, activeColCount: 6 },
+      { system: home, activeColCount: 4 },
+      2,
+      1,
+      '2x1',
+      'DRAG',
+      2,
+      0,
+      '2x1',
+    )
+    expect(plan).not.toBeNull()
+    expect(plan?.transfers).toHaveLength(2)
+  })
 })

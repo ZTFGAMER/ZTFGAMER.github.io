@@ -33,6 +33,8 @@ const SIZE_PX: Record<ItemSizeNorm, { pw: number; ph: number }> = {
   '3x1': { pw: CELL_SIZE * 3, ph: CELL_HEIGHT },
 }
 
+const MULTI_ROW_PICKUP_BOTTOM_TRIM = Math.round(CELL_SIZE * 0.32)
+
 /** 每种尺寸占用的格子数 [cols, rows] */
 const SIZE_DIMS: Record<ItemSizeNorm, [number, number]> = {
   '1x1': [1, 1],
@@ -351,8 +353,9 @@ export class GridZone extends Container {
     container.x     = ox
     container.y     = oy
 
-     // 交互 hitArea 保持为完整占格尺寸（视觉缩小后仍易于点击/拖拽）
-     container.hitArea = new Rectangle(0, 0, pw, ph)
+     // 多行区域适当缩小下边缘拾取范围，减少下方误触
+     const hitH = this.zoneRows > 1 ? Math.max(CELL_SIZE, ph - MULTI_ROW_PICKUP_BOTTOM_TRIM) : ph
+     container.hitArea = new Rectangle(0, 0, pw, hitH)
 
      // 视觉层：整体缩放并居中留白
     const visual = new Container()
