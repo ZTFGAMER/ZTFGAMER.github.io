@@ -17,7 +17,7 @@
     "name": "daily_gold",
     "desc": "每天获得的金币数量",
     "desc_en": "Daily gold amount",
-    "value": 10
+    "value": 5
   },
   {
     "id": 16,
@@ -25,28 +25,28 @@
     "desc": "按天发放金币（Day1~Day20）",
     "desc_en": "Daily gold by day (Day1~Day20)",
     "value": [
-      10,
+      5,
+      11,
+      12,
       13,
       14,
+      15,
       16,
+      17,
       18,
+      19,
       20,
+      21,
       22,
+      23,
       24,
+      25,
       26,
+      27,
       28,
-      30,
-      33,
-      36,
-      39,
-      42,
-      44,
-      46,
-      48,
-      50,
-      52
+      29
     ],
-    "note": "购买基础价3时的经济曲线：前期平滑、中后期加速"
+    "note": "用户指定曲线 Day1~Day20"
   },
   {
     "id": 3,
@@ -99,28 +99,28 @@
     "desc": "每天的生命值",
     "desc_en": "Daily health",
     "value": [
-      140,
-      170,
-      200,
-      240,
-      280,
-      330,
-      390,
-      460,
-      540,
-      630,
-      730,
-      850,
-      980,
-      1120,
-      1280,
-      1380,
-      1480,
-      1580,
-      1680,
-      1780
+      150,
+      420,
+      720,
+      990,
+      1530,
+      2100,
+      2700,
+      3330,
+      3990,
+      4680,
+      5600,
+      7040,
+      8640,
+      10400,
+      12320,
+      14400,
+      16960,
+      20400,
+      24480,
+      32000
     ],
-    "note": "兼容字段：默认等同敌方生命曲线"
+    "note": "兼容字段：同步敌方血量曲线"
   },
   {
     "id": 17,
@@ -128,28 +128,28 @@
     "desc": "敌方每日生命值（Day1~Day20）",
     "desc_en": "Enemy daily health (Day1~Day20)",
     "value": [
-      140,
-      170,
-      200,
-      240,
-      280,
-      330,
-      390,
-      460,
-      540,
-      630,
-      730,
-      850,
-      980,
-      1120,
-      1280,
-      1380,
-      1480,
-      1580,
-      1680,
-      1780
+      150,
+      420,
+      720,
+      990,
+      1530,
+      2100,
+      2700,
+      3330,
+      3990,
+      4680,
+      5600,
+      7040,
+      8640,
+      10400,
+      12320,
+      14400,
+      16960,
+      20400,
+      24480,
+      32000
     ],
-    "note": "目标20秒战斗节奏：前3天轻松，中期递增，后期靠运营与合成"
+    "note": "用户指定敌方血量 Day1~Day20"
   },
   {
     "id": 18,
@@ -157,28 +157,28 @@
     "desc": "玩家每日生命值（Day1~Day20）",
     "desc_en": "Player daily health (Day1~Day20)",
     "value": [
-      240,
-      280,
-      320,
-      370,
-      420,
-      480,
-      550,
-      630,
-      720,
-      820,
-      930,
-      1060,
+      300,
+      600,
+      900,
       1200,
-      1360,
-      1540,
-      1660,
-      1780,
-      1900,
-      2020,
-      2140
+      1800,
+      2400,
+      3000,
+      3600,
+      4200,
+      4800,
+      5600,
+      6400,
+      7200,
+      8000,
+      8800,
+      9600,
+      10600,
+      12000,
+      13600,
+      16000
     ],
-    "note": "玩家HP略高于同日敌方，减小高波动败局，提升连续体验"
+    "note": "用户指定玩家血量 Day1~Day20"
   },
   {
     "id": 8,
@@ -277,26 +277,126 @@
     "desc": "商店按天数的品质概率（青铜/白银/黄金/钻石）",
     "desc_en": "Shop tier chances by day (Bronze/Silver/Gold/Diamond)",
     "value": [
-      [100, 0, 0, 0],
-      [90, 10, 0, 0],
-      [80, 20, 0, 0],
-      [70, 30, 0, 0],
-      [55, 40, 5, 0],
-      [40, 50, 10, 0],
-      [30, 50, 20, 0],
-      [25, 45, 30, 0],
-      [10, 40, 40, 10],
-      [0, 30, 50, 20],
-      [0, 30, 50, 20],
-      [0, 30, 50, 20],
-      [0, 30, 50, 20],
-      [0, 30, 50, 20],
-      [0, 30, 50, 20],
-      [0, 30, 50, 20],
-      [0, 30, 50, 20],
-      [0, 30, 50, 20],
-      [0, 30, 50, 20],
-      [0, 30, 50, 20]
+      [
+        100,
+        0,
+        0,
+        0
+      ],
+      [
+        90,
+        10,
+        0,
+        0
+      ],
+      [
+        80,
+        20,
+        0,
+        0
+      ],
+      [
+        70,
+        30,
+        0,
+        0
+      ],
+      [
+        55,
+        40,
+        5,
+        0
+      ],
+      [
+        40,
+        50,
+        10,
+        0
+      ],
+      [
+        30,
+        50,
+        20,
+        0
+      ],
+      [
+        25,
+        45,
+        30,
+        0
+      ],
+      [
+        10,
+        40,
+        40,
+        10
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ]
     ],
     "note": "Day1~Day20 品质概率；超过 20 天沿用 Day20"
   },
@@ -328,39 +428,846 @@
           "dayStart": 1,
           "dayEnd": 3,
           "itemNames": [
-            "水草", "珍珠", "食人鱼", "水母", "鱼饵", "海螺壳", "珊瑚", "玳瑁", "鹦鹉皮特", "毒须鲶",
-            "独角鲸", "迷幻蝠鲼", "宠物石", "打火机", "星图", "淬锋钢", "火药角", "弹簧刀", "靴里剑", "迷你弯刀",
-            "流星索", "葡萄弹", "刺刀", "抓钩", "手斧", "铲子", "左轮手枪", "步枪", "燃烧响炮", "渔网",
-            "火炮", "鲨齿爪", "弯刀", "武士刀", "钓鱼竿", "拍立蚌", "木桶", "龙涎香", "赛博铁尺", "绵鳚",
-            "鳐鲨", "双管霰弹枪", "珊瑚护甲", "手里剑", "沙滩充气球", "湿件战服"
+            "水草",
+            "珍珠",
+            "食人鱼",
+            "水母",
+            "鱼饵",
+            "海螺壳",
+            "珊瑚",
+            "玳瑁",
+            "鹦鹉皮特",
+            "毒须鲶",
+            "独角鲸",
+            "迷幻蝠鲼",
+            "宠物石",
+            "打火机",
+            "星图",
+            "淬锋钢",
+            "火药角",
+            "弹簧刀",
+            "靴里剑",
+            "迷你弯刀",
+            "流星索",
+            "葡萄弹",
+            "刺刀",
+            "抓钩",
+            "手斧",
+            "铲子",
+            "左轮手枪",
+            "步枪",
+            "燃烧响炮",
+            "渔网",
+            "火炮",
+            "鲨齿爪",
+            "弯刀",
+            "武士刀",
+            "钓鱼竿",
+            "拍立蚌",
+            "木桶",
+            "龙涎香",
+            "赛博铁尺",
+            "绵鳚",
+            "鳐鲨",
+            "双管霰弹枪",
+            "珊瑚护甲",
+            "手里剑",
+            "沙滩充气球",
+            "湿件战服"
           ]
         },
         {
           "dayStart": 4,
           "dayEnd": 7,
           "itemNames": [
-            "鱼叉", "盐钳海盗", "元素深水炸弹", "带刃悬浮板", "码头缆索", "潜水配重", "深海弯刀", "小冰镐", "牌桌", "龟壳",
-            "河豚", "船舵", "六分仪", "通缉海报", "飞镖发射器", "烈酒杯", "标枪", "消音器", "连发步枪", "锁镰",
-            "理查森先生", "风暴瓶", "火枪", "星盘", "恶鬼面具", "船首像", "炮弹", "定制准镜", "大钢弩", "十手",
-            "蝶剑", "伪装", "吸血章鱼", "潜水头盔", "烽火", "填弹杆", "藏刃匕首", "海影宝驹", "套娃", "幽渊鮟鱇",
-            "救生圈", "海底热泉"
+            "鱼叉",
+            "盐钳海盗",
+            "元素深水炸弹",
+            "带刃悬浮板",
+            "码头缆索",
+            "潜水配重",
+            "深海弯刀",
+            "小冰镐",
+            "牌桌",
+            "龟壳",
+            "河豚",
+            "船舵",
+            "六分仪",
+            "通缉海报",
+            "飞镖发射器",
+            "烈酒杯",
+            "标枪",
+            "消音器",
+            "连发步枪",
+            "锁镰",
+            "理查森先生",
+            "风暴瓶",
+            "火枪",
+            "星盘",
+            "恶鬼面具",
+            "船首像",
+            "炮弹",
+            "定制准镜",
+            "大钢弩",
+            "十手",
+            "蝶剑",
+            "伪装",
+            "吸血章鱼",
+            "潜水头盔",
+            "烽火",
+            "填弹杆",
+            "藏刃匕首",
+            "海影宝驹",
+            "套娃",
+            "幽渊鮟鱇",
+            "救生圈",
+            "海底热泉"
           ]
         },
         {
           "dayStart": 8,
           "dayEnd": 12,
           "itemNames": [
-            "划艇", "电鳗", "船锚", "大坝", "海狗沙龙", "弩炮", "火炮阵列", "灯塔", "热带岛屿", "刺刀手枪",
-            "枪套", "逞威风腰带扣", "侦察望远镜", "狙击步枪", "绊索", "滚石", "吹箭枪", "旗舰", "港口", "鸦巢",
-            "船长舱", "抛石机", "鱼雷", "潜艇", "温馨海湾"
+            "划艇",
+            "电鳗",
+            "船锚",
+            "大坝",
+            "海狗沙龙",
+            "弩炮",
+            "火炮阵列",
+            "灯塔",
+            "热带岛屿",
+            "刺刀手枪",
+            "枪套",
+            "逞威风腰带扣",
+            "侦察望远镜",
+            "狙击步枪",
+            "绊索",
+            "滚石",
+            "吹箭枪",
+            "旗舰",
+            "港口",
+            "鸦巢",
+            "船长舱",
+            "抛石机",
+            "鱼雷",
+            "潜艇",
+            "温馨海湾"
           ]
         },
         {
           "dayStart": 13,
           "dayEnd": 20,
           "itemNames": [
-            "雷筒", "船骸", "大坝", "滚石", "狙击步枪", "火炮阵列", "旗舰", "潜艇", "弩炮", "热带岛屿",
-            "海狗沙龙", "鸦巢", "灯塔", "船长舱", "港口", "抛石机", "鱼雷"
+            "雷筒",
+            "船骸",
+            "大坝",
+            "滚石",
+            "狙击步枪",
+            "火炮阵列",
+            "旗舰",
+            "潜艇",
+            "弩炮",
+            "热带岛屿",
+            "海狗沙龙",
+            "鸦巢",
+            "灯塔",
+            "船长舱",
+            "港口",
+            "抛石机",
+            "鱼雷"
+          ]
+        }
+      ],
+      "enemyTeachingByDay": [
+        {
+          "dayStart": 1,
+          "dayEnd": 1,
+          "templates": [
+            {
+              "name": "Day1模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "短剑",
+                  "col": 0,
+                  "tier": "Bronze",
+                  "star": 1
+                },
+                {
+                  "itemName": "圆盾",
+                  "col": 1,
+                  "tier": "Bronze",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 2,
+          "dayEnd": 2,
+          "templates": [
+            {
+              "name": "Day2模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "木弓",
+                  "col": 0,
+                  "tier": "Bronze",
+                  "star": 1
+                },
+                {
+                  "itemName": "弹药袋",
+                  "col": 2,
+                  "tier": "Bronze",
+                  "star": 1
+                },
+                {
+                  "itemName": "木弓",
+                  "col": 3,
+                  "tier": "Bronze",
+                  "star": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 3,
+          "dayEnd": 3,
+          "templates": [
+            {
+              "name": "Day3模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "匕首",
+                  "col": 0,
+                  "tier": "Bronze",
+                  "star": 1
+                },
+                {
+                  "itemName": "连发飞镖",
+                  "col": 1,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "匕首",
+                  "col": 3,
+                  "tier": "Bronze",
+                  "star": 1
+                },
+                {
+                  "itemName": "连发飞镖",
+                  "col": 4,
+                  "tier": "Bronze",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 4,
+          "dayEnd": 4,
+          "templates": [
+            {
+              "name": "Day4模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "圆盾",
+                  "col": 0,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "长剑",
+                  "col": 2,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "圆盾",
+                  "col": 4,
+                  "tier": "Bronze",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 5,
+          "dayEnd": 5,
+          "templates": [
+            {
+              "name": "Day5模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "弹药堆",
+                  "col": 0,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 2,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "弹药袋",
+                  "col": 3,
+                  "tier": "Bronze",
+                  "star": 1
+                },
+                {
+                  "itemName": "木弓",
+                  "col": 4,
+                  "tier": "Bronze",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 6,
+          "dayEnd": 6,
+          "templates": [
+            {
+              "name": "Day6模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "回旋镖",
+                  "col": 0,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "大手里剑",
+                  "col": 1,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "连发飞镖",
+                  "col": 3,
+                  "tier": "Bronze",
+                  "star": 1
+                },
+                {
+                  "itemName": "匕首",
+                  "col": 5,
+                  "tier": "Bronze",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 7,
+          "dayEnd": 7,
+          "templates": [
+            {
+              "name": "Day7模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "长盾",
+                  "col": 0,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "长剑",
+                  "col": 1,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "长盾",
+                  "col": 3,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "长剑",
+                  "col": 4,
+                  "tier": "Silver",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 8,
+          "dayEnd": 8,
+          "templates": [
+            {
+              "name": "Day8模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "弹药堆",
+                  "col": 0,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 2,
+                  "tier": "Silver",
+                  "star": 2
+                },
+                {
+                  "itemName": "弹药堆",
+                  "col": 3,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 5,
+                  "tier": "Silver",
+                  "star": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 9,
+          "dayEnd": 9,
+          "templates": [
+            {
+              "name": "Day9模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "连发飞镖",
+                  "col": 0,
+                  "tier": "Bronze",
+                  "star": 1
+                },
+                {
+                  "itemName": "大手里剑",
+                  "col": 2,
+                  "tier": "Silver",
+                  "star": 2
+                },
+                {
+                  "itemName": "连发飞镖",
+                  "col": 4,
+                  "tier": "Bronze",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 10,
+          "dayEnd": 10,
+          "templates": [
+            {
+              "name": "Day10模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "长盾",
+                  "col": 0,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "圆盾",
+                  "col": 1,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "尖刺金盾",
+                  "col": 3,
+                  "tier": "Gold",
+                  "star": 1
+                },
+                {
+                  "itemName": "长盾",
+                  "col": 5,
+                  "tier": "Silver",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 11,
+          "dayEnd": 11,
+          "templates": [
+            {
+              "name": "Day11模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "圆盾",
+                  "col": 0,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "皇家佩剑",
+                  "col": 2,
+                  "tier": "Gold",
+                  "star": 1
+                },
+                {
+                  "itemName": "圆盾",
+                  "col": 3,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "长盾",
+                  "col": 5,
+                  "tier": "Silver",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 12,
+          "dayEnd": 12,
+          "templates": [
+            {
+              "name": "Day12模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "长盾",
+                  "col": 0,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "超级手雷",
+                  "col": 1,
+                  "tier": "Gold",
+                  "star": 1
+                },
+                {
+                  "itemName": "圆盾",
+                  "col": 2,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "长盾",
+                  "col": 4,
+                  "tier": "Silver",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 13,
+          "dayEnd": 13,
+          "templates": [
+            {
+              "name": "Day13模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "超级弩机",
+                  "col": 0,
+                  "tier": "Gold",
+                  "star": 1
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 2,
+                  "tier": "Silver",
+                  "star": 2
+                },
+                {
+                  "itemName": "弹药堆",
+                  "col": 3,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 5,
+                  "tier": "Silver",
+                  "star": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 14,
+          "dayEnd": 14,
+          "templates": [
+            {
+              "name": "Day14模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "黄金袖箭",
+                  "col": 0,
+                  "tier": "Gold",
+                  "star": 1
+                },
+                {
+                  "itemName": "大手里剑",
+                  "col": 1,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "黄金袖箭",
+                  "col": 3,
+                  "tier": "Gold",
+                  "star": 1
+                },
+                {
+                  "itemName": "大手里剑",
+                  "col": 4,
+                  "tier": "Silver",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 15,
+          "dayEnd": 15,
+          "templates": [
+            {
+              "name": "Day15模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "切割镰刀",
+                  "col": 0,
+                  "tier": "Gold",
+                  "star": 1
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 2,
+                  "tier": "Silver",
+                  "star": 2
+                },
+                {
+                  "itemName": "弹药堆",
+                  "col": 3,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 5,
+                  "tier": "Silver",
+                  "star": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 16,
+          "dayEnd": 16,
+          "templates": [
+            {
+              "name": "Day16模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "长盾",
+                  "col": 0,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "圆盾",
+                  "col": 1,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "尖刺金盾",
+                  "col": 3,
+                  "tier": "Gold",
+                  "star": 2
+                },
+                {
+                  "itemName": "长盾",
+                  "col": 5,
+                  "tier": "Silver",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 17,
+          "dayEnd": 17,
+          "templates": [
+            {
+              "name": "Day17模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "圆盾",
+                  "col": 0,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "皇家佩剑",
+                  "col": 2,
+                  "tier": "Gold",
+                  "star": 2
+                },
+                {
+                  "itemName": "圆盾",
+                  "col": 3,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "长盾",
+                  "col": 5,
+                  "tier": "Silver",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 18,
+          "dayEnd": 18,
+          "templates": [
+            {
+              "name": "Day18模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "长盾",
+                  "col": 0,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "超级手雷",
+                  "col": 1,
+                  "tier": "Gold",
+                  "star": 2
+                },
+                {
+                  "itemName": "圆盾",
+                  "col": 2,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "长盾",
+                  "col": 4,
+                  "tier": "Silver",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 19,
+          "dayEnd": 19,
+          "templates": [
+            {
+              "name": "Day19模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "超级弩机",
+                  "col": 0,
+                  "tier": "Gold",
+                  "star": 2
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 2,
+                  "tier": "Silver",
+                  "star": 2
+                },
+                {
+                  "itemName": "弹药堆",
+                  "col": 3,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 5,
+                  "tier": "Silver",
+                  "star": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 20,
+          "dayEnd": 20,
+          "templates": [
+            {
+              "name": "Day20模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "黄金袖箭",
+                  "col": 0,
+                  "tier": "Gold",
+                  "star": 2
+                },
+                {
+                  "itemName": "大手里剑",
+                  "col": 1,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "黄金袖箭",
+                  "col": 3,
+                  "tier": "Gold",
+                  "star": 2
+                },
+                {
+                  "itemName": "切割镰刀",
+                  "col": 4,
+                  "tier": "Gold",
+                  "star": 2
+                }
+              ]
+            }
           ]
         }
       ]
@@ -374,12 +1281,107 @@
     "desc_en": "Shop randomization rules",
     "value": {
       "ammoSupportRequiresAmmoOwned": true,
-      "ammoSupportItemNames": ["弹药袋", "弹药堆"],
+      "ammoSupportItemNames": [
+        "弹药袋",
+        "弹药堆"
+      ],
+      "itemPrerequisites": {
+        "弹药袋": [
+          "木弓",
+          "手弩",
+          "超级手雷",
+          "超级弩机"
+        ],
+        "弹药堆": [
+          "木弓",
+          "手弩",
+          "超级手雷",
+          "超级弩机"
+        ]
+      },
       "day1ThirdItemMatchExistingArchetype": true,
       "shopSizeWeights": {
         "small": 2,
         "medium": 1,
         "large": 1
+      },
+      "quickBuyByDay": [
+        {
+          "dayStart": 1,
+          "dayEnd": 5,
+          "weights": {
+            "bronze1": 100,
+            "bronze2": 0,
+            "silver1": 0
+          },
+          "ownedWeightMultiplier": 1
+        },
+        {
+          "dayStart": 6,
+          "dayEnd": 10,
+          "weights": {
+            "bronze1": 65,
+            "bronze2": 25,
+            "silver1": 10
+          },
+          "ownedWeightMultiplier": 1.6
+        },
+        {
+          "dayStart": 11,
+          "dayEnd": 15,
+          "weights": {
+            "bronze1": 35,
+            "bronze2": 40,
+            "silver1": 25
+          },
+          "ownedWeightMultiplier": 2.2
+        },
+        {
+          "dayStart": 16,
+          "dayEnd": 20,
+          "weights": {
+            "bronze1": 15,
+            "bronze2": 45,
+            "silver1": 40
+          },
+          "ownedWeightMultiplier": 3
+        }
+      ],
+      "quickBuyPriceMultiplier": {
+        "Bronze#1": 1,
+        "Bronze#2": 2,
+        "Silver#1": 1
+      },
+      "quickBuyFixedPrice": {
+        "Bronze#1": 3,
+        "Bronze#2": 6,
+        "Silver#1": 12
+      },
+      "sellFixedPriceBySize": {
+        "small": [
+          2,
+          4,
+          6,
+          12,
+          16,
+          32,
+          64
+        ],
+        "medium": [
+          3,
+          6,
+          9,
+          18,
+          24,
+          48,
+          96
+        ]
+      },
+      "sellRatioByTier": {
+        "Bronze": 0.6667,
+        "Silver": 0.5,
+        "Gold": 0.3333,
+        "Diamond": 0.25
       }
     },
     "note": "弹药支持物品需先拥有弹药系物品；Day1 初始第3件与前两件职业一致"

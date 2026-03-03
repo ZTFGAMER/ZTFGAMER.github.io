@@ -593,6 +593,10 @@ export class CombatEngine {
 
     const cfg = getConfig()
     const rng = makeSeededRng(this.day * 977 + snapshot.activeColCount * 131 + seedDefs.length * 17)
+
+    const teaching = this.buildEnemyTeachingRunners(snapshot, all, rng)
+    if (teaching && teaching.length > 0) return teaching
+
     const playerDailyGold = getDailyGoldForDay(cfg, this.day)
     const enemyGoldFactor = getEnemyGoldFactorByDay(this.day)
     let enemyGold = Math.max(3, Math.round(playerDailyGold * enemyGoldFactor))
@@ -695,44 +699,8 @@ export class CombatEngine {
       for (let k = 0; k < w; k++) boardOcc[slot.col + k] = true
       const def = all.find((d) => d.id === it.defId)
       if (!def) continue
-      const tierRaw = tierStarToRaw(it.tier, it.star)
-      const tierStats = resolveItemTierBaseStats(def, tierRaw)
-      const tierIdx = tierIndexFromRaw(def, tierRaw)
-      const lines = this.skillLines(def)
-      const ammoMax = ammoFromSkillLines(lines, tierIdx)
-      const multicast = multicastFromSkillLines(lines, tierIdx, Math.max(1, Math.round(tierStats.multicast)))
       serial++
-      out.push({
-        id: `E-${this.day}-${serial}-${def.id}`,
-        side: 'enemy',
-        defId: def.id,
-        baseStats: {
-          cooldownMs: this.validCooldown(tierStats.cooldownMs),
-          damage: Math.max(0, tierStats.damage),
-          heal: Math.max(0, tierStats.heal),
-          shield: Math.max(0, tierStats.shield),
-          burn: Math.max(0, tierStats.burn),
-          poison: Math.max(0, tierStats.poison),
-          regen: Math.max(0, tierStats.regen),
-          crit: Math.max(0, tierStats.crit),
-          multicast: Math.max(1, multicast),
-        },
-        runtime: {
-          currentChargeMs: 0,
-          pendingChargeMs: 0,
-          tempDamageBonus: 0,
-          bonusMulticast: 0,
-          executeCount: 0,
-          ammoMax,
-          ammoCurrent: ammoMax,
-          modifiers: { freezeMs: 0, slowMs: 0, hasteMs: 0 },
-        },
-        col: slot.col,
-        row: slot.row,
-        size: it.size,
-        tier: tierRaw,
-        tierStar: it.star,
-      })
+      out.push(this.buildEnemyRunner(def, `E-${this.day}-${serial}-${def.id}`, slot.col, slot.row, it.size, it.tier, it.star))
     }
 
     if (out.length === 0) {
@@ -741,44 +709,104 @@ export class CombatEngine {
       const fallbackSize = normalizeSize(fallback.size)
       const slot = findSlot(fallbackSize)
       if (!slot) return []
-      const tierStats = resolveItemTierBaseStats(fallback, 'Bronze#1')
-      const tierIdx = tierIndexFromRaw(fallback, 'Bronze#1')
-      const lines = this.skillLines(fallback)
-      const ammoMax = ammoFromSkillLines(lines, tierIdx)
-      const multicast = multicastFromSkillLines(lines, tierIdx, Math.max(1, Math.round(tierStats.multicast)))
-      out.push({
-        id: `E-fallback-${fallback.id}`,
-        side: 'enemy',
-        defId: fallback.id,
-        baseStats: {
-          cooldownMs: this.validCooldown(tierStats.cooldownMs),
-          damage: Math.max(0, tierStats.damage),
-          heal: Math.max(0, tierStats.heal),
-          shield: Math.max(0, tierStats.shield),
-          burn: Math.max(0, tierStats.burn),
-          poison: Math.max(0, tierStats.poison),
-          regen: Math.max(0, tierStats.regen),
-          crit: Math.max(0, tierStats.crit),
-          multicast: Math.max(1, multicast),
-        },
-        runtime: {
-          currentChargeMs: 0,
-          pendingChargeMs: 0,
-          tempDamageBonus: 0,
-          bonusMulticast: 0,
-          executeCount: 0,
-          ammoMax,
-          ammoCurrent: ammoMax,
-          modifiers: { freezeMs: 0, slowMs: 0, hasteMs: 0 },
-        },
-        col: slot.col,
-        row: slot.row,
-        size: fallbackSize,
-        tier: 'Bronze#1',
-        tierStar: 1,
-      })
+      out.push(this.buildEnemyRunner(fallback, `E-fallback-${fallback.id}`, slot.col, slot.row, fallbackSize, 'Bronze', 1))
     }
     return out
+  }
+
+  private buildEnemyRunner(
+    def: ItemDef,
+    id: string,
+    col: number,
+    row: number,
+    size: ItemSizeNorm,
+    tier: EnemyTier,
+    star: EnemyStar,
+  ): CombatItemRunner {
+    const tierRaw = tierStarToRaw(tier, star)
+    const tierStats = resolveItemTierBaseStats(def, tierRaw)
+    const tierIdx = tierIndexFromRaw(def, tierRaw)
+    const lines = this.skillLines(def)
+    const ammoMax = ammoFromSkillLines(lines, tierIdx)
+    const multicast = multicastFromSkillLines(lines, tierIdx, Math.max(1, Math.round(tierStats.multicast)))
+    return {
+      id,
+      side: 'enemy',
+      defId: def.id,
+      baseStats: {
+        cooldownMs: this.validCooldown(tierStats.cooldownMs),
+        damage: Math.max(0, tierStats.damage),
+        heal: Math.max(0, tierStats.heal),
+        shield: Math.max(0, tierStats.shield),
+        burn: Math.max(0, tierStats.burn),
+        poison: Math.max(0, tierStats.poison),
+        regen: Math.max(0, tierStats.regen),
+        crit: Math.max(0, tierStats.crit),
+        multicast: Math.max(1, multicast),
+      },
+      runtime: {
+        currentChargeMs: 0,
+        pendingChargeMs: 0,
+        tempDamageBonus: 0,
+        bonusMulticast: 0,
+        executeCount: 0,
+        ammoMax,
+        ammoCurrent: ammoMax,
+        modifiers: { freezeMs: 0, slowMs: 0, hasteMs: 0 },
+      },
+      col,
+      row,
+      size,
+      tier: tierRaw,
+      tierStar: star,
+    }
+  }
+
+  private buildEnemyTeachingRunners(
+    snapshot: BattleSnapshotBundle,
+    all: ItemDef[],
+    rng: () => number,
+  ): CombatItemRunner[] | null {
+    const rules = getConfig().combatRuntime.enemyTeachingByDay ?? []
+    const matched = rules.find((r) => this.day >= r.dayStart && this.day <= r.dayEnd)
+    if (!matched || !matched.templates || matched.templates.length === 0) return null
+
+    const sizeWidth = (size: ItemSizeNorm): number => (size === '1x1' ? 1 : size === '2x1' ? 2 : 3)
+    const byName = new Map<string, ItemDef>()
+    for (const it of all) {
+      byName.set(it.id, it)
+      byName.set(it.name_cn, it)
+      byName.set(it.name_en, it)
+    }
+
+    const template = matched.templates[Math.floor(rng() * matched.templates.length)]
+    if (!template) return null
+
+    const occ = Array.from({ length: snapshot.activeColCount }, () => false)
+    const out: CombatItemRunner[] = []
+    let serial = 0
+
+    for (const p of template.placements) {
+      const def = byName.get(p.itemName)
+      if (!def) continue
+      const size = normalizeSize(def.size)
+      const w = sizeWidth(size)
+      if (p.col < 0 || p.col + w > snapshot.activeColCount) continue
+      let blocked = false
+      for (let k = 0; k < w; k++) if (occ[p.col + k]) blocked = true
+      if (blocked) continue
+
+      const available = parseAvailableTiers(def.available_tiers)
+      const desiredTier = (p.tier ?? 'Bronze') as EnemyTier
+      const tier = (available.includes(desiredTier) ? desiredTier : (available[0] ?? 'Bronze')) as EnemyTier
+      const star = (tier === 'Diamond' ? 1 : (p.star ?? 1)) as EnemyStar
+
+      for (let k = 0; k < w; k++) occ[p.col + k] = true
+      serial++
+      out.push(this.buildEnemyRunner(def, `E-template-${this.day}-${serial}-${def.id}`, p.col, 0, size, tier, star))
+    }
+
+    return out.length > 0 ? out : null
   }
 
   private pickEnemyDefsByDay(all: ItemDef[]): ItemDef[] {

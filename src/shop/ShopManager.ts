@@ -11,6 +11,17 @@ const TIER_ORDER = ['Bronze', 'Silver', 'Gold', 'Diamond'] as const
 export type TierKey = typeof TIER_ORDER[number]
 export type TierStar = 1 | 2
 
+function getTierStarLevelIndex(tier: TierKey, star: TierStar): number {
+  const actualStar = tier === 'Diamond' ? 1 : star
+  if (tier === 'Bronze' && actualStar === 1) return 0
+  if (tier === 'Bronze' && actualStar === 2) return 1
+  if (tier === 'Silver' && actualStar === 1) return 2
+  if (tier === 'Silver' && actualStar === 2) return 3
+  if (tier === 'Gold' && actualStar === 1) return 4
+  if (tier === 'Gold' && actualStar === 2) return 5
+  return 6 // Diamond#1
+}
+
 export function getDailyGoldForDay(config: GameConfig, day: number): number {
   const byDay = config.dailyGoldByDay
   if (Array.isArray(byDay) && byDay.length > 0) {
@@ -75,15 +86,42 @@ export class ShopManager {
     return                     this.config.largeItemPrices[idx]  ?? 6
   }
 
-  /** 计算出售价格（购买价 × sellPriceRatio，向下取整） */
+  /** 计算出售价格（优先固定表；缺失时回退旧比例） */
   getSellPrice(item: ItemDef, tierOverride?: TierKey, starOverride: TierStar = 1): number {
-    void item
     const tier = tierOverride ?? 'Bronze'
     const star = tier === 'Diamond' ? 1 : starOverride
-    const tierIdx = TIER_ORDER.indexOf(tier)
-    if (tierIdx < 0) return 1
-    const level = tierIdx * 2 + (star === 2 ? 1 : 0)
-    return 2 ** level
+    const fixedBySize = this.config.shopRules?.sellFixedPriceBySize
+    const size = normalizeSize(item.size)
+    const sizeKey = size === '1x1' ? 'small' : size === '2x1' ? 'medium' : 'large'
+    const fixedList = fixedBySize?.[sizeKey]
+    if (Array.isArray(fixedList) && fixedList.length > 0) {
+      const idx = getTierStarLevelIndex(tier, star)
+      const fixed = fixedList[idx]
+      if (typeof fixed === 'number' && Number.isFinite(fixed) && fixed > 0) {
+        return Math.max(1, Math.round(fixed))
+      }
+    }
+
+    const buyLike = this.getTierStarPrice(item, tier, star)
+    const ratioCfg = this.config.shopRules?.sellRatioByTier
+    const ratio = (() => {
+      if (tier === 'Bronze') return ratioCfg?.Bronze ?? (2 / 3)
+      if (tier === 'Silver') return ratioCfg?.Silver ?? 0.5
+      if (tier === 'Gold') return ratioCfg?.Gold ?? (1 / 3)
+      return ratioCfg?.Diamond ?? 0.25
+    })()
+    return Math.max(1, Math.floor(buyLike * ratio))
+  }
+
+  /** 计算指定品质/星级购买价（用于快捷购买与出售回收估值） */
+  getTierStarPrice(item: ItemDef, tier: TierKey, star: TierStar = 1): number {
+    const base = this.getItemPrice(item, tier)
+    const key = `${tier}#${tier === 'Diamond' ? 1 : star}`
+    const mulCfg = this.config.shopRules?.quickBuyPriceMultiplier
+    const mulRaw = mulCfg?.[key]
+    const defaultMul = tier === 'Diamond' ? 1 : (star === 2 ? 2 : 1)
+    const mul = (typeof mulRaw === 'number' && Number.isFinite(mulRaw) && mulRaw > 0) ? mulRaw : defaultMul
+    return Math.max(1, Math.round(base * mul))
   }
 
   // ---- 刷新 ----
@@ -177,6 +215,30 @@ export class ShopManager {
       if (/弹药/.test(text)) return true
     }
     return false
+  }
+
+  private hasAnyOwnedByKeys(keys: string[]): boolean {
+    if (keys.length === 0) return true
+    const keySet = new Set(keys.map((k) => k.trim()).filter(Boolean))
+    if (keySet.size === 0) return true
+    for (const defId of this.ownedDefIds) {
+      const item = this.allItems.find((it) => it.id === defId)
+      if (!item) continue
+      if (keySet.has(item.id) || keySet.has(item.name_cn) || keySet.has(item.name_en)) return true
+    }
+    return false
+  }
+
+  private getItemPrerequisites(item: ItemDef): string[] {
+    const cfg = this.config.shopRules?.itemPrerequisites
+    if (!cfg) return []
+    return cfg[item.id] ?? cfg[item.name_cn] ?? cfg[item.name_en] ?? []
+  }
+
+  private isBlockedByPrerequisites(item: ItemDef): boolean {
+    const prereq = this.getItemPrerequisites(item)
+    if (prereq.length === 0) return false
+    return !this.hasAnyOwnedByKeys(prereq)
   }
 
   private isAmmoSupportItem(item: ItemDef): boolean {
@@ -312,6 +374,7 @@ export class ShopManager {
           if (usedItemIds.has(it.id)) return false
           if (this.getShopWidthCells(it) > maxWidthForCurrent) return false
           if (restrictAmmoSupport && !hasAmmoOwned && this.isAmmoSupportItem(it)) return false
+          if (this.isBlockedByPrerequisites(it)) return false
 
           if (enforceDay1ThirdArchetype && isInitialRoll && this.day === 1 && slots.length === 2) {
             const a1 = this.parsePrimaryArchetype(slots[0]?.item ?? it)

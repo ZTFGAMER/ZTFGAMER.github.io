@@ -109,6 +109,36 @@ export interface GameConfig {
       medium?: number
       large?: number
     }
+    quickBuyByDay?: Array<{
+      dayStart: number
+      dayEnd: number
+      weights: {
+        bronze1: number
+        bronze2: number
+        silver1: number
+      }
+      ownedWeightMultiplier?: number
+    }>
+    quickBuyPriceMultiplier?: {
+      [tierStar: string]: number
+    }
+    quickBuyFixedPrice?: {
+      [tierStar: string]: number
+    }
+    itemPrerequisites?: {
+      [itemKey: string]: string[]
+    }
+    sellRatioByTier?: {
+      Bronze?: number
+      Silver?: number
+      Gold?: number
+      Diamond?: number
+    }
+    sellFixedPriceBySize?: {
+      small?: number[]
+      medium?: number[]
+      large?: number[]
+    }
   }
   textSizes: {
     gridZoneLabel:    number
@@ -165,6 +195,20 @@ export interface GameConfig {
       dayStart: number
       dayEnd: number
       itemNames: string[]
+    }>
+    enemyTeachingByDay?: Array<{
+      dayStart: number
+      dayEnd: number
+      templates: Array<{
+        name?: string
+        focus?: string
+        placements: Array<{
+          itemName: string
+          col: number
+          tier?: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
+          star?: 1 | 2
+        }>
+      }>
     }>
   }
 }

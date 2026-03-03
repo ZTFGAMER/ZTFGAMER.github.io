@@ -123,4 +123,36 @@ describe('ShopManager custom rules', () => {
     expect(small).toBeGreaterThan(medium)
     expect(small / Math.max(1, medium)).toBeGreaterThan(1.5)
   })
+
+  it('uses fixed sell price by size and tier-star', () => {
+    const cfg = {
+      ...getConfig(),
+      shopRules: {
+        ...(getConfig().shopRules ?? {}),
+        sellFixedPriceBySize: {
+          small: [2, 4, 6, 12, 16, 32, 64],
+          medium: [3, 6, 9, 18, 24, 48, 96],
+        },
+      },
+    }
+    const small = mkItem('p1', '小件', '战士', ['攻击造成10伤害。'])
+    const medium: ItemDef = { ...mkItem('p2', '中件', '战士', ['攻击造成10伤害。']), size: 'Medium / 中型' }
+    const m = new ShopManager(cfg, [small, medium], 1)
+
+    expect(m.getSellPrice(small, 'Bronze', 1)).toBe(2)
+    expect(m.getSellPrice(small, 'Bronze', 2)).toBe(4)
+    expect(m.getSellPrice(small, 'Silver', 1)).toBe(6)
+    expect(m.getSellPrice(small, 'Silver', 2)).toBe(12)
+    expect(m.getSellPrice(small, 'Gold', 1)).toBe(16)
+    expect(m.getSellPrice(small, 'Gold', 2)).toBe(32)
+    expect(m.getSellPrice(small, 'Diamond', 1)).toBe(64)
+
+    expect(m.getSellPrice(medium, 'Bronze', 1)).toBe(3)
+    expect(m.getSellPrice(medium, 'Bronze', 2)).toBe(6)
+    expect(m.getSellPrice(medium, 'Silver', 1)).toBe(9)
+    expect(m.getSellPrice(medium, 'Silver', 2)).toBe(18)
+    expect(m.getSellPrice(medium, 'Gold', 1)).toBe(24)
+    expect(m.getSellPrice(medium, 'Gold', 2)).toBe(48)
+    expect(m.getSellPrice(medium, 'Diamond', 1)).toBe(96)
+  })
 })

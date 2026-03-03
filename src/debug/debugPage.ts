@@ -29,6 +29,7 @@ const LAYOUT_POSITION_KEYS = [
   'phaseBtnY',
   'battleBackBtnX',
   'battleBackBtnY',
+  'battleSpeedBtnY',
   'goldTextCenterX',
   'goldTextY',
   'dayDebugX',

@@ -992,6 +992,15 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     step: 2,
     unit: 'px',
   },
+  battleSpeedBtnY: {
+    labelCn:      '战斗倍速按钮 Y 坐标',
+    description:  '战斗中右上角倍速按钮中心 Y 坐标',
+    defaultValue: 84,
+    min:  0,
+    max:  1384,
+    step: 2,
+    unit: 'px',
+  },
   goldTextCenterX: {
     labelCn:      '当前金币中心 X 坐标',
     description:  '当前金币文字中心 X 坐标',

@@ -1,9 +1,10 @@
 import type { Scene } from './SceneManager'
-import { getBattleSnapshot } from '@/combat/BattleSnapshotStore'
-import { setBattleOutcome } from '@/combat/BattleOutcomeStore'
+import { clearBattleSnapshot, getBattleSnapshot } from '@/combat/BattleSnapshotStore'
+import { clearBattleOutcome, setBattleOutcome } from '@/combat/BattleOutcomeStore'
 import { CombatEngine, setCombatRuntimeOverride, type CombatBoardItem } from '@/combat/CombatEngine'
 import { SceneManager } from '@/scenes/SceneManager'
 import { getApp } from '@/core/AppContext'
+import { clearCurrentRunState, deductLife, getLifeState, resetLifeState } from '@/core/RunState'
 import { Assets, Container, Graphics, Sprite, Texture, Text } from 'pixi.js'
 import { GridZone, CELL_SIZE, CELL_HEIGHT } from '@/grid/GridZone'
 import { getAllItems, getConfig as getGameCfg } from '@/core/DataLoader'
@@ -24,6 +25,12 @@ let backBtn: Container | null = null
 let speedBtn: Container | null = null
 let speedBtnText: Text | null = null
 let battleEndMask: Graphics | null = null
+let settlementPanel: Container | null = null
+let settlementTitleText: Text | null = null
+let settlementLifeText: Text | null = null
+let settlementDescText: Text | null = null
+let settlementActionBtn: Container | null = null
+let settlementActionLabel: Text | null = null
 let sceneFadeOverlay: Graphics | null = null
 let heroHudG: Graphics | null = null
 let enemyHpInfoCon: Container | null = null
@@ -70,6 +77,8 @@ let battleIntroElapsedMs = 0
 let battleIntroDurationMs = 0
 let battleExitTransitionElapsedMs = 0
 let battleExitTransitionDurationMs = 0
+let settlementResolved = false
+let settlementGameOver = false
 const BATTLE_SPEED_STEPS = [1, 2, 4, 8] as const
 const FX_MAX_PROJECTILES = 40
 const FX_MAX_FLOATING_NUMBERS = 30
@@ -922,6 +931,113 @@ function makeBackButton(): Container {
   return con
 }
 
+function makeSettlementPanel(): Container {
+  const panel = new Container()
+  const bg = new Graphics()
+  const panelW = 560
+  const panelH = 400
+  bg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 24)
+  bg.fill({ color: 0x141824, alpha: 0.95 })
+  bg.stroke({ color: 0xf2ce72, width: 3, alpha: 0.95 })
+  panel.addChild(bg)
+
+  settlementTitleText = new Text({
+    text: '战斗结束',
+    style: { fontSize: 48, fill: 0xffe2a0, fontFamily: 'Arial', fontWeight: 'bold', stroke: { color: 0x000000, width: 4 } },
+  })
+  settlementTitleText.anchor.set(0.5)
+  settlementTitleText.y = -124
+  panel.addChild(settlementTitleText)
+
+  settlementLifeText = new Text({
+    text: '❤️ 5/5',
+    style: { fontSize: 34, fill: 0xffd4d4, fontFamily: 'Arial', fontWeight: 'bold', stroke: { color: 0x000000, width: 3 } },
+  })
+  settlementLifeText.anchor.set(0.5)
+  settlementLifeText.y = -38
+  panel.addChild(settlementLifeText)
+
+  settlementDescText = new Text({
+    text: '准备下一步行动',
+    style: { fontSize: 26, fill: 0xe7edf9, fontFamily: 'Arial', fontWeight: 'bold', stroke: { color: 0x000000, width: 2 } },
+  })
+  settlementDescText.anchor.set(0.5)
+  settlementDescText.y = 24
+  panel.addChild(settlementDescText)
+
+  settlementActionBtn = new Container()
+  const actionBg = new Graphics()
+  actionBg.roundRect(-170, -40, 340, 80, 18)
+  actionBg.fill({ color: 0x22406a, alpha: 0.92 })
+  actionBg.stroke({ color: 0x8ac4ff, width: 3, alpha: 0.95 })
+  settlementActionLabel = new Text({
+    text: '返回商店',
+    style: { fontSize: getDebugCfg('battleBackButtonLabelFontSize'), fill: 0xe9f4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  settlementActionLabel.anchor.set(0.5)
+  settlementActionBtn.addChild(actionBg)
+  settlementActionBtn.addChild(settlementActionLabel)
+  settlementActionBtn.y = 132
+  settlementActionBtn.eventMode = 'static'
+  settlementActionBtn.cursor = 'pointer'
+  settlementActionBtn.on('pointerdown', () => {
+    if (battleExitTransitionDurationMs > 0) return
+    if (settlementGameOver) {
+      clearCurrentRunState()
+      resetLifeState()
+      clearBattleSnapshot()
+      clearBattleOutcome()
+      window.location.reload()
+      return
+    }
+    beginBattleExitTransition()
+  })
+  panel.addChild(settlementActionBtn)
+
+  panel.x = CANVAS_W / 2
+  panel.y = CANVAS_H / 2
+  panel.zIndex = 190
+  panel.visible = false
+  return panel
+}
+
+function resolveBattleSettlement(): void {
+  if (!engine || settlementResolved) return
+  const result = engine.getResult()
+  const winner = result?.winner ?? 'draw'
+  const before = getLifeState()
+  const after = winner === 'enemy' ? deductLife() : before
+  const delta = after.current - before.current
+  settlementResolved = true
+  settlementGameOver = winner === 'enemy' && after.current <= 0
+
+  if (!settlementTitleText || !settlementLifeText || !settlementDescText || !settlementActionLabel) return
+
+  if (winner === 'player') {
+    settlementTitleText.text = '战斗胜利'
+    settlementTitleText.style.fill = 0xffe2a0
+  } else if (winner === 'enemy') {
+    settlementTitleText.text = settlementGameOver ? '游戏失败' : '战斗失败'
+    settlementTitleText.style.fill = 0xff8e8e
+  } else {
+    settlementTitleText.text = '平局'
+    settlementTitleText.style.fill = 0xb9d5ff
+  }
+
+  settlementLifeText.text = delta < 0
+    ? `❤️ ${before.current}/${before.max} -> ${after.current}/${after.max} (-1)`
+    : `❤️ ${after.current}/${after.max}`
+  settlementLifeText.style.fill = after.current <= 1 ? 0xff6a6a : 0xffd4d4
+
+  if (settlementGameOver) {
+    settlementDescText.text = '❤️ 已耗尽，点击重新开始'
+    settlementActionLabel.text = '重新开始'
+  } else {
+    settlementDescText.text = winner === 'enemy' ? '调整阵容后再战' : '继续前往商店'
+    settlementActionLabel.text = '返回商店'
+  }
+}
+
 function makeSpeedButton(): Container {
   const con = new Container()
   const bg = new Graphics()
@@ -940,7 +1056,7 @@ function makeSpeedButton(): Container {
   con.addChild(speedBtnText)
 
   con.x = CANVAS_W - 84
-  con.y = 84
+  con.y = getDebugCfg('battleSpeedBtnY')
   con.zIndex = 185
   con.eventMode = 'static'
   con.cursor = 'pointer'
@@ -1285,6 +1401,8 @@ export const BattleScene: Scene = {
     }
     enteredSnapshot = snapshot
     battleDay = Math.max(1, snapshot.day)
+    settlementResolved = false
+    settlementGameOver = false
     battleSpeed = 1
     activeProjectileCount = 0
     activeFloatingNumberCount = 0
@@ -1471,6 +1589,9 @@ export const BattleScene: Scene = {
     backBtn.visible = false
     root.addChild(backBtn)
 
+    settlementPanel = makeSettlementPanel()
+    root.addChild(settlementPanel)
+
     engine = new CombatEngine()
     setCombatRuntimeOverride({
       burnTickMs: getDebugCfg('gameplayBurnTickMs'),
@@ -1643,6 +1764,12 @@ export const BattleScene: Scene = {
     titleText = null
     statusText = null
     backBtn = null
+    settlementPanel = null
+    settlementTitleText = null
+    settlementLifeText = null
+    settlementDescText = null
+    settlementActionBtn = null
+    settlementActionLabel = null
     speedBtn = null
     speedBtnText = null
     battleEndMask = null
@@ -1692,6 +1819,8 @@ export const BattleScene: Scene = {
     battleIntroDurationMs = 0
     battleExitTransitionElapsedMs = 0
     battleExitTransitionDurationMs = 0
+    settlementResolved = false
+    settlementGameOver = false
     enteredSnapshot = null
     battleSpeed = 1
     activeProjectileCount = 0
@@ -1763,6 +1892,7 @@ export const BattleScene: Scene = {
 
     if (battleEndMask) {
       if (engine.isFinished()) {
+        resolveBattleSettlement()
         battleEndMask.visible = true
         battleEndMask.clear()
         battleEndMask.rect(0, 0, CANVAS_W, CANVAS_H)
@@ -1774,13 +1904,18 @@ export const BattleScene: Scene = {
 
     if (speedBtn) {
       speedBtn.visible = !engine.isFinished()
+      speedBtn.y = getDebugCfg('battleSpeedBtnY')
       if (speedBtnText) speedBtnText.text = `x${battleSpeed}`
     }
 
     if (backBtn) {
       backBtn.x = getDebugCfg('battleBackBtnX')
       backBtn.y = getDebugCfg('battleBackBtnY')
-      backBtn.visible = engine.isFinished()
+      backBtn.visible = false
+    }
+
+    if (settlementPanel) {
+      settlementPanel.visible = engine.isFinished()
     }
 
     if (fatigueToastCon?.visible) {

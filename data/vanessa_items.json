@@ -10,8 +10,8 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 5000,
-    "cooldown_tiers": "5000",
+    "cooldown": 2500,
+    "cooldown_tiers": "2500",
     "skills": [
       {
         "en": "",
@@ -38,8 +38,8 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 5000,
-    "cooldown_tiers": "5000",
+    "cooldown": 2500,
+    "cooldown_tiers": "2500",
     "skills": [
       {
         "en": "",
@@ -66,8 +66,8 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 3000,
-    "cooldown_tiers": "3000",
+    "cooldown": 1500,
+    "cooldown_tiers": "1500",
     "skills": [
       {
         "en": "",
@@ -90,16 +90,16 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 8000,
-    "cooldown_tiers": "8000",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000",
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成30/60伤害。"
+        "cn": "攻击造成40/80伤害。"
       },
       {
         "en": "",
-        "cn": "每次攻击后伤害+30/60，弹药:2。"
+        "cn": "每次攻击后伤害+40/80，弹药:2。"
       }
     ],
     "icon": "item4",
@@ -108,7 +108,7 @@
       "item4_a"
     ],
     "simple_desc": "每次使用后伤害提升,弹药:2",
-    "simple_desc_tiered": "每次使用后伤害+50|100,弹药:2"
+    "simple_desc_tiered": "每次使用后伤害+40|80,弹药:2"
   },
   {
     "id": "aa05e315-afdd-40ba-8149-3fd3fd3617ce",
@@ -121,12 +121,12 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 3000,
-    "cooldown_tiers": "3000",
+    "cooldown": 1500,
+    "cooldown_tiers": "1500",
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成5/10伤害。"
+        "cn": "攻击造成2/4伤害。"
       },
       {
         "en": "",
@@ -149,8 +149,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 3000,
-    "cooldown_tiers": "3000",
+    "cooldown": 2500,
+    "cooldown_tiers": "2500",
     "skills": [
       {
         "en": "",
@@ -180,22 +180,22 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 5000,
-    "cooldown_tiers": "5000",
+    "cooldown": 2500,
+    "cooldown_tiers": "2500",
     "skills": [
       {
         "en": "",
-        "cn": "获得40/80护盾。"
+        "cn": "获得30/60护盾。"
       },
       {
         "en": "",
-        "cn": "每次使用后护盾+20/40。"
+        "cn": "每次使用后护盾+30/60。"
       }
     ],
     "icon": "item7",
     "attack_style": "旋转飞行",
     "simple_desc": "每次使用后护盾提升",
-    "simple_desc_tiered": "每次使用后护盾+20|40"
+    "simple_desc_tiered": "每次使用后护盾+30|60"
   },
   {
     "id": "6cd98599-56a3-4604-a66a-95b01195ba03",
@@ -208,8 +208,8 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 5000,
-    "cooldown_tiers": "5000",
+    "cooldown": 2500,
+    "cooldown_tiers": "2500",
     "skills": [
       {
         "en": "",
@@ -236,8 +236,8 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 8000,
-    "cooldown_tiers": "8000",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000",
     "skills": [
       {
         "en": "",
@@ -291,22 +291,22 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 2000,
-    "cooldown_tiers": "2000",
+    "cooldown": 1000,
+    "cooldown_tiers": "1000",
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成20/40伤害。"
+        "cn": "攻击造成15/30伤害。"
       },
       {
         "en": "",
-        "cn": "武器伤害+10/20。"
+        "cn": "武器伤害+15/30。"
       }
     ],
     "icon": "item11",
     "attack_style": "旋转飞行",
     "simple_desc": "所有物品伤害提升",
-    "simple_desc_tiered": "所有物品伤害+10|20"
+    "simple_desc_tiered": "所有物品伤害+15|30"
   },
   {
     "id": "2e7ac6f1-a8d8-4e22-a9b4-7459c2a37302",
@@ -319,8 +319,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 8000,
-    "cooldown_tiers": "8000",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000",
     "skills": [
       {
         "en": "",
@@ -347,22 +347,22 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 2000,
-    "cooldown_tiers": "2000",
+    "cooldown": 1000,
+    "cooldown_tiers": "1000",
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成100/200伤害。"
+        "cn": "攻击造成70/140伤害。"
       },
       {
         "en": "",
-        "cn": "每次使用后相邻护盾物品+50/100护盾。"
+        "cn": "每次使用后相邻护盾物品+70/140护盾。"
       }
     ],
     "icon": "item13",
     "attack_style": "旋转飞行",
     "simple_desc": "使用后相邻物品护盾提升",
-    "simple_desc_tiered": "使用后相邻物品+50|100护盾"
+    "simple_desc_tiered": "使用后相邻物品+70|140护盾"
   },
   {
     "id": "ea7d8f3c-b0c8-4570-90de-4a706657f3f2",
@@ -375,12 +375,12 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 8000,
-    "cooldown_tiers": "8000",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000",
     "skills": [
       {
         "en": "",
-        "cn": "获得600/1200护盾。"
+        "cn": "获得400/800护盾。"
       },
       {
         "en": "",
@@ -403,8 +403,8 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 5000,
-    "cooldown_tiers": "5000",
+    "cooldown": 2500,
+    "cooldown_tiers": "2500",
     "skills": [
       {
         "en": "",
@@ -431,8 +431,8 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 12000,
-    "cooldown_tiers": "12000",
+    "cooldown": 6000,
+    "cooldown_tiers": "6000",
     "skills": [
       {
         "en": "",
@@ -462,8 +462,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 5000,
-    "cooldown_tiers": "5000",
+    "cooldown": 2500,
+    "cooldown_tiers": "2500",
     "skills": [
       {
         "en": "",
@@ -493,8 +493,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 8000,
-    "cooldown_tiers": "8000",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000",
     "skills": [
       {
         "en": "",

@@ -578,24 +578,23 @@ describe('CombatEngine', () => {
       ],
     }
 
-    let swordBaseDamage = -1
+    let maxSwordBaseDamage = -1
     const off = EventBus.on('battle:take_damage', (e) => {
       if (e.type !== 'normal') return
       if (e.sourceItemId.includes('main-sword')) {
-        swordBaseDamage = e.baseDamage ?? -1
+        maxSwordBaseDamage = Math.max(maxSwordBaseDamage, e.baseDamage ?? -1)
       }
     })
 
     const engine = new CombatEngine()
     engine.start(snapshot, { enemyDisabled: true })
-    for (let i = 0; i < 1600; i++) {
+    for (let i = 0; i < 3000; i++) {
       engine.update(1 / 60)
-      if (swordBaseDamage >= 0) break
     }
     off()
 
     // 短剑青铜1星基础10；匕首相邻攻击增伤+2，飞镖3连发应累计+6
-    expect(swordBaseDamage).toBeGreaterThanOrEqual(16)
+    expect(maxSwordBaseDamage).toBeGreaterThanOrEqual(16)
   })
 
   it('连发触发按实际发射tick逐次生效（10->12->14->16）', () => {
@@ -778,8 +777,8 @@ describe('CombatEngine', () => {
     off()
 
     expect(fireCount).toBeGreaterThanOrEqual(5)
-    expect(cooldownAfterFire[0]).toBe(4000)
-    expect(cooldownAfterFire[1]).toBe(3000)
+    expect(cooldownAfterFire[0]).toBe(1500)
+    expect(cooldownAfterFire[1]).toBe(1000)
     expect(cooldownAfterFire[4]).toBe(1000)
   })
 

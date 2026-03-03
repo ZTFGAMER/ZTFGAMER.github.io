@@ -10,15 +10,16 @@
 import { SceneManager, type Scene } from './SceneManager'
 import { getApp } from '@/core/AppContext'
 import { getConfig, getAllItems } from '@/core/DataLoader'
+import { clearCurrentRunState, getLifeState, resetLifeState, SHOP_STATE_STORAGE_KEY } from '@/core/RunState'
 import { GridSystem }        from '@/grid/GridSystem'
 import type { ItemSizeNorm, PlacedItem } from '@/grid/GridSystem'
 import { GridZone, CELL_SIZE, CELL_HEIGHT } from '@/grid/GridZone'
 import { DragController }    from '@/grid/DragController'
 import { planAutoPack, type PackItem, type PackPlacement } from '@/grid/AutoPack'
 import { planUnifiedSqueeze } from '@/grid/SqueezeLogic'
-import { normalizeSize }     from '@/items/ItemDef'
+import { normalizeSize, type ItemDef } from '@/items/ItemDef'
 import { resolveItemTierBaseStats } from '@/items/itemTierStats'
-import { ShopManager, type ShopSlot, type TierKey } from '@/shop/ShopManager'
+import { ShopManager, getDailyGoldForDay, type ShopSlot, type TierKey } from '@/shop/ShopManager'
 import { ShopPanelView }     from '@/shop/ShopPanelView'
 import { SellPopup, type ItemInfoMode } from '@/shop/SellPopup'
 import { getConfig as getDebugCfg, onConfigChange as onDebugCfgChange } from '@/config/debugConfig'
@@ -46,7 +47,6 @@ const MINI_CELL = 20
 const MINI_W    = 6 * MINI_CELL
 const SHOP_QUICK_BUY_PRICE = 3
 const BACKPACK_GAP_FROM_BATTLE = 28
-const SHOP_STATE_STORAGE_KEY = 'bigbazzar_shop_state_v1'
 const SHOP_STATE_STORAGE_VERSION = 1
 
 // ---- 场景级状态 ----
@@ -63,6 +63,7 @@ let showingBackpack = true
 
 // 按钮/UI 引用（动画需要）
 let goldText:       Text      | null = null
+let livesText:      Text      | null = null
 let miniMapGfx:     Graphics  | null = null
 let miniMapCon:     Container | null = null
 let bpBtnHandle:      CircleBtnHandle | null = null
@@ -187,11 +188,18 @@ type SavedShopState = {
   battleItems: SavedPlacedItem[]
   backpackItems: SavedPlacedItem[]
   instCounter: number
+  starterClass?: 'swordsman' | 'archer' | 'assassin' | null
+  starterGranted?: boolean
 }
 
 let pendingBattleTransition = false
 let pendingAdvanceToNextDay = false
 let savedShopState: SavedShopState | null = null
+
+type StarterClass = 'swordsman' | 'archer' | 'assassin'
+let starterClass: StarterClass | null = null
+let starterGranted = false
+let classSelectOverlay: Container | null = null
 
 type BattleStartTransitionState = {
   elapsedMs: number
@@ -336,16 +344,9 @@ function loadShopStateFromStorage(): SavedShopState | null {
   }
 }
 
-function clearShopStateFromStorage(): void {
-  try {
-    localStorage.removeItem(SHOP_STATE_STORAGE_KEY)
-  } catch (err) {
-    console.warn('[ShopScene] 清理商店状态失败', err)
-  }
-}
-
 function restartRunFromBeginning(): void {
-  clearShopStateFromStorage()
+  clearCurrentRunState()
+  resetLifeState()
   clearBattleSnapshot()
   clearBattleOutcome()
   savedShopState = null
@@ -452,6 +453,7 @@ function applyPhaseUiVisibility(): void {
 
   if (refreshCostText) refreshCostText.visible = inShop
   if (goldText) goldText.visible = inShop
+  if (livesText) livesText.visible = inShop
   if (miniMapCon) miniMapCon.visible = inShop
   if (dayDebugCon) dayDebugCon.visible = inShop
   if (sellPopup) sellPopup.visible = inShop && currentSelection.kind !== 'none'
@@ -546,6 +548,8 @@ function captureShopState(): SavedShopState | null {
     battleItems: captureItems(battleSystem.getAllItems()),
     backpackItems: captureItems(backpackSystem.getAllItems()),
     instCounter,
+    starterClass,
+    starterGranted,
   }
 }
 
@@ -555,6 +559,8 @@ function applySavedShopState(state: SavedShopState): void {
   const byId = new Map(all.map((it) => [it.id, it] as const))
 
   currentDay = state.day
+  starterClass = state.starterClass ?? null
+  starterGranted = state.starterGranted ?? false
   shopManager.day = state.day
   shopManager.gold = state.gold
   shopManager.refreshIndex = state.refreshIndex
@@ -1312,6 +1318,240 @@ function findFirstBattlePlace(size: ItemSizeNorm): { col: number; row: number } 
   return null
 }
 
+const STARTER_CLASS_PRESETS: Record<StarterClass, {
+  title: string
+  subtitle: string
+  gifts: [string, string]
+  heroImage: string
+}> = {
+  swordsman: {
+    title: '剑士',
+    subtitle: '稳扎稳打，\n护盾连携持续输出。',
+    gifts: ['短剑', '圆盾'],
+    heroImage: '/resource/hero/warrior.png',
+  },
+  archer: {
+    title: '弓手',
+    subtitle: '管理弹药节奏，\n打出高频远程火力。',
+    gifts: ['木弓', '弹药袋'],
+    heroImage: '/resource/hero/archer.png',
+  },
+  assassin: {
+    title: '刺客',
+    subtitle: '低冷却连击，\n快速压制并终结对手。',
+    gifts: ['匕首', '连发飞镖'],
+    heroImage: '/resource/hero/assassin.png',
+  },
+}
+
+function getItemDefByCn(nameCn: string): ItemDef | null {
+  return getAllItems().find((it) => it.name_cn === nameCn) ?? null
+}
+
+function grantStarterItemsByClass(pick: StarterClass): void {
+  if (!battleSystem || !battleView || !backpackSystem || !backpackView) return
+  const preset = STARTER_CLASS_PRESETS[pick]
+  if (!preset) return
+
+  for (const nameCn of preset.gifts) {
+    const item = getItemDefByCn(nameCn)
+    if (!item) continue
+    const size = normalizeSize(item.size)
+    const battleSlot = findFirstBattlePlace(size)
+    const backpackSlot = battleSlot ? null : findFirstBackpackPlace(size)
+    if (!battleSlot && !backpackSlot) continue
+
+    const id = nextId()
+    if (battleSlot) {
+      battleSystem.place(battleSlot.col, battleSlot.row, size, item.id, id)
+      void battleView.addItem(id, item.id, size, battleSlot.col, battleSlot.row, 'Bronze').then(() => {
+        battleView!.setItemTier(id, toVisualTier('Bronze', 1))
+        drag?.refreshZone(battleView!)
+      })
+    } else if (backpackSlot) {
+      backpackSystem.place(backpackSlot.col, backpackSlot.row, size, item.id, id)
+      void backpackView.addItem(id, item.id, size, backpackSlot.col, backpackSlot.row, 'Bronze').then(() => {
+        backpackView!.setItemTier(id, toVisualTier('Bronze', 1))
+        drag?.refreshZone(backpackView!)
+      })
+    }
+
+    instanceToDefId.set(id, item.id)
+    instanceToTier.set(id, 'Bronze')
+    instanceToTierStar.set(id, 1)
+    instanceToPermanentDamageBonus.set(id, 0)
+  }
+}
+
+function ensureStarterClassSelection(stage: Container): void {
+  if (starterGranted) return
+  if (classSelectOverlay) return
+  if (!shopManager) return
+
+  setTransitionInputEnabled(false)
+
+  const overlay = new Container()
+  overlay.zIndex = 3000
+  overlay.eventMode = 'static'
+  overlay.hitArea = new Rectangle(0, 0, CANVAS_W, CANVAS_H)
+
+  const bg = new Graphics()
+  bg.rect(0, 0, CANVAS_W, CANVAS_H)
+  bg.fill({ color: 0x0a1020, alpha: 0.94 })
+  overlay.addChild(bg)
+
+  const title = new Text({
+    text: '选择你的初始职业',
+    style: { fontSize: 42, fill: 0xfff2cf, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  title.anchor.set(0.5)
+  title.x = CANVAS_W / 2
+  title.y = 150
+  overlay.addChild(title)
+
+  const subtitle = new Text({
+    text: '请选择一条开局战斗风格',
+    style: { fontSize: 24, fill: 0xb9c8e8, fontFamily: 'Arial' },
+  })
+  subtitle.anchor.set(0.5)
+  subtitle.x = CANVAS_W / 2
+  subtitle.y = 202
+  overlay.addChild(subtitle)
+
+  const cards: Array<{ key: StarterClass; border: Graphics }> = []
+  const order: StarterClass[] = ['swordsman', 'archer', 'assassin']
+  const cardW = 190
+  const cardH = 504
+  const gapX = 16
+  const cardX = (CANVAS_W - (cardW * 3 + gapX * 2)) / 2
+  const startY = 310
+  let selected: StarterClass | null = starterClass
+
+  const confirm = new Container()
+  confirm.eventMode = 'static'
+  confirm.cursor = 'pointer'
+  const cBg = new Graphics()
+  const cText = new Text({
+    text: selected ? '进入大巴扎' : '请选择职业',
+    style: { fontSize: 32, fill: 0x10162a, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  confirm.addChild(cBg)
+  confirm.addChild(cText)
+
+  const redrawConfirm = () => {
+    cBg.clear()
+    const enabled = !!selected
+    cBg.roundRect((CANVAS_W - 500) / 2, CANVAS_H - 184, 500, 100, 24)
+    cBg.fill({ color: enabled ? 0x52c0ff : 0x5f6b82, alpha: enabled ? 0.95 : 0.7 })
+    cBg.stroke({ color: enabled ? 0x9be0ff : 0x8f9ab1, width: 3, alpha: 1 })
+    cText.text = enabled ? '进入大巴扎' : '请选择职业'
+    cText.style.fill = enabled ? 0x10162a : 0xdce4ff
+    cText.x = CANVAS_W / 2 - cText.width / 2
+    cText.y = CANVAS_H - 184 + (100 - cText.height) / 2
+  }
+
+  const redrawCards = () => {
+    for (const c of cards) {
+      const active = c.key === selected
+      c.border.clear()
+      c.border.roundRect(0, 0, cardW, cardH, 24)
+      c.border.stroke({ color: active ? 0x5fd3ff : 0x6d7791, width: active ? 4 : 2, alpha: 1 })
+      c.border.fill({ color: active ? 0x132a46 : 0x1b2438, alpha: active ? 0.95 : 0.85 })
+    }
+    redrawConfirm()
+  }
+
+  for (let i = 0; i < order.length; i++) {
+    const key = order[i]!
+    const preset = STARTER_CLASS_PRESETS[key]
+    const con = new Container()
+    con.x = cardX + i * (cardW + gapX)
+    con.y = startY
+    con.eventMode = 'static'
+    con.cursor = 'pointer'
+    con.hitArea = new Rectangle(0, 0, cardW, cardH)
+
+    const border = new Graphics()
+    con.addChild(border)
+
+    const t = new Text({
+      text: preset.title,
+      style: { fontSize: 36, fill: 0xfff2cf, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    t.x = 32
+    t.y = 24
+    con.addChild(t)
+
+    const d = new Text({
+      text: preset.subtitle,
+      style: {
+        fontSize: 22,
+        fill: 0xc7d5f2,
+        fontFamily: 'Arial',
+        wordWrap: true,
+        breakWords: true,
+        wordWrapWidth: cardW - 30,
+        lineHeight: 30,
+      },
+    })
+    d.x = 18
+    d.y = 352
+    con.addChild(d)
+
+    const hero = new Sprite(Texture.WHITE)
+    const heroMaxW = 154
+    const heroMaxH = 230
+    hero.visible = false
+    hero.x = (cardW - heroMaxW) / 2
+    hero.y = 102
+    void Assets.load<Texture>(preset.heroImage).then((tex) => {
+      hero.texture = tex
+      const sw = Math.max(1, tex.width)
+      const sh = Math.max(1, tex.height)
+      const scale = Math.min(heroMaxW / sw, heroMaxH / sh)
+      hero.width = Math.max(1, Math.round(sw * scale))
+      hero.height = Math.max(1, Math.round(sh * scale))
+      hero.x = (cardW - hero.width) / 2
+      hero.y = 102 + (heroMaxH - hero.height) / 2
+      hero.visible = true
+    }).catch(() => {
+      // ignore missing asset in runtime
+    })
+    con.addChild(hero)
+
+    con.on('pointerdown', (e: FederatedPointerEvent) => {
+      e.stopPropagation()
+      selected = key
+      redrawCards()
+    })
+
+    overlay.addChild(con)
+    cards.push({ key, border })
+  }
+
+  confirm.on('pointerdown', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    if (!selected) return
+    starterClass = selected
+    starterGranted = true
+    grantStarterItemsByClass(selected)
+    rollQuickBuyOffer(true)
+    saveShopStateToStorage(captureShopState())
+    if (classSelectOverlay?.parent) classSelectOverlay.parent.removeChild(classSelectOverlay)
+    classSelectOverlay?.destroy({ children: true })
+    classSelectOverlay = null
+    setTransitionInputEnabled(true)
+    applyPhaseInputLock()
+    refreshShopUI()
+  })
+
+  overlay.addChild(confirm)
+  redrawCards()
+
+  classSelectOverlay = overlay
+  stage.addChild(overlay)
+}
+
 // ============================================================
 // 小地图
 // ============================================================
@@ -1348,15 +1588,22 @@ function refreshShopUI(): void {
     goldText.x    = getDebugCfg('goldTextCenterX') - goldText.width / 2
     goldText.y    = getDebugCfg('goldTextY')
   }
+  if (livesText) {
+    const lives = getLifeState()
+    livesText.text = `❤️ ${lives.current}/${lives.max}`
+    livesText.style.fill = lives.current <= 1 ? 0xff6a6a : 0xffd4d4
+    livesText.x = CANVAS_W - livesText.width - 18
+    livesText.y = 18
+  }
   if (refreshCostText) {
-    refreshCostText.text = `💰 ${shopManager.gold}/${SHOP_QUICK_BUY_PRICE}`
+    refreshCostText.text = `💰 ${shopManager.gold}/${getQuickBuyPricePreviewLabel()}`
     refreshCostText.x    = getDebugCfg('refreshBtnX') - refreshCostText.width / 2
-    refreshCostText.style.fill = shopManager.gold >= SHOP_QUICK_BUY_PRICE ? 0xffd700 : 0xff4444
+    refreshCostText.style.fill = shopManager.gold >= getQuickBuyMinPrice() ? 0xffd700 : 0xff4444
   }
   if (refreshBtnHandle) {
-    refreshBtnHandle.setSubLabel(`💰 ${shopManager.gold}/${SHOP_QUICK_BUY_PRICE}`)
+    refreshBtnHandle.setSubLabel(`💰 ${shopManager.gold}/${getQuickBuyPricePreviewLabel()}`)
     const sub = refreshBtnHandle.container.getChildByName('sell-price') as Text | null
-    if (sub) sub.style.fill = shopManager.gold >= SHOP_QUICK_BUY_PRICE ? 0xffd700 : 0xff6666
+    if (sub) sub.style.fill = shopManager.gold >= getQuickBuyMinPrice() ? 0xffd700 : 0xff6666
   }
   updateMiniMap()
   refreshUpgradeHints()
@@ -1364,66 +1611,201 @@ function refreshShopUI(): void {
   saveShopStateToStorage(captureShopState())
 }
 
+type QuickBuyTierStar = { tier: TierKey; star: 1 | 2; weight: number }
+type QuickBuyOffer = { tier: TierKey; star: 1 | 2; price: number }
+
+let quickBuyOffer: QuickBuyOffer | null = null
+
+function getQuickBuyOptionsForDay(day: number): QuickBuyTierStar[] {
+  const rules = getConfig().shopRules?.quickBuyByDay ?? []
+  const matched = rules.find((r) => day >= r.dayStart && day <= r.dayEnd)
+  const weights = matched?.weights ?? { bronze1: 100, bronze2: 0, silver1: 0 }
+  return [
+    { tier: 'Bronze', star: 1, weight: Math.max(0, weights.bronze1 ?? 0) },
+    { tier: 'Bronze', star: 2, weight: Math.max(0, weights.bronze2 ?? 0) },
+    { tier: 'Silver', star: 1, weight: Math.max(0, weights.silver1 ?? 0) },
+  ]
+}
+
+function getQuickBuyOwnedWeightMultiplier(day: number): number {
+  const rules = getConfig().shopRules?.quickBuyByDay ?? []
+  const matched = rules.find((r) => day >= r.dayStart && day <= r.dayEnd)
+  const v = matched?.ownedWeightMultiplier
+  if (typeof v !== 'number' || !Number.isFinite(v) || v < 1) return 1
+  return v
+}
+
+function isQuickBuyUnlockedByPrerequisite(item: ItemDef): boolean {
+  const rules = getConfig().shopRules?.itemPrerequisites
+  if (!rules) return true
+  const req = rules[item.id] ?? rules[item.name_cn] ?? rules[item.name_en]
+  if (!req || req.length === 0) return true
+  const ownedDefIds = new Set<string>(instanceToDefId.values())
+  const ownedNames = new Set<string>()
+  for (const defId of ownedDefIds) {
+    const def = getAllItems().find((it) => it.id === defId)
+    if (!def) continue
+    ownedNames.add(def.id)
+    ownedNames.add(def.name_cn)
+    ownedNames.add(def.name_en)
+  }
+  return req.some((k) => ownedNames.has(k))
+}
+
+function getQuickBuyFixedPrice(tier: TierKey, star: 1 | 2): number {
+  const key = `${tier}#${tier === 'Diamond' ? 1 : star}`
+  const map = getConfig().shopRules?.quickBuyFixedPrice
+  const raw = map?.[key]
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return Math.round(raw)
+  if (tier === 'Bronze' && star === 1) return 3
+  if (tier === 'Bronze' && star === 2) return 6
+  if (tier === 'Silver' && star === 1) return 12
+  return SHOP_QUICK_BUY_PRICE
+}
+
+function collectQuickBuyUnlockedCandidates(tier: TierKey): ItemDef[] {
+  return getAllItems().filter((it) => {
+    if (!parseAvailableTiers(it.available_tiers).includes(tier)) return false
+    if (!isQuickBuyUnlockedByPrerequisite(it)) return false
+    return true
+  })
+}
+
+function rollQuickBuyOffer(force = false): void {
+  if (!force && quickBuyOffer) {
+    const stillValid = collectQuickBuyUnlockedCandidates(quickBuyOffer.tier).length > 0
+    if (stillValid) return
+  }
+
+  const options = getQuickBuyOptionsForDay(currentDay)
+    .filter((opt) => opt.weight > 0)
+    .filter((opt) => collectQuickBuyUnlockedCandidates(opt.tier).length > 0)
+
+  if (options.length === 0) {
+    quickBuyOffer = null
+    return
+  }
+
+  const totalWeight = options.reduce((sum, v) => sum + v.weight, 0)
+  let r = Math.random() * Math.max(1, totalWeight)
+  let picked = options[0]!
+  for (const opt of options) {
+    r -= opt.weight
+    if (r <= 0) {
+      picked = opt
+      break
+    }
+  }
+  quickBuyOffer = {
+    tier: picked.tier,
+    star: picked.star,
+    price: getQuickBuyFixedPrice(picked.tier, picked.star),
+  }
+}
+
+function getQuickBuyMinPrice(): number {
+  rollQuickBuyOffer()
+  return quickBuyOffer?.price ?? SHOP_QUICK_BUY_PRICE
+}
+
+function getQuickBuyPricePreviewLabel(): string {
+  rollQuickBuyOffer()
+  return `${quickBuyOffer?.price ?? SHOP_QUICK_BUY_PRICE}`
+}
+
 function buyRandomBronzeToBoardOrBackpack(): void {
   if (!shopManager || !battleSystem || !battleView || !backpackSystem || !backpackView) return
-  if (shopManager.gold < SHOP_QUICK_BUY_PRICE) {
-    showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
+  const manager = shopManager
+
+  syncShopOwnedTierRules()
+  rollQuickBuyOffer()
+
+  if (!quickBuyOffer) {
+    showHintToast('no_gold_buy', '无可用购买池', 0xff8f8f)
     refreshShopUI()
     return
   }
 
-  const candidates = getAllItems().filter((it) => parseAvailableTiers(it.available_tiers).includes('Bronze'))
-  if (candidates.length === 0) {
-    refreshShopUI()
-    return
-  }
+  const offer = quickBuyOffer
 
-  const placeableCandidates = candidates.filter((it) => {
+  const owned = new Set<string>(Array.from(instanceToDefId.values()))
+  const ownedMul = getQuickBuyOwnedWeightMultiplier(currentDay)
+
+  const candidates = getAllItems().filter((it) => {
+    if (!parseAvailableTiers(it.available_tiers).includes(offer.tier)) return false
+    if (!isQuickBuyUnlockedByPrerequisite(it)) return false
     const size = normalizeSize(it.size)
-    return !!findFirstBattlePlace(size) || !!findFirstBackpackPlace(size)
+    if (!findFirstBattlePlace(size) && !findFirstBackpackPlace(size)) return false
+    return true
   })
-  if (placeableCandidates.length === 0) {
-    showHintToast('backpack_full_buy', '格子不够，无法购买', 0xff8f8f)
+
+  if (candidates.length === 0) {
+    if (findFirstBattlePlace('1x1') || findFirstBackpackPlace('1x1')) {
+      showHintToast('no_gold_buy', `当前品质无可购买物品`, 0xff8f8f)
+    } else {
+      showHintToast('backpack_full_buy', '格子不够，无法购买', 0xff8f8f)
+    }
     refreshShopUI()
     return
   }
 
-  const item = placeableCandidates[Math.floor(Math.random() * placeableCandidates.length)]
-  if (!item) {
-    refreshShopUI()
-    return
+  const weighted = candidates.map((it) => {
+    const w = owned.has(it.id) ? ownedMul : 1
+    return { it, w }
+  })
+  const totalItemWeight = weighted.reduce((sum, v) => sum + v.w, 0)
+  let itemRoll = Math.random() * Math.max(1, totalItemWeight)
+  let item = weighted[0]!.it
+  for (const v of weighted) {
+    itemRoll -= v.w
+    if (itemRoll <= 0) {
+      item = v.it
+      break
+    }
   }
+
+  const tier = offer.tier
+  const star = offer.star
+  const buyPrice = offer.price
 
   const size = normalizeSize(item.size)
   const battleSlot = findFirstBattlePlace(size)
   const backpackSlot = battleSlot ? null : findFirstBackpackPlace(size)
   if (!battleSlot && !backpackSlot) {
-    showHintToast('backpack_full_buy', '战斗区与背包已满，无法购买', 0xff8f8f)
+    showHintToast('backpack_full_buy', '格子不够，无法购买', 0xff8f8f)
     refreshShopUI()
     return
   }
 
-  shopManager.gold -= SHOP_QUICK_BUY_PRICE
+  if (manager.gold < buyPrice) {
+    showHintToast('no_gold_buy', `金币不足，需${buyPrice}G`, 0xff8f8f)
+    refreshShopUI()
+    return
+  }
+
+  manager.gold -= buyPrice
   const id = nextId()
+  const visualTier = toVisualTier(tier, star)
   if (battleSlot) {
     battleSystem.place(battleSlot.col, battleSlot.row, size, item.id, id)
-    void battleView.addItem(id, item.id, size, battleSlot.col, battleSlot.row, 'Bronze').then(() => {
-      battleView!.setItemTier(id, toVisualTier('Bronze', 1))
+    void battleView.addItem(id, item.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
+      battleView!.setItemTier(id, visualTier)
       drag?.refreshZone(battleView!)
     })
-    console.log(`[ShopScene] 购买随机青铜→战斗区 ${item.name_cn}，金币: ${shopManager.gold}`)
+    console.log(`[ShopScene] 购买(${tier}#${star})→战斗区 ${item.name_cn} -${buyPrice}G，金币: ${manager.gold}`)
   } else if (backpackSlot) {
     backpackSystem.place(backpackSlot.col, backpackSlot.row, size, item.id, id)
-    void backpackView.addItem(id, item.id, size, backpackSlot.col, backpackSlot.row, 'Bronze').then(() => {
-      backpackView!.setItemTier(id, toVisualTier('Bronze', 1))
+    void backpackView.addItem(id, item.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
+      backpackView!.setItemTier(id, visualTier)
       drag?.refreshZone(backpackView!)
     })
-    console.log(`[ShopScene] 购买随机青铜→背包 ${item.name_cn}，金币: ${shopManager.gold}`)
+    console.log(`[ShopScene] 购买(${tier}#${star})→背包 ${item.name_cn} -${buyPrice}G，金币: ${manager.gold}`)
   }
   instanceToDefId.set(id, item.id)
-  instanceToTier.set(id, 'Bronze')
-  instanceToTierStar.set(id, 1)
+  instanceToTier.set(id, tier)
+  instanceToTierStar.set(id, star)
   instanceToPermanentDamageBonus.set(id, 0)
+  rollQuickBuyOffer(true)
   refreshShopUI()
 }
 
@@ -1464,6 +1846,7 @@ function getBackpackZoneYByBattle(): number {
 function setDay(day: number): void {
   const prevDay = currentDay
   currentDay = Math.max(1, Math.min(20, day))
+  rollQuickBuyOffer(true)
   const newCols = getDayActiveCols(currentDay)
 
   // 1. 更新 GridZone 格子背景（立即重绘）
@@ -1497,7 +1880,7 @@ function setDay(day: number): void {
     shopManager.setDay(currentDay)
     // Debug 改天数：每次实际变更天数都发放一次当日金币
     if (currentDay !== prevDay) {
-      shopManager.gold += getConfig().dailyGold
+      shopManager.gold += getDailyGoldForDay(getConfig(), currentDay)
     }
   }
   refreshShopUI()
@@ -1583,6 +1966,7 @@ function applyTextSizesFromDebug(): void {
 
   if (refreshCostText) refreshCostText.style.fontSize = getDebugCfg('refreshCostFontSize')
   if (hintToastText) hintToastText.style.fontSize = getDebugCfg('refreshCostFontSize')
+  if (livesText) livesText.style.fontSize = getDebugCfg('refreshCostFontSize')
   if (goldText) {
     goldText.style.fontSize = getDebugCfg('goldFontSize')
     const s = getBattleItemScale()
@@ -1680,6 +2064,10 @@ function applyLayoutFromDebug(): void {
   if (dayDebugCon) {
     dayDebugCon.x = CANVAS_W / 2
     dayDebugCon.y = getDebugCfg('dayDebugY')
+  }
+  if (livesText) {
+    livesText.x = CANVAS_W - livesText.width - 18
+    livesText.y = 18
   }
   if (miniMapCon) {
     miniMapCon.x = getDebugCfg('backpackBtnX') - MINI_W / 2
@@ -2751,6 +3139,19 @@ export const ShopScene: Scene = {
     restartBtn = restartCon
     stage.addChild(restartCon)
 
+    livesText = new Text({
+      text: '❤️ 5/5',
+      style: {
+        fontSize: cfg.textSizes.refreshCost,
+        fill: 0xffd4d4,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        stroke: { color: 0x000000, width: 3 },
+      },
+    })
+    livesText.zIndex = 95
+    stage.addChild(livesText)
+
     // 商店面板
     shopPanel = new ShopPanelView()
     shopPanel.x = getDebugCfg('shopAreaX')
@@ -2763,7 +3164,7 @@ export const ShopScene: Scene = {
     const activeCols = cfg.dailyBattleSlots[0] ?? 4
     battleSystem   = new GridSystem(6)
     backpackSystem = new GridSystem(6, 2)
-    battleView     = new GridZone('战斗区', 6, activeCols, 1)
+    battleView     = new GridZone('上阵区', 6, activeCols, 1)
     backpackView   = new GridZone('背包', 6, 6, 2)
     backpackView.setAutoPackEnabled(false)
     battleView.setStatBadgeMode('archetype')
@@ -2789,7 +3190,7 @@ export const ShopScene: Scene = {
       if (!item) return
       const tier = getInstanceTier(instanceId)
       const star = getInstanceTierStar(instanceId)
-      const sellPrice = shopManager.getSellPrice(item, tier)
+      const sellPrice = shopManager.getSellPrice(item, tier, star)
       // 拖拽中视为选中：显示物品详情（不设置区域高亮，因物品已脱离格子）
       const inBattle = !!battleView?.hasItem(instanceId)
       currentSelection = { kind: inBattle ? 'battle' : 'backpack', instanceId }
@@ -2813,8 +3214,9 @@ export const ShopScene: Scene = {
       if (isOverGridDragSellArea(anchorGx, anchorGy) && !isOverAnyGridDropTarget(anchorGx, anchorGy, size)) {
         homeSystem.remove(instanceId)
         const tier = getInstanceTier(instanceId)
+        const star = getInstanceTierStar(instanceId)
         removeInstanceMeta(instanceId)
-        const gained = shopManager.sellItem(item, tier)
+        const gained = shopManager.sellItem(item, tier, star)
         console.log(`[ShopScene] 拖拽出售 ${item.name_cn} +${gained}G，金币: ${shopManager.gold}`)
         refreshShopUI()
         return true
@@ -3066,7 +3468,7 @@ export const ShopScene: Scene = {
     refreshBtnHandle = refreshBtn
     btnRow.addChild(refreshBtn.container)
 
-    refreshBtn.setSubLabel(`💰 ${shopManager.gold}/${SHOP_QUICK_BUY_PRICE}`)
+    refreshBtn.setSubLabel(`💰 ${shopManager.gold}/${getQuickBuyPricePreviewLabel()}`)
 
     // 保留占位引用，避免旧流程空指针
     refreshCostText = null
@@ -3143,7 +3545,7 @@ export const ShopScene: Scene = {
       if (kind === 'battle') refreshBattlePassiveStatBadges(false)
       const tier = getInstanceTier(instanceId)
       const star = getInstanceTierStar(instanceId)
-      const sellPrice = manager.getSellPrice(item, tier)
+      const sellPrice = manager.getSellPrice(item, tier, star)
       const infoMode = resolveInfoMode(`${kind}:${instanceId}:${tier}:${star}`)
       sellPopup.show(item, sellPrice, 'sell', toVisualTier(tier, star), undefined, infoMode)
 
@@ -3151,7 +3553,7 @@ export const ShopScene: Scene = {
         system.remove(instanceId)
         view.removeItem(instanceId)
         removeInstanceMeta(instanceId)
-        manager.sellItem(item, tier)
+        manager.sellItem(item, tier, star)
         drag?.refreshZone(view)
         console.log(`[ShopScene] 出售 ${item.name_cn} +${sellPrice}G，金币: ${manager.gold}`)
       }
@@ -3327,9 +3729,12 @@ export const ShopScene: Scene = {
       }
     } else {
       pendingAdvanceToNextDay = false
+      starterClass = null
+      starterGranted = false
     }
     refreshShopUI()
     applyPhaseInputLock()
+    ensureStarterClassSelection(stage)
   },
 
   onExit() {
@@ -3354,10 +3759,14 @@ export const ShopScene: Scene = {
     if (backpackAreaBg) stage.removeChild(backpackAreaBg)
     if (battleAreaBg) stage.removeChild(battleAreaBg)
     if (restartBtn)   stage.removeChild(restartBtn)
+    if (livesText)    stage.removeChild(livesText)
     if (btnRow)       stage.removeChild(btnRow)
     if (dayDebugCon)  stage.removeChild(dayDebugCon)
     if (hintToastCon) stage.removeChild(hintToastCon)
     if (passiveJumpLayer?.parent) passiveJumpLayer.parent.removeChild(passiveJumpLayer)
+    if (classSelectOverlay?.parent) classSelectOverlay.parent.removeChild(classSelectOverlay)
+    classSelectOverlay?.destroy({ children: true })
+    classSelectOverlay = null
 
     if (onStageTapHidePopup) {
       stage.off('pointerdown', onStageTapHidePopup)
@@ -3411,6 +3820,7 @@ export const ShopScene: Scene = {
     goldText      = null; miniMapGfx   = null; miniMapCon = null
     shopAreaBg    = null; backpackAreaBg = null; battleAreaBg = null
     restartBtn    = null
+    livesText     = null
     bpBtnHandle   = null; refreshBtnHandle = null; sellBtnHandle = null
     phaseBtnHandle = null
     refreshCostText = null
@@ -3426,6 +3836,9 @@ export const ShopScene: Scene = {
     dayNextBtn      = null
     dayDebugCon     = null
     currentDay      = 1
+    quickBuyOffer   = null
+    starterClass    = null
+    starterGranted  = false
     showingBackpack = false
     battleSystem = backpackSystem = battleView = backpackView = drag = null
     instanceToDefId.clear()
