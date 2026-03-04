@@ -99,6 +99,7 @@
   "gameplayGrantAllClassItems": 0,
   "gameplayShowSpeedButton": 0,
   "gameplayCrossSynthesisConfirm": 0,
+  "gameplayBattleZoneNoSynthesis": 1,
   "enemyDraftEnabled": 1,
   "enemyDraftSameArchetypeBias": 0.85,
   "backpackZoneX": 0,

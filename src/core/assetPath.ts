@@ -35,3 +35,7 @@ export function getItemIconUrlByName(fileStem: string): string {
 export function getSceneImageUrl(fileName: string): string {
   return `${getResourceBasePath()}/scene/${fileName}`
 }
+
+export function getSkillIconUrl(fileStem: string): string {
+  return `${getResourceBasePath()}/skills/${fileStem}.png`
+}

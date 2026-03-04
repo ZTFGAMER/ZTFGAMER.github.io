@@ -1273,15 +1273,43 @@
   {
     "id": 19,
     "name": "skill_system",
-    "desc": "偶数日技能三选一配置",
-    "desc_en": "Even-day skill draft configuration",
+    "desc": "技能三选一按天配置",
+    "desc_en": "Daily skill draft configuration",
     "value": {
+      "dailyDraftPlan": [
+        { "day": 1, "shouldDraft": 1, "bronzeProb": 1, "silverProb": 0, "goldProb": 0, "onlyStarterArchetype": 1 },
+        { "day": 2, "shouldDraft": 0, "bronzeProb": 1, "silverProb": 0, "goldProb": 0, "onlyStarterArchetype": 0 },
+        { "day": 3, "shouldDraft": 1, "bronzeProb": 0.8, "silverProb": 0.2, "goldProb": 0, "onlyStarterArchetype": 0 },
+        { "day": 4, "shouldDraft": 0, "bronzeProb": 0.6, "silverProb": 0.4, "goldProb": 0, "onlyStarterArchetype": 0 },
+        { "day": 5, "shouldDraft": 1, "bronzeProb": 0.4, "silverProb": 0.6, "goldProb": 0, "onlyStarterArchetype": 0 },
+        { "day": 6, "shouldDraft": 0, "bronzeProb": 0.2, "silverProb": 0.8, "goldProb": 0, "onlyStarterArchetype": 0 },
+        { "day": 7, "shouldDraft": 1, "bronzeProb": 0, "silverProb": 1, "goldProb": 0, "onlyStarterArchetype": 0 },
+        { "day": 8, "shouldDraft": 0, "bronzeProb": 0, "silverProb": 0.8, "goldProb": 0.2, "onlyStarterArchetype": 0 },
+        { "day": 9, "shouldDraft": 1, "bronzeProb": 0, "silverProb": 0.6, "goldProb": 0.4, "onlyStarterArchetype": 0 },
+        { "day": 10, "shouldDraft": 0, "bronzeProb": 0, "silverProb": 0.4, "goldProb": 0.6, "onlyStarterArchetype": 0 },
+        { "day": 11, "shouldDraft": 1, "bronzeProb": 0, "silverProb": 0.2, "goldProb": 0.8, "onlyStarterArchetype": 0 },
+        { "day": 12, "shouldDraft": 0, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0 },
+        { "day": 13, "shouldDraft": 1, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0 },
+        { "day": 14, "shouldDraft": 0, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0 },
+        { "day": 15, "shouldDraft": 1, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0 },
+        { "day": 16, "shouldDraft": 0, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0 },
+        { "day": 17, "shouldDraft": 1, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0 },
+        { "day": 18, "shouldDraft": 0, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0 },
+        { "day": 19, "shouldDraft": 1, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0 },
+        { "day": 20, "shouldDraft": 0, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0 }
+      ],
       "triggerDaysByTier": {
         "bronze": [2, 4],
         "silver": [6, 8],
         "gold": [10, 14]
       },
       "chooseCount": 3,
+      "enemyMirrorDraft": {
+        "enabled": true,
+        "pickCountByDay": [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10],
+        "mainArchetypeRatioMin": 0.3,
+        "mainArchetypeRatioMax": 0.7
+      },
       "pools": {
         "bronze": [
           {
@@ -1363,7 +1391,7 @@
         ]
       }
     },
-    "note": "仅用于偶数日技能选择与展示；暂不接入战斗效果"
+    "note": "技能三选一按天配置（每日是否触发、品质概率、首日职业定向）"
   },
   {
     "id": 16,

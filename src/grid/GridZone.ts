@@ -47,7 +47,7 @@ const SIZE_PX: Record<ItemSizeNorm, { pw: number; ph: number }> = {
 }
 
 const MULTI_ROW_PICKUP_BOTTOM_TRIM = Math.round(CELL_SIZE * 0.32)
-const UPGRADE_ARROW_SCALE = 0.5
+const UPGRADE_ARROW_SCALE = 1
 const UPGRADE_ARROW_BASE_W = 40
 const UPGRADE_ARROW_BASE_H = 48
 const UPGRADE_ARROW_HALF_W = (UPGRADE_ARROW_BASE_W * UPGRADE_ARROW_SCALE) / 2
@@ -476,7 +476,7 @@ export class GridZone extends Container {
     upgradeArrow.lineTo(28, 48)
     upgradeArrow.lineTo(12, 48)
     upgradeArrow.lineTo(12, 24)
-    upgradeArrow.fill({ color: 0xffffff, alpha: 0.95 })
+    upgradeArrow.fill({ color: 0xffd25a, alpha: 0.98 })
     upgradeArrow.stroke({ color: 0x1a1a2a, width: 3, alpha: 0.85 })
     upgradeArrow.scale.set(UPGRADE_ARROW_SCALE)
 
@@ -875,6 +875,21 @@ export class GridZone extends Container {
     if (this.upgradeHintTick) this.stopUpgradeHintAnim()
   }
 
+  setDragGuideArrows(instanceIds: string[]): void {
+    const next = new Set(instanceIds.filter((id) => this.nodes.has(id)))
+    this.upgradeHintIds = next
+    for (const [id, node] of this.nodes) {
+      const show = next.has(id)
+      node.upgradeArrow.visible = show
+      if (!show) {
+        node.upgradeArrow.y = node.upgradeBaseY
+        node.upgradeArrow.alpha = 1
+      }
+    }
+    if (next.size > 0) this.startUpgradeHintAnim()
+    else this.stopUpgradeHintAnim()
+  }
+
   private redrawItemBorder(node: ItemNode): void {
     this.applyNodeVisualLayout(node)
   }
@@ -1029,6 +1044,26 @@ export class GridZone extends Container {
     if (!this.upgradeHintTick) return
     Ticker.shared.remove(this.upgradeHintTick)
     this.upgradeHintTick = null
+    for (const node of this.nodes.values()) {
+      node.upgradeArrow.y = node.upgradeBaseY
+      node.upgradeArrow.alpha = 1
+    }
+  }
+
+  private startUpgradeHintAnim(): void {
+    if (this.upgradeHintTick) return
+    this.upgradeHintTick = () => {
+      const p = (Date.now() % 700) / 700
+      const wave = Math.sin(p * Math.PI)
+      const offsetY = -10 * wave
+      const alpha = 0.72 + 0.28 * wave
+      for (const [id, node] of this.nodes) {
+        if (!this.upgradeHintIds.has(id) || !node.upgradeArrow.visible) continue
+        node.upgradeArrow.y = node.upgradeBaseY + offsetY
+        node.upgradeArrow.alpha = alpha
+      }
+    }
+    Ticker.shared.add(this.upgradeHintTick)
   }
 
   private redrawSelection(node: ItemNode): void {

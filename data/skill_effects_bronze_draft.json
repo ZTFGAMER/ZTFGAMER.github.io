@@ -1,0 +1,339 @@
+{
+  "version": 1,
+  "status": "draft_for_confirmation",
+  "note": "Bronze skills draft config. Not wired into runtime yet.",
+  "global_rules": {
+    "battle_once_flags_reset": "per_battle",
+    "run_once_flags_reset": "per_day",
+    "min_reduced_cd_ms": 500,
+    "default_stack_mode": "additive"
+  },
+  "skills": [
+    {
+      "id": "skill1",
+      "name": "左侧防御",
+      "icon": "skill1",
+      "tier": "bronze",
+      "archetype": "warrior",
+      "summary": "战斗开始时，最左侧的护盾物品护盾增加。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_battle_start",
+        "type": "shield_add",
+        "target": "leftmost_shield_item",
+        "value": 20,
+        "max_triggers_per_battle": 1
+      }
+    },
+    {
+      "id": "skill2",
+      "name": "右侧防御",
+      "icon": "skill2",
+      "tier": "bronze",
+      "archetype": "warrior",
+      "summary": "战斗开始时，最右侧的护盾物品护盾增加。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_battle_start",
+        "type": "shield_add",
+        "target": "rightmost_shield_item",
+        "value": 30,
+        "max_triggers_per_battle": 1
+      }
+    },
+    {
+      "id": "skill3",
+      "name": "盾牌保养",
+      "icon": "skill3",
+      "tier": "bronze",
+      "archetype": "warrior",
+      "summary": "战斗开始时，所有护盾物品护盾增加。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_battle_start",
+        "type": "shield_add",
+        "target": "all_shield_items",
+        "value": 15,
+        "max_triggers_per_battle": 1
+      }
+    },
+    {
+      "id": "skill4",
+      "name": "并肩作战",
+      "icon": "skill4",
+      "tier": "bronze",
+      "archetype": "warrior",
+      "summary": "使用护盾物品时，相邻物品伤害增加。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_use_shield_item",
+        "type": "adjacent_damage_add",
+        "target": "adjacent_items",
+        "value": 4,
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill5",
+      "name": "护盾循环",
+      "icon": "skill5",
+      "tier": "bronze",
+      "archetype": "warrior",
+      "summary": "使用护盾物品时该物品增加护盾。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_use_shield_item",
+        "type": "self_shield_add",
+        "target": "source_item",
+        "value": 6,
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill6",
+      "name": "速度至上",
+      "icon": "skill6",
+      "tier": "bronze",
+      "archetype": "utility",
+      "summary": "物品的间隔时间缩短。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "passive_always",
+        "type": "cooldown_reduce_pct",
+        "target": "all_items",
+        "value": 0.05,
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill7",
+      "name": "生存之心",
+      "icon": "skill7",
+      "tier": "bronze",
+      "archetype": "utility",
+      "summary": "最大生命值增加。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_battle_start",
+        "type": "max_hp_mul",
+        "target": "player_hero",
+        "value": 1.1,
+        "max_triggers_per_battle": 1
+      }
+    },
+    {
+      "id": "skill8",
+      "name": "左侧药箱",
+      "icon": "skill8",
+      "tier": "bronze",
+      "archetype": "archer",
+      "summary": "战斗开始时，最左侧的弹药物品弹药量增加。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_battle_start",
+        "type": "ammo_capacity_add",
+        "target": "leftmost_ammo_item",
+        "value": 1,
+        "max_triggers_per_battle": 1
+      }
+    },
+    {
+      "id": "skill9",
+      "name": "弹药循环",
+      "icon": "skill9",
+      "tier": "bronze",
+      "archetype": "archer",
+      "summary": "每场战斗首次弹药耗尽时装填弹药。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_first_ammo_empty",
+        "type": "ammo_refill_add",
+        "target": "source_ammo_item",
+        "value": 1,
+        "max_triggers_per_battle": 1
+      }
+    },
+    {
+      "id": "skill10",
+      "name": "弹药打击",
+      "icon": "skill10",
+      "tier": "bronze",
+      "archetype": "archer",
+      "summary": "战斗开始时，拥有弹药的物品伤害增加。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_battle_start",
+        "type": "damage_add",
+        "target": "all_ammo_items",
+        "value": 10,
+        "max_triggers_per_battle": 1
+      }
+    },
+    {
+      "id": "skill11",
+      "name": "弹药整备",
+      "icon": "skill11",
+      "tier": "bronze",
+      "archetype": "archer",
+      "summary": "使用弹药物品时，相邻的弹药物品伤害增加。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_use_ammo_item",
+        "type": "adjacent_ammo_damage_add",
+        "target": "adjacent_ammo_items",
+        "value": 5,
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill12",
+      "name": "弹药加速",
+      "icon": "skill12",
+      "tier": "bronze",
+      "archetype": "archer",
+      "summary": "弹药物品的间隔时间缩短。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "passive_always",
+        "type": "cooldown_reduce_pct",
+        "target": "all_ammo_items",
+        "value": 0.1,
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill13",
+      "name": "快速打击",
+      "icon": "skill13",
+      "tier": "bronze",
+      "archetype": "assassin",
+      "summary": "每场战斗前5秒内，所有物品伤害增加。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "time_window",
+        "type": "damage_add",
+        "target": "all_items",
+        "value": 20,
+        "window_ms": 5000,
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill14",
+      "name": "灵巧步伐",
+      "icon": "skill14",
+      "tier": "bronze",
+      "archetype": "assassin",
+      "summary": "每场战斗前5秒内，所有物品间隔时间缩短。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "time_window",
+        "type": "cooldown_reduce_pct",
+        "target": "all_items",
+        "value": 0.15,
+        "window_ms": 5000,
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill15",
+      "name": "砍价高手",
+      "icon": "skill15",
+      "tier": "bronze",
+      "archetype": "utility",
+      "summary": "购买物品价格有几率减少1。",
+      "effect": {
+        "scope": "shop",
+        "trigger": "on_buy_before_pay",
+        "type": "price_discount_chance",
+        "target": "current_purchase",
+        "value": 1,
+        "chance": 0.25,
+        "max_triggers_per_day": -1
+      }
+    },
+    {
+      "id": "skill16",
+      "name": "武器大师",
+      "icon": "skill16",
+      "tier": "bronze",
+      "archetype": "assassin",
+      "summary": "战斗开始时，武器伤害增加。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_battle_start",
+        "type": "damage_add",
+        "target": "all_weapon_items",
+        "value": 10,
+        "max_triggers_per_battle": 1
+      }
+    },
+    {
+      "id": "skill18",
+      "name": "嗜血打击",
+      "icon": "skill18",
+      "tier": "bronze",
+      "archetype": "assassin",
+      "summary": "每场战斗敌人生命值首次降至一半时，所有物品伤害增加。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_enemy_hp_first_below_pct",
+        "type": "damage_add",
+        "target": "all_items",
+        "value": 20,
+        "threshold_pct": 0.5,
+        "max_triggers_per_battle": 1
+      }
+    },
+    {
+      "id": "skill19",
+      "name": "双持武器",
+      "icon": "skill19",
+      "tier": "bronze",
+      "archetype": "assassin",
+      "summary": "战斗开始时，最左侧和最右侧的武器伤害增加。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_battle_start",
+        "type": "damage_add",
+        "target": "leftmost_and_rightmost_weapon_items",
+        "value": 15,
+        "max_triggers_per_battle": 1
+      }
+    },
+    {
+      "id": "skill20",
+      "name": "背包大师",
+      "icon": "skill20",
+      "tier": "bronze",
+      "archetype": "utility",
+      "summary": "每天随机获得1个青铜物品。",
+      "effect": {
+        "scope": "run",
+        "trigger": "on_new_day_enter_shop",
+        "type": "grant_random_item",
+        "target": "player_inventory",
+        "tier": "Bronze#1",
+        "count": 1,
+        "max_triggers_per_day": 1
+      }
+    },
+    {
+      "id": "skill21",
+      "name": "急救包",
+      "icon": "skill21",
+      "tier": "bronze",
+      "archetype": "utility",
+      "summary": "每场战斗己方生命值首次降至一半时，回复生命。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_ally_hp_first_below_pct",
+        "type": "heal_max_hp_pct",
+        "target": "player_hero",
+        "value": 0.15,
+        "threshold_pct": 0.5,
+        "max_triggers_per_battle": 1
+      }
+    }
+  ]
+}

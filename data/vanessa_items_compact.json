@@ -238,8 +238,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 1000,
-    "cooldown_tiers": "1000",
+    "cooldown": 1500,
+    "cooldown_tiers": "1500",
     "skills": [
       {
         "en": "",
@@ -266,8 +266,8 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 1000,
-    "cooldown_tiers": "1000",
+    "cooldown": 1500,
+    "cooldown_tiers": "1500",
     "skills": [
       {
         "en": "",
@@ -386,7 +386,7 @@
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成400/600/800伤害。"
+        "cn": "攻击造成300/500/700伤害。"
       },
       {
         "en": "",

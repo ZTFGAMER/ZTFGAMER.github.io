@@ -128,12 +128,26 @@ export interface GameConfig {
     muteLogsInMobileRelease?: boolean
   }
   skillSystem?: {
+    dailyDraftPlan?: Array<{
+      day: number
+      shouldDraft: number
+      bronzeProb: number
+      silverProb: number
+      goldProb: number
+      onlyStarterArchetype: number
+    }>
     triggerDaysByTier: {
       bronze: number[]
       silver: number[]
       gold: number[]
     }
     chooseCount: number
+    enemyMirrorDraft?: {
+      enabled?: boolean
+      pickCountByDay?: number[]
+      mainArchetypeRatioMin?: number
+      mainArchetypeRatioMax?: number
+    }
     pools: {
       bronze: Array<{
         id: string

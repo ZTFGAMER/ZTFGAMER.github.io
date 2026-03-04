@@ -22,6 +22,10 @@ export interface BattleSnapshotBundle {
   day: number
   activeColCount: number
   createdAtMs: number
+  skillBarMoveStartAtMs?: number
+  playerBackpackItemCount?: number
+  playerGold?: number
+  playerTrophyWins?: number
   showBasicSynthesisGuide?: boolean
   entities: BattleSnapshotEntity[]
 }
@@ -33,6 +37,10 @@ export function setBattleSnapshot(snapshot: BattleSnapshotBundle): void {
     day: snapshot.day,
     activeColCount: snapshot.activeColCount,
     createdAtMs: snapshot.createdAtMs,
+    skillBarMoveStartAtMs: typeof snapshot.skillBarMoveStartAtMs === 'number' ? snapshot.skillBarMoveStartAtMs : undefined,
+    playerBackpackItemCount: typeof snapshot.playerBackpackItemCount === 'number' ? Math.max(0, Math.round(snapshot.playerBackpackItemCount)) : undefined,
+    playerGold: typeof snapshot.playerGold === 'number' ? Math.max(0, Math.round(snapshot.playerGold)) : undefined,
+    playerTrophyWins: typeof snapshot.playerTrophyWins === 'number' ? Math.max(0, Math.round(snapshot.playerTrophyWins)) : undefined,
     showBasicSynthesisGuide: snapshot.showBasicSynthesisGuide === true,
     entities: snapshot.entities.map((it) => ({ ...it })),
   }
@@ -44,6 +52,10 @@ export function getBattleSnapshot(): BattleSnapshotBundle | null {
     day: currentSnapshot.day,
     activeColCount: currentSnapshot.activeColCount,
     createdAtMs: currentSnapshot.createdAtMs,
+    skillBarMoveStartAtMs: typeof currentSnapshot.skillBarMoveStartAtMs === 'number' ? currentSnapshot.skillBarMoveStartAtMs : undefined,
+    playerBackpackItemCount: typeof currentSnapshot.playerBackpackItemCount === 'number' ? Math.max(0, Math.round(currentSnapshot.playerBackpackItemCount)) : undefined,
+    playerGold: typeof currentSnapshot.playerGold === 'number' ? Math.max(0, Math.round(currentSnapshot.playerGold)) : undefined,
+    playerTrophyWins: typeof currentSnapshot.playerTrophyWins === 'number' ? Math.max(0, Math.round(currentSnapshot.playerTrophyWins)) : undefined,
     showBasicSynthesisGuide: currentSnapshot.showBasicSynthesisGuide === true,
     entities: currentSnapshot.entities.map((it) => ({ ...it })),
   }

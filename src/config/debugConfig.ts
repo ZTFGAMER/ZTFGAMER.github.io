@@ -938,6 +938,15 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     step: 1,
     unit: '',
   },
+  gameplayBattleZoneNoSynthesis: {
+    labelCn:      '上阵区禁合成引导',
+    description:  '1=上阵区仅挤出/换位且拖拽时背包显示合成箭头；0=关闭该逻辑',
+    defaultValue: 1,
+    min:  0,
+    max:  1,
+    step: 1,
+    unit: '',
+  },
   enemyDraftEnabled: {
     labelCn:      '敌方实验AI开关',
     description:  '1=启用敌方购买/合成实验逻辑；0=沿用原有模板优先逻辑',

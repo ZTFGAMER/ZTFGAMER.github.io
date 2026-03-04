@@ -22,7 +22,10 @@ import type { ItemDef, ItemSizeNorm } from '@/items/ItemDef'
 import { EventBus } from '@/core/EventBus'
 import { SellPopup, type ItemInfoMode, type ItemInfoRuntimeOverride } from '@/shop/SellPopup'
 import { getBattleEffectColor, getBattleFloatTextColor, getBattleOrbColor, getTierColor } from '@/config/colorPalette'
-import { getItemIconUrl, getItemIconUrlByName, getSceneImageUrl } from '@/core/assetPath'
+import { getItemIconUrl, getItemIconUrlByName, getSceneImageUrl, getSkillIconUrl } from '@/core/assetPath'
+import { getBronzeSkillById, getBronzeSkillByName } from '@/skills/bronzeSkillConfig'
+import { getSilverSkillById } from '@/skills/silverSkillConfig'
+import { getGoldSkillById } from '@/skills/goldSkillConfig'
 
 const CANVAS_W = 640
 const CANVAS_H = 1384
@@ -94,6 +97,8 @@ let battleDay = 1
 let enteredSnapshot: ReturnType<typeof getBattleSnapshot> = null
 let battleIntroElapsedMs = 0
 let battleIntroDurationMs = 0
+let skillBarIntroElapsedMs = 0
+const SKILL_BAR_INTRO_DURATION_MS = 500
 let battleExitTransitionElapsedMs = 0
 let battleExitTransitionDurationMs = 0
 let settlementResolved = false
@@ -187,18 +192,24 @@ let playerFreezeOverlay: Graphics | null = null
 let enemyStatusLayer: Container | null = null
 let playerStatusLayer: Container | null = null
 let playerSkillIconBarCon: Container | null = null
+let enemySkillIconBarCon: Container | null = null
 let battleSkillDetailPopupCon: Container | null = null
 let battleSkillDetailSkillId: string | null = null
 let battleSkillIconBarKey = ''
+let enemySkillIconBarKey = ''
 let lastHudTickIndex = -1
 type BattleSkillPick = {
   id: string
   name: string
   desc: string
+  detailDesc?: string
+  icon?: string
   archetype: 'warrior' | 'archer' | 'assassin' | 'utility'
   tier: 'bronze' | 'silver' | 'gold'
 }
 let battlePickedSkills: BattleSkillPick[] = []
+let enemyPickedSkills: BattleSkillPick[] = []
+let battleSkillDetailMode: 'simple' | 'detailed' = 'simple'
 
 type ItemBattleStat = {
   sourceItemId: string
@@ -250,17 +261,22 @@ function loadPickedSkillsFromShopState(): BattleSkillPick[] {
     const list = (state as { pickedSkills?: unknown } | null)?.pickedSkills
     if (!Array.isArray(list)) return []
     return list
-      .map((it) => {
+      .map((it): BattleSkillPick | null => {
         const rec = it as Record<string, unknown>
         const id = String(rec.id ?? '').trim()
         const name = String(rec.name ?? '').trim()
         const desc = String(rec.desc ?? '').trim()
+        const detailDesc = String(rec.detailDesc ?? '').trim()
+        const icon = String(rec.icon ?? '').trim()
         const archetype = String(rec.archetype ?? '') as BattleSkillPick['archetype']
         const tier = String(rec.tier ?? '') as BattleSkillPick['tier']
         if (!id || !name) return null
         if (archetype !== 'warrior' && archetype !== 'archer' && archetype !== 'assassin' && archetype !== 'utility') return null
         if (tier !== 'bronze' && tier !== 'silver' && tier !== 'gold') return null
-        return { id, name, desc, archetype, tier }
+        const one: BattleSkillPick = { id, name, desc, archetype, tier }
+        if (detailDesc) one.detailDesc = detailDesc
+        if (icon) one.icon = icon
+        return one
       })
       .filter((v): v is BattleSkillPick => !!v)
   } catch {
@@ -274,24 +290,122 @@ function battleSkillTierColor(tier: BattleSkillPick['tier']): number {
   return 0xd0ac43
 }
 
-function battleSkillArchetypeColor(archetype: BattleSkillPick['archetype']): number {
-  if (archetype === 'warrior') return 0xc45f3a
-  if (archetype === 'archer') return 0x4f9f57
-  if (archetype === 'assassin') return 0x3d74bd
-  return 0x8a6bb5
+function battleSkillTierLabelCn(tier: BattleSkillPick['tier']): string {
+  if (tier === 'bronze') return '青铜'
+  if (tier === 'silver') return '白银'
+  return '黄金'
+}
+
+function getBattleSkillIconStem(skill: BattleSkillPick): string | null {
+  const normalize = (raw: string): string => raw.replace(/\.png$/i, '').trim()
+  const fromSkill = normalize(`${skill.icon ?? ''}`)
+  if (fromSkill) return fromSkill
+  if (/^skill\d+$/.test(skill.id)) return skill.id
+  const fromIdCfg = getBronzeSkillById(skill.id)?.icon
+    ?? getSilverSkillById(skill.id)?.icon
+    ?? getGoldSkillById(skill.id)?.icon
+  if (fromIdCfg) return normalize(fromIdCfg)
+  const fromNameCfg = getBronzeSkillByName(skill.name)?.icon
+  if (fromNameCfg) return normalize(fromNameCfg)
+  return null
+}
+
+function toBattleSkillPickById(id: string): BattleSkillPick | null {
+  const hit = getBronzeSkillById(id) ?? getSilverSkillById(id) ?? getGoldSkillById(id)
+  if (!hit) return null
+  return {
+    id: hit.id,
+    name: hit.name,
+    desc: hit.desc,
+    detailDesc: hit.detailDesc,
+    icon: hit.icon,
+    archetype: hit.archetype,
+    tier: hit.tier,
+  }
+}
+
+function mountBattleSkillIconSprite(
+  parent: Container,
+  skill: BattleSkillPick,
+  centerX: number,
+  centerY: number,
+  iconSize: number,
+  fallback: Text,
+): void {
+  const stem = getBattleSkillIconStem(skill)
+  if (!stem) return
+  const iconUrl = getSkillIconUrl(stem)
+  const sprite = new Sprite(Texture.WHITE)
+  sprite.anchor.set(0.5)
+  sprite.x = centerX
+  sprite.y = centerY
+  sprite.alpha = 0
+  parent.addChild(sprite)
+
+  void Assets.load<Texture>(iconUrl).then((tex) => {
+    const side = Math.round(iconSize * 0.78)
+    const sw = Math.max(1, tex.width)
+    const sh = Math.max(1, tex.height)
+    const scale = Math.min(side / sw, side / sh)
+    sprite.texture = tex
+    sprite.width = Math.max(1, Math.round(sw * scale))
+    sprite.height = Math.max(1, Math.round(sh * scale))
+    sprite.alpha = 1
+    fallback.visible = false
+  }).catch(() => {
+    sprite.destroy()
+  })
 }
 
 function layoutBattleSkillIconBar(): void {
   if (!playerSkillIconBarCon) return
   const hpCenter = getHeroBarCenter('player')
   const hpTopY = hpCenter.y - getDebugCfg('battleHpBarH') / 2
+  const introP = Math.max(0, Math.min(1, skillBarIntroElapsedMs / SKILL_BAR_INTRO_DURATION_MS))
+  const eased = 1 - Math.pow(1 - introP, 3)
+  const targetY = hpTopY - 54
+  const baseY = targetY - 70
   playerSkillIconBarCon.x = hpCenter.x
-  playerSkillIconBarCon.y = hpTopY - 52
+  playerSkillIconBarCon.y = baseY + (targetY - baseY) * eased
+}
+
+function layoutEnemySkillIconBar(): void {
+  if (!enemySkillIconBarCon) return
+  const hpCenter = getHeroBarCenter('enemy')
+  const hpTopY = hpCenter.y - getDebugCfg('battleHpBarH') / 2
+  enemySkillIconBarCon.x = hpCenter.x
+  enemySkillIconBarCon.y = hpTopY - 54
+}
+
+function resolveSkillBarIntroElapsedMs(snapshot: ReturnType<typeof getBattleSnapshot>): number {
+  const startedAt = snapshot?.skillBarMoveStartAtMs
+  if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return 0
+  const elapsed = Date.now() - startedAt
+  return Math.max(0, Math.min(SKILL_BAR_INTRO_DURATION_MS, elapsed))
+}
+
+function handleBattleSkillIconTap(skill: BattleSkillPick): void {
+  clearBattleItemSelection()
+  if (battleSkillDetailSkillId === skill.id) {
+    battleSkillDetailMode = battleSkillDetailMode === 'simple' ? 'detailed' : 'simple'
+    showBattleSkillDetailPopup(skill)
+  } else {
+    battleSkillDetailMode = 'simple'
+    showBattleSkillDetailPopup(skill)
+  }
+  refreshBattleSkillIconBar(true)
+  refreshEnemySkillIconBar(true)
 }
 
 function hideBattleSkillDetailPopup(): void {
+  const hadSelection = battleSkillDetailSkillId !== null
   battleSkillDetailSkillId = null
+  battleSkillDetailMode = 'simple'
   if (battleSkillDetailPopupCon) battleSkillDetailPopupCon.visible = false
+  if (hadSelection) {
+    refreshBattleSkillIconBar(true)
+    refreshEnemySkillIconBar(true)
+  }
 }
 
 function showBattleSkillDetailPopup(skill: BattleSkillPick): void {
@@ -306,11 +420,11 @@ function showBattleSkillDetailPopup(skill: BattleSkillPick): void {
 
   const panelW = Math.max(360, Math.min(CANVAS_W - 24, getDebugCfg('itemInfoWidth')))
   const pad = 16
-  const iconSize = Math.max(72, Math.round(CELL_SIZE * 0.66))
-  const tierColor = battleSkillTierColor(skill.tier)
-  const mainColor = battleSkillArchetypeColor(skill.archetype)
+  const iconSize = 128
   const textX = pad + iconSize + 16
   const textW = panelW - textX - pad
+  const mode = battleSkillDetailMode
+  const shownDesc = mode === 'detailed' ? (skill.detailDesc ?? skill.desc) : skill.desc
 
   const title = new Text({
     text: skill.name,
@@ -322,7 +436,7 @@ function showBattleSkillDetailPopup(skill: BattleSkillPick): void {
     },
   })
   const desc = new Text({
-    text: skill.desc,
+    text: shownDesc,
     style: {
       fontSize: getDebugCfg('itemInfoSimpleDescFontSize'),
       fill: 0xd7e2fa,
@@ -347,17 +461,6 @@ function showBattleSkillDetailPopup(skill: BattleSkillPick): void {
   bg.stroke({ color: 0x5566aa, width: 2 })
   con.addChild(bg)
 
-  const iconBg = new Graphics()
-  iconBg.roundRect(px + pad, py + pad, iconSize, iconSize, 18)
-  iconBg.fill({ color: 0x1d2a45, alpha: 1 })
-  iconBg.stroke({ color: tierColor, width: 3, alpha: 1 })
-  con.addChild(iconBg)
-
-  const dot = new Graphics()
-  dot.circle(px + pad + iconSize - 10, py + pad + 10, 8)
-  dot.fill({ color: mainColor, alpha: 1 })
-  con.addChild(dot)
-
   const letter = new Text({
     text: skill.name.slice(0, 1),
     style: { fontSize: 56, fill: 0xf5f7ff, fontFamily: 'Arial', fontWeight: 'bold' },
@@ -366,10 +469,31 @@ function showBattleSkillDetailPopup(skill: BattleSkillPick): void {
   letter.x = px + pad + iconSize / 2
   letter.y = py + pad + iconSize / 2 + 2
   con.addChild(letter)
+  mountBattleSkillIconSprite(con, skill, px + pad + iconSize / 2, py + pad + iconSize / 2 + 2, iconSize, letter)
 
   title.x = px + textX
   title.y = py + pad + 2
   con.addChild(title)
+  if (mode === 'detailed') {
+    const tierText = new Text({
+      text: battleSkillTierLabelCn(skill.tier),
+      style: {
+        fontSize: Math.max(16, Math.round(getDebugCfg('itemInfoNameFontSize') * 0.7)),
+        fill: 0xfff3cf,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+      },
+    })
+    const badgeX = title.x + title.width + 12
+    const badgeY = title.y + 2
+    const badgeBg = new Graphics()
+    badgeBg.roundRect(badgeX - 10, badgeY - 4, tierText.width + 20, tierText.height + 8, 8)
+    badgeBg.fill({ color: battleSkillTierColor(skill.tier), alpha: 0.45 })
+    con.addChild(badgeBg)
+    tierText.x = badgeX
+    tierText.y = badgeY
+    con.addChild(tierText)
+  }
 
   const divider = new Graphics()
   divider.moveTo(px + textX, py + dividerY)
@@ -409,46 +533,34 @@ function refreshBattleSkillIconBar(forceRebuild = false): void {
   con.removeChildren().forEach((c) => c.destroy({ children: true }))
   battleSkillIconBarKey = nextKey
 
-  const gap = 12
-  const iconSize = 54
+  const gap = -30
+  const iconSize = 128
   const rowW = battlePickedSkills.length * iconSize + Math.max(0, battlePickedSkills.length - 1) * gap
-  const bg = new Graphics()
-  bg.roundRect(-rowW / 2 - 16, -38, rowW + 32, 78, 18)
-  bg.fill({ color: 0x0f1728, alpha: 0.88 })
-  bg.stroke({ color: 0x6f809e, width: 2, alpha: 0.9 })
-  con.addChild(bg)
 
   for (let i = 0; i < battlePickedSkills.length; i++) {
     const s = battlePickedSkills[i]!
     const cell = new Container()
     cell.eventMode = 'static'
     cell.cursor = 'pointer'
-    const x = -rowW / 2 + i * (iconSize + gap)
-    const iconBg = new Graphics()
-    iconBg.roundRect(x, -26, iconSize, iconSize, 14)
-    iconBg.fill({ color: 0x1d2a45, alpha: 1 })
-    iconBg.stroke({ color: battleSkillTierColor(s.tier), width: 3, alpha: 1 })
-    cell.addChild(iconBg)
-
-    const dot = new Graphics()
-    dot.circle(x + iconSize - 9, -18, 7)
-    dot.fill({ color: battleSkillArchetypeColor(s.archetype), alpha: 1 })
-    cell.addChild(dot)
+    const x = -rowW / 2 + i * (iconSize + gap) + iconSize / 2
+    const hit = new Graphics()
+    hit.roundRect(x - iconSize / 2, -iconSize / 2, iconSize, iconSize, 14)
+    hit.fill({ color: 0x000000, alpha: 0.001 })
+    cell.addChild(hit)
 
     const letter = new Text({
       text: s.name.slice(0, 1),
-      style: { fontSize: 24, fill: 0xf5f7ff, fontFamily: 'Arial', fontWeight: 'bold' },
+      style: { fontSize: 32, fill: 0xf5f7ff, fontFamily: 'Arial', fontWeight: 'bold' },
     })
     letter.anchor.set(0.5)
-    letter.x = x + iconSize / 2
+    letter.x = x
     letter.y = 0
     cell.addChild(letter)
+    mountBattleSkillIconSprite(cell, s, x, 0, iconSize, letter)
 
     cell.on('pointerdown', (e) => {
       e.stopPropagation()
-      clearBattleItemSelection()
-      if (battleSkillDetailSkillId === s.id) hideBattleSkillDetailPopup()
-      else showBattleSkillDetailPopup(s)
+      handleBattleSkillIconTap(s)
     })
 
     con.addChild(cell)
@@ -456,6 +568,64 @@ function refreshBattleSkillIconBar(forceRebuild = false): void {
 
   layoutBattleSkillIconBar()
   con.visible = true
+}
+
+function refreshEnemySkillIconBar(forceRebuild = false): void {
+  if (!root || !enemyZone) return
+  if (!enemySkillIconBarCon) {
+    enemySkillIconBarCon = new Container()
+    enemySkillIconBarCon.zIndex = 75
+    root.addChild(enemySkillIconBarCon)
+  }
+  const con = enemySkillIconBarCon
+  if (enemyPickedSkills.length <= 0) {
+    con.visible = false
+    enemySkillIconBarKey = ''
+    return
+  }
+
+  const nextKey = enemyPickedSkills.map((s) => `${s.id}:${s.tier}:${s.archetype}`).join('|')
+  if (!forceRebuild && enemySkillIconBarKey === nextKey) {
+    con.visible = true
+    layoutEnemySkillIconBar()
+    return
+  }
+
+  con.removeChildren().forEach((c) => c.destroy({ children: true }))
+  enemySkillIconBarKey = nextKey
+  const gap = -30
+  const iconSize = 128
+  const rowW = enemyPickedSkills.length * iconSize + Math.max(0, enemyPickedSkills.length - 1) * gap
+
+  for (let i = 0; i < enemyPickedSkills.length; i++) {
+    const s = enemyPickedSkills[i]!
+    const cell = new Container()
+    cell.eventMode = 'static'
+    cell.cursor = 'pointer'
+    const x = -rowW / 2 + i * (iconSize + gap) + iconSize / 2
+    const hit = new Graphics()
+    hit.roundRect(x - iconSize / 2, -iconSize / 2, iconSize, iconSize, 14)
+    hit.fill({ color: 0x000000, alpha: 0.001 })
+    cell.addChild(hit)
+
+    const letter = new Text({
+      text: s.name.slice(0, 1),
+      style: { fontSize: 32, fill: 0xf5f7ff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    letter.anchor.set(0.5)
+    letter.x = x
+    letter.y = 0
+    cell.addChild(letter)
+    mountBattleSkillIconSprite(cell, s, x, 0, iconSize, letter)
+    cell.on('pointerdown', (e) => {
+      e.stopPropagation()
+      handleBattleSkillIconTap(s)
+    })
+    con.addChild(cell)
+  }
+
+  con.visible = true
+  layoutEnemySkillIconBar()
 }
 
 function ensureBattleStatEntry(sourceItemId: string, side: 'player' | 'enemy', defId = ''): ItemBattleStat {
@@ -1528,6 +1698,11 @@ function spawnFloatingNumber(to: { x: number; y: number }, text: string, color: 
   })
 }
 
+function offsetFloatingNumberTarget(side: 'player' | 'enemy', to: { x: number; y: number }): { x: number; y: number } {
+  if (side !== 'player') return to
+  return { x: to.x, y: to.y - 50 }
+}
+
 function scheduleDamageVisual(delayMs: number, fn: () => void): void {
   if (delayMs <= 0) {
     fn()
@@ -1951,7 +2126,7 @@ function applyLayout(activeCols: number): void {
         enemyBossSprite.scale.set(enemyBossBaseScale)
       }
     }
-    enemyBossSprite.y = topY + enemyBossSprite.height
+    enemyBossSprite.y = topY + enemyBossSprite.height - 50
   }
   if (enemyBossFlashSprite && enemyBossSprite) {
     enemyBossFlashSprite.x = enemyBossSprite.x
@@ -2029,6 +2204,7 @@ function clearBattleItemSelection(): void {
 
 function showBattleItemInfo(instanceId: string, side: 'player' | 'enemy', keepMode = false): void {
   if (!engine || !itemInfoPopup) return
+  hideBattleSkillDetailPopup()
   const board = engine.getBoardState()
   const hit = board.items.find((it) => it.id === instanceId && it.side === side)
   if (!hit) return
@@ -2117,6 +2293,7 @@ export const BattleScene: Scene = {
     stage.addChild(root)
     battleIntroElapsedMs = 0
     battleIntroDurationMs = Math.max(0, getDebugCfg('battleIntroFadeInMs'))
+    skillBarIntroElapsedMs = 0
     battleExitTransitionElapsedMs = 0
     battleExitTransitionDurationMs = 0
     root.alpha = battleIntroDurationMs > 0 ? 0 : 1
@@ -2213,9 +2390,11 @@ export const BattleScene: Scene = {
     applyZoneVisualStyle(enemyZone)
     applyZoneVisualStyle(playerZone)
     applyLayout(activeCols)
+    skillBarIntroElapsedMs = resolveSkillBarIntroElapsedMs(snapshot)
     root.addChild(enemyZone)
     root.addChild(playerZone)
     refreshBattleSkillIconBar()
+    refreshEnemySkillIconBar(true)
 
     enemyCdOverlay = new Graphics()
     playerCdOverlay = new Graphics()
@@ -2325,7 +2504,11 @@ export const BattleScene: Scene = {
       enemyDraftEnabled: getDebugCfg('enemyDraftEnabled'),
       enemyDraftSameArchetypeBias: getDebugCfg('enemyDraftSameArchetypeBias'),
     })
-    engine.start(snapshot)
+    engine.start(snapshot, { playerSkillIds: battlePickedSkills.map((s) => s.id) })
+    enemyPickedSkills = engine.getEnemySkillIds()
+      .map((id) => toBattleSkillPickById(id))
+      .filter((v): v is BattleSkillPick => !!v)
+    refreshEnemySkillIconBar(true)
     console.log(`[BattleScene] 进入战斗场景 day=${snapshot.day} entities=${snapshot.entities.length} cols=${snapshot.activeColCount}`)
 
     const board = engine.getBoardState()
@@ -2387,21 +2570,22 @@ export const BattleScene: Scene = {
           : isCritDamage
             ? getBattleFloatTextColor('crit')
             : getBattleFloatTextColor('damage')
-      const textSize = isCritDamage ? getDebugCfg('battleTextFontSizeCrit') : getDebugCfg('battleTextFontSizeDamage')
+      const textSize = getDebugCfg('battleTextFontSizeDamage')
+      const floatingTarget = offsetFloatingNumberTarget(side, projectileTarget)
       const playDamageVisual = () => {
         if (e.sourceItemId.startsWith('status_') || isFatigueDamage) {
           if (enemyAttackToPlayer) triggerPlayerPortraitHitFx()
-          spawnFloatingNumber(to, `-${damageShown}`, textColor, textSize)
+          spawnFloatingNumber(offsetFloatingNumberTarget(side, to), `-${damageShown}`, textColor, textSize)
           pushBattleLog(`结算 ${e.type} ${side === 'enemy' ? '敌方' : '我方'} ${damageShown}`)
           return
         }
         spawnProjectile(from, projectileTarget, bulletColor, () => {
           if (side === 'enemy') {
             triggerEnemyPortraitHitFx()
-            spawnFloatingNumber(projectileTarget, `-${damageShown}`, textColor, textSize)
           } else if (enemyAttackToPlayer) {
             triggerPlayerPortraitHitFx()
           }
+          spawnFloatingNumber(floatingTarget, `-${damageShown}`, textColor, textSize)
         }, e.sourceItemId)
         pushBattleLog(`伤害 ${side === 'enemy' ? '敌方' : '我方'} ${damageShown}`)
       }
@@ -2427,11 +2611,13 @@ export const BattleScene: Scene = {
       const projectileTarget = side === 'enemy' ? (getEnemyPortraitHitPoint() ?? to) : to
       const shieldColor = getBattleFloatTextColor('shield')
       const shieldOrbColor = getBattleOrbColor('shield')
+      const textSize = getDebugCfg('battleTextFontSizeDamage')
+      const floatingTarget = offsetFloatingNumberTarget(side, projectileTarget)
       spawnProjectile(from, projectileTarget, shieldOrbColor, () => {
         if (side === 'enemy') {
           triggerEnemyPortraitHitFx()
-          spawnFloatingNumber(projectileTarget, `+${e.amount}`, shieldColor)
         }
+        spawnFloatingNumber(floatingTarget, `+${e.amount}`, shieldColor, textSize)
       }, e.sourceItemId)
       pushBattleLog(`护盾 ${side === 'enemy' ? '敌方' : '我方'} ${e.amount}`)
     })
@@ -2440,8 +2626,10 @@ export const BattleScene: Scene = {
       const from = e.sourceItemId.startsWith('status_') ? getHeroBarCenter(side) : (getItemCenterById(e.sourceItemId, side) ?? getHeroBarCenter(side))
       const to = getHeroBarCenter(side)
       const projectileTarget = side === 'enemy' ? (getEnemyPortraitHitPoint() ?? to) : to
+      const textSize = getDebugCfg('battleTextFontSizeDamage')
+      const floatingTarget = offsetFloatingNumberTarget(side, projectileTarget)
       if (e.sourceItemId.startsWith('status_')) {
-        spawnFloatingNumber(to, `+${e.amount}`, getBattleFloatTextColor('regen'))
+        spawnFloatingNumber(offsetFloatingNumberTarget(side, to), `+${e.amount}`, getBattleFloatTextColor('regen'), textSize)
         pushBattleLog(`回复 ${side === 'enemy' ? '敌方' : '我方'} ${e.amount}`)
       } else {
         const regenColor = getBattleFloatTextColor('regen')
@@ -2449,8 +2637,8 @@ export const BattleScene: Scene = {
         spawnProjectile(from, projectileTarget, regenOrbColor, () => {
           if (side === 'enemy') {
             triggerEnemyPortraitHitFx()
-            spawnFloatingNumber(projectileTarget, `+${e.amount}`, regenColor)
           }
+          spawnFloatingNumber(floatingTarget, `+${e.amount}`, regenColor, textSize)
         }, e.sourceItemId)
         pushBattleLog(`治疗 ${side === 'enemy' ? '敌方' : '我方'} ${e.amount}`)
       }
@@ -2541,9 +2729,11 @@ export const BattleScene: Scene = {
     enemyStatusLayer = null
     playerStatusLayer = null
     playerSkillIconBarCon = null
+    enemySkillIconBarCon = null
     battleSkillDetailPopupCon = null
     battleSkillDetailSkillId = null
     battlePickedSkills = []
+    enemyPickedSkills = []
     fxLayer = null
     offFireEvent?.(); offFireEvent = null
     offDamageEvent?.(); offDamageEvent = null
@@ -2576,6 +2766,7 @@ export const BattleScene: Scene = {
     battleDay = 1
     battleIntroElapsedMs = 0
     battleIntroDurationMs = 0
+    skillBarIntroElapsedMs = 0
     battleExitTransitionElapsedMs = 0
     battleExitTransitionDurationMs = 0
     settlementResolved = false
@@ -2612,6 +2803,7 @@ export const BattleScene: Scene = {
       pulseFlashPool.pop()?.destroy()
     }
     battleSkillIconBarKey = ''
+    enemySkillIconBarKey = ''
     lastHudTickIndex = -1
     battleStatsByItemId.clear()
     damageStatsPanelVisible = false
@@ -2627,6 +2819,7 @@ export const BattleScene: Scene = {
     const simDt = dt * speed
     const dtMs = simDt * 1000
     battlePresentationMs += dtMs
+    skillBarIntroElapsedMs = Math.min(SKILL_BAR_INTRO_DURATION_MS, skillBarIntroElapsedMs + dtMs)
     const introDone = tickBattleIntro(simDt * 1000)
     if (introDone) engine.update(simDt)
     const pendingDamageImpactFx = hasPendingDamageImpactPresentation()
@@ -2647,9 +2840,14 @@ export const BattleScene: Scene = {
     applyZoneVisualStyle(playerZone)
     applyLayout(activeCols)
     layoutBattleSkillIconBar()
+    layoutEnemySkillIconBar()
 
     const playerItems = board.items.filter((it) => it.side === 'player')
     const enemyItems = board.items.filter((it) => it.side === 'enemy')
+    if (enemySkillIconBarCon) {
+      enemySkillIconBarCon.visible = enemyPresentationVisible && enemyPickedSkills.length > 0
+      if (!enemyPresentationVisible && battleSkillDetailPopupCon?.visible) hideBattleSkillDetailPopup()
+    }
     const runtimeById = new Map(runtime.map((it) => [it.id, it]))
     if (tickChanged || pulseActive) {
       drawCooldownOverlay(playerZone, playerCdOverlay, playerItems, runtimeChargePercentById)
@@ -2753,8 +2951,8 @@ export const BattleScene: Scene = {
 
     if (battleSkillDetailPopupCon?.visible) {
       const active = battlePickedSkills.find((s) => s.id === battleSkillDetailSkillId)
+        ?? enemyPickedSkills.find((s) => s.id === battleSkillDetailSkillId)
       if (!active) hideBattleSkillDetailPopup()
-      else showBattleSkillDetailPopup(active)
     }
   },
 }

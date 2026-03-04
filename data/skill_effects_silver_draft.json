@@ -1,0 +1,364 @@
+{
+  "version": 1,
+  "status": "draft_for_confirmation",
+  "note": "Silver skills draft config from latest user-confirmed list (20 skills).",
+  "global_rules": {
+    "battle_once_flags_reset": "per_battle",
+    "run_once_flags_reset": "per_day",
+    "min_reduced_cd_ms": 500,
+    "default_stack_mode": "additive"
+  },
+  "skills": [
+    {
+      "id": "skill22",
+      "name": "钢毅护甲",
+      "icon": "skill22",
+      "tier": "silver",
+      "archetype": "warrior",
+      "summary": "每次获得护盾，都会让最左侧物品伤害增加。",
+      "detail": "每次获得护盾，都会让最左侧伤害物品伤害+10（若不存在伤害物品则不触发）。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_gain_shield",
+        "type": "damage_add",
+        "target": "leftmost_damage_item",
+        "value": 10,
+        "require_target_exists": true,
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill23",
+      "name": "盾猛反击",
+      "icon": "skill23",
+      "tier": "silver",
+      "archetype": "warrior",
+      "summary": "每次获得护盾，都会对敌人造成伤害。",
+      "detail": "每次获得护盾，都会对敌人造成30伤害。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_gain_shield",
+        "type": "deal_damage",
+        "target": "enemy_hero",
+        "value": 30,
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill24",
+      "name": "交叉掩护",
+      "icon": "skill24",
+      "tier": "silver",
+      "archetype": "warrior",
+      "summary": "每次获得护盾，相邻的护盾物品增加护盾。",
+      "detail": "每次获得护盾，相邻的护盾物品护盾+15。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_gain_shield",
+        "type": "adjacent_shield_add",
+        "target": "adjacent_shield_items",
+        "value": 15,
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill25",
+      "name": "防御之心",
+      "icon": "skill25",
+      "tier": "silver",
+      "archetype": "warrior",
+      "summary": "生命值首次降至一半时，获得护盾。",
+      "detail": "每场战斗己方生命值首次降至一半时，获得最大生命值20%的护盾。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_ally_hp_first_below_pct",
+        "type": "shield_add_max_hp_pct",
+        "target": "player_hero",
+        "value": 0.2,
+        "threshold_pct": 0.5,
+        "max_triggers_per_battle": 1
+      }
+    },
+    {
+      "id": "skill26",
+      "name": "绝地反击",
+      "icon": "skill26",
+      "tier": "silver",
+      "archetype": "warrior",
+      "summary": "生命值首次降至一半时，护盾物品间隔缩短。",
+      "detail": "每场战斗己方生命值首次降至一半时，护盾物品间隔缩短15%。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_ally_hp_first_below_pct",
+        "type": "cooldown_reduce_pct",
+        "target": "all_shield_items",
+        "value": 0.15,
+        "threshold_pct": 0.5,
+        "max_triggers_per_battle": 1
+      }
+    },
+    {
+      "id": "skill51",
+      "name": "扩容弹夹",
+      "icon": "skill51",
+      "tier": "silver",
+      "archetype": "archer",
+      "summary": "弹药物品的最大弹药量增加。",
+      "detail": "弹药物品的最大弹药量+2。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_battle_start",
+        "type": "ammo_capacity_add",
+        "target": "all_ammo_items",
+        "value": 2,
+        "max_triggers_per_battle": 1
+      }
+    },
+    {
+      "id": "skill50",
+      "name": "最后机会",
+      "icon": "skill50",
+      "tier": "silver",
+      "archetype": "archer",
+      "summary": "弹药物品的最后1发子弹伤害翻倍。",
+      "detail": "弹药物品的最后1发子弹伤害翻倍（判定点为耗尽前的最后一次伤害）。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_ammo_last_shot_before_empty",
+        "type": "damage_mul",
+        "target": "source_item",
+        "value": 2,
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill52",
+      "name": "快速装填",
+      "icon": "skill52",
+      "tier": "silver",
+      "archetype": "archer",
+      "summary": "弹药耗尽时，有概率自动补满。",
+      "detail": "弹药耗尽时，有30%概率自动补满。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_ammo_empty",
+        "type": "ammo_refill_full_chance",
+        "target": "source_ammo_item",
+        "chance": 0.3,
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill53",
+      "name": "枪林弹雨",
+      "icon": "skill53",
+      "tier": "silver",
+      "archetype": "archer",
+      "summary": "根据所有物品的弹药总量，物品伤害增加。",
+      "detail": "物品每拥有1发弹药，所有物品伤害+3（实时计算）。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "passive_realtime",
+        "type": "damage_add_per_total_ammo",
+        "target": "all_items",
+        "value": 3,
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill54",
+      "name": "弹药转化",
+      "icon": "skill54",
+      "tier": "silver",
+      "archetype": "archer",
+      "summary": "消耗弹药时，非弹药物品伤害增加。",
+      "detail": "消耗弹药时，非弹药物品伤害+4。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_ammo_spent",
+        "type": "damage_add",
+        "target": "all_non_ammo_items",
+        "value": 4,
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill27",
+      "name": "暗影杀手",
+      "icon": "skill27",
+      "tier": "silver",
+      "archetype": "assassin",
+      "summary": "间隔时间短的物品伤害增加。",
+      "detail": "间隔时间低于2.5秒的物品伤害+25。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "passive_always",
+        "type": "damage_add",
+        "target": "items_with_cooldown_below_ms",
+        "cooldown_lt_ms": 2500,
+        "value": 25,
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill58",
+      "name": "致命节奏",
+      "icon": "skill58",
+      "tier": "silver",
+      "archetype": "assassin",
+      "summary": "造成伤害后物品伤害增加。",
+      "detail": "造成伤害后物品伤害+2。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_deal_damage",
+        "type": "self_damage_add",
+        "target": "source_item",
+        "value": 2,
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill57",
+      "name": "疾风骤雨",
+      "icon": "skill57",
+      "tier": "silver",
+      "archetype": "assassin",
+      "summary": "造成伤害后物品间隔缩短。",
+      "detail": "造成伤害后物品间隔缩短2%。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_deal_damage",
+        "type": "self_cooldown_reduce_pct",
+        "target": "source_item",
+        "value": 0.02,
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill59",
+      "name": "千剑齐发",
+      "icon": "skill59",
+      "tier": "silver",
+      "archetype": "assassin",
+      "summary": "开场时所有相同的物品伤害增加。",
+      "detail": "开场时所有相同的物品伤害+30。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_battle_start",
+        "type": "damage_add_for_duplicates",
+        "target": "all_duplicate_items",
+        "value": 30,
+        "max_triggers_per_battle": 1
+      }
+    },
+    {
+      "id": "skill60",
+      "name": "刺客信条",
+      "icon": "skill60",
+      "tier": "silver",
+      "archetype": "assassin",
+      "summary": "如果没有护盾物品，所有物品间隔缩短。",
+      "detail": "如果没有护盾物品，所有物品间隔缩短10%。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "passive_always",
+        "type": "cooldown_reduce_pct",
+        "target": "all_items",
+        "value": 0.1,
+        "condition": {
+          "no_shield_items": true
+        },
+        "max_triggers_per_battle": -1
+      }
+    },
+    {
+      "id": "skill29",
+      "name": "投资达人",
+      "icon": "skill29",
+      "tier": "silver",
+      "archetype": "utility",
+      "summary": "每天开始获得金币。",
+      "detail": "每天开始额外获得5金币。",
+      "effect": {
+        "scope": "run",
+        "trigger": "on_new_day_enter_shop",
+        "type": "grant_gold",
+        "target": "player_gold",
+        "value": 5,
+        "max_triggers_per_day": 1
+      }
+    },
+    {
+      "id": "skill30",
+      "name": "打包购买",
+      "icon": "skill30",
+      "tier": "silver",
+      "archetype": "utility",
+      "summary": "购买一定数量后，下次购买免费。",
+      "detail": "购买4个物品后，下次购买免费（真实0金币）。",
+      "effect": {
+        "scope": "shop",
+        "trigger": "on_buy_success_counter",
+        "type": "next_buy_free",
+        "target": "current_purchase",
+        "count": 4,
+        "free_price": 0,
+        "max_triggers_per_day": -1
+      }
+    },
+    {
+      "id": "skill33",
+      "name": "战地医生",
+      "icon": "skill33",
+      "tier": "silver",
+      "archetype": "utility",
+      "summary": "战斗开始时，获得自动生命回复。",
+      "detail": "战斗开始时，获得自动生命回复，等于最大生命值的3%（每秒恢复一次）。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_battle_start",
+        "type": "hero_regen_max_hp_pct_per_tick",
+        "target": "player_hero",
+        "value": 0.03,
+        "tick_ms": 1000,
+        "max_triggers_per_battle": 1
+      }
+    },
+    {
+      "id": "skill34",
+      "name": "利息循环",
+      "icon": "skill34",
+      "tier": "silver",
+      "archetype": "utility",
+      "summary": "每天开始根据拥有金币获得利息。",
+      "detail": "每天开始每拥有5金币，获得1金币；最多获得10金币。",
+      "effect": {
+        "scope": "run",
+        "trigger": "on_new_day_enter_shop",
+        "type": "gold_interest",
+        "target": "player_gold",
+        "per_gold": 5,
+        "gain_per_step": 1,
+        "max_gain": 10,
+        "max_triggers_per_day": 1
+      }
+    },
+    {
+      "id": "skill35",
+      "name": "背包堆积",
+      "icon": "skill35",
+      "tier": "silver",
+      "archetype": "utility",
+      "summary": "根据背包中的物品数量提升最大生命。",
+      "detail": "背包中每有1个物品最大生命值+3%。",
+      "effect": {
+        "scope": "battle",
+        "trigger": "on_battle_start",
+        "type": "max_hp_mul_per_backpack_item",
+        "target": "player_hero",
+        "value": 0.03,
+        "max_triggers_per_battle": 1
+      }
+    }
+  ]
+}

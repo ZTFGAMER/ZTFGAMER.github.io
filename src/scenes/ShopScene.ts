@@ -23,12 +23,16 @@ import { ShopManager, getDailyGoldForDay, type ShopSlot, type TierKey } from '@/
 import { ShopPanelView }     from '@/shop/ShopPanelView'
 import { SellPopup, type ItemInfoMode, type ItemInfoCustomDisplay } from '@/shop/SellPopup'
 import { getConfig as getDebugCfg, setConfig as setDebugCfg, onConfigChange as onDebugCfgChange } from '@/config/debugConfig'
-import { getItemIconUrl } from '@/core/assetPath'
+import { getItemIconUrl, getSkillIconUrl } from '@/core/assetPath'
 import { getTierColor } from '@/config/colorPalette'
 import { createItemStatBadges } from '@/ui/itemStatBadges'
 import { PhaseManager } from '@/core/PhaseManager'
 import { clearBattleSnapshot, setBattleSnapshot, type BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 import { clearBattleOutcome, consumeBattleOutcome } from '@/combat/BattleOutcomeStore'
+import { BRONZE_SKILL_PICKS, getBronzeSkillById } from '@/skills/bronzeSkillConfig'
+import { SILVER_SKILL_PICKS, getSilverSkillById } from '@/skills/silverSkillConfig'
+import { GOLD_SKILL_PICKS, getGoldSkillById } from '@/skills/goldSkillConfig'
+import { calcSkill94DailyGoldBonus, shouldTriggerSkill48ExtraUpgrade } from '@/skills/goldSkillRules'
 import {
   Container, Graphics, Text, Sprite,
   Assets, Texture, Rectangle, Ticker,
@@ -79,12 +83,15 @@ let phaseBtnHandle:   CircleBtnHandle | null = null
 let refreshCostText:  Text            | null = null
 let settingsBtn:      Container       | null = null
 let settingsOverlay:  Container       | null = null
+let skillTestOverlay: Container       | null = null
 let hintToastCon:     Container       | null = null
 let hintToastBg:      Graphics        | null = null
 let hintToastText:    Text            | null = null
 let battleZoneTitleText: Text | null = null
 let backpackZoneTitleText: Text | null = null
 let hintToastHideTimer: ReturnType<typeof setTimeout> | null = null
+let battleGuideHandCon: Container | null = null
+let battleGuideHandTick: (() => void) | null = null
 let unlockRevealLayer: Container | null = null
 let unlockRevealQueue: string[] = []
 let unlockRevealTickFn: (() => void) | null = null
@@ -217,11 +224,17 @@ type SavedShopState = {
     price: number
   } | null
   guaranteedNewUnlockTriggeredLevels?: number[]
+  skill20GrantedDays?: number[]
   hasBoughtOnce?: boolean
+  skill15NextBuyDiscountPrepared?: boolean
+  skill15NextBuyDiscount?: boolean
+  skill30BuyCounter?: number
+  skill30NextBuyFree?: boolean
 }
 
 let pendingBattleTransition = false
 let pendingAdvanceToNextDay = false
+let pendingSkillBarMoveStartAtMs: number | null = null
 let savedShopState: SavedShopState | null = null
 
 type StarterClass = 'swordsman' | 'archer' | 'assassin'
@@ -240,13 +253,16 @@ let crossSynthesisConfirmCloseTimer: ReturnType<typeof setTimeout> | null = null
 let skillIconBarCon: Container | null = null
 let skillDetailPopupCon: Container | null = null
 let skillDetailSkillId: string | null = null
+let skillDetailMode: 'simple' | 'detailed' = 'simple'
 
 type SkillPick = {
   id: string
   name: string
   archetype: SkillArchetype
   desc: string
+  detailDesc?: string
   tier: SkillTier
+  icon?: string
 }
 
 type PendingSkillDraft = {
@@ -258,8 +274,13 @@ type PendingSkillDraft = {
 let pickedSkills: SkillPick[] = []
 let draftedSkillDays: number[] = []
 let pendingSkillDraft: PendingSkillDraft | null = null
+const skill20GrantedDays = new Set<number>()
 const unlockedItemIds = new Set<string>()
 const guaranteedNewUnlockTriggeredLevels = new Set<number>()
+let skill15NextBuyDiscountPrepared = false
+let skill15NextBuyDiscount = false
+let skill30BuyCounter = 0
+let skill30NextBuyFree = false
 let nextQuickBuyOffer: {
   itemId: string
   tier: TierKey
@@ -268,7 +289,7 @@ let nextQuickBuyOffer: {
 } | null = null
 
 // 临时开关：屏蔽技能三选一流程（保留配置与存档字段，便于后续恢复）
-const SKILL_DRAFT_ENABLED = false
+const SKILL_DRAFT_ENABLED = true
 
 type BattleStartTransitionState = {
   elapsedMs: number
@@ -316,6 +337,8 @@ function beginBattleStartTransition(): void {
   const currentBackpackY = backpackView?.y ?? getBackpackZoneYByBattle()
 
   clearSelection()
+  hideSkillDetailPopup()
+  if (skillIconBarCon) skillIconBarCon.visible = false
   stopGridDragButtonFlash()
   stopFlashEffect()
   battleView?.clearHighlight()
@@ -496,6 +519,116 @@ function showHintToast(reason: ToastReason, message: string, color = 0xffe8a3): 
     if (hintToastCon) hintToastCon.visible = false
     hintToastHideTimer = null
   }, 1200)
+}
+
+function stopBattleGuideHandAnim(): void {
+  if (battleGuideHandTick) {
+    Ticker.shared.remove(battleGuideHandTick)
+    battleGuideHandTick = null
+  }
+  if (battleGuideHandCon) {
+    if (battleGuideHandCon.parent) battleGuideHandCon.parent.removeChild(battleGuideHandCon)
+    battleGuideHandCon.destroy({ children: true })
+    battleGuideHandCon = null
+  }
+}
+
+function getSizeCols(size: ItemSizeNorm): number {
+  if (size === '2x1') return 2
+  if (size === '3x1') return 3
+  return 1
+}
+
+function showMoveToBattleGuideHand(): void {
+  if (!backpackSystem || !backpackView || !battleView) return
+  const backpackItems = backpackSystem
+    .getAllItems()
+    .slice()
+    .sort((a, b) => (a.row - b.row) || (a.col - b.col))
+  const first = backpackItems[0]
+  if (!first) return
+
+  stopBattleGuideHandAnim()
+
+  const fromLocal = backpackView.cellToLocal(first.col, first.row)
+  const fromGlobal = backpackView.toGlobal({
+    x: fromLocal.x + (getSizeCols(first.size) * CELL_SIZE) / 2,
+    y: fromLocal.y + CELL_HEIGHT / 2,
+  })
+  const toLocal = battleView.cellToLocal(0, 0)
+  const toGlobal = battleView.toGlobal({
+    x: toLocal.x + CELL_SIZE / 2,
+    y: toLocal.y + CELL_HEIGHT / 2,
+  })
+
+  const { stage } = getApp()
+  const from = stage.toLocal(fromGlobal)
+  const to = stage.toLocal(toGlobal)
+  const handFontSize = Math.round(CELL_SIZE)
+  const fingertipOffsetX = 0
+  const fingertipOffsetY = Math.round(handFontSize * 0.34)
+  const hand = new Text({
+    text: '👆',
+    style: {
+      fontSize: handFontSize,
+      fill: 0xffffff,
+      fontFamily: 'Arial',
+      fontWeight: 'bold',
+      stroke: { color: 0x0b1222, width: 3 },
+    },
+  })
+  hand.anchor.set(0.5)
+
+  const ghost = new Sprite(Texture.WHITE)
+  const ghostCols = getSizeCols(first.size)
+  const ghostW = Math.max(1, Math.round(ghostCols * CELL_SIZE * 0.9))
+  const ghostH = Math.max(1, Math.round(CELL_HEIGHT * 0.9))
+  ghost.anchor.set(0.5)
+  ghost.width = ghostW
+  ghost.height = ghostH
+  ghost.y = -fingertipOffsetY
+  ghost.alpha = 0.5
+
+  void Assets.load<Texture>(getItemIconUrl(first.defId)).then((tex) => {
+    const sw = Math.max(1, tex.width)
+    const sh = Math.max(1, tex.height)
+    const scale = Math.min(ghostW / sw, ghostH / sh)
+    ghost.texture = tex
+    ghost.width = Math.max(1, Math.round(sw * scale))
+    ghost.height = Math.max(1, Math.round(sh * scale))
+  }).catch(() => {
+    // keep translucent placeholder when icon missing
+  })
+
+  const con = new Container()
+  con.eventMode = 'none'
+  con.zIndex = 10020
+  const fromAnchorX = from.x + fingertipOffsetX
+  const fromAnchorY = from.y + fingertipOffsetY
+  const toAnchorX = to.x + fingertipOffsetX
+  const toAnchorY = to.y + fingertipOffsetY
+  con.x = fromAnchorX
+  con.y = fromAnchorY
+  con.addChild(ghost)
+  con.addChild(hand)
+  stage.addChild(con)
+  battleGuideHandCon = con
+
+  const startAt = Date.now()
+  const durationMs = 720
+  const arcY = Math.max(18, Math.round(CELL_SIZE * 0.28))
+  battleGuideHandTick = () => {
+    const tRaw = (Date.now() - startAt) / durationMs
+    const t = Math.max(0, Math.min(1, tRaw))
+    const ease = t < 0.5
+      ? 4 * t * t * t
+      : 1 - Math.pow(-2 * t + 2, 3) / 2
+    con.x = fromAnchorX + (toAnchorX - fromAnchorX) * ease
+    con.y = fromAnchorY + (toAnchorY - fromAnchorY) * ease - Math.sin(Math.PI * t) * arcY
+    con.alpha = t < 0.75 ? 1 : Math.max(0, 1 - (t - 0.75) / 0.25)
+    if (t >= 1) stopBattleGuideHandAnim()
+  }
+  Ticker.shared.add(battleGuideHandTick)
 }
 
 function stopUnlockRevealPlayback(clearQueue = false): void {
@@ -727,14 +860,21 @@ function applyPhaseInputLock(): void {
   applyPhaseUiVisibility()
 }
 
-function buildBattleSnapshot(): BattleSnapshotBundle | null {
+function buildBattleSnapshot(skillBarMoveStartAtMs?: number): BattleSnapshotBundle | null {
   if (!battleSystem || !battleView) return null
   const activeColCount = battleView.activeColCount
   const snap = battleSystem.exportCombatSnapshot(activeColCount)
+  const playerBackpackItemCount = backpackSystem?.getAllItems().length ?? 0
+  const trophyTarget = getConfig().runRules?.trophyWinsToFinalVictory ?? 10
+  const trophy = getWinTrophyState(trophyTarget)
   return {
     day: currentDay,
     activeColCount: snap.activeColCount,
     createdAtMs: snap.createdAtMs,
+    skillBarMoveStartAtMs: typeof skillBarMoveStartAtMs === 'number' ? skillBarMoveStartAtMs : undefined,
+    playerBackpackItemCount,
+    playerGold: Math.max(0, Math.round(shopManager?.gold ?? 0)),
+    playerTrophyWins: Math.max(0, Math.round(trophy.wins)),
     entities: snap.entities.map((it) => ({
       ...it,
       tier: instanceToTier.get(it.instanceId) ?? 'Bronze',
@@ -802,7 +942,12 @@ function captureShopState(): SavedShopState | null {
     unlockedItemIds: Array.from(unlockedItemIds),
     nextQuickBuyOffer,
     guaranteedNewUnlockTriggeredLevels: Array.from(guaranteedNewUnlockTriggeredLevels),
+    skill20GrantedDays: Array.from(skill20GrantedDays),
     hasBoughtOnce,
+    skill15NextBuyDiscountPrepared,
+    skill15NextBuyDiscount,
+    skill30BuyCounter,
+    skill30NextBuyFree,
   }
 }
 
@@ -838,6 +983,17 @@ function applySavedShopState(state: SavedShopState): void {
     ? state.guaranteedNewUnlockTriggeredLevels.filter((lv): lv is number => Number.isFinite(lv)).map((lv) => Math.round(lv))
     : []
   for (const lv of savedGuaranteed) guaranteedNewUnlockTriggeredLevels.add(lv)
+  skill20GrantedDays.clear()
+  const savedSkill20Days = Array.isArray(state.skill20GrantedDays)
+    ? state.skill20GrantedDays.filter((d): d is number => Number.isFinite(d)).map((d) => Math.max(1, Math.round(d)))
+    : []
+  for (const day of savedSkill20Days) skill20GrantedDays.add(day)
+  skill15NextBuyDiscountPrepared = state.skill15NextBuyDiscountPrepared === true
+  skill15NextBuyDiscount = state.skill15NextBuyDiscount === true
+  skill30BuyCounter = Math.max(0, Math.round(Number(state.skill30BuyCounter ?? 0) || 0))
+  skill30NextBuyFree = state.skill30NextBuyFree === true
+  if (!hasPickedSkill('skill15')) resetSkill15NextBuyDiscountState()
+  if (!hasPickedSkill('skill30')) resetSkill30BundleState()
   nextQuickBuyOffer = (state.nextQuickBuyOffer && typeof state.nextQuickBuyOffer === 'object')
     ? {
       itemId: state.nextQuickBuyOffer.itemId,
@@ -954,11 +1110,316 @@ function isCrossIdSynthesisConfirmEnabled(): boolean {
   return raw === true
 }
 
+function isBattleZoneNoSynthesisEnabled(): boolean {
+  return getDebugCfg('gameplayBattleZoneNoSynthesis') >= 0.5
+}
+
+function hasPickedSkill(skillId: string): boolean {
+  return pickedSkills.some((s) => s.id === skillId)
+}
+
+function resetSkill15NextBuyDiscountState(): void {
+  skill15NextBuyDiscountPrepared = false
+  skill15NextBuyDiscount = false
+}
+
+function resetSkill30BundleState(): void {
+  skill30BuyCounter = 0
+  skill30NextBuyFree = false
+}
+
+function ensureSkill15NextBuyDiscountReady(): void {
+  if (!hasPickedSkill('skill15')) {
+    resetSkill15NextBuyDiscountState()
+    return
+  }
+  if (skill15NextBuyDiscountPrepared) return
+  skill15NextBuyDiscountPrepared = true
+  skill15NextBuyDiscount = Math.random() < 0.25
+}
+
+function resolveBuyPriceWithSkills(basePrice: number): { finalPrice: number; discount: number; freeBySkill30: boolean } {
+  const safeBase = Math.max(1, Math.round(basePrice))
+
+  if (hasPickedSkill('skill30') && skill30NextBuyFree) {
+    return {
+      finalPrice: 0,
+      discount: safeBase,
+      freeBySkill30: true,
+    }
+  }
+
+  ensureSkill15NextBuyDiscountReady()
+  if (!hasPickedSkill('skill15')) return { finalPrice: safeBase, discount: 0, freeBySkill30: false }
+  if (!skill15NextBuyDiscount) return { finalPrice: safeBase, discount: 0, freeBySkill30: false }
+  const finalPrice = Math.max(1, safeBase - 1)
+  return { finalPrice, discount: safeBase - finalPrice, freeBySkill30: false }
+}
+
+function consumeSkill15NextBuyDiscountAfterSuccess(): boolean {
+  if (!hasPickedSkill('skill15')) {
+    resetSkill15NextBuyDiscountState()
+    return false
+  }
+  ensureSkill15NextBuyDiscountReady()
+  const consumedDiscount = skill15NextBuyDiscount
+  skill15NextBuyDiscountPrepared = false
+  skill15NextBuyDiscount = false
+  ensureSkill15NextBuyDiscountReady()
+  return consumedDiscount
+}
+
+function consumeSkill30BundleAfterSuccess(consumedFreeBuy: boolean): boolean {
+  if (!hasPickedSkill('skill30')) {
+    resetSkill30BundleState()
+    return false
+  }
+
+  if (consumedFreeBuy) {
+    skill30NextBuyFree = false
+    skill30BuyCounter = 1
+    return true
+  }
+
+  skill30BuyCounter += 1
+  if (skill30BuyCounter >= 4) {
+    skill30BuyCounter = 0
+    skill30NextBuyFree = true
+    return true
+  }
+  return false
+}
+
+function getShopSlotPreviewPrice(slot: ShopSlot): number {
+  return resolveBuyPriceWithSkills(slot.price).finalPrice
+}
+
+function canAffordShopSlot(slot: ShopSlot): boolean {
+  if (!shopManager || slot.purchased) return false
+  return shopManager.gold >= getShopSlotPreviewPrice(slot)
+}
+
+function upsertPickedSkill(skillId: string): void {
+  const found = getBronzeSkillById(skillId) ?? getSilverSkillById(skillId) ?? getGoldSkillById(skillId)
+  if (!found) return
+  if (hasPickedSkill(skillId)) return
+  pickedSkills = [...pickedSkills, {
+    id: found.id,
+    name: found.name,
+    archetype: found.archetype,
+    desc: found.desc,
+    detailDesc: found.detailDesc,
+    tier: found.tier,
+    icon: found.icon,
+  }]
+  if (skillId === 'skill15') ensureSkill15NextBuyDiscountReady()
+  if (skillId === 'skill20') grantSkill20DailyBronzeItemIfNeeded()
+}
+
+function removePickedSkill(skillId: string): void {
+  pickedSkills = pickedSkills.filter((s) => s.id !== skillId)
+  if (skillDetailSkillId === skillId) {
+    skillDetailSkillId = null
+    skillDetailMode = 'simple'
+  }
+  if (skillId === 'skill15') resetSkill15NextBuyDiscountState()
+  if (skillId === 'skill30') resetSkill30BundleState()
+}
+
+function tryBuyShopSlotWithSkill(slot: ShopSlot): { ok: boolean; finalPrice: number; discount: number } {
+  if (!shopManager || slot.purchased) return { ok: false, finalPrice: slot.price, discount: 0 }
+  const priced = resolveBuyPriceWithSkills(slot.price)
+  if (shopManager.gold < priced.finalPrice) return { ok: false, finalPrice: priced.finalPrice, discount: priced.discount }
+  shopManager.gold -= priced.finalPrice
+  slot.purchased = true
+  if (consumeSkill15NextBuyDiscountAfterSuccess()) showHintToast('no_gold_buy', '砍价高手触发：本次-1G', 0x8ff0b0)
+  const skill30Ready = consumeSkill30BundleAfterSuccess(priced.freeBySkill30)
+  if (priced.freeBySkill30) showHintToast('no_gold_buy', '打包购买触发：本次0金币', 0x9be5ff)
+  else if (skill30Ready) showHintToast('no_gold_buy', '打包购买就绪：下次购买0金币', 0x9be5ff)
+  return { ok: true, finalPrice: priced.finalPrice, discount: priced.discount }
+}
+
+function closeSkillTestOverlay(): void {
+  if (!skillTestOverlay) return
+  if (skillTestOverlay.parent) skillTestOverlay.parent.removeChild(skillTestOverlay)
+  skillTestOverlay.destroy({ children: true })
+  skillTestOverlay = null
+}
+
 function closeSettingsOverlay(): void {
+  closeSkillTestOverlay()
   if (!settingsOverlay) return
   if (settingsOverlay.parent) settingsOverlay.parent.removeChild(settingsOverlay)
   settingsOverlay.destroy({ children: true })
   settingsOverlay = null
+}
+
+function openSkillTestOverlay(): void {
+  closeSkillTestOverlay()
+  const stage = getApp().stage
+  const overlay = new Container()
+  overlay.zIndex = 7400
+  overlay.eventMode = 'static'
+  overlay.hitArea = new Rectangle(0, 0, CANVAS_W, CANVAS_H)
+
+  const mask = new Graphics()
+  mask.rect(0, 0, CANVAS_W, CANVAS_H)
+  mask.fill({ color: 0x020409, alpha: 0.68 })
+  overlay.addChild(mask)
+
+  const panel = new Container()
+  panel.x = CANVAS_W / 2
+  panel.y = CANVAS_H / 2
+  panel.eventMode = 'static'
+  panel.on('pointerdown', (e) => e.stopPropagation())
+  overlay.addChild(panel)
+
+  const panelW = 600
+  const panelH = 1180
+  const bg = new Graphics()
+  bg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 24)
+  bg.fill({ color: 0x121d34, alpha: 0.98 })
+  bg.stroke({ color: 0x9ec2ff, width: 3, alpha: 0.95 })
+  panel.addChild(bg)
+
+  const title = new Text({
+    text: '技能测试（青铜/白银/黄金）',
+    style: { fontSize: 38, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  title.anchor.set(0.5)
+  title.y = -442
+  panel.addChild(title)
+
+  const subtitle = new Text({
+    text: '点击开关可即时加/去技能（仅本局）',
+    style: { fontSize: 20, fill: 0xa8bddf, fontFamily: 'Arial' },
+  })
+  subtitle.anchor.set(0.5)
+  subtitle.y = -398
+  panel.addChild(subtitle)
+
+  let selectedTier: 'bronze' | 'silver' | 'gold' = 'bronze'
+  const tierTabsCon = new Container()
+  tierTabsCon.y = -352
+  panel.addChild(tierTabsCon)
+
+  const listCon = new Container()
+  panel.addChild(listCon)
+
+  const drawTabs = () => {
+    tierTabsCon.removeChildren().forEach((c) => c.destroy({ children: true }))
+    const makeTab = (x: number, key: 'bronze' | 'silver' | 'gold', label: string) => {
+      const on = selectedTier === key
+      const tab = new Container()
+      tab.x = x
+      tab.eventMode = 'static'
+      tab.cursor = 'pointer'
+      const bgTab = new Graphics()
+      bgTab.roundRect(-90, -20, 180, 40, 12)
+      bgTab.fill({ color: on ? 0x6da7ff : 0x304a76, alpha: 0.96 })
+      bgTab.stroke({ color: 0xcfe1ff, width: on ? 3 : 2, alpha: 0.9 })
+      const tx = new Text({
+        text: label,
+        style: { fontSize: 20, fill: 0xf5fbff, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      tx.anchor.set(0.5)
+      tab.on('pointerdown', (e) => {
+        e.stopPropagation()
+        if (selectedTier === key) return
+        selectedTier = key
+        drawTabs()
+        drawRows()
+      })
+      tab.addChild(bgTab, tx)
+      tierTabsCon.addChild(tab)
+    }
+    makeTab(-180, 'bronze', '青铜')
+    makeTab(0, 'silver', '白银')
+    makeTab(180, 'gold', '黄金')
+  }
+
+  const drawRows = () => {
+    listCon.removeChildren().forEach((c) => c.destroy({ children: true }))
+    const list = selectedTier === 'bronze'
+      ? BRONZE_SKILL_PICKS
+      : selectedTier === 'silver'
+        ? SILVER_SKILL_PICKS
+        : GOLD_SKILL_PICKS
+    const listTop = -300
+    const rowH = 40
+    list.forEach((skill, idx) => {
+      const y = listTop + idx * rowH
+      const rowBg = new Graphics()
+      rowBg.roundRect(-268, y - 18, 536, 34, 10)
+      rowBg.fill({ color: idx % 2 === 0 ? 0x172844 : 0x15233c, alpha: 0.72 })
+      listCon.addChild(rowBg)
+
+      const label = new Text({
+        text: `${skill.id} ${skill.name}`,
+        style: { fontSize: 18, fill: 0xe0ebff, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      label.x = -248
+      label.y = y - label.height / 2
+      listCon.addChild(label)
+
+      const btn = new Container()
+      btn.x = 195
+      btn.y = y
+      btn.eventMode = 'static'
+      btn.cursor = 'pointer'
+      const b = new Graphics()
+      const t = new Text({
+        text: '',
+        style: { fontSize: 18, fill: 0x0f1c33, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      t.anchor.set(0.5)
+      const redraw = () => {
+        const on = hasPickedSkill(skill.id)
+        b.clear()
+        b.roundRect(-52, -14, 104, 28, 10)
+        b.fill({ color: on ? 0x74dc9b : 0xa8b6cc, alpha: 0.98 })
+        b.stroke({ color: 0x0d1426, width: 2, alpha: 0.95 })
+        t.text = on ? '已开启' : '已关闭'
+      }
+      redraw()
+      btn.on('pointerdown', (e) => {
+        e.stopPropagation()
+        if (hasPickedSkill(skill.id)) removePickedSkill(skill.id)
+        else upsertPickedSkill(skill.id)
+        redraw()
+        refreshSkillIconBar()
+        refreshShopUI()
+        saveShopStateToStorage(captureShopState())
+      })
+      btn.addChild(b, t)
+      listCon.addChild(btn)
+    })
+  }
+
+  drawTabs()
+  drawRows()
+
+  const closeBtn = new Container()
+  closeBtn.x = 0
+  closeBtn.y = 540
+  closeBtn.eventMode = 'static'
+  closeBtn.cursor = 'pointer'
+  const closeBg = new Graphics()
+  closeBg.roundRect(-122, -30, 244, 60, 18)
+  closeBg.fill({ color: 0x2d446c, alpha: 0.96 })
+  closeBg.stroke({ color: 0xa7c6ff, width: 3, alpha: 0.95 })
+  const closeText = new Text({ text: '关闭', style: { fontSize: 28, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' } })
+  closeText.anchor.set(0.5)
+  closeBtn.on('pointerdown', (e) => {
+    e.stopPropagation()
+    closeSkillTestOverlay()
+  })
+  closeBtn.addChild(closeBg, closeText)
+  panel.addChild(closeBtn)
+
+  overlay.on('pointerdown', () => closeSkillTestOverlay())
+  stage.addChild(overlay)
+  skillTestOverlay = overlay
 }
 
 function openSettingsOverlay(): void {
@@ -976,13 +1437,13 @@ function openSettingsOverlay(): void {
 
   const panel = new Container()
   panel.x = CANVAS_W / 2
-  panel.y = 318
+  panel.y = 418
   panel.eventMode = 'static'
   panel.on('pointerdown', (e) => e.stopPropagation())
   overlay.addChild(panel)
 
   const panelW = 612
-  const panelH = 384
+  const panelH = 672
   const panelBg = new Graphics()
   panelBg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 24)
   panelBg.fill({ color: 0x121c33, alpha: 0.98 })
@@ -999,7 +1460,7 @@ function openSettingsOverlay(): void {
     style: { fontSize: 40, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' },
   })
   title.anchor.set(0.5)
-  title.y = -146
+  title.y = -210
   panel.addChild(title)
 
   const subtitle = new Text({
@@ -1007,14 +1468,15 @@ function openSettingsOverlay(): void {
     style: { fontSize: 18, fill: 0xa8bddf, fontFamily: 'Arial', fontWeight: 'bold' },
   })
   subtitle.anchor.set(0.5)
-  subtitle.y = -106
+  subtitle.y = -166
   panel.addChild(subtitle)
 
   type ToggleRow = {
-    key: 'gameplayCrossSynthesisConfirm' | 'gameplayShowSpeedButton'
+    key: 'gameplayCrossSynthesisConfirm' | 'gameplayShowSpeedButton' | 'gameplayBattleZoneNoSynthesis'
     label: string
   }
   const rows: ToggleRow[] = [
+    { key: 'gameplayBattleZoneNoSynthesis', label: '上阵区禁合成引导' },
     { key: 'gameplayCrossSynthesisConfirm', label: '合成二次弹窗' },
     { key: 'gameplayShowSpeedButton', label: '战斗加速按钮' },
   ]
@@ -1067,12 +1529,36 @@ function openSettingsOverlay(): void {
     panel.addChild(btn)
   }
 
-  drawRow(4, rows[0])
-  drawRow(104, rows[1])
+  const controlBaseY = -118
+  const controlGapY = 92
+  rows.forEach((row, idx) => {
+    drawRow(controlBaseY + controlGapY * idx, row)
+  })
+
+  const testBtn = new Container()
+  testBtn.x = 0
+  testBtn.y = controlBaseY + controlGapY * rows.length
+  testBtn.eventMode = 'static'
+  testBtn.cursor = 'pointer'
+  const testBg = new Graphics()
+  testBg.roundRect(-172, -28, 344, 56, 16)
+  testBg.fill({ color: 0x3a5b93, alpha: 0.96 })
+  testBg.stroke({ color: 0xb9d4ff, width: 3, alpha: 0.95 })
+  const testText = new Text({
+    text: '技能测试',
+    style: { fontSize: 26, fill: 0xf3f9ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  testText.anchor.set(0.5)
+  testBtn.on('pointerdown', (e) => {
+    e.stopPropagation()
+    openSkillTestOverlay()
+  })
+  testBtn.addChild(testBg, testText)
+  panel.addChild(testBtn)
 
   const closeBtn = new Container()
   closeBtn.x = 0
-  closeBtn.y = 166
+  closeBtn.y = controlBaseY + controlGapY * (rows.length + 1)
   closeBtn.eventMode = 'static'
   closeBtn.cursor = 'pointer'
   const closeBg = new Graphics()
@@ -1401,6 +1887,8 @@ function unlockItemToPool(defId: string): boolean {
 
 function seedInitialUnlockPoolByStarterClass(_pick: StarterClass): void {
   unlockedItemIds.clear()
+  resetSkill15NextBuyDiscountState()
+  resetSkill30BundleState()
   nextQuickBuyOffer = null
   // 按当前规则：开局解锁“所有青铜物品”，不再仅限所选职业
   const bronzeIds = getAllItems()
@@ -1890,6 +2378,43 @@ function isPointInItemBounds(view: GridZone, item: PlacedItem, gx: number, gy: n
   return gx >= x0 && gx <= x1 && gy >= y0 && gy <= y1
 }
 
+function collectBackpackSynthesisGuideIds(
+  defId: string,
+  tier: TierKey,
+  star: 1 | 2,
+  excludeInstanceId?: string,
+): string[] {
+  if (!backpackSystem) return []
+  const out: string[] = []
+  for (const it of backpackSystem.getAllItems()) {
+    if (excludeInstanceId && it.instanceId === excludeInstanceId) continue
+    const itTier = instanceToTier.get(it.instanceId) ?? 'Bronze'
+    const itStar = getInstanceTierStar(it.instanceId)
+    if (!canSynthesizePair(defId, it.defId, tier, star, itTier, itStar)) continue
+    out.push(it.instanceId)
+  }
+  return out
+}
+
+function refreshBackpackSynthesisGuideArrows(
+  defId: string | null,
+  tier: TierKey | null,
+  star: 1 | 2,
+  excludeInstanceId?: string,
+): void {
+  if (!backpackView) return
+  if (!isBattleZoneNoSynthesisEnabled() || !defId || !tier || tier === 'Diamond') {
+    backpackView.setDragGuideArrows([])
+    return
+  }
+  const ids = collectBackpackSynthesisGuideIds(defId, tier, star, excludeInstanceId)
+  backpackView.setDragGuideArrows(ids)
+}
+
+function clearBackpackSynthesisGuideArrows(): void {
+  backpackView?.setDragGuideArrows([])
+}
+
 function findSynthesisTargetAtPointer(
   defId: string,
   tier: TierKey,
@@ -1898,7 +2423,7 @@ function findSynthesisTargetAtPointer(
   gy: number,
   _dragSize?: ItemSizeNorm,
 ): SynthesisTarget | null {
-  if (battleView && battleSystem) {
+  if (!isBattleZoneNoSynthesisEnabled() && battleView && battleSystem) {
     for (const it of battleSystem.getAllItems()) {
       const itTier = instanceToTier.get(it.instanceId) ?? 'Bronze'
       const itStar = getInstanceTierStar(it.instanceId)
@@ -1968,7 +2493,7 @@ function findSynthesisTargetByFootprint(
   }
 
   return (
-    tryZone(battleView, battleSystem, 'battle')
+    (isBattleZoneNoSynthesisEnabled() ? null : tryZone(battleView, battleSystem, 'battle'))
     ?? tryZone(backpackView, backpackSystem, 'backpack')
   )
 }
@@ -1991,6 +2516,62 @@ function findSynthesisTargetWithDragProbe(
     findSynthesisTargetAtPointer(defId, tier, star, gx, probeY, dragSize)
     ?? findSynthesisTargetByFootprint(defId, tier, star, gx, probeY, dragSize)
   )
+}
+
+function findBattleSynthesisTargetWithDragProbeIgnoringNoSynthesis(
+  defId: string,
+  tier: TierKey,
+  star: 1 | 2,
+  gx: number,
+  gy: number,
+  dragSize?: ItemSizeNorm,
+): SynthesisTarget | null {
+  if (!battleSystem || !battleView) return null
+  const battleSystemRef = battleSystem
+  const battleViewRef = battleView
+
+  const matchAtPointer = (probeY: number): SynthesisTarget | null => {
+    for (const it of battleSystemRef.getAllItems()) {
+      const itTier = instanceToTier.get(it.instanceId) ?? 'Bronze'
+      const itStar = getInstanceTierStar(it.instanceId)
+      if (!canSynthesizePair(defId, it.defId, tier, star, itTier, itStar)) continue
+      if (isPointInItemBounds(battleViewRef, it, gx, probeY)) {
+        return { instanceId: it.instanceId, zone: 'battle' }
+      }
+    }
+    return null
+  }
+
+  const matchByFootprint = (probeY: number): SynthesisTarget | null => {
+    if (!dragSize) return null
+    const { w, h } = getSizeCellDim(dragSize)
+    const cell = battleViewRef.pixelToCellForItem(gx, probeY, dragSize, 0)
+    if (!cell) return null
+    const l = cell.col
+    const r = cell.col + w
+    const t = cell.row
+    const b = cell.row + h
+    for (const it of battleSystemRef.getAllItems()) {
+      const itTier = instanceToTier.get(it.instanceId) ?? 'Bronze'
+      const itStar = getInstanceTierStar(it.instanceId)
+      if (!canSynthesizePair(defId, it.defId, tier, star, itTier, itStar)) continue
+      const d = getSizeCellDim(it.size)
+      const il = it.col
+      const ir = it.col + d.w
+      const itop = it.row
+      const ib = it.row + d.h
+      if (l < ir && r > il && t < ib && b > itop) {
+        return { instanceId: it.instanceId, zone: 'battle' }
+      }
+    }
+    return null
+  }
+
+  const direct = matchAtPointer(gy) ?? matchByFootprint(gy)
+  if (direct) return direct
+  const probeY = gy + (dragSize ? getDebugCfg('dragYOffset') : 0)
+  if (probeY === gy) return null
+  return matchAtPointer(probeY) ?? matchByFootprint(probeY)
 }
 
 function getSynthesisTargetItem(target: SynthesisTarget): PlacedItem | null {
@@ -2070,8 +2651,11 @@ function synthesizeTarget(
   zone: 'battle' | 'backpack',
 ): SynthesizeResult | null {
   if (!battleSystem || !backpackSystem || !battleView || !backpackView) return null
-  const upgradeTo = nextTierLevel(tier, star)
-  if (!upgradeTo) return null
+  const baseUpgrade = nextTierLevel(tier, star)
+  if (!baseUpgrade) return null
+  const extraUpgrade = nextTierLevel(baseUpgrade.tier, baseUpgrade.star)
+  const wantsExtraUpgrade = shouldTriggerSkill48ExtraUpgrade(hasPickedSkill('skill48'), !!extraUpgrade, Math.random())
+  let upgradeTo = wantsExtraUpgrade && extraUpgrade ? extraUpgrade : baseUpgrade
 
   const targetItem = zone === 'battle'
     ? battleSystem.getItem(targetInstanceId)
@@ -2088,20 +2672,30 @@ function synthesizeTarget(
 
   const isCrossIdSynthesis = defId !== targetItem.defId
   const minStartingTier = getCrossSynthesisMinStartingTier(sourceDef, targetDef)
-  const guaranteeNewUnlock = shouldGuaranteeNewUnlock(upgradeTo.tier, upgradeTo.star)
-  const resultLevel = tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1
-  const evolveCandidates = (() => {
+  let guaranteeNewUnlock = shouldGuaranteeNewUnlock(upgradeTo.tier, upgradeTo.star)
+  let resultLevel = tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1
+  const buildCandidates = (targetTier: TierKey) => {
     if (defId === targetItem.defId) {
-      return getAllItems().filter((it) => it.id === defId && parseAvailableTiers(it.available_tiers).includes(upgradeTo.tier))
+      return getAllItems().filter((it) => it.id === defId && parseAvailableTiers(it.available_tiers).includes(targetTier))
     }
     if (guaranteeNewUnlock) {
-      return getCrossIdEvolvePool(sourceDef, targetItem.size, upgradeTo.tier, minStartingTier).otherArchPool
+      return getCrossIdEvolvePool(sourceDef, targetItem.size, targetTier, minStartingTier).otherArchPool
     }
-    return pickCrossIdEvolveCandidates(sourceDef, targetItem.size, upgradeTo.tier, minStartingTier)
-  })()
-  const evolvedDef = isCrossIdSynthesis
+    return pickCrossIdEvolveCandidates(sourceDef, targetItem.size, targetTier, minStartingTier)
+  }
+  let evolveCandidates = buildCandidates(upgradeTo.tier)
+  let evolvedDef = isCrossIdSynthesis
     ? pickCrossSynthesisResultWithCycle(evolveCandidates, upgradeTo.tier, upgradeTo.star, minStartingTier)
     : pickSynthesisResultWithGuarantee(evolveCandidates, upgradeTo.tier, upgradeTo.star)
+  if (!evolvedDef && wantsExtraUpgrade) {
+    upgradeTo = baseUpgrade
+    guaranteeNewUnlock = shouldGuaranteeNewUnlock(upgradeTo.tier, upgradeTo.star)
+    resultLevel = tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1
+    evolveCandidates = buildCandidates(upgradeTo.tier)
+    evolvedDef = isCrossIdSynthesis
+      ? pickCrossSynthesisResultWithCycle(evolveCandidates, upgradeTo.tier, upgradeTo.star, minStartingTier)
+      : pickSynthesisResultWithGuarantee(evolveCandidates, upgradeTo.tier, upgradeTo.star)
+  }
   if (!evolvedDef) return null
 
   const system = zone === 'battle' ? battleSystem : backpackSystem
@@ -2719,24 +3313,15 @@ function grantStarterItemsByClass(pick: StarterClass): void {
     const item = grant.item
     if (!item) continue
     const size = normalizeSize(item.size)
-    const battleSlot = findFirstBattlePlace(size)
-    const backpackSlot = battleSlot ? null : findFirstBackpackPlace(size)
-    if (!battleSlot && !backpackSlot) continue
+    const backpackSlot = findFirstBackpackPlace(size)
+    if (!backpackSlot) continue
 
     const id = nextId()
-    if (battleSlot) {
-      battleSystem.place(battleSlot.col, battleSlot.row, size, item.id, id)
-      void battleView.addItem(id, item.id, size, battleSlot.col, battleSlot.row, toVisualTier(grant.tier, grant.star)).then(() => {
-        battleView!.setItemTier(id, toVisualTier(grant.tier, grant.star))
-        drag?.refreshZone(battleView!)
-      })
-    } else if (backpackSlot) {
-      backpackSystem.place(backpackSlot.col, backpackSlot.row, size, item.id, id)
-      void backpackView.addItem(id, item.id, size, backpackSlot.col, backpackSlot.row, toVisualTier(grant.tier, grant.star)).then(() => {
-        backpackView!.setItemTier(id, toVisualTier(grant.tier, grant.star))
-        drag?.refreshZone(backpackView!)
-      })
-    }
+    backpackSystem.place(backpackSlot.col, backpackSlot.row, size, item.id, id)
+    void backpackView.addItem(id, item.id, size, backpackSlot.col, backpackSlot.row, toVisualTier(grant.tier, grant.star)).then(() => {
+      backpackView!.setItemTier(id, toVisualTier(grant.tier, grant.star))
+      drag?.refreshZone(backpackView!)
+    })
 
     instanceToDefId.set(id, item.id)
     instanceToTier.set(id, grant.tier)
@@ -2972,6 +3557,7 @@ function showStarterSynthesisGuide(stage: Container, pick: StarterClass): void {
     if (starterGuideOverlay?.parent) starterGuideOverlay.parent.removeChild(starterGuideOverlay)
     starterGuideOverlay?.destroy({ children: true })
     starterGuideOverlay = null
+    ensureSkillDraftSelection(stage)
   })
   panel.addChild(closeBtn)
 
@@ -3140,8 +3726,8 @@ function ensureStarterClassSelection(stage: Container): void {
     setTransitionInputEnabled(true)
     applyPhaseInputLock()
     refreshShopUI()
-    ensureSkillDraftSelection(stage)
     showStarterSynthesisGuide(stage, selected)
+    ensureSkillDraftSelection(stage)
   })
 
   overlay.addChild(confirm)
@@ -3157,29 +3743,70 @@ function skillTierLabelCn(tier: SkillTier): string {
   return '黄金'
 }
 
-function skillArchetypeLabelCn(archetype: SkillArchetype): string {
-  if (archetype === 'warrior') return '战士'
-  if (archetype === 'archer') return '弓手'
-  if (archetype === 'assassin') return '刺客'
-  return '通用'
-}
-
-function skillArchetypeColor(archetype: SkillArchetype): number {
-  if (archetype === 'warrior') return 0xc45f3a
-  if (archetype === 'archer') return 0x4f9f57
-  if (archetype === 'assassin') return 0x3d74bd
-  return 0x8a6bb5
-}
-
 function skillTierColor(tier: SkillTier): number {
   if (tier === 'bronze') return 0xbe8b46
   if (tier === 'silver') return 0x9aafc8
   return 0xd0ac43
 }
 
+function mountSkillIconSprite(
+  parent: Container,
+  skillId: string,
+  iconStem: string | undefined,
+  centerX: number,
+  centerY: number,
+  iconSize: number,
+  fallback: Text,
+): void {
+  const stemRaw = iconStem
+    ?? getBronzeSkillById(skillId)?.icon
+    ?? getSilverSkillById(skillId)?.icon
+    ?? getGoldSkillById(skillId)?.icon
+    ?? (/^skill\d+$/.test(skillId) ? skillId : undefined)
+  const stem = stemRaw ? stemRaw.replace(/\.png$/i, '').trim() : ''
+  if (!stem) return
+  const iconUrl = getSkillIconUrl(stem)
+  const sprite = new Sprite(Texture.WHITE)
+  sprite.anchor.set(0.5)
+  sprite.x = centerX
+  sprite.y = centerY
+  sprite.alpha = 0
+  parent.addChild(sprite)
+
+  void Assets.load<Texture>(iconUrl).then((tex) => {
+    const side = Math.round(iconSize * 0.78)
+    const sw = Math.max(1, tex.width)
+    const sh = Math.max(1, tex.height)
+    const scale = Math.min(side / sw, side / sh)
+    sprite.texture = tex
+    sprite.width = Math.max(1, Math.round(sw * scale))
+    sprite.height = Math.max(1, Math.round(sh * scale))
+    sprite.alpha = 1
+    fallback.visible = false
+  }).catch(() => {
+    sprite.destroy()
+  })
+}
+
+function getSkillDailyDraftPlanRows(): Array<Record<string, unknown>> {
+  const skillCfg = getConfig().skillSystem as { dailyDraftPlan?: Array<Record<string, unknown>> } | undefined
+  if (!skillCfg || !Array.isArray(skillCfg.dailyDraftPlan)) return []
+  return skillCfg.dailyDraftPlan
+}
+
 function getSkillTierForDay(day: number): SkillTier | null {
   const skillCfg = getConfig().skillSystem
   if (!skillCfg) return null
+  const plan = getSkillDailyDraftPlanRows().find((it) => Math.round(Number(it.day) || 0) === day)
+  if (plan) {
+    if ((Number(plan.shouldDraft) || 0) < 0.5) return null
+    const bronze = Math.max(0, Number(plan.bronzeProb) || 0)
+    const silver = Math.max(0, Number(plan.silverProb) || 0)
+    const gold = Math.max(0, Number(plan.goldProb) || 0)
+    if (bronze >= silver && bronze >= gold) return 'bronze'
+    if (silver >= bronze && silver >= gold) return 'silver'
+    return 'gold'
+  }
   if ((skillCfg.triggerDaysByTier.bronze ?? []).includes(day)) return 'bronze'
   if ((skillCfg.triggerDaysByTier.silver ?? []).includes(day)) return 'silver'
   if ((skillCfg.triggerDaysByTier.gold ?? []).includes(day)) return 'gold'
@@ -3187,40 +3814,133 @@ function getSkillTierForDay(day: number): SkillTier | null {
 }
 
 function makeSkillPoolByTier(tier: SkillTier): SkillPick[] {
-  const skillCfg = getConfig().skillSystem
-  if (!skillCfg) return []
-  const pool = skillCfg.pools[tier] ?? []
-  return pool
-    .map((it) => ({
-      id: `${it.id}`,
-      name: `${it.name}`,
-      archetype: it.archetype,
-      desc: `${it.desc}`,
-      tier,
-    }))
-    .filter((it) => !!it.id && !!it.name && !!it.desc)
+  if (tier === 'bronze') return [...BRONZE_SKILL_PICKS]
+  if (tier === 'silver') return [...SILVER_SKILL_PICKS]
+  if (tier === 'gold') return [...GOLD_SKILL_PICKS]
+  return []
 }
 
-function pickSkillChoices(tier: SkillTier): SkillPick[] {
-  const skillCfg = getConfig().skillSystem
-  const chooseCount = Math.max(1, skillCfg?.chooseCount ?? 3)
-  const source = makeSkillPoolByTier(tier)
-  if (source.length <= chooseCount) return source
-  const bag = [...source]
-  for (let i = bag.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    const t = bag[i]
-    bag[i] = bag[j]!
-    bag[j] = t!
+function randomByWeight(entries: Array<{ key: SkillTier; weight: number }>): SkillTier {
+  const valid = entries.filter((it) => Number.isFinite(it.weight) && it.weight > 0)
+  if (valid.length <= 0) return 'bronze'
+  const sum = valid.reduce((acc, it) => acc + it.weight, 0)
+  let roll = Math.random() * sum
+  for (const one of valid) {
+    roll -= one.weight
+    if (roll <= 0) return one.key
   }
-  return bag.slice(0, chooseCount)
+  return valid[valid.length - 1]!.key
+}
+
+function pickMixedSkillTier(baseTier: SkillTier, day: number): SkillTier {
+  const plan = getSkillDailyDraftPlanRows().find((it) => Math.round(Number(it.day) || 0) === day)
+  if (plan) {
+    const bronze = Math.max(0, Number(plan.bronzeProb) || 0)
+    const silver = Math.max(0, Number(plan.silverProb) || 0)
+    const gold = Math.max(0, Number(plan.goldProb) || 0)
+    if (bronze + silver + gold > 0) {
+      return randomByWeight([
+        { key: 'bronze', weight: bronze },
+        { key: 'silver', weight: silver },
+        { key: 'gold', weight: gold },
+      ])
+    }
+  }
+
+  if (baseTier === 'bronze') {
+    return randomByWeight([
+      { key: 'bronze', weight: 70 },
+      { key: 'silver', weight: 25 },
+      { key: 'gold', weight: 5 },
+    ])
+  }
+  if (baseTier === 'silver') {
+    return randomByWeight([
+      { key: 'bronze', weight: 20 },
+      { key: 'silver', weight: 60 },
+      { key: 'gold', weight: 20 },
+    ])
+  }
+  return randomByWeight([
+    { key: 'bronze', weight: 10 },
+    { key: 'silver', weight: 30 },
+    { key: 'gold', weight: 60 },
+  ])
+}
+
+function starterClassToArchetype(starter: StarterClass | null): SkillArchetype | null {
+  if (starter === 'swordsman') return 'warrior'
+  if (starter === 'archer') return 'archer'
+  if (starter === 'assassin') return 'assassin'
+  return null
+}
+
+function pickSkillChoices(baseTier: SkillTier, day: number): SkillPick[] {
+  const skillCfg = getConfig().skillSystem
+  const picks: SkillPick[] = []
+  const usedIds = new Set<string>()
+  const alreadyPicked = new Set(pickedSkills.map((s) => s.id))
+  const plan = getSkillDailyDraftPlanRows().find((it) => Math.round(Number(it.day) || 0) === day)
+  const chooseCount = (plan && (Number(plan.onlyStarterArchetype) || 0) >= 0.5)
+    ? 2
+    : Math.max(1, skillCfg?.chooseCount ?? 3)
+  const firstDayArchetype = (plan && (Number(plan.onlyStarterArchetype) || 0) >= 0.5)
+    ? starterClassToArchetype(starterClass)
+    : null
+
+  const tryPickOne = (forcedArchetype: SkillArchetype | null): boolean => {
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const tier = pickMixedSkillTier(baseTier, day)
+      let source = makeSkillPoolByTier(tier).filter((s) => !usedIds.has(s.id) && !alreadyPicked.has(s.id))
+      if (forcedArchetype) source = source.filter((s) => s.archetype === forcedArchetype)
+      if (source.length <= 0) continue
+      const picked = source[Math.floor(Math.random() * source.length)]
+      if (!picked) continue
+      picks.push(picked)
+      usedIds.add(picked.id)
+      return true
+    }
+    return false
+  }
+
+  while (picks.length < chooseCount) {
+    const ok = tryPickOne(firstDayArchetype)
+    if (!ok) break
+  }
+
+  const allSameArchetype = picks.length >= 3 && picks.every((s) => s.archetype === picks[0]!.archetype)
+  const allUtility = picks.length >= 3 && picks.every((s) => s.archetype === 'utility')
+  if (!firstDayArchetype && (allSameArchetype || allUtility)) {
+    for (let i = 0; i < 18; i++) {
+      const idx = Math.floor(Math.random() * picks.length)
+      const current = picks[idx]
+      if (!current) continue
+      const replacementTier = pickMixedSkillTier(baseTier, day)
+      const replacementPool = makeSkillPoolByTier(replacementTier).filter((s) => {
+        if (s.id === current.id) return false
+        if (usedIds.has(s.id)) return false
+        if (alreadyPicked.has(s.id)) return false
+        if (s.archetype === current.archetype) return false
+        return true
+      })
+      if (replacementPool.length <= 0) continue
+      const replacement = replacementPool[Math.floor(Math.random() * replacementPool.length)]
+      if (!replacement) continue
+      usedIds.delete(current.id)
+      picks[idx] = replacement
+      usedIds.add(replacement.id)
+      break
+    }
+  }
+
+  return picks.slice(0, chooseCount)
 }
 
 function layoutSkillIconBar(): void {
   if (!skillIconBarCon || !battleView) return
   const battleWidth = battleView.activeColCount * CELL_SIZE * battleView.scale.x
   skillIconBarCon.x = battleView.x + battleWidth / 2
-  skillIconBarCon.y = battleView.y - 72
+  skillIconBarCon.y = battleView.y - 92
 }
 
 function refreshSkillIconBar(): void {
@@ -3232,58 +3952,43 @@ function refreshSkillIconBar(): void {
     stage.addChild(skillIconBarCon)
   }
   const con = skillIconBarCon
-  if (!SKILL_DRAFT_ENABLED) {
-    con.visible = false
-    return
-  }
+  // 关闭技能三选一时，仍允许显示“已持有技能”（例如测试面板手动添加）
   con.removeChildren().forEach((c) => c.destroy({ children: true }))
   if (pickedSkills.length <= 0) {
     con.visible = false
     return
   }
 
-  const gap = 12
-  const iconSize = 54
+  const gap = -30
+  const iconSize = 128
   const rowW = pickedSkills.length * iconSize + Math.max(0, pickedSkills.length - 1) * gap
-  const bg = new Graphics()
-  bg.roundRect(-rowW / 2 - 16, -38, rowW + 32, 78, 18)
-  bg.fill({ color: 0x0f1728, alpha: 0.88 })
-  bg.stroke({ color: 0x6f809e, width: 2, alpha: 0.9 })
-  con.addChild(bg)
 
   for (let i = 0; i < pickedSkills.length; i++) {
     const s = pickedSkills[i]!
     const cell = new Container()
     cell.eventMode = 'static'
     cell.cursor = 'pointer'
-    const x = -rowW / 2 + i * (iconSize + gap)
-    const tierColor = skillTierColor(s.tier)
-    const mainColor = skillArchetypeColor(s.archetype)
-
-    const iconBg = new Graphics()
-    iconBg.roundRect(x, -26, iconSize, iconSize, 14)
-    iconBg.fill({ color: 0x1d2a45, alpha: 1 })
-    iconBg.stroke({ color: tierColor, width: 3, alpha: 1 })
-    cell.addChild(iconBg)
-
-    const badge = new Graphics()
-    badge.circle(x + iconSize - 9, -18, 7)
-    badge.fill({ color: mainColor, alpha: 1 })
-    cell.addChild(badge)
+    const x = -rowW / 2 + i * (iconSize + gap) + iconSize / 2
+    const hit = new Graphics()
+    hit.roundRect(x - iconSize / 2, -iconSize / 2, iconSize, iconSize, 14)
+    hit.fill({ color: 0x000000, alpha: 0.001 })
+    cell.addChild(hit)
 
     const letter = new Text({
       text: s.name.slice(0, 1),
       style: { fontSize: 24, fill: 0xf5f7ff, fontFamily: 'Arial', fontWeight: 'bold' },
     })
     letter.anchor.set(0.5)
-    letter.x = x + iconSize / 2
+    letter.x = x
     letter.y = 0
     cell.addChild(letter)
+    mountSkillIconSprite(cell, s.id, s.icon, x, 0, iconSize, letter)
 
     cell.on('pointerdown', (e: FederatedPointerEvent) => {
       e.stopPropagation()
       if (skillDetailSkillId === s.id) {
-        hideSkillDetailPopup()
+        skillDetailMode = skillDetailMode === 'simple' ? 'detailed' : 'simple'
+        showSkillDetailPopup(s)
       } else {
         currentSelection = { kind: 'none' }
         selectedSellAction = null
@@ -3293,6 +3998,7 @@ function refreshSkillIconBar(): void {
         backpackView?.setSelected(null)
         sellPopup?.hide()
         applySellButtonState()
+        skillDetailMode = 'simple'
         showSkillDetailPopup(s)
       }
     })
@@ -3306,6 +4012,7 @@ function refreshSkillIconBar(): void {
 
 function hideSkillDetailPopup(): void {
   skillDetailSkillId = null
+  skillDetailMode = 'simple'
   if (skillDetailPopupCon) skillDetailPopupCon.visible = false
 }
 
@@ -3324,22 +4031,31 @@ function showSkillDetailPopup(skill: SkillPick): void {
 
   const panelW = Math.max(360, Math.min(CANVAS_W - 24, getDebugCfg('itemInfoWidth')))
   const pad = 16
-  const iconSize = Math.max(72, Math.round(CELL_SIZE * 0.66))
+  const iconSize = 128
   const iconX = pad
   const iconY = pad
-  const tierColor = skillTierColor(skill.tier)
-  const mainColor = skillArchetypeColor(skill.archetype)
   const textX = iconX + iconSize + 16
   const textW = panelW - textX - pad
   const titleFontSize = getDebugCfg('itemInfoNameFontSize')
   const descFontSize = getDebugCfg('itemInfoSimpleDescFontSize')
+  const mode = skillDetailMode
+  const shownDesc = mode === 'detailed' ? (skill.detailDesc ?? skill.desc) : skill.desc
 
   const title = new Text({
     text: skill.name,
     style: { fontSize: titleFontSize, fill: 0xffefc8, fontFamily: 'Arial', fontWeight: 'bold' },
   })
+  const tierBadge = new Text({
+    text: skillTierLabelCn(skill.tier),
+    style: {
+      fontSize: Math.max(16, Math.round(titleFontSize * 0.7)),
+      fill: 0xfff3cf,
+      fontFamily: 'Arial',
+      fontWeight: 'bold',
+    },
+  })
   const desc = new Text({
-    text: skill.desc,
+    text: shownDesc,
     style: {
       fontSize: descFontSize,
       fill: 0xd7e2fa,
@@ -3368,17 +4084,6 @@ function showSkillDetailPopup(skill: SkillPick): void {
   bg.stroke({ color: 0x5566aa, width: 2, alpha: 1 })
   con.addChild(bg)
 
-  const iconBg = new Graphics()
-  iconBg.roundRect(px + iconX, py + iconY, iconSize, iconSize, 18)
-  iconBg.fill({ color: 0x1d2a45, alpha: 1 })
-  iconBg.stroke({ color: tierColor, width: 3, alpha: 1 })
-  con.addChild(iconBg)
-
-  const iconBadge = new Graphics()
-  iconBadge.circle(px + iconX + iconSize - 10, py + iconY + 10, 8)
-  iconBadge.fill({ color: mainColor, alpha: 1 })
-  con.addChild(iconBadge)
-
   const iconLetter = new Text({
     text: skill.name.slice(0, 1),
     style: { fontSize: 56, fill: 0xf5f7ff, fontFamily: 'Arial', fontWeight: 'bold' },
@@ -3387,10 +4092,30 @@ function showSkillDetailPopup(skill: SkillPick): void {
   iconLetter.x = px + iconX + iconSize / 2
   iconLetter.y = py + iconY + iconSize / 2 + 2
   con.addChild(iconLetter)
+  mountSkillIconSprite(con, skill.id, skill.icon, px + iconX + iconSize / 2, py + iconY + iconSize / 2 + 2, iconSize, iconLetter)
 
   title.x = px + textX
   title.y = py + iconY + 2
   con.addChild(title)
+  if (mode === 'detailed') {
+    const badgePadX = 10
+    const badgePadY = 4
+    const badgeX = title.x + title.width + 12
+    const badgeY = title.y + 2
+    const badgeBg = new Graphics()
+    badgeBg.roundRect(
+      badgeX - badgePadX,
+      badgeY - badgePadY,
+      tierBadge.width + badgePadX * 2,
+      tierBadge.height + badgePadY * 2,
+      8,
+    )
+    badgeBg.fill({ color: skillTierColor(skill.tier), alpha: 0.45 })
+    con.addChild(badgeBg)
+    tierBadge.x = badgeX
+    tierBadge.y = badgeY
+    con.addChild(tierBadge)
+  }
 
   const divider = new Graphics()
   divider.moveTo(px + textX, py + dividerY)
@@ -3419,6 +4144,7 @@ function ensureSkillDraftSelection(stage: Container): void {
     return
   }
   if (classSelectOverlay) return
+  if (starterGuideOverlay) return
   if (skillDraftOverlay) return
   const skillCfg = getConfig().skillSystem
   if (!skillCfg) return
@@ -3428,7 +4154,7 @@ function ensureSkillDraftSelection(stage: Container): void {
     const tier = getSkillTierForDay(currentDay)
     if (!tier) return
     if (draftedSkillDays.includes(currentDay)) return
-    const choices = pickSkillChoices(tier)
+    const choices = pickSkillChoices(tier, currentDay)
     if (choices.length <= 0) return
     draft = { day: currentDay, tier, choices }
     pendingSkillDraft = draft
@@ -3454,25 +4180,18 @@ function ensureSkillDraftSelection(stage: Container): void {
   })
   title.anchor.set(0.5)
   title.x = CANVAS_W / 2
-  title.y = 154
+  title.y = 228
   overlay.addChild(title)
 
-  const subtitle = new Text({
-    text: `${skillTierLabelCn(draft.tier)}技能（三选一）`,
-    style: { fontSize: 24, fill: 0xb8c8e5, fontFamily: 'Arial' },
-  })
-  subtitle.anchor.set(0.5)
-  subtitle.x = CANVAS_W / 2
-  subtitle.y = 206
-  overlay.addChild(subtitle)
-
+  const shownChoices = draft.choices.slice(0, 3)
   const cardW = 188
   const cardH = 470
   const gapX = 16
-  const cardX = (CANVAS_W - (cardW * 3 + gapX * 2)) / 2
-  const cardY = 286
+  const totalW = cardW * shownChoices.length + gapX * Math.max(0, shownChoices.length - 1)
+  const cardX = (CANVAS_W - totalW) / 2
+  const cardY = 580
 
-  draft.choices.slice(0, 3).forEach((choice, idx) => {
+  shownChoices.forEach((choice, idx) => {
     const con = new Container()
     con.x = cardX + idx * (cardW + gapX)
     con.y = cardY
@@ -3486,19 +4205,15 @@ function ensureSkillDraftSelection(stage: Container): void {
     border.stroke({ color: skillTierColor(choice.tier), width: 3, alpha: 1 })
     con.addChild(border)
 
-    const icon = new Graphics()
-    icon.circle(cardW / 2, 86, 40)
-    icon.fill({ color: skillArchetypeColor(choice.archetype), alpha: 1 })
-    con.addChild(icon)
-
     const iconText = new Text({
       text: choice.name.slice(0, 1),
-      style: { fontSize: 38, fill: 0xf5f8ff, fontFamily: 'Arial', fontWeight: 'bold' },
+      style: { fontSize: 54, fill: 0xf5f8ff, fontFamily: 'Arial', fontWeight: 'bold' },
     })
     iconText.anchor.set(0.5)
     iconText.x = cardW / 2
-    iconText.y = 86
+    iconText.y = 108
     con.addChild(iconText)
+    mountSkillIconSprite(con, choice.id, choice.icon, cardW / 2, 108, 160, iconText)
 
     const name = new Text({
       text: choice.name,
@@ -3514,17 +4229,35 @@ function ensureSkillDraftSelection(stage: Container): void {
     })
     name.anchor.set(0.5, 0)
     name.x = cardW / 2
-    name.y = 150
+    name.y = 184
     con.addChild(name)
 
-    const tags = new Text({
-      text: `${skillTierLabelCn(choice.tier)} · ${skillArchetypeLabelCn(choice.archetype)}`,
-      style: { fontSize: 20, fill: 0xbecde8, fontFamily: 'Arial' },
+    const qualityText = new Text({
+      text: skillTierLabelCn(choice.tier),
+      style: {
+        fontSize: 20,
+        fill: 0xfff3cf,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+      },
     })
-    tags.anchor.set(0.5, 0)
-    tags.x = cardW / 2
-    tags.y = 204
-    con.addChild(tags)
+    qualityText.anchor.set(0.5, 0)
+    qualityText.x = cardW / 2
+    qualityText.y = 246
+    const qualityPadX = 10
+    const qualityPadY = 4
+    const qualityBg = new Graphics()
+    qualityBg.roundRect(
+      qualityText.x - qualityText.width / 2 - qualityPadX,
+      qualityText.y - qualityPadY,
+      qualityText.width + qualityPadX * 2,
+      qualityText.height + qualityPadY * 2,
+      8,
+    )
+    qualityBg.fill({ color: skillTierColor(choice.tier), alpha: 0.45 })
+    qualityBg.stroke({ color: 0xe8f0ff, width: 1, alpha: 0.6 })
+    con.addChild(qualityBg)
+    con.addChild(qualityText)
 
     const desc = new Text({
       text: choice.desc,
@@ -3539,21 +4272,12 @@ function ensureSkillDraftSelection(stage: Container): void {
       },
     })
     desc.x = 14
-    desc.y = 252
+    desc.y = 308
     con.addChild(desc)
-
-    const hint = new Text({
-      text: '点击选择',
-      style: { fontSize: 22, fill: 0x8fd5ff, fontFamily: 'Arial', fontWeight: 'bold' },
-    })
-    hint.anchor.set(0.5)
-    hint.x = cardW / 2
-    hint.y = cardH - 42
-    con.addChild(hint)
 
     con.on('pointerdown', (e: FederatedPointerEvent) => {
       e.stopPropagation()
-      pickedSkills = [...pickedSkills, choice]
+      upsertPickedSkill(choice.id)
       draftedSkillDays = Array.from(new Set([...draftedSkillDays, draft!.day])).sort((a, b) => a - b)
       pendingSkillDraft = null
       closeSkillDraftOverlay()
@@ -3811,13 +4535,13 @@ function rollNextQuickBuyOffer(force = false): PoolCandidate | null {
 function getQuickBuyMinPrice(): number {
   const offer = rollNextQuickBuyOffer(false)
   if (!offer) return SHOP_QUICK_BUY_PRICE
-  return Math.max(1, Math.round(offer.price))
+  return resolveBuyPriceWithSkills(offer.price).finalPrice
 }
 
 function getQuickBuyPricePreviewLabel(): string {
   const offer = rollNextQuickBuyOffer(false)
   if (!offer) return '-'
-  return `${Math.max(1, Math.round(offer.price))}`
+  return `${resolveBuyPriceWithSkills(offer.price).finalPrice}`
 }
 
 function buyRandomBronzeToBoardOrBackpack(): void {
@@ -3845,6 +4569,7 @@ function buyRandomBronzeToBoardOrBackpack(): void {
   const tier = picked.tier
   const star = picked.star
   const buyPrice = picked.price
+  const priced = resolveBuyPriceWithSkills(buyPrice)
 
   if (!canBuyItemUnderFirstPurchaseRule(item)) {
     showFirstPurchaseRuleHint()
@@ -3853,39 +4578,33 @@ function buyRandomBronzeToBoardOrBackpack(): void {
   }
 
   const size = normalizeSize(item.size)
-  const battleSlot = findFirstBattlePlace(size)
-  const backpackSlot = battleSlot ? null : findFirstBackpackPlace(size)
-  if (!battleSlot && !backpackSlot) {
-    showHintToast('backpack_full_buy', '格子不够，无法购买', 0xff8f8f)
+  const backpackSlot = findFirstBackpackPlace(size)
+  if (!backpackSlot) {
+    showHintToast('backpack_full_buy', '背包已满，无法购买', 0xff8f8f)
     refreshShopUI()
     return
   }
 
-  if (manager.gold < buyPrice) {
-    showHintToast('no_gold_buy', `金币不足，需${buyPrice}G`, 0xff8f8f)
+  if (manager.gold < priced.finalPrice) {
+    showHintToast('no_gold_buy', `金币不足，需${priced.finalPrice}G`, 0xff8f8f)
     refreshShopUI()
     return
   }
 
-  manager.gold -= buyPrice
+  manager.gold -= priced.finalPrice
+  if (consumeSkill15NextBuyDiscountAfterSuccess()) showHintToast('no_gold_buy', '砍价高手触发：本次-1G', 0x8ff0b0)
+  const skill30Ready = consumeSkill30BundleAfterSuccess(priced.freeBySkill30)
+  if (priced.freeBySkill30) showHintToast('no_gold_buy', '打包购买触发：本次0金币', 0x9be5ff)
+  else if (skill30Ready) showHintToast('no_gold_buy', '打包购买就绪：下次购买0金币', 0x9be5ff)
   markShopPurchaseDone()
   const id = nextId()
   const visualTier = toVisualTier(tier, star)
-  if (battleSlot) {
-    battleSystem.place(battleSlot.col, battleSlot.row, size, item.id, id)
-    void battleView.addItem(id, item.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
-      battleView!.setItemTier(id, visualTier)
-      drag?.refreshZone(battleView!)
-    })
-    console.log(`[ShopScene] 购买(${tier}#${star})→战斗区 ${item.name_cn} -${buyPrice}G，金币: ${manager.gold}`)
-  } else if (backpackSlot) {
-    backpackSystem.place(backpackSlot.col, backpackSlot.row, size, item.id, id)
-    void backpackView.addItem(id, item.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
-      backpackView!.setItemTier(id, visualTier)
-      drag?.refreshZone(backpackView!)
-    })
-    console.log(`[ShopScene] 购买(${tier}#${star})→背包 ${item.name_cn} -${buyPrice}G，金币: ${manager.gold}`)
-  }
+  backpackSystem.place(backpackSlot.col, backpackSlot.row, size, item.id, id)
+  void backpackView.addItem(id, item.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
+    backpackView!.setItemTier(id, visualTier)
+    drag?.refreshZone(backpackView!)
+  })
+  console.log(`[ShopScene] 购买(${tier}#${star})→背包 ${item.name_cn} -${priced.finalPrice}G，金币: ${manager.gold}`)
   instanceToDefId.set(id, item.id)
   instanceToTier.set(id, tier)
   instanceToTierStar.set(id, star)
@@ -3929,6 +4648,59 @@ function getBackpackZoneYByBattle(): number {
   return getDebugCfg('battleZoneY') + CELL_HEIGHT * s + BACKPACK_GAP_FROM_BATTLE + (CELL_HEIGHT * (1 - s)) / 2
 }
 
+function grantSkill20DailyBronzeItemIfNeeded(): void {
+  if (!hasPickedSkill('skill20')) return
+  if (skill20GrantedDays.has(currentDay)) return
+  if (!backpackSystem || !backpackView) return
+
+  const candidate = getAllItems().filter((it) => String(it.starting_tier || '').includes('Bronze'))
+  if (candidate.length <= 0) return
+
+  skill20GrantedDays.add(currentDay)
+  const picked = candidate[Math.floor(Math.random() * candidate.length)]
+  if (!picked) return
+  const place = findFirstBackpackPlace(normalizeSize(picked.size))
+  if (!place) {
+    showHintToast('backpack_full_buy', '背包大师：背包已满，今日赠送作废', 0xffb27a)
+    return
+  }
+
+  const id = nextId()
+  backpackSystem.place(place.col, place.row, normalizeSize(picked.size), picked.id, id)
+  void backpackView.addItem(id, picked.id, normalizeSize(picked.size), place.col, place.row, toVisualTier('Bronze', 1)).then(() => {
+    backpackView!.setItemTier(id, toVisualTier('Bronze', 1))
+    drag?.refreshZone(backpackView!)
+  })
+  instanceToDefId.set(id, picked.id)
+  instanceToTier.set(id, 'Bronze')
+  instanceToTierStar.set(id, 1)
+  instanceToPermanentDamageBonus.set(id, 0)
+  unlockItemToPool(picked.id)
+  showHintToast('backpack_full_buy', `背包大师：获得 ${picked.name_cn}（青铜1星）`, 0x86e1ff)
+}
+
+function grantSilverDailyGoldBonusesOnNewDay(): void {
+  if (!shopManager) return
+  if (hasPickedSkill('skill29')) {
+    shopManager.gold += 5
+    showHintToast('no_gold_buy', '投资达人：额外获得5金币', 0x9be5ff)
+  }
+  if (hasPickedSkill('skill34')) {
+    const interest = Math.min(10, Math.max(0, Math.floor(shopManager.gold / 5)))
+    if (interest > 0) {
+      shopManager.gold += interest
+      showHintToast('no_gold_buy', `利息循环：获得${interest}金币`, 0xa8f0b6)
+    }
+  }
+  if (hasPickedSkill('skill94')) {
+    const bonus = calcSkill94DailyGoldBonus(shopManager.gold)
+    if (bonus > 0) {
+      shopManager.gold += bonus
+      showHintToast('no_gold_buy', `财富密码：额外获得${bonus}金币`, 0xf4d67d)
+    }
+  }
+}
+
 function setDay(day: number): void {
   const prevDay = currentDay
   currentDay = Math.max(1, Math.min(20, day))
@@ -3968,8 +4740,10 @@ function setDay(day: number): void {
     // Debug 改天数：每次实际变更天数都发放一次当日金币
     if (currentDay !== prevDay) {
       shopManager.gold += getDailyGoldForDay(getConfig(), currentDay)
+      grantSilverDailyGoldBonusesOnNewDay()
     }
   }
+  if (currentDay !== prevDay) grantSkill20DailyBronzeItemIfNeeded()
   refreshShopUI()
 
   // 4. 更新 Debug 天数文字
@@ -4834,7 +5608,7 @@ function startShopDrag(
   if (!shopManager) return
   clearSelection()
   const slot = shopManager.pool[slotIndex]
-  if (!slot || slot.purchased || !shopManager.canBuy(slot)) return
+  if (!slot || slot.purchased || !canAffordShopSlot(slot)) return
 
   const size  = normalizeSize(slot.item.size)
   const iconW = size === '1x1' ? CELL_SIZE : size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
@@ -4872,7 +5646,7 @@ function startShopDrag(
   // 拖拽中视为选中：显示物品详情
   currentSelection = { kind: 'shop', slotIndex }
   selectedSellAction = null
-  sellPopup?.show(slot.item, slot.price, 'buy', slot.tier)
+  sellPopup?.show(slot.item, getShopSlotPreviewPrice(slot), 'buy', slot.tier)
   applySellButtonState()
 
   startFlashEffect(stage, size)
@@ -4887,6 +5661,7 @@ function onShopDragMove(e: FederatedPointerEvent): void {
   if (e.pointerId !== shopDragPointerId) return
 
   const dragSlot = shopManager?.pool[shopDragSlotIdx]
+  refreshBackpackSynthesisGuideArrows(dragSlot?.item.id ?? null, dragSlot?.tier ?? null, 1)
 
   const s = 1
 
@@ -4913,7 +5688,7 @@ function onShopDragMove(e: FederatedPointerEvent): void {
   hideSynthesisHoverInfo()
 
   if (dragSlot && sellPopup) {
-    sellPopup.show(dragSlot.item, dragSlot.price, 'buy', toVisualTier(dragSlot.tier, 1), undefined, 'simple')
+    sellPopup.show(dragSlot.item, getShopSlotPreviewPrice(dragSlot), 'buy', toVisualTier(dragSlot.tier, 1), undefined, 'simple')
   }
 
   if (battleCell && battleSystem) {
@@ -4992,6 +5767,7 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
   battleView?.clearHighlight()
   backpackView?.clearHighlight()
   hideSynthesisHoverInfo()
+  clearBackpackSynthesisGuideArrows()
 
   if (!slot || !shopManager || !shopDragSize) { _resetDrag(); return }
   if (!canBuyItemUnderFirstPurchaseRule(slot.item)) {
@@ -5024,7 +5800,8 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
         return
       }
       const runCrossSynthesis = () => {
-        if (!shopManager?.buy(slot)) {
+        const buyRet = tryBuyShopSlotWithSkill(slot)
+        if (!buyRet.ok) {
           showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
           refreshShopUI()
           return
@@ -5056,7 +5833,7 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
       return
     }
 
-    if (!shopManager.buy(slot)) {
+    if (!tryBuyShopSlotWithSkill(slot).ok) {
       showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
       _resetDrag(); return
     }
@@ -5128,7 +5905,7 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
       || (battleCell && battleTransferPlan !== null)
     )
   ) {
-    if (shopManager.buy(slot)) {
+    if (tryBuyShopSlotWithSkill(slot).ok) {
       markShopPurchaseDone()
       if (!battleCell) { _resetDrag(); return }
       if (battleSqueezeMoves.length > 0) {
@@ -5182,7 +5959,7 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
       _resetDrag(); return
     }
 
-    if (!shopManager.buy(slot)) {
+    if (!tryBuyShopSlotWithSkill(slot).ok) {
       console.log('[ShopScene] 金币不足')
       showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
       _resetDrag(); return
@@ -5222,6 +5999,7 @@ function _resetDrag(): void {
   shopDragHiddenSlot = -1
   shopDragSlotIdx = -1; shopDragSize = null; shopDragPointerId = -1
   hideSynthesisHoverInfo()
+  clearBackpackSynthesisGuideArrows()
   clearSelection()
 }
 
@@ -5410,6 +6188,7 @@ export const ShopScene: Scene = {
       const tier = getInstanceTier(instanceId)
       const star = getInstanceTierStar(instanceId)
       const sellPrice = shopManager.getSellPrice(item, tier, star)
+      refreshBackpackSynthesisGuideArrows(defId, tier ?? null, star, instanceId)
       // 拖拽中视为选中：显示物品详情（不设置区域高亮，因物品已脱离格子）
       const inBattle = !!battleView?.hasItem(instanceId)
       currentSelection = { kind: inBattle ? 'battle' : 'backpack', instanceId }
@@ -5441,9 +6220,22 @@ export const ShopScene: Scene = {
         return true
       }
 
-      // 1.5) 拖到同装备同品质目标物品：执行合成（优先于挤出/普通落位）
       const fromTier = getInstanceTier(instanceId) ?? 'Bronze'
       const fromStar = getInstanceTierStar(instanceId)
+
+      if (
+        isBattleZoneNoSynthesisEnabled()
+        && homeView === backpackView
+        && fromTier !== 'Diamond'
+        && isPointInZoneArea(battleView, anchorGx, anchorGy)
+      ) {
+        const blockedBattleSynth = findBattleSynthesisTargetWithDragProbeIgnoringNoSynthesis(defId, fromTier, fromStar, anchorGx, anchorGy, size)
+        if (blockedBattleSynth) {
+          showHintToast('backpack_full_buy', '上阵区内无法合成', 0xffd48f)
+        }
+      }
+
+      // 1.5) 拖到同装备同品质目标物品：执行合成（优先于挤出/普通落位）
       if (fromTier !== 'Diamond') {
         const synthTarget = findSynthesisTargetWithDragProbe(defId, fromTier, fromStar, anchorGx, anchorGy, size)
         if (synthTarget) {
@@ -5558,6 +6350,7 @@ export const ShopScene: Scene = {
       const defId = instanceToDefId.get(instanceId)
       const tier = getInstanceTier(instanceId)
       const star = getInstanceTierStar(instanceId)
+      refreshBackpackSynthesisGuideArrows(defId ?? null, tier ?? null, star, instanceId)
 
       const item = defId ? getItemDefById(defId) : null
       const sellPrice = (item && tier && shopManager) ? shopManager.getSellPrice(item, tier, star) : 0
@@ -5576,6 +6369,7 @@ export const ShopScene: Scene = {
 
       if (!defId || !tier || tier === 'Diamond') {
         drag?.setSqueezeSuppressed(false)
+        clearBackpackSynthesisGuideArrows()
         if (item && sellPopup) {
           sellPopup.show(item, sellPrice, 'sell', toVisualTier(tier, star), undefined, 'simple')
         }
@@ -5598,6 +6392,7 @@ export const ShopScene: Scene = {
     drag.onDragEnd = () => {
       drag?.setSqueezeSuppressed(false)
       hideSynthesisHoverInfo()
+      clearBackpackSynthesisGuideArrows()
       stopGridDragButtonFlash()
       applyInstanceTierVisuals()
       updateMiniMap()
@@ -5806,8 +6601,16 @@ export const ShopScene: Scene = {
         return
       }
       if (battleStartTransition) return
+      const boardItemCount = battleSystem?.getAllItems().length ?? 0
+      const backpackItemCount = backpackSystem?.getAllItems().length ?? 0
+      if (boardItemCount <= 0 && backpackItemCount > 0) {
+        showHintToast('no_gold_buy', '请将物品拖入上阵区', 0xffd48f)
+        showMoveToBattleGuideHand()
+        return
+      }
       clearBattleOutcome()
-      const snapshot = buildBattleSnapshot()
+      pendingSkillBarMoveStartAtMs = Date.now()
+      const snapshot = buildBattleSnapshot(pendingSkillBarMoveStartAtMs)
       if (snapshot) {
         setBattleSnapshot(snapshot)
         console.log(`[ShopScene] 战斗快照已生成 day=${snapshot.day} entities=${snapshot.entities.length} cols=${snapshot.activeColCount}`)
@@ -5881,7 +6684,7 @@ export const ShopScene: Scene = {
 
       const infoMode = resolveInfoMode(`shop:${slotIndex}:${slot.item.id}:${slot.tier}`)
       hideSkillDetailPopup()
-      sellPopup.show(slot.item, slot.price, 'buy', toVisualTier(slot.tier, 1), undefined, infoMode)
+      sellPopup.show(slot.item, getShopSlotPreviewPrice(slot), 'buy', toVisualTier(slot.tier, 1), undefined, infoMode)
       applySellButtonState()
     }
 
@@ -6014,7 +6817,7 @@ export const ShopScene: Scene = {
 
     offPhaseChange = PhaseManager.onChange((next, prev) => {
       if (next === 'COMBAT') {
-        const snapshot = buildBattleSnapshot()
+        const snapshot = buildBattleSnapshot(pendingSkillBarMoveStartAtMs ?? undefined)
         if (snapshot) {
           setBattleSnapshot(snapshot)
           console.log(`[ShopScene] 战斗快照已生成 day=${snapshot.day} entities=${snapshot.entities.length} cols=${snapshot.activeColCount}`)
@@ -6036,21 +6839,27 @@ export const ShopScene: Scene = {
         applyPostBattleEffects(battleOutcome?.snapshot ?? null)
         pendingAdvanceToNextDay = false
       }
+      grantSkill20DailyBronzeItemIfNeeded()
     } else {
       pendingAdvanceToNextDay = false
       starterClass = null
       starterGranted = false
       starterBattleGuideShown = false
       hasBoughtOnce = false
+      resetSkill15NextBuyDiscountState()
+      resetSkill30BundleState()
       pickedSkills = []
       draftedSkillDays = []
       pendingSkillDraft = null
+      skillDetailMode = 'simple'
+      skill20GrantedDays.clear()
       unlockedItemIds.clear()
       guaranteedNewUnlockTriggeredLevels.clear()
       CROSS_SYNTH_MIN_TIER_CYCLE_CURSOR.clear()
       CROSS_SYNTH_MIN_TIER_CYCLE_BAG.clear()
       nextQuickBuyOffer = null
       syncUnlockPoolToManager()
+      grantSkill20DailyBronzeItemIfNeeded()
     }
     refreshSkillIconBar()
     refreshShopUI()
@@ -6066,6 +6875,7 @@ export const ShopScene: Scene = {
     teardownCrossSynthesisConfirmOverlay()
     stopFlashEffect()
     stopGridDragButtonFlash()
+    stopBattleGuideHandAnim()
     stopUnlockRevealPlayback(true)
 
     if (shopDragFloater) {
@@ -6170,6 +6980,8 @@ export const ShopScene: Scene = {
     hintToastCon = null
     hintToastBg = null
     hintToastText = null
+    battleGuideHandCon = null
+    battleGuideHandTick = null
     unlockRevealLayer = null
     unlockRevealQueue = []
     unlockRevealTickFn = null
@@ -6198,9 +7010,13 @@ export const ShopScene: Scene = {
     starterGranted  = false
     starterBattleGuideShown = false
     hasBoughtOnce = false
+    resetSkill15NextBuyDiscountState()
+    resetSkill30BundleState()
     pickedSkills    = []
     draftedSkillDays = []
     pendingSkillDraft = null
+    skillDetailMode = 'simple'
+    skill20GrantedDays.clear()
     showingBackpack = false
     battleSystem = backpackSystem = battleView = backpackView = drag = null
     instanceToDefId.clear()
