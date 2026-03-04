@@ -3,8 +3,8 @@ import { getConfig, getAllItems, getItemsByHero, validateData } from './DataLoad
 import { normalizeSize, parseTags } from '@/items/ItemDef'
 
 describe('DataLoader — game_config.json', () => {
-  it('读取 dailyGold 为 5', () => {
-    expect(getConfig().dailyGold).toBe(5)
+  it('读取 dailyGold 为 6', () => {
+    expect(getConfig().dailyGold).toBe(6)
   })
 
   it('dailyGoldByDay 配置为 20 天且逐日不下降', () => {
@@ -70,7 +70,7 @@ describe('DataLoader — game_config.json', () => {
     expect(rows).toBeTruthy()
     expect(rows).toHaveLength(20)
     expect(rows?.[0]).toEqual([1, 0, 0, 0, 0, 0, 0])
-    expect(rows?.[19]).toEqual([0.05, 0.35, 0.3, 0.15, 0.1, 0, 0])
+    expect(rows?.[19]).toEqual([0.05, 0.95, 0, 0, 0, 0, 0])
   })
 
   it('敌我 daily health 都配置为 20 天', () => {

@@ -7,3 +7,4 @@ dist-ios/
 ios/build/
 ios/*.xcodeproj/
 ios/.derivedData/
+.vercel

@@ -5,6 +5,299 @@
 
 ---
 
+### 本次对话追加（2026-03-04，进度同步）
+
+- 已按用户要求同步当前阶段进度：
+  - 设置弹层已完成“放大 + 字体回调”版本；
+  - 跨物品合成已恢复“仅其他职业候选”；
+  - lv3/lv5/lv7 首次合成保底新物品逻辑已保留并修复触发时机；
+  - 伪随机由固定循环改为洗牌袋，避免首发固定品质。
+- 当前状态：功能已进入体验验收阶段，等待用户继续反馈视觉细节与概率体感。
+
+### 本次对话追加（2026-03-04，新增减CD下限：最快不低于0.5秒）
+
+- 用户需求：无论如何触发减CD，游戏中物品 CD 最低必须 `>=0.5s`。
+- 已完成：`src/combat/CombatEngine.ts`
+  - 新增常量 `MIN_REDUCED_CD_MS = 500`；
+  - “每次使用后自身CD减少1秒”分支下限从 `300ms` 提升到 `500ms`；
+  - “攻击后间隔Xms，最低Yms”分支增加全局下限约束：实际下限为 `max(Y, 500ms)`。
+- 影响范围：仅战斗运行时的减CD结果下限，不改基础配置 CD 与其他数值逻辑。
+- 验证：`npx vitest run src/combat/CombatEngine.test.ts` 通过（32/32）。
+
+### 本次对话追加（2026-03-04，更新 process + 回传主程 Notebook）
+
+- 用户指令：`更新process，回传notebook`。
+- 本次 process 已更新：
+  - 已补记本轮关键变更：
+    - 合成品质下限规则（跨物品结果不低于参与物品较高起始品质）；
+    - 快捷购买等级概率表修正（lv1/lv2 新曲线，lv3~lv7 为 0）；
+    - 敌方预期曲线（`dailyItemCount` / `dailyAvgQuality`）与玩家每日金币曲线更新；
+    - 顶部“重新开始/设置”按钮样式统一。
+- Notebook 回传：
+  - 已向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）同步本轮执行摘要（见本次对话 Notebook source 记录）。
+- 当前阶段：本轮改动已完成记录与回传，等待用户下一步指令（如继续打包/发布/验收细节）。
+
+### 本次对话追加（2026-03-04，skills2/skills3 二次重切并替换 skill50+）
+
+- 用户反馈：`skill50+` 首版切图存在构图不正与边缘截断，要求按“先找最佳方形区域，再缩放到 256x256”重做并替换。
+- 已完成（素材目录）：
+  - 输入：`/Users/zhengtengfei/Downloads/skills2.png`、`/Users/zhengtengfei/Downloads/skills3.png`
+  - 输出：`/Users/zhengtengfei/Downloads/skills`
+  - 覆盖范围：`skill50.png` ~ `skill147.png`（全部重切替换）
+- 当前状态：用户现场确认“好像可以了”，进入验收通过状态。
+
+### 本次对话追加（2026-03-04，设置弹窗高度再加 50）
+
+- 用户需求：设置弹窗整体高度再增加 `50`。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 设置弹窗高度从 `282` 调整到 `332`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认最终纵向留白。
+
+### 本次对话追加（2026-03-04，设置弹窗关闭按钮与边框间距修正）
+
+- 用户反馈：设置弹窗底部“关闭”按钮压到外框，需按钮下移并让外框包住按钮。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 设置弹窗高度从 `250` 调整到 `282`；
+  - “关闭”按钮 Y 从 `102` 下移到 `116`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认按钮与外框视觉间距。
+
+### 本次对话追加（2026-03-04，Day1 金币改为 6）
+
+- 用户需求：第一天金币改为 `6`。
+- 已完成：
+  - `data/game_config.json`
+    - `daily_gold` 从 `5` 调整为 `6`；
+    - `daily_gold_by_day` 的 Day1 从 `10` 调整为 `6`。
+  - `src/core/DataLoader.test.ts`
+    - 同步断言文案与期望值：`dailyGold` 由 `5` 改为 `6`。
+- 验证：`npm test` 通过（94/94）。
+- 当前阶段：等待用户确认 Day1 经济节奏。
+
+### 本次对话追加（2026-03-04，顶部“重新开始/设置”按钮样式统一）
+
+- 用户需求：截图中的两个按钮改为一样的样式。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 将“设置”按钮改为与“重新开始”同一视觉风格：
+    - 相同底色/描边色（深蓝底 + 金色描边）；
+    - 相同圆角与内边距（动态宽高随文案）；
+    - 相同字号体系（使用 `textSizes.refreshCost`）。
+  - 同时将“设置”按钮锚点改到与“重新开始”同一左侧对齐列（纵向排列）。
+- 验证：`npm run build` 通过。
+- 当前阶段：样式改动进入验收阶段，待用户确认视觉一致性。
+
+### 本次对话追加（2026-03-04，skills2/skills3 按参考切图并续接编号）
+
+- 用户需求：参考 `skills` 既有切图风格，将 `skills2.png`、`skills3.png` 也切到同目录；要求图标四周保留留白、圆形居中，ID 顺序续接。
+- 已完成（本地素材目录）：
+  - 输入：`/Users/zhengtengfei/Downloads/skills2.png`、`/Users/zhengtengfei/Downloads/skills3.png`
+  - 输出：`/Users/zhengtengfei/Downloads/skills`
+  - 编号：在现有 `skill1..skill49` 基础上新增 `skill50..skill147`（共 98 张）
+- 切图规则：
+  - 按参考表单采用 `7x7`、每格 `256x256`；
+  - 每格提取非透明内容后，统一缩放到 `224x224` 目标框并居中贴回 `256x256` 画布；
+  - 最终形成约 `16px` 四周留白，圆形图标居中一致。
+- 验证：抽检 `skill50/98/99/147` 均为 `256x256`，alpha 边界约 `(16,16)-(240,240)`；目录总数 `147`。
+
+### 本次对话追加（2026-03-04，敌方预期曲线与玩家每日金币修正）
+
+- 用户需求：
+  - 修正敌方预期（Day1~20 的平均品质与数量）；
+  - 修正玩家每日金币获得（Day1~20）。
+- 已完成：`data/game_config.json`
+  - 玩家金币：`daily_gold_by_day` 更新为
+    `10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48`；
+  - 敌方预期：`gameplay_mode_values.enemyDraftLab`
+    - `dailyItemCount` 维持/确认为 `[2,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5]`；
+    - `dailyAvgQuality` 更新为
+      `[1,1.5,2.08,2.62,3.04,3.41,3.72,4,4.25,4.48,4.7,4.89,5.07,5.25,5.41,5.56,5.7,5.84,5.97,6.09]`。
+- 验证：`npm test` 全量通过（94/94）。
+- 当前阶段：数值曲线已落地，进入验收阶段。
+
+### 本次对话追加（2026-03-04，跨物品合成概率改为配比循环口径）
+
+- 用户需求：修正“合成出不同物品”的最低品质概率，并采用固定配比循环（非独立随机）。
+  - 目标矩阵：
+    - 青铜：`[1,1,0.2,0.2,0.1,0.1,0.05]`
+    - 白银：`[0,0,0.8,0.8,0.2,0.2,0.1]`
+    - 黄金：`[0,0,0,0,0.7,0.7,0.15]`
+    - 钻石：`[0,0,0,0,0,0,0.7]`
+  - 仅统计跨物品合成，不受同物品合成影响。
+- 主程沟通：尝试向主程 Notebook 问询最小改动方案，连续超时（MCP timeout）；按既有架构执行最小可回滚实现。
+- 已完成：
+  - `data/game_config.json`
+    - 更新 `shop_rules.synthesisMinTierDropWeightsByResultLevel` 为上述新矩阵；
+  - `src/scenes/ShopScene.ts`
+    - 新增跨物品合成“最低品质配比循环”选择逻辑（按结果等级维护循环游标）；
+    - 通过权重最简分母自动生成循环窗口（如 `0.2/0.8` => 5 窗口，`1/4` 固定配比）；
+    - 仅跨物品合成走该逻辑；同物品合成保持原逻辑不计数。
+- 验证：
+  - `npm run build` 通过；
+  - `npm test` 通过（94/94）。
+- 当前阶段：等待用户验收“lv3 前5次 1青铜+4白银、6~10 次同配比”与高等级配比体感。
+
+### 本次对话追加（2026-03-04，快捷购买等级概率表按新口径修正）
+
+- 用户需求：修正“购买时不同品质概率”表，Day1~20 仅保留 lv1/lv2 概率（lv3~lv7 全为 0）。
+- 已完成：
+  - 更新 `data/game_config.json` 中 `shopRules.quickBuyLevelChancesByDay`（20 行）：
+    - Day1 `1/0`；Day2~Day20 按 `lv1` 每天递减 0.05、`lv2` 互补递增到 0.95；
+    - `lv3~lv7` 全部置 `0`。
+  - 同步更新断言：`src/core/DataLoader.test.ts` 中 Day20 期望改为 `[0.05, 0.95, 0, 0, 0, 0, 0]`。
+- 验证：`npm test` 全量通过（94/94）。
+- 当前阶段：该概率口径已生效，进入验收阶段。
+
+### 本次对话追加（2026-03-04，设置面板放大美化 + lv3/lv5/lv7首次合成保底回归）
+
+- 用户新增需求：
+  - 商店左上角设置弹层“更大、更好看”；
+  - 恢复并保留“每局首次合成到 lv3/lv5/lv7 必定出新物品（若存在未解锁候选）”保底。
+- 已完成：
+  - `src/scenes/ShopScene.ts`
+    - 设置弹层重做视觉：面板放大、双层描边、标题/副标题增强、行容器底板、开关按钮放大、底部关闭按钮放大；
+    - 跨物品合成保底逻辑修正：
+      - 首次保底判定提取为 `shouldGuaranteeNewUnlock()`；
+      - 首次 lv3/lv5/lv7 跨物品合成时，候选池改用 `basePool`（避免被同/异职业分流导致漏保底）；
+      - `guaranteedNewUnlockTriggeredLevels` 改为在“合成成功落地后”再记录，避免失败尝试提前消耗保底次数。
+- 配置状态：
+  - 网页参数中已可直接切换：`gameplayCrossSynthesisConfirm`、`gameplayShowSpeedButton`；
+  - 两项默认值均为关闭（0）。
+- 验证：`npm test` 通过（94/94），`npm run build` 通过。
+- 当前阶段：进入验收，重点检查设置面板视觉与 lv3/lv5/lv7 首次保底是否稳定触发。
+
+### 本次对话追加（2026-03-04，修复“首次lv3必青铜”与“跨物品合成出同职业”）
+
+- 用户反馈与根因：
+  - 首次 lv3 出现青铜，原因是跨物品“伪随机循环”固定从循环首位开始，lv3 配置 0.2/0.8 导致首抽容易固定为青铜；
+  - 跨物品合成出现参与职业，原因是此前为保底临时改成了 `basePool`，把同职业候选放回了抽池。
+- 已修复：`src/scenes/ShopScene.ts`
+  - 伪随机改为“每轮洗牌袋”而非固定顺序：
+    - 新增 `CROSS_SYNTH_MIN_TIER_CYCLE_BAG`，每轮按权重展开后随机洗牌；
+    - 仍保持权重配比（如 lv3 的 1/5 青铜），但不再“第一发固定青铜”。
+  - 跨物品候选强制“其他职业”：
+    - `pickCrossIdEvolveCandidates()` 仅返回 `otherArchPool`；
+    - `getCrossIdPreviewCandidates()` 仅展示 `otherArchPool`；
+    - 首次保底分支也改为仅在 `otherArchPool` 内处理，不再回退到 `basePool`。
+  - 首次保底触发时机保持“合成成功后记账”：失败尝试不会消耗 lv3/lv5/lv7 的保底次数。
+  - 新局/读档时同步清理伪随机游标与洗牌袋状态，避免跨局污染。
+- 验证：`npm test` 通过（94/94），`npm run build` 通过。
+- 当前阶段：进入验收，重点看
+  - 首次 lv3/lv5/lv7 不再首发固定青铜；
+  - 跨物品合成结果是否稳定为“非参与职业”候选。
+
+### 本次对话追加（2026-03-04，设置弹层再调：字体收敛 + 面板继续放大）
+
+- 按最新验收反馈优化：
+  - 设置弹层整体再放大（外框更大）；
+  - 文字整体降一档（标题、选项文案、按钮文案均缩小），避免“字压画面”。
+- 具体调整：`src/scenes/ShopScene.ts`
+  - 面板 `576x338 -> 612x384`；
+  - 标题字号 `46 -> 40`，副标题 `22 -> 18`；
+  - 选项文案 `34 -> 30`，开关文案 `28 -> 24`，底部关闭文案 `32 -> 28`；
+  - 行容器与按钮位置同步重排，保持留白与对齐。
+- 验证：`npm test` 通过（94/94）。
+
+### 本次对话追加（2026-03-04，网页参数 + 商店内设置按钮：二次确认/加速按钮开关）
+
+- 用户需求：
+  - 网页配置页可调布尔项；
+  - 商店左上角新增“设置”按钮，弹层可切换：
+    - 合成是否有二次弹窗（默认关闭）；
+    - 战斗是否显示加速按钮（默认关闭）。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增 `gameplayCrossSynthesisConfirm`（0/1）；
+    - `gameplayShowSpeedButton` 默认值调整为 `0`。
+  - `src/debug/debugPage.ts`
+    - 在“玩法数值”复选项中加入 `gameplayCrossSynthesisConfirm`。
+  - `data/debug_defaults.json`
+    - 新增默认值 `gameplayCrossSynthesisConfirm: 0`；
+    - 保持 `gameplayShowSpeedButton: 0`。
+  - `src/scenes/ShopScene.ts`
+    - 新增左上角“设置”按钮与设置弹层（两项布尔开关）；
+    - 跨物品合成二次确认逻辑改为读取运行时开关；
+    - 按用户反馈将“设置”按钮下移，避免遮挡“重新开始”。
+  - `src/scenes/BattleScene.ts`
+    - 战斗加速按钮显示逻辑改为直接读取 `gameplayShowSpeedButton` 运行时开关。
+  - `data/game_config.json`
+    - 默认值对齐为关闭：
+      - `gameplay_mode_values.battleUi.showSpeedButton: false`
+      - `shop_rules.crossIdSynthesisRequireConfirm: false`
+- 验证：`npm test` 通过（94/94）。
+
+### 本次对话追加（2026-03-04，Vercel 生产环境再次发布）
+
+- 用户需求：立即发布最新版本。
+- 已完成：在项目根执行 `vercel --prod --yes`，生产部署成功并更新别名。
+- 访问地址：
+  - 固定别名：`https://bigbazzar.vercel.app`
+  - 本次部署：`https://bigbazzar-gzwwlz6r0-zhengtengfeis-projects.vercel.app`
+- 说明：后续继续发布会保持同一固定别名地址可用。
+
+### 本次对话追加（2026-03-04，网页“玩法数值”接入战斗倍速按钮开关）
+
+- 用户补充：要求该开关可在网页配置页“玩法数值”直接调节。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增 `gameplayShowSpeedButton`（0/1）配置项；
+  - `src/debug/debugPage.ts`
+    - 将 `gameplayShowSpeedButton` 加入“玩法数值”复选项分组；
+  - `data/debug_defaults.json`
+    - 新增默认值 `gameplayShowSpeedButton: 1`；
+  - `src/scenes/BattleScene.ts`
+    - `isBattleSpeedButtonEnabled()` 同时读取网页玩法开关与 `game_config` 中 `gameplay_mode_values.battleUi.showSpeedButton`。
+- 生效规则：任一处关闭则隐藏倍速按钮（网页配置可即时控制）。
+- 验证：`npm run build` 通过。
+
+### 本次对话追加（2026-03-04，玩法数值新增战斗倍速按钮开关）
+
+- 用户需求：战斗中的倍速按钮支持开关配置，并放入“玩法数值”配置项。
+- 已完成：
+  - `data/game_config.json`
+    - 在 `gameplay_mode_values` 下新增 `battleUi.showSpeedButton`（默认 `true`）。
+  - `src/items/ItemDef.ts`
+    - 扩展 `GameConfig.gameplayModeValues` 类型，新增 `battleUi.showSpeedButton`。
+  - `src/scenes/BattleScene.ts`
+    - 新增 `isBattleSpeedButtonEnabled()`；
+    - 仅当配置开启时才创建并挂载倍速按钮。
+- 验证：`npm run build` 通过。
+- 当前阶段：该配置已可用，等待用户验收“关闭配置后不显示倍速按钮”的表现。
+
+### 本次对话追加（skills2/skills3 切图并续接编号）
+
+- 用户需求：参考既有 `skills` 切图方式，将 `skills2.png`、`skills3.png` 继续切到同一目录，并按现有 `skill{id}.png` 顺延编号。
+- 已完成：
+  - 源图：`/Users/zhengtengfei/Downloads/skills2.png`、`/Users/zhengtengfei/Downloads/skills3.png`；
+  - 输出目录：`/Users/zhengtengfei/Downloads/skills`；
+  - 在已存在 `skill1..skill49` 基础上，新增 `skill50..skill147`（共 98 张）。
+- 切图规格：沿用既有方式，按 256x256 单元切分并保存为 PNG。
+- 验证：抽样检查 `skill50/98/99/147` 均为 `256x256`，目录内总数为 `147`。
+
+### 本次对话追加（2026-03-04，修复 Vercel 图片丢失：构建产物补拷贝 resource）
+
+- 用户反馈：Vercel 链接可打开但图片资源缺失。
+- 根因：项目静态资源目录为仓库根的 `resource/`，未走 Vite 默认 `public/` 流程，构建产物 `dist/` 初始不包含 `/resource/**`。
+- 已完成：`vite.config.ts`
+  - 新增 `copyResourceDirPlugin`（`apply: 'build'`）；
+  - 在构建结束后自动将根目录 `resource/` 复制到 `dist/resource/`（兼容不同 outDir）。
+- 部署：重新执行 `vercel --prod --yes`，别名保持 `https://bigbazzar.vercel.app`。
+- 验证：
+  - 本地 `dist/resource/` 已存在；
+  - 线上资源 URL `https://bigbazzar.vercel.app/resource/itemicon/vanessa/ab108c45-bd0b-4129-8b92-19d17c798164.png` 返回 `HTTP 200`。
+
+### 本次对话追加（2026-03-04，Vercel 一键部署并生成可分享链接）
+
+- 用户需求：配置 Vercel，并生成可直接网页游玩的分享链接（无需手动打包发包）。
+- 已完成：
+  - 使用当前账号完成 Vercel CLI 登录态检查（`zhengtengfei-crypto`）；
+  - 在项目根执行 `vercel --prod --yes`，自动识别 Vite 构建配置；
+  - 完成生产部署并绑定别名域名。
+- 可访问链接：
+  - 生产别名：`https://bigbazzar.vercel.app`
+  - 本次部署地址：`https://bigbazzar-8alls68j3-zhengtengfeis-projects.vercel.app`
+- 备注：CLI 尝试连接 GHE 仓库时报 `type` 校验错误（不影响本次手动上传部署成功）；若后续要启用“push 自动部署”，需改用受支持 Git Provider 重新绑定仓库。
+
 ### 本次对话追加（2026-03-04，跨物品合成弹窗十一/十二次优化：等级标签修正 + 视觉统一）
 
 - 用户反馈：
@@ -6009,6 +6302,22 @@
 - 仅调整角标相关逻辑，其它元素未改。
 - 变更文件：`src/scenes/ShopScene.ts`。
 - 回归：`npm test` 通过（94/94）。
+
+### 本次对话追加（2026-03-04，新增跨物品合成二次确认开关配置）
+
+- 用户需求：在网页配置中增加开关，控制“不同物品合成是否弹二次确认”。
+- 已完成：
+  - `data/game_config.json`
+    - `shop_rules.crossIdSynthesisRequireConfirm: true`（默认开启二次确认）；
+  - `src/items/ItemDef.ts`
+    - `shopRules` 类型新增 `crossIdSynthesisRequireConfirm?: boolean`；
+  - `src/scenes/ShopScene.ts`
+    - 新增 `isCrossIdSynthesisConfirmEnabled()`；
+    - 两个跨物品合成入口（商店拖买合成、场内拖拽合成）都接入该开关：
+      - 开启时：走原二次确认弹窗；
+      - 关闭时：直接执行跨物品合成（不弹窗）。
+- 兼容说明：未配置该字段时默认 `true`，保持旧行为不变。
+- 验证：`npm test` 通过（94/94）。
 
 ---
 

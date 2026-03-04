@@ -179,6 +179,8 @@ const GAMEPLAY_KEYS = [
 ]
 const GAMEPLAY_CHECKBOX_KEYS = [
   'gameplayGrantAllClassItems',
+  'gameplayShowSpeedButton',
+  'gameplayCrossSynthesisConfirm',
 ]
 const ENEMY_DATA_PARAM_KEYS: string[] = [
   'enemyDraftSameArchetypeBias',

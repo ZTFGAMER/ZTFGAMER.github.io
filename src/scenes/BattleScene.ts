@@ -1774,6 +1774,10 @@ function getClampedTopActionBtnY(): number {
   return Math.max(minY, Math.min(maxY, y))
 }
 
+function isBattleSpeedButtonEnabled(): boolean {
+  return getDebugCfg('gameplayShowSpeedButton') >= 0.5
+}
+
 function getClampedStatsPanelY(panelH: number): number {
   const y = getDebugCfg('battleStatsPanelY')
   const halfH = panelH / 2
@@ -2282,8 +2286,10 @@ export const BattleScene: Scene = {
     sceneFadeOverlay.visible = false
     root.addChild(sceneFadeOverlay)
 
-    speedBtn = makeSpeedButton()
-    root.addChild(speedBtn)
+    if (isBattleSpeedButtonEnabled()) {
+      speedBtn = makeSpeedButton()
+      root.addChild(speedBtn)
+    }
 
     statsBtn = makeDamageStatsButton()
     root.addChild(statsBtn)

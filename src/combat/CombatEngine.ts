@@ -280,6 +280,7 @@ export interface CombatBoardItem {
 }
 
 const FALLBACK_CD_MS = 3000
+const MIN_REDUCED_CD_MS = 500
 
 type CombatRuntimeOverride = {
   burnTickMs?: number
@@ -1784,7 +1785,7 @@ export class CombatEngine {
 
     // 每次使用后自身 CD 减少 1 秒（本场战斗内）
     if (lines.some((s) => /每次使用后自身CD减少1秒/.test(s))) {
-      item.baseStats.cooldownMs = Math.max(300, item.baseStats.cooldownMs - 1000)
+      item.baseStats.cooldownMs = Math.max(MIN_REDUCED_CD_MS, item.baseStats.cooldownMs - 1000)
     }
     const postUseCooldownLine = lines.find((s) => /攻击后间隔/.test(s))
     if (postUseCooldownLine) {
@@ -1797,7 +1798,7 @@ export class CombatEngine {
         if (Number.isFinite(parsedReduce) && parsedReduce > 0) reduceMs = parsedReduce
         if (Number.isFinite(parsedMin) && parsedMin > 0) minMs = parsedMin
       }
-      item.baseStats.cooldownMs = Math.max(minMs, item.baseStats.cooldownMs - reduceMs)
+      item.baseStats.cooldownMs = Math.max(Math.max(minMs, MIN_REDUCED_CD_MS), item.baseStats.cooldownMs - reduceMs)
     }
 
     const postUseDamageReduceLine = lines.find((s) => /使用后伤害-\d+/.test(s))

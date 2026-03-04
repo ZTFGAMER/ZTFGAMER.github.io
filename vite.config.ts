@@ -41,8 +41,24 @@ function debugDefaultsSavePlugin(): Plugin {
   }
 }
 
+function copyResourceDirPlugin(): Plugin {
+  let outDirAbs = resolve(__dirname, 'dist')
+  return {
+    name: 'copy-resource-dir-plugin',
+    apply: 'build',
+    configResolved(config) {
+      outDirAbs = resolve(config.root, config.build.outDir)
+    },
+    async closeBundle() {
+      const from = resolve(__dirname, 'resource')
+      const to = resolve(outDirAbs, 'resource')
+      await fs.cp(from, to, { recursive: true, force: true })
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [debugDefaultsSavePlugin()],
+  plugins: [debugDefaultsSavePlugin(), copyResourceDirPlugin()],
   resolve: {
     alias: { '@': resolve(__dirname, 'src') },
   },

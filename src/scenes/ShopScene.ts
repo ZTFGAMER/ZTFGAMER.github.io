@@ -22,7 +22,7 @@ import { resolveItemTierBaseStats } from '@/items/itemTierStats'
 import { ShopManager, getDailyGoldForDay, type ShopSlot, type TierKey } from '@/shop/ShopManager'
 import { ShopPanelView }     from '@/shop/ShopPanelView'
 import { SellPopup, type ItemInfoMode, type ItemInfoCustomDisplay } from '@/shop/SellPopup'
-import { getConfig as getDebugCfg, onConfigChange as onDebugCfgChange } from '@/config/debugConfig'
+import { getConfig as getDebugCfg, setConfig as setDebugCfg, onConfigChange as onDebugCfgChange } from '@/config/debugConfig'
 import { getItemIconUrl } from '@/core/assetPath'
 import { getTierColor } from '@/config/colorPalette'
 import { createItemStatBadges } from '@/ui/itemStatBadges'
@@ -77,6 +77,8 @@ let refreshBtnHandle: CircleBtnHandle | null = null
 let sellBtnHandle:    CircleBtnHandle | null = null
 let phaseBtnHandle:   CircleBtnHandle | null = null
 let refreshCostText:  Text            | null = null
+let settingsBtn:      Container       | null = null
+let settingsOverlay:  Container       | null = null
 let hintToastCon:     Container       | null = null
 let hintToastBg:      Graphics        | null = null
 let hintToastText:    Text            | null = null
@@ -830,6 +832,8 @@ function applySavedShopState(state: SavedShopState): void {
     for (const id of savedUnlocks) unlockedItemIds.add(id)
   }
   guaranteedNewUnlockTriggeredLevels.clear()
+  CROSS_SYNTH_MIN_TIER_CYCLE_CURSOR.clear()
+  CROSS_SYNTH_MIN_TIER_CYCLE_BAG.clear()
   const savedGuaranteed = Array.isArray(state.guaranteedNewUnlockTriggeredLevels)
     ? state.guaranteedNewUnlockTriggeredLevels.filter((lv): lv is number => Number.isFinite(lv)).map((lv) => Math.round(lv))
     : []
@@ -943,12 +947,194 @@ function getPrimaryArchetype(rawTags: string): string {
   return first.split('/')[0]?.trim() ?? ''
 }
 
-function getCrossIdSynthesisSameArchetypeChance(): number {
-  const raw = getConfig().shopRules?.crossIdSynthesisSameArchetypeChance
-  if (!Number.isFinite(raw)) return 0.1
-  const n = Number(raw)
-  const normalized = n > 1 ? n / 100 : n
-  return Math.max(0, Math.min(1, normalized))
+function isCrossIdSynthesisConfirmEnabled(): boolean {
+  const runtimeToggle = getDebugCfg('gameplayCrossSynthesisConfirm') >= 0.5
+  if (runtimeToggle) return true
+  const raw = getConfig().shopRules?.crossIdSynthesisRequireConfirm
+  return raw === true
+}
+
+function closeSettingsOverlay(): void {
+  if (!settingsOverlay) return
+  if (settingsOverlay.parent) settingsOverlay.parent.removeChild(settingsOverlay)
+  settingsOverlay.destroy({ children: true })
+  settingsOverlay = null
+}
+
+function openSettingsOverlay(): void {
+  closeSettingsOverlay()
+  const stage = getApp().stage
+  const overlay = new Container()
+  overlay.zIndex = 7200
+  overlay.eventMode = 'static'
+  overlay.hitArea = new Rectangle(0, 0, CANVAS_W, CANVAS_H)
+
+  const mask = new Graphics()
+  mask.rect(0, 0, CANVAS_W, CANVAS_H)
+  mask.fill({ color: 0x05070d, alpha: 0.58 })
+  overlay.addChild(mask)
+
+  const panel = new Container()
+  panel.x = CANVAS_W / 2
+  panel.y = 318
+  panel.eventMode = 'static'
+  panel.on('pointerdown', (e) => e.stopPropagation())
+  overlay.addChild(panel)
+
+  const panelW = 612
+  const panelH = 384
+  const panelBg = new Graphics()
+  panelBg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 24)
+  panelBg.fill({ color: 0x121c33, alpha: 0.98 })
+  panelBg.stroke({ color: 0x9ec2ff, width: 3, alpha: 0.95 })
+  panel.addChild(panelBg)
+
+  const panelGlow = new Graphics()
+  panelGlow.roundRect(-panelW / 2 + 8, -panelH / 2 + 8, panelW - 16, panelH - 16, 20)
+  panelGlow.stroke({ color: 0x4b6ea8, width: 2, alpha: 0.45 })
+  panel.addChild(panelGlow)
+
+  const title = new Text({
+    text: '设置',
+    style: { fontSize: 40, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  title.anchor.set(0.5)
+  title.y = -146
+  panel.addChild(title)
+
+  const subtitle = new Text({
+    text: '本局即时生效',
+    style: { fontSize: 18, fill: 0xa8bddf, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  subtitle.anchor.set(0.5)
+  subtitle.y = -106
+  panel.addChild(subtitle)
+
+  type ToggleRow = {
+    key: 'gameplayCrossSynthesisConfirm' | 'gameplayShowSpeedButton'
+    label: string
+  }
+  const rows: ToggleRow[] = [
+    { key: 'gameplayCrossSynthesisConfirm', label: '合成二次弹窗' },
+    { key: 'gameplayShowSpeedButton', label: '战斗加速按钮' },
+  ]
+
+  const drawRow = (y: number, row: ToggleRow): void => {
+    const rowBg = new Graphics()
+    rowBg.roundRect(-268, y - 36, 536, 72, 16)
+    rowBg.fill({ color: 0x1a2946, alpha: 0.72 })
+    rowBg.stroke({ color: 0x2f4f82, width: 2, alpha: 0.7 })
+    panel.addChild(rowBg)
+
+    const label = new Text({
+      text: row.label,
+      style: { fontSize: 30, fill: 0xe0ebff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    label.x = -240
+    label.y = y - label.height / 2
+    panel.addChild(label)
+
+    const on = () => getDebugCfg(row.key) >= 0.5
+    const btn = new Container()
+    btn.x = 176
+    btn.y = y
+    btn.eventMode = 'static'
+    btn.cursor = 'pointer'
+
+    const bg = new Graphics()
+    const txt = new Text({
+      text: '',
+      style: { fontSize: 24, fill: 0x0f1c33, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    txt.anchor.set(0.5)
+    const redraw = () => {
+      const enabled = on()
+      bg.clear()
+      bg.roundRect(-76, -27, 152, 54, 18)
+      bg.fill({ color: enabled ? 0x74dc9b : 0xa8b6cc, alpha: 0.98 })
+      bg.stroke({ color: 0x0d1426, width: 2, alpha: 0.95 })
+      txt.text = enabled ? '开启' : '关闭'
+    }
+    redraw()
+
+    btn.on('pointerdown', (e) => {
+      e.stopPropagation()
+      const next = on() ? 0 : 1
+      setDebugCfg(row.key, next)
+      redraw()
+    })
+    btn.addChild(bg, txt)
+    panel.addChild(btn)
+  }
+
+  drawRow(4, rows[0])
+  drawRow(104, rows[1])
+
+  const closeBtn = new Container()
+  closeBtn.x = 0
+  closeBtn.y = 166
+  closeBtn.eventMode = 'static'
+  closeBtn.cursor = 'pointer'
+  const closeBg = new Graphics()
+  closeBg.roundRect(-122, -30, 244, 60, 18)
+  closeBg.fill({ color: 0x2d446c, alpha: 0.96 })
+  closeBg.stroke({ color: 0xa7c6ff, width: 3, alpha: 0.95 })
+  const closeText = new Text({ text: '关闭', style: { fontSize: 28, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' } })
+  closeText.anchor.set(0.5)
+  closeBtn.on('pointerdown', (e) => {
+    e.stopPropagation()
+    closeSettingsOverlay()
+  })
+  closeBtn.addChild(closeBg, closeText)
+  panel.addChild(closeBtn)
+
+  overlay.on('pointerdown', () => closeSettingsOverlay())
+  stage.addChild(overlay)
+  settingsOverlay = overlay
+}
+
+function createSettingsButton(stage: Container): void {
+  if (settingsBtn) return
+  const cfg = getConfig()
+  const con = new Container()
+  con.x = 16
+  con.y = 82
+  con.zIndex = 7050
+  con.eventMode = 'static'
+  con.cursor = 'pointer'
+
+  const label = new Text({
+    text: '设置',
+    style: {
+      fontSize: cfg.textSizes.refreshCost,
+      fill: 0xffe8a3,
+      fontFamily: 'Arial',
+      fontWeight: 'bold',
+    },
+  })
+  const padX = 18
+  const padY = 10
+  const w = label.width + padX * 2
+  const h = label.height + padY * 2
+
+  const bg = new Graphics()
+  bg.roundRect(0, 0, w, h, 14)
+  bg.fill({ color: 0x1f2940, alpha: 0.88 })
+  bg.stroke({ color: 0xffd25a, width: 2, alpha: 0.95 })
+  con.addChild(bg)
+
+  label.x = padX
+  label.y = padY
+  con.addChild(label)
+  con.hitArea = new Rectangle(0, 0, w, h)
+
+  con.on('pointerdown', (e) => {
+    e.stopPropagation()
+    if (settingsOverlay) closeSettingsOverlay()
+    else openSettingsOverlay()
+  })
+  stage.addChild(con)
+  settingsBtn = con
 }
 
 function canSynthesizePair(
@@ -1028,6 +1214,65 @@ function getMinTierDropWeight(item: ItemDef, resultTier: TierKey, resultStar: 1 
   return Math.max(0, raw)
 }
 
+const CROSS_SYNTH_MIN_TIER_CYCLE_CURSOR = new Map<number, number>()
+const CROSS_SYNTH_MIN_TIER_CYCLE_BAG = new Map<number, TierKey[]>()
+
+function gcd2(a: number, b: number): number {
+  let x = Math.abs(Math.round(a))
+  let y = Math.abs(Math.round(b))
+  while (y !== 0) {
+    const t = x % y
+    x = y
+    y = t
+  }
+  return x || 1
+}
+
+function getCrossSynthesisMinTierCycle(resultTier: TierKey, resultStar: 1 | 2): TierKey[] {
+  const cfg = getConfig().shopRules?.synthesisMinTierDropWeightsByResultLevel
+    ?? getConfig().shopRules?.minTierDropWeightsByResultLevel
+  const idx = tierStarLevelIndex(resultTier, resultStar)
+  const tiers: TierKey[] = ['Bronze', 'Silver', 'Gold', 'Diamond']
+  const scaled = tiers.map((tier) => {
+    const list = cfg?.[tier]
+    const raw = Array.isArray(list) ? list[idx] : undefined
+    const n = typeof raw === 'number' && Number.isFinite(raw) ? Math.max(0, raw) : 0
+    return Math.round(n * 100)
+  })
+  const positive = scaled.filter((v) => v > 0)
+  if (positive.length <= 0) return ['Bronze']
+  let g = positive[0]!
+  for (let i = 1; i < positive.length; i++) g = gcd2(g, positive[i]!)
+  const out: TierKey[] = []
+  for (let i = 0; i < tiers.length; i++) {
+    const cnt = Math.max(0, Math.round(scaled[i]! / g))
+    for (let k = 0; k < cnt; k++) out.push(tiers[i]!)
+  }
+  return out.length > 0 ? out : ['Bronze']
+}
+
+function pickCrossSynthesisDesiredMinTier(resultTier: TierKey, resultStar: 1 | 2): TierKey {
+  const level = tierStarLevelIndex(resultTier, resultStar) + 1
+  const cycle = getCrossSynthesisMinTierCycle(resultTier, resultStar)
+  if (cycle.length <= 0) return 'Bronze'
+  let cursor = CROSS_SYNTH_MIN_TIER_CYCLE_CURSOR.get(level) ?? 0
+  let bag = CROSS_SYNTH_MIN_TIER_CYCLE_BAG.get(level)
+  if (!bag || bag.length !== cycle.length || cursor >= bag.length) {
+    bag = [...cycle]
+    for (let i = bag.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      const t = bag[i]
+      bag[i] = bag[j]!
+      bag[j] = t!
+    }
+    CROSS_SYNTH_MIN_TIER_CYCLE_BAG.set(level, bag)
+    cursor = 0
+  }
+  const picked = bag[cursor] ?? bag[0] ?? 'Bronze'
+  CROSS_SYNTH_MIN_TIER_CYCLE_CURSOR.set(level, cursor + 1)
+  return picked
+}
+
 function pickItemByMinTierWeight(candidates: ItemDef[], resultTier: TierKey, resultStar: 1 | 2): ItemDef | null {
   if (candidates.length <= 0) return null
   let total = 0
@@ -1050,16 +1295,43 @@ function pickSynthesisResultWithGuarantee(candidates: ItemDef[], resultTier: Tie
   const shouldGuarantee = (resultLevel === 3 || resultLevel === 5 || resultLevel === 7)
     && !guaranteedNewUnlockTriggeredLevels.has(resultLevel)
 
-  if (!shouldGuarantee) {
-    return pickItemByMinTierWeight(candidates, resultTier, resultStar)
-  }
-
-  guaranteedNewUnlockTriggeredLevels.add(resultLevel)
+  if (!shouldGuarantee) return pickItemByMinTierWeight(candidates, resultTier, resultStar)
   const lockedCandidates = candidates.filter((it) => !unlockedItemIds.has(it.id))
   if (lockedCandidates.length > 0) {
     return pickItemByMinTierWeight(lockedCandidates, resultTier, resultStar)
   }
   return pickItemByMinTierWeight(candidates, resultTier, resultStar)
+}
+
+function pickCrossSynthesisResultWithCycle(
+  candidates: ItemDef[],
+  resultTier: TierKey,
+  resultStar: 1 | 2,
+  minStartingTier: TierKey,
+): ItemDef | null {
+  if (candidates.length <= 0) return null
+  const desiredMinTier = pickCrossSynthesisDesiredMinTier(resultTier, resultStar)
+  let targetMinTier = maxTier(desiredMinTier, minStartingTier)
+  let pool = candidates.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === targetMinTier)
+  if (pool.length <= 0) {
+    const startIdx = Math.max(0, TIER_ORDER.indexOf(targetMinTier))
+    for (let i = startIdx + 1; i < TIER_ORDER.length; i++) {
+      const higher = TIER_ORDER[i]!
+      const p = candidates.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === higher)
+      if (p.length > 0) {
+        targetMinTier = higher
+        pool = p
+        break
+      }
+    }
+  }
+  if (pool.length <= 0) pool = candidates
+  return pickSynthesisResultWithGuarantee(pool, resultTier, resultStar)
+}
+
+function shouldGuaranteeNewUnlock(resultTier: TierKey, resultStar: 1 | 2): boolean {
+  const level = tierStarLevelIndex(resultTier, resultStar) + 1
+  return (level === 3 || level === 5 || level === 7) && !guaranteedNewUnlockTriggeredLevels.has(level)
 }
 
 function compareTier(a: TierKey, b: TierKey): number {
@@ -1758,16 +2030,14 @@ function getCrossIdEvolvePool(
 }
 
 function pickCrossIdEvolveCandidates(sourceDef: ItemDef, targetSize: ItemSizeNorm, resultTier: TierKey, minStartingTier: TierKey): ItemDef[] {
-  const { sameArchPool, otherArchPool } = getCrossIdEvolvePool(sourceDef, targetSize, resultTier, minStartingTier)
-  if (sameArchPool.length === 0) return otherArchPool
-  if (otherArchPool.length === 0) return sameArchPool
-  const sameArchChance = getCrossIdSynthesisSameArchetypeChance()
-  return Math.random() < sameArchChance ? sameArchPool : otherArchPool
+  const { otherArchPool } = getCrossIdEvolvePool(sourceDef, targetSize, resultTier, minStartingTier)
+  if (otherArchPool.length > 0) return otherArchPool
+  return []
 }
 
 function getCrossIdPreviewCandidates(sourceDef: ItemDef, targetSize: ItemSizeNorm, resultTier: TierKey, minStartingTier: TierKey): ItemDef[] {
-  const { basePool, otherArchPool } = getCrossIdEvolvePool(sourceDef, targetSize, resultTier, minStartingTier)
-  return otherArchPool.length > 0 ? otherArchPool : basePool
+  const { otherArchPool } = getCrossIdEvolvePool(sourceDef, targetSize, resultTier, minStartingTier)
+  return otherArchPool
 }
 
 function highlightSynthesisTarget(target: SynthesisTarget | null): void {
@@ -1816,14 +2086,22 @@ function synthesizeTarget(
   const targetDef = getItemDefById(targetItem.defId)
   if (!targetDef) return null
 
+  const isCrossIdSynthesis = defId !== targetItem.defId
+  const minStartingTier = getCrossSynthesisMinStartingTier(sourceDef, targetDef)
+  const guaranteeNewUnlock = shouldGuaranteeNewUnlock(upgradeTo.tier, upgradeTo.star)
+  const resultLevel = tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1
   const evolveCandidates = (() => {
     if (defId === targetItem.defId) {
       return getAllItems().filter((it) => it.id === defId && parseAvailableTiers(it.available_tiers).includes(upgradeTo.tier))
     }
-    const minStartingTier = getCrossSynthesisMinStartingTier(sourceDef, targetDef)
+    if (guaranteeNewUnlock) {
+      return getCrossIdEvolvePool(sourceDef, targetItem.size, upgradeTo.tier, minStartingTier).otherArchPool
+    }
     return pickCrossIdEvolveCandidates(sourceDef, targetItem.size, upgradeTo.tier, minStartingTier)
   })()
-  const evolvedDef = pickSynthesisResultWithGuarantee(evolveCandidates, upgradeTo.tier, upgradeTo.star)
+  const evolvedDef = isCrossIdSynthesis
+    ? pickCrossSynthesisResultWithCycle(evolveCandidates, upgradeTo.tier, upgradeTo.star, minStartingTier)
+    : pickSynthesisResultWithGuarantee(evolveCandidates, upgradeTo.tier, upgradeTo.star)
   if (!evolvedDef) return null
 
   const system = zone === 'battle' ? battleSystem : backpackSystem
@@ -1850,6 +2128,9 @@ function synthesizeTarget(
   instanceToTier.set(targetInstanceId, upgradeTo.tier)
   instanceToTierStar.set(targetInstanceId, upgradeTo.star)
   unlockItemToPool(evolvedDef.id)
+  if (guaranteeNewUnlock && (resultLevel === 3 || resultLevel === 5 || resultLevel === 7)) {
+    guaranteedNewUnlockTriggeredLevels.add(resultLevel)
+  }
   applyInstanceTierVisuals()
   syncShopOwnedTierRules()
   refreshUpgradeHints()
@@ -4742,30 +5023,35 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
         _resetDrag()
         return
       }
-      showCrossSynthesisConfirmOverlay(
-        stage,
-        { def: slot.item, tier: slot.tier, star: 1 },
-        { def: targetDef, tier: targetTier, star: targetStar },
-        upgradeTo.tier,
-        upgradeTo.star,
-        () => {
-          if (!shopManager?.buy(slot)) {
-            showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
-            refreshShopUI()
-            return
-          }
-          markShopPurchaseDone()
-          const synth = synthesizeTarget(slot.item.id, slot.tier, 1, synthTarget.instanceId, synthTarget.zone)
-          if (!synth) {
-            showHintToast('backpack_full_buy', '合成目标无效', 0xff8f8f)
-            refreshShopUI()
-            return
-          }
-          playSynthesisFlashEffect(stage, synth)
-          console.log(`[ShopScene] 合成升级 ${slot.item.name_cn} ${tierStarLabelCn(slot.tier, 1)} -> ${tierStarLabelCn(synth.toTier, synth.toStar)}`)
+      const runCrossSynthesis = () => {
+        if (!shopManager?.buy(slot)) {
+          showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
           refreshShopUI()
-        },
-      )
+          return
+        }
+        markShopPurchaseDone()
+        const synth = synthesizeTarget(slot.item.id, slot.tier, 1, synthTarget.instanceId, synthTarget.zone)
+        if (!synth) {
+          showHintToast('backpack_full_buy', '合成目标无效', 0xff8f8f)
+          refreshShopUI()
+          return
+        }
+        playSynthesisFlashEffect(stage, synth)
+        console.log(`[ShopScene] 合成升级 ${slot.item.name_cn} ${tierStarLabelCn(slot.tier, 1)} -> ${tierStarLabelCn(synth.toTier, synth.toStar)}`)
+        refreshShopUI()
+      }
+      if (isCrossIdSynthesisConfirmEnabled()) {
+        showCrossSynthesisConfirmOverlay(
+          stage,
+          { def: slot.item, tier: slot.tier, star: 1 },
+          { def: targetDef, tier: targetTier, star: targetStar },
+          upgradeTo.tier,
+          upgradeTo.star,
+          runCrossSynthesis,
+        )
+      } else {
+        runCrossSynthesis()
+      }
       _resetDrag()
       return
     }
@@ -5169,36 +5455,10 @@ export const ShopScene: Scene = {
             const targetStar = getInstanceTierStar(synthTarget.instanceId)
             const upgradeTo = nextTierLevel(fromTier, fromStar)
             if (!upgradeTo) return false
-            showCrossSynthesisConfirmOverlay(
-              stage,
-              { def: item, tier: fromTier, star: fromStar },
-              { def: targetDef, tier: targetTier, star: targetStar },
-              upgradeTo.tier,
-              upgradeTo.star,
-              () => {
-                const synth = synthesizeTarget(defId, fromTier, fromStar, synthTarget.instanceId, synthTarget.zone)
-                if (!synth) {
-                  showHintToast('backpack_full_buy', '合成目标无效', 0xff8f8f)
-                  restoreDraggedItemToZone(
-                    instanceId,
-                    defId,
-                    size,
-                    fromTier,
-                    fromStar,
-                    originCol,
-                    originRow,
-                    homeSystem,
-                    homeView,
-                  )
-                  refreshShopUI()
-                  return
-                }
-                removeInstanceMeta(instanceId)
-                console.log(`[ShopScene] 拖拽合成 ${item.name_cn} ${tierStarLabelCn(fromTier, fromStar)} -> ${tierStarLabelCn(synth.toTier, synth.toStar)}`)
-                playSynthesisFlashEffect(stage, synth)
-                refreshShopUI()
-              },
-              () => {
+            const runCrossSynthesis = () => {
+              const synth = synthesizeTarget(defId, fromTier, fromStar, synthTarget.instanceId, synthTarget.zone)
+              if (!synth) {
+                showHintToast('backpack_full_buy', '合成目标无效', 0xff8f8f)
                 restoreDraggedItemToZone(
                   instanceId,
                   defId,
@@ -5211,8 +5471,39 @@ export const ShopScene: Scene = {
                   homeView,
                 )
                 refreshShopUI()
-              },
-            )
+                return
+              }
+              removeInstanceMeta(instanceId)
+              console.log(`[ShopScene] 拖拽合成 ${item.name_cn} ${tierStarLabelCn(fromTier, fromStar)} -> ${tierStarLabelCn(synth.toTier, synth.toStar)}`)
+              playSynthesisFlashEffect(stage, synth)
+              refreshShopUI()
+            }
+            if (isCrossIdSynthesisConfirmEnabled()) {
+              showCrossSynthesisConfirmOverlay(
+                stage,
+                { def: item, tier: fromTier, star: fromStar },
+                { def: targetDef, tier: targetTier, star: targetStar },
+                upgradeTo.tier,
+                upgradeTo.star,
+                runCrossSynthesis,
+                () => {
+                  restoreDraggedItemToZone(
+                    instanceId,
+                    defId,
+                    size,
+                    fromTier,
+                    fromStar,
+                    originCol,
+                    originRow,
+                    homeSystem,
+                    homeView,
+                  )
+                  refreshShopUI()
+                },
+              )
+            } else {
+              runCrossSynthesis()
+            }
             return true
           }
 
@@ -5717,6 +6008,7 @@ export const ShopScene: Scene = {
     dayPrevBtn = prevDayBtn
     dayNextBtn = nextDayBtn
     layoutDayDebugControls()
+    createSettingsButton(stage)
     // Day 调试文字在此处才创建，需要再应用一次字号配置以覆盖 game_config 默认值
     applyTextSizesFromDebug()
 
@@ -5755,6 +6047,8 @@ export const ShopScene: Scene = {
       pendingSkillDraft = null
       unlockedItemIds.clear()
       guaranteedNewUnlockTriggeredLevels.clear()
+      CROSS_SYNTH_MIN_TIER_CYCLE_CURSOR.clear()
+      CROSS_SYNTH_MIN_TIER_CYCLE_BAG.clear()
       nextQuickBuyOffer = null
       syncUnlockPoolToManager()
     }
@@ -5795,8 +6089,10 @@ export const ShopScene: Scene = {
     if (trophyText)   stage.removeChild(trophyText)
     if (btnRow)       stage.removeChild(btnRow)
     if (dayDebugCon)  stage.removeChild(dayDebugCon)
+    if (settingsBtn)  stage.removeChild(settingsBtn)
     if (hintToastCon) stage.removeChild(hintToastCon)
     if (unlockRevealLayer) stage.removeChild(unlockRevealLayer)
+    closeSettingsOverlay()
     if (passiveJumpLayer?.parent) passiveJumpLayer.parent.removeChild(passiveJumpLayer)
     if (classSelectOverlay?.parent) classSelectOverlay.parent.removeChild(classSelectOverlay)
     classSelectOverlay?.destroy({ children: true })
@@ -5891,9 +6187,12 @@ export const ShopScene: Scene = {
     dayPrevBtn      = null
     dayNextBtn      = null
     dayDebugCon     = null
+    settingsBtn     = null
     currentDay      = 1
     unlockedItemIds.clear()
     guaranteedNewUnlockTriggeredLevels.clear()
+    CROSS_SYNTH_MIN_TIER_CYCLE_CURSOR.clear()
+    CROSS_SYNTH_MIN_TIER_CYCLE_BAG.clear()
     nextQuickBuyOffer = null
     starterClass    = null
     starterGranted  = false

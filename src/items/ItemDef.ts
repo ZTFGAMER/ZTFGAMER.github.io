@@ -119,6 +119,9 @@ export interface GameConfig {
       dailyItemCount?: number[]
       dailyAvgQuality?: number[]
     }
+    battleUi?: {
+      showSpeedButton?: boolean
+    }
   }
   runRules?: {
     trophyWinsToFinalVictory?: number
@@ -211,6 +214,7 @@ export interface GameConfig {
       Gold?: number[]
       Diamond?: number[]
     }
+    crossIdSynthesisRequireConfirm?: boolean
     sellFixedPriceBySize?: {
       small?: number[]
       medium?: number[]
