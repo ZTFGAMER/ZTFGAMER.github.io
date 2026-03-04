@@ -26,6 +26,13 @@ const CARD_GAP_MAX = 4
 const BOTTOM_H = 72
 const SHOP_DRAG_START_PX = 8
 
+function parseTierName(raw: string): string {
+  if (raw.includes('Silver')) return 'Silver'
+  if (raw.includes('Gold')) return 'Gold'
+  if (raw.includes('Diamond')) return 'Diamond'
+  return 'Bronze'
+}
+
 export class ShopPanelView extends Container {
   private cards: Container[] = []
   private tierBorderWidth = 4
@@ -193,7 +200,7 @@ export class ShopPanelView extends Container {
 
   private _buildCard(slot: ShopSlot, slotIndex: number, gold: number): Container {
     const card      = new Container()
-    const tier      = slot.tier
+    const tier      = parseTierName(slot.item.starting_tier)
     const tierColor = getTierColor(tier)
     const canAfford = gold >= slot.price
     const bought    = slot.purchased

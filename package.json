@@ -9,7 +9,9 @@
     "build:ios-web": "tsc -b && vite build --base ./ --outDir dist-ios",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "release:tf": "python3 ios/scripts/release_testflight.py",
+    "perf:p1-check": "python3 scripts/perf_p1_check.py"
   },
   "devDependencies": {
     "typescript": "~5.8.3",

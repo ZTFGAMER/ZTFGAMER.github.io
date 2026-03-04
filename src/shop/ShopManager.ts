@@ -63,6 +63,7 @@ export class ShopManager {
   private config:   GameConfig
   private allItems: ItemDef[]
   private ownedDefIds = new Set<string>()
+  private unlockedDefIds = new Set<string>()
 
   constructor(config: GameConfig, allItems: ItemDef[], day = 1) {
     this.config    = config
@@ -190,6 +191,25 @@ export class ShopManager {
     this.ownedDefIds = new Set(map.keys())
   }
 
+  setUnlockedItemIds(ids: string[]): void {
+    this.unlockedDefIds.clear()
+    for (const id of ids) {
+      if (this.allItems.some((it) => it.id === id)) this.unlockedDefIds.add(id)
+    }
+    this.pool = this.rollPool(false)
+  }
+
+  getUnlockedItemIds(): string[] {
+    return Array.from(this.unlockedDefIds)
+  }
+
+  unlockItem(defId: string): boolean {
+    if (!this.allItems.some((it) => it.id === defId)) return false
+    if (this.unlockedDefIds.has(defId)) return false
+    this.unlockedDefIds.add(defId)
+    return true
+  }
+
   // ---- 卡池滚动 ----
 
   private getShopWidthCells(item: ItemDef): number {
@@ -255,11 +275,36 @@ export class ShopManager {
     return Number.isFinite(n) && n > 0 ? n : 1
   }
 
-  private pickItemWeighted(candidates: ItemDef[]): ItemDef | null {
+  private getMinTierDropWeight(item: ItemDef, resultTier: TierKey, resultStar: TierStar): number {
+    const cfg = this.config.shopRules?.minTierDropWeightsByResultLevel
+    if (!cfg) return 1
+    const minTier = extractTier(item.starting_tier)
+    const list = cfg[minTier]
+    if (!Array.isArray(list) || list.length <= 0) return 1
+    const levelIdx = getTierStarLevelIndex(resultTier, resultTier === 'Diamond' ? 1 : resultStar)
+    const raw = list[levelIdx]
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) return 1
+    return Math.max(0, raw)
+  }
+
+  private getUnlockStartingTierWeight(item: ItemDef): number {
+    const cfg = this.config.shopRules?.unlockStartingTierWeights
+    const tier = extractTier(item.starting_tier)
+    const raw = cfg?.[tier]
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+      if (tier === 'Bronze') return 75
+      if (tier === 'Silver') return 20
+      if (tier === 'Gold') return 4
+      return 1
+    }
+    return Math.max(0, raw)
+  }
+
+  private pickItemWeightedByResultLevel(candidates: ItemDef[], resultTier: TierKey, resultStar: TierStar): ItemDef | null {
     if (candidates.length === 0) return null
     let total = 0
     const ws = candidates.map((it) => {
-      const w = this.getShopSizeWeight(it)
+      const w = this.getShopSizeWeight(it) * this.getMinTierDropWeight(it, resultTier, resultStar)
       total += w
       return w
     })
@@ -301,12 +346,15 @@ export class ShopManager {
       return a === a1 || a === a2
     })
     const useSameTier = sameTier.length > 0
-    const replacement = this.pickItemWeighted(useSameTier ? sameTier : fallbackAnyTier)
-    if (!replacement) return slots
     const replacementTier = useSameTier
       ? thirdTier
+      : ((parseAvailableTiers(fallbackAnyTier[0]?.available_tiers ?? '')[0] ?? 'Bronze') as TierKey)
+    const replacement = this.pickItemWeightedByResultLevel(useSameTier ? sameTier : fallbackAnyTier, replacementTier, 1)
+    if (!replacement) return slots
+    const resolvedTier = useSameTier
+      ? thirdTier
       : (parseAvailableTiers(replacement.available_tiers)[0] ?? 'Bronze')
-    slots[2] = { item: replacement, tier: replacementTier, price: this.getItemPrice(replacement, replacementTier), purchased: false }
+    slots[2] = { item: replacement, tier: resolvedTier, price: this.getItemPrice(replacement, resolvedTier), purchased: false }
     return slots
   }
 
@@ -317,42 +365,10 @@ export class ShopManager {
     const hasAmmoOwned = this.hasOwnedAmmoItem()
     const restrictAmmoSupport = this.config.shopRules?.ammoSupportRequiresAmmoOwned === true
     const enforceDay1ThirdArchetype = this.config.shopRules?.day1ThirdItemMatchExistingArchetype === true
-
-    // 构建当天品质权重（青铜/白银/黄金/钻石）
-    const chances = this.config.shopTierChancesByDay
-    const rowIdx  = Math.max(0, Math.min(chances.length - 1, this.day - 1))
-    const row     = chances[rowIdx] ?? [100, 0, 0, 0]
-    const tierWeights: Record<TierKey, number> = {
-      Bronze: Math.max(0, row[0] ?? 0),
-      Silver: Math.max(0, row[1] ?? 0),
-      Gold: Math.max(0, row[2] ?? 0),
-      Diamond: Math.max(0, row[3] ?? 0),
-    }
-
-    const candidatesByTier: Record<TierKey, ItemDef[]> = {
-      Bronze: [],
-      Silver: [],
-      Gold: [],
-      Diamond: [],
-    }
-    for (const item of this.allItems) {
-      for (const tier of parseAvailableTiers(item.available_tiers)) {
-        candidatesByTier[tier].push(item)
-      }
-    }
-
-    const pickTier = (feasibleByTier: Record<TierKey, ItemDef[]>): TierKey | null => {
-      const available = TIER_ORDER.filter((tier) => (tierWeights[tier] ?? 0) > 0 && feasibleByTier[tier].length > 0)
-      if (available.length === 0) return null
-      const total = available.reduce((acc, tier) => acc + (tierWeights[tier] ?? 0), 0)
-      if (total <= 0) return null
-      let r = Math.random() * total
-      for (const tier of available) {
-        r -= tierWeights[tier] ?? 0
-        if (r <= 0) return tier
-      }
-      return available[available.length - 1] ?? null
-    }
+    const unlockedItems = this.allItems.filter((it) => this.unlockedDefIds.has(it.id))
+    const allowDuplicate = unlockedItems.length < 3
+    const sourceItems = unlockedItems.length > 0 ? unlockedItems : []
+    if (sourceItems.length === 0) return []
 
     let attempts = 0
     while (slots.length < 3 && attempts < 5000) {
@@ -362,44 +378,43 @@ export class ShopManager {
       const maxWidthForCurrent = remainWidth - (remainSlots - 1)
       if (maxWidthForCurrent < 1) break
 
-      const feasibleByTier: Record<TierKey, ItemDef[]> = {
-        Bronze: [],
-        Silver: [],
-        Gold: [],
-        Diamond: [],
-      }
-      for (const tier of TIER_ORDER) {
-        const pool = candidatesByTier[tier]
-        feasibleByTier[tier] = pool.filter((it) => {
-          if (usedItemIds.has(it.id)) return false
-          if (this.getShopWidthCells(it) > maxWidthForCurrent) return false
-          if (restrictAmmoSupport && !hasAmmoOwned && this.isAmmoSupportItem(it)) return false
-          if (this.isBlockedByPrerequisites(it)) return false
-
-          if (enforceDay1ThirdArchetype && isInitialRoll && this.day === 1 && slots.length === 2) {
-            const a1 = this.parsePrimaryArchetype(slots[0]?.item ?? it)
-            const a2 = this.parsePrimaryArchetype(slots[1]?.item ?? it)
-            const allowed = new Set([a1, a2].filter(Boolean))
-            const current = this.parsePrimaryArchetype(it)
-            if (allowed.size > 0 && (!current || !allowed.has(current))) return false
-          }
-
-          return true
-        })
-      }
-
-      const tier = pickTier(feasibleByTier)
-      if (!tier) break
-
-      const candidates = feasibleByTier[tier]
+      const candidates = sourceItems.filter((it) => {
+        if (!allowDuplicate && usedItemIds.has(it.id)) return false
+        if (this.getShopWidthCells(it) > maxWidthForCurrent) return false
+        if (restrictAmmoSupport && !hasAmmoOwned && this.isAmmoSupportItem(it)) return false
+        if (this.isBlockedByPrerequisites(it)) return false
+        if (enforceDay1ThirdArchetype && isInitialRoll && this.day === 1 && slots.length === 2) {
+          const a1 = this.parsePrimaryArchetype(slots[0]?.item ?? it)
+          const a2 = this.parsePrimaryArchetype(slots[1]?.item ?? it)
+          const allowed = new Set([a1, a2].filter(Boolean))
+          const current = this.parsePrimaryArchetype(it)
+          if (allowed.size > 0 && (!current || !allowed.has(current))) return false
+        }
+        return true
+      })
       if (!candidates || candidates.length === 0) continue
 
-      const item = this.pickItemWeighted(candidates)
+      let total = 0
+      const weights = candidates.map((it) => {
+        const w = this.getShopSizeWeight(it) * this.getUnlockStartingTierWeight(it)
+        total += w
+        return w
+      })
+      const item = (() => {
+        if (total <= 0) return candidates[Math.floor(Math.random() * candidates.length)] ?? null
+        let r = Math.random() * total
+        for (let i = 0; i < candidates.length; i++) {
+          r -= weights[i] ?? 0
+          if (r <= 0) return candidates[i] ?? null
+        }
+        return candidates[candidates.length - 1] ?? null
+      })()
       if (!item) continue
-      if (usedItemIds.has(item.id)) continue
+      if (!allowDuplicate && usedItemIds.has(item.id)) continue
 
       usedItemIds.add(item.id)
       usedWidthCells += this.getShopWidthCells(item)
+      const tier = extractTier(item.starting_tier)
       slots.push({ item, tier, price: this.getItemPrice(item, tier), purchased: false })
     }
 

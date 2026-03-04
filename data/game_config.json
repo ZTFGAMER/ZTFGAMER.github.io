@@ -73,11 +73,11 @@
     "desc": "每天的战斗区域格数",
     "desc_en": "Daily battle area slots",
     "value": [
-      6,
-      6,
-      6
+      5,
+      5,
+      5
     ],
-    "note": "战斗区单行可见宽度固定 6 格"
+    "note": "战斗区单行可见宽度固定 5 格"
   },
   {
     "id": 5,
@@ -408,14 +408,10 @@
     "value": {
       "tickMs": 100,
       "fatigueStartMs": 30000,
-      "fatigueIntervalMs": 1000,
-      "fatigueDamagePctPerInterval": 0.02,
-      "fatigueDamageFixedPerInterval": 10,
-      "fatigueDamagePctRampPerInterval": 0.01,
-      "fatigueDamageFixedRampPerInterval": 10,
+      "fatigueTickMs": 100,
+      "fatigueBaseValue": 1,
+      "fatigueDoubleEveryMs": 1000,
       "timeoutMs": 40000,
-      "fatigueTickMs": 1000,
-      "fatigueDamagePctPerSec": 0.1,
       "critMultiplier": 2,
       "burnTickMs": 500,
       "poisonTickMs": 1000,
@@ -685,7 +681,7 @@
                   "star": 2
                 },
                 {
-                  "itemName": "长剑",
+                  "itemName": "长盾",
                   "col": 2,
                   "tier": "Silver",
                   "star": 1
@@ -709,7 +705,7 @@
               "focus": "按表配置",
               "placements": [
                 {
-                  "itemName": "弹药堆",
+                  "itemName": "手弩",
                   "col": 0,
                   "tier": "Silver",
                   "star": 1
@@ -751,7 +747,7 @@
                   "star": 1
                 },
                 {
-                  "itemName": "大手里剑",
+                  "itemName": "回旋镖",
                   "col": 1,
                   "tier": "Silver",
                   "star": 1
@@ -787,7 +783,7 @@
                   "star": 1
                 },
                 {
-                  "itemName": "长剑",
+                  "itemName": "长盾",
                   "col": 1,
                   "tier": "Silver",
                   "star": 1
@@ -799,7 +795,7 @@
                   "star": 1
                 },
                 {
-                  "itemName": "长剑",
+                  "itemName": "长盾",
                   "col": 4,
                   "tier": "Silver",
                   "star": 1
@@ -817,7 +813,7 @@
               "focus": "按表配置",
               "placements": [
                 {
-                  "itemName": "弹药堆",
+                  "itemName": "手弩",
                   "col": 0,
                   "tier": "Silver",
                   "star": 1
@@ -829,7 +825,7 @@
                   "star": 2
                 },
                 {
-                  "itemName": "弹药堆",
+                  "itemName": "手弩",
                   "col": 3,
                   "tier": "Silver",
                   "star": 1
@@ -859,7 +855,7 @@
                   "star": 1
                 },
                 {
-                  "itemName": "大手里剑",
+                  "itemName": "回旋镖",
                   "col": 2,
                   "tier": "Silver",
                   "star": 2
@@ -1003,7 +999,7 @@
                   "star": 2
                 },
                 {
-                  "itemName": "弹药堆",
+                  "itemName": "手弩",
                   "col": 3,
                   "tier": "Silver",
                   "star": 1
@@ -1033,7 +1029,7 @@
                   "star": 1
                 },
                 {
-                  "itemName": "大手里剑",
+                  "itemName": "回旋镖",
                   "col": 1,
                   "tier": "Silver",
                   "star": 1
@@ -1045,7 +1041,7 @@
                   "star": 1
                 },
                 {
-                  "itemName": "大手里剑",
+                  "itemName": "回旋镖",
                   "col": 4,
                   "tier": "Silver",
                   "star": 1
@@ -1075,7 +1071,7 @@
                   "star": 2
                 },
                 {
-                  "itemName": "弹药堆",
+                  "itemName": "手弩",
                   "col": 3,
                   "tier": "Silver",
                   "star": 1
@@ -1219,7 +1215,7 @@
                   "star": 2
                 },
                 {
-                  "itemName": "弹药堆",
+                  "itemName": "手弩",
                   "col": 3,
                   "tier": "Silver",
                   "star": 1
@@ -1249,7 +1245,7 @@
                   "star": 2
                 },
                 {
-                  "itemName": "大手里剑",
+                  "itemName": "回旋镖",
                   "col": 1,
                   "tier": "Silver",
                   "star": 1
@@ -1275,15 +1271,145 @@
     "note": "Stage3 战斗时序参数：固定 Tick、超时疲劳、暴击倍率"
   },
   {
+    "id": 19,
+    "name": "skill_system",
+    "desc": "偶数日技能三选一配置",
+    "desc_en": "Even-day skill draft configuration",
+    "value": {
+      "triggerDaysByTier": {
+        "bronze": [2, 4],
+        "silver": [6, 8],
+        "gold": [10, 14]
+      },
+      "chooseCount": 3,
+      "pools": {
+        "bronze": [
+          {
+            "id": "bronze_warrior_guard",
+            "name": "盾墙训练",
+            "archetype": "warrior",
+            "desc": "上阵区中拥有护盾的武器更容易形成连携。"
+          },
+          {
+            "id": "bronze_archer_focus",
+            "name": "稳弓姿态",
+            "archetype": "archer",
+            "desc": "弹药武器更容易稳定打出完整弹药循环。"
+          },
+          {
+            "id": "bronze_assassin_chain",
+            "name": "疾影连击",
+            "archetype": "assassin",
+            "desc": "低冷却武器更容易形成连续攻击节奏。"
+          },
+          {
+            "id": "bronze_utility_supply",
+            "name": "后勤补给",
+            "archetype": "utility",
+            "desc": "战斗前排布与背包调度更加从容。"
+          }
+        ],
+        "silver": [
+          {
+            "id": "silver_warrior_bastion",
+            "name": "坚壁阵线",
+            "archetype": "warrior",
+            "desc": "护盾体系在中期更容易稳住战线。"
+          },
+          {
+            "id": "silver_archer_storm",
+            "name": "箭雨节拍",
+            "archetype": "archer",
+            "desc": "弹药与连发体系更容易形成爆发窗口。"
+          },
+          {
+            "id": "silver_assassin_execute",
+            "name": "追猎终结",
+            "archetype": "assassin",
+            "desc": "刺客体系更容易打出收割节奏。"
+          },
+          {
+            "id": "silver_utility_hub",
+            "name": "战术枢纽",
+            "archetype": "utility",
+            "desc": "通用构筑在多流派切换时更平滑。"
+          }
+        ],
+        "gold": [
+          {
+            "id": "gold_warrior_ironwall",
+            "name": "不破铁壁",
+            "archetype": "warrior",
+            "desc": "后期护盾体系获得更高上限的阵地能力。"
+          },
+          {
+            "id": "gold_archer_ballista",
+            "name": "弩阵共鸣",
+            "archetype": "archer",
+            "desc": "高阶弹药武器更容易叠出连射爆发。"
+          },
+          {
+            "id": "gold_assassin_phantom",
+            "name": "幻影处决",
+            "archetype": "assassin",
+            "desc": "高频武器在后期对局中更具斩杀压迫。"
+          },
+          {
+            "id": "gold_utility_masterplan",
+            "name": "大师谋略",
+            "archetype": "utility",
+            "desc": "全流派协同能力在后期回合更稳定。"
+          }
+        ]
+      }
+    },
+    "note": "仅用于偶数日技能选择与展示；暂不接入战斗效果"
+  },
+  {
     "id": 16,
+    "name": "gameplay_mode_values",
+    "desc": "玩法模式参数",
+    "desc_en": "Gameplay mode values",
+    "value": {
+      "compactMode": {
+        "enabled": true,
+        "itemSet": "compact",
+        "cellScale": 1,
+        "cellHeightRatio": 1.3,
+        "squareCell": true,
+        "backpackRows": 3,
+        "battleCols": 5,
+        "mediumValueScale": 0.5
+      },
+      "enemyDraftLab": {
+        "enabled": false,
+        "sameArchetypeBias": 0.85,
+        "dailyItemCount": [2, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
+        "dailyAvgQuality": [1, 1, 1.46, 1.94, 2.32, 2.64, 2.92, 3.17, 3.39, 3.59, 3.78, 3.95, 4.12, 4.27, 4.41, 4.54, 4.67, 4.79, 4.91, 5.02]
+      }
+    },
+    "note": "全小型试验模式：半格正方形、背包6x3、中型改小型并按0.5数值模板读取"
+  },
+  {
+    "id": 20,
+    "name": "run_rules",
+    "desc": "局外流程规则",
+    "desc_en": "Run-level rules",
+    "value": {
+      "trophyWinsToFinalVictory": 10,
+      "muteLogsInMobileRelease": true
+    },
+    "note": "累计胜利达到阈值后判定为最终胜利"
+  },
+  {
+    "id": 19,
     "name": "shop_rules",
     "desc": "商店随机规则",
     "desc_en": "Shop randomization rules",
     "value": {
       "ammoSupportRequiresAmmoOwned": true,
       "ammoSupportItemNames": [
-        "弹药袋",
-        "弹药堆"
+        "弹药袋"
       ],
       "itemPrerequisites": {
         "弹药袋": [
@@ -1291,15 +1417,29 @@
           "手弩",
           "超级手雷",
           "超级弩机"
-        ],
-        "弹药堆": [
-          "木弓",
-          "手弩",
-          "超级手雷",
-          "超级弩机"
         ]
       },
       "day1ThirdItemMatchExistingArchetype": true,
+      "initialUnlocksByStarterClass": {
+        "swordsman": [
+          "ab108c45-bd0b-4129-8b92-19d17c798164",
+          "578d9e51-a6c2-4c40-9dcd-60420ffe91c6"
+        ],
+        "archer": [
+          "16e55d6c-d856-4820-a337-5f73332b8fe4",
+          "0c6beae3-3f07-4496-957b-447dde815ffb"
+        ],
+        "assassin": [
+          "aa05e315-afdd-40ba-8149-3fd3fd3617ce",
+          "4e61c6f3-4d31-4b29-97fb-691537b3a3a0"
+        ]
+      },
+      "unlockStartingTierWeights": {
+        "Bronze": 75,
+        "Silver": 20,
+        "Gold": 4,
+        "Diamond": 1
+      },
       "shopSizeWeights": {
         "small": 2,
         "medium": 1,
@@ -1347,6 +1487,28 @@
           "ownedWeightMultiplier": 3
         }
       ],
+      "quickBuyLevelChancesByDay": [
+        [1, 0, 0, 0, 0, 0, 0],
+        [0.95, 0.05, 0, 0, 0, 0, 0],
+        [0.9, 0.1, 0, 0, 0, 0, 0],
+        [0.85, 0.1, 0.05, 0, 0, 0, 0],
+        [0.8, 0.15, 0.05, 0, 0, 0, 0],
+        [0.75, 0.15, 0.1, 0, 0, 0, 0],
+        [0.7, 0.2, 0.1, 0, 0, 0, 0],
+        [0.65, 0.2, 0.15, 0, 0, 0, 0],
+        [0.6, 0.25, 0.15, 0, 0, 0, 0],
+        [0.55, 0.25, 0.15, 0.05, 0, 0, 0],
+        [0.5, 0.25, 0.2, 0.05, 0, 0, 0],
+        [0.45, 0.3, 0.2, 0.05, 0, 0, 0],
+        [0.4, 0.3, 0.2, 0.1, 0, 0, 0],
+        [0.35, 0.3, 0.25, 0.1, 0, 0, 0],
+        [0.3, 0.3, 0.25, 0.1, 0.05, 0, 0],
+        [0.25, 0.35, 0.25, 0.1, 0.05, 0, 0],
+        [0.2, 0.35, 0.25, 0.15, 0.05, 0, 0],
+        [0.15, 0.35, 0.3, 0.15, 0.05, 0, 0],
+        [0.1, 0.35, 0.3, 0.15, 0.1, 0, 0],
+        [0.05, 0.35, 0.3, 0.15, 0.1, 0, 0]
+      ],
       "quickBuyPriceMultiplier": {
         "Bronze#1": 1,
         "Bronze#2": 2,
@@ -1354,8 +1516,12 @@
       },
       "quickBuyFixedPrice": {
         "Bronze#1": 3,
-        "Bronze#2": 6,
-        "Silver#1": 12
+        "Bronze#2": 3,
+        "Silver#1": 12,
+        "Silver#2": 12,
+        "Gold#1": 48,
+        "Gold#2": 48,
+        "Diamond#1": 192
       },
       "sellFixedPriceBySize": {
         "small": [
@@ -1382,7 +1548,20 @@
         "Silver": 0.5,
         "Gold": 0.3333,
         "Diamond": 0.25
-      }
+      },
+      "minTierDropWeightsByResultLevel": {
+        "Bronze": [1, 1, 0.2, 0.2, 0.05, 0.05, 0.02],
+        "Silver": [0, 0, 0.8, 0.8, 0.15, 0.15, 0.08],
+        "Gold": [0, 0, 0, 0, 0.8, 0.8, 0.2],
+        "Diamond": [0, 0, 0, 0, 0, 0, 0.7]
+      },
+      "synthesisMinTierDropWeightsByResultLevel": {
+        "Bronze": [1, 1, 0, 0, 0, 0, 0],
+        "Silver": [0, 0, 1, 1, 0, 0, 0],
+        "Gold": [0, 0, 0, 0, 1, 1, 0],
+        "Diamond": [0, 0, 0, 0, 0, 0, 1]
+      },
+      "crossIdSynthesisSameArchetypeChance": 0
     },
     "note": "弹药支持物品需先拥有弹药系物品；Day1 初始第3件与前两件职业一致"
   }

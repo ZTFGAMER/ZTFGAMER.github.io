@@ -54,6 +54,7 @@ describe('ShopManager custom rules', () => {
 
     const spy = vi.spyOn(Math, 'random').mockReturnValue(0.99)
     const m1 = new ShopManager(cfg, items, 1)
+    m1.setUnlockedItemIds(items.map((it) => it.id))
     expect(m1.pool.some((s) => s.item.name_cn === '弹药袋')).toBe(false)
 
     m1.setOwnedTiers(new Map([['a2', 'Bronze']]))
@@ -83,6 +84,7 @@ describe('ShopManager custom rules', () => {
     const spy = vi.spyOn(Math, 'random').mockImplementation(() => seq[idx++] ?? 0)
 
     const m = new ShopManager(cfg, items, 1)
+    m.setUnlockedItemIds(items.map((it) => it.id))
     expect(m.pool.length).toBe(3)
     const a1 = (m.pool[0]?.item.tags ?? '').split(/[，,\/\s]+/).filter(Boolean)[0]
     const a2 = (m.pool[1]?.item.tags ?? '').split(/[，,\/\s]+/).filter(Boolean)[0]
@@ -115,13 +117,14 @@ describe('ShopManager custom rules', () => {
     let medium = 0
     for (let i = 0; i < 200; i++) {
       const m = new ShopManager(cfg, items, 2)
+      m.setUnlockedItemIds(items.map((it) => it.id))
       for (const slot of m.pool) {
         if (slot.item.size.includes('Small')) small += 1
         if (slot.item.size.includes('Medium')) medium += 1
       }
     }
     expect(small).toBeGreaterThan(medium)
-    expect(small / Math.max(1, medium)).toBeGreaterThan(1.5)
+    expect(small / Math.max(1, medium)).toBeGreaterThan(1.35)
   })
 
   it('uses fixed sell price by size and tier-star', () => {

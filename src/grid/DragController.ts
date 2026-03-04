@@ -57,6 +57,8 @@ export interface SpecialDropPayload {
   anchorGx: number
   anchorGy: number
   size: ItemSizeNorm
+  originCol: number
+  originRow: number
   homeSystem: GridSystem
   homeView: GridZone
   defId: string
@@ -72,6 +74,7 @@ export class DragController {
   onSpecialDrop: (payload: SpecialDropPayload) => boolean = () => false
   onDragEnd:   ()               => void = () => {}
   private suppressSqueeze = false
+  private inSpecialDropDispatch = false
 
   /** 顶层拖拽容器：构造时添加到 stage 末尾，确保最高 z-order */
   private dragLayer: Container
@@ -144,6 +147,7 @@ export class DragController {
     this.enabled = enabled
     if (!enabled) {
       this.clearAllHighlight()
+      if (this.inSpecialDropDispatch) return
       this.doSnapBack()
       this.reset()
     }
@@ -233,7 +237,11 @@ export class DragController {
   // ---- 拖拽核心 ----
 
   private enterDrag(instanceId: string): void {
-    const home    = this.homeZone!
+    const home = this.homeZone
+    if (!home) {
+      this.reset()
+      return
+    }
     const sysItem = home.system.getItem(instanceId)
     if (!sysItem) return
 
@@ -280,20 +288,34 @@ export class DragController {
     const best = this.findBestDropTarget(anchorGx, anchorGy, item.size)
 
     // 先尝试外部特殊落点（如出售按钮、背包按钮）
-    if (this.onSpecialDrop({
-      instanceId: id,
-      anchorGx,
-      anchorGy,
-      size: item.size,
-      homeSystem: home.system,
-      homeView: home.view,
-      defId: item.defId,
-    })) {
+    let specialHandled = false
+    this.inSpecialDropDispatch = true
+    try {
+      specialHandled = this.onSpecialDrop({
+        instanceId: id,
+        anchorGx,
+        anchorGy,
+        size: item.size,
+        originCol: this.dragOrigItem.col,
+        originRow: this.dragOrigItem.row,
+        homeSystem: home.system,
+        homeView: home.view,
+        defId: item.defId,
+      })
+    } finally {
+      this.inSpecialDropDispatch = false
+    }
+    if (specialHandled) {
       this.clearSqueezePreview()
-      this.dragLayer.removeChild(this.dragContainer)
-      this.dragContainer.destroy({ children: true })
-      this.dragContainer = null
+      const dragged = this.dragContainer
+      if (dragged && !(dragged as { destroyed?: boolean }).destroyed) {
+        if (dragged.parent) dragged.parent.removeChild(dragged)
+        dragged.destroy({ children: true })
+      }
       home.view.forgetDraggedItem(id)
+      if (this.dragContainer === dragged) {
+        this.dragContainer = null
+      }
       this.onDragEnd()
       return
     }
@@ -334,23 +356,28 @@ export class DragController {
     let plannedDropRow = finalRow
     if (!canDrop) {
       const squeezeEnabled = getConfig('dragSqueezeEnabled') >= 0.5 && !this.suppressSqueeze
+      const backpackToBattle = home.system.rows > 1 && targetPair.system.rows === 1
+      const allowCrossSqueeze = !backpackToBattle
       const canUseLocalSqueeze = targetPair === home
         ? (targetPair.system.rows > 1 ? isLogicalSameZone : squeezeEnabled)
-        : false
+        : (backpackToBattle && squeezeEnabled)
+      const unifiedHomeZone = allowCrossSqueeze
+        ? { system: home.system, activeColCount: home.view.activeColCount }
+        : undefined
       const unifiedRaw = planUnifiedSqueeze(
         { system: targetPair.system, activeColCount: targetPair.view.activeColCount },
         cell.col,
         finalRow,
         item.size,
         id,
-        { system: home.system, activeColCount: home.view.activeColCount },
+        unifiedHomeZone,
         this.dragOrigItem,
         targetPair.system.rows > 1 ? finalRow : undefined,
         undefined,
       )
       const unified = unifiedRaw && (
         (unifiedRaw.mode === 'local' && canUseLocalSqueeze)
-        || (unifiedRaw.mode === 'cross' && targetPair !== home)
+        || (unifiedRaw.mode === 'cross' && targetPair !== home && allowCrossSqueeze)
       )
         ? unifiedRaw
         : null
@@ -726,23 +753,28 @@ export class DragController {
 
       if (!canDrop) {
         const squeezeEnabled = getConfig('dragSqueezeEnabled') >= 0.5 && !this.suppressSqueeze
+        const backpackToBattle = this.homeZone.system.rows > 1 && pair.system.rows === 1
+        const allowCrossSqueeze = !backpackToBattle
         const canUseLocalSqueeze = pair === this.homeZone
           ? (pair.system.rows > 1 ? isLogicalSameZone : squeezeEnabled)
-          : false
+          : (backpackToBattle && squeezeEnabled)
+        const unifiedHomeZone = allowCrossSqueeze
+          ? { system: this.homeZone.system, activeColCount: this.homeZone.view.activeColCount }
+          : undefined
         const unifiedRaw = planUnifiedSqueeze(
           { system: pair.system, activeColCount: pair.view.activeColCount },
           cell.col,
           finalRow,
           item.size,
           this.activeId,
-          { system: this.homeZone.system, activeColCount: this.homeZone.view.activeColCount },
+          unifiedHomeZone,
           this.dragOrigItem,
           pair.system.rows > 1 ? finalRow : undefined,
           undefined,
         )
         const unified = unifiedRaw && (
           (unifiedRaw.mode === 'local' && canUseLocalSqueeze)
-          || (unifiedRaw.mode === 'cross' && pair !== this.homeZone)
+          || (unifiedRaw.mode === 'cross' && pair !== this.homeZone && allowCrossSqueeze)
         )
           ? unifiedRaw
           : null

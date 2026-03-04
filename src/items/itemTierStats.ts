@@ -42,7 +42,7 @@ function parseTierStar(raw?: string): 1 | 2 {
 }
 
 function pickTierSeriesValue(series: string, tierIndex: number): number {
-  const parts = series.split('/').map((v) => v.trim()).filter(Boolean)
+  const parts = series.split(/[\/|]/).map((v) => v.trim()).filter(Boolean)
   if (parts.length === 0) return 0
   const idx = Math.max(0, Math.min(parts.length - 1, tierIndex))
   const n = Number(parts[idx])
@@ -76,13 +76,13 @@ export function resolveItemTierBaseStats(item: ItemDef, tierRaw?: string): ItemT
   const tierIndex = tierIndexBase + (star - 1)
   const skillText = (item.skills ?? []).map((s) => s.cn ?? '').join('\n')
 
-  const damage = extractTierSeriesValue(skillText, /造成\s*([0-9]+(?:\/[0-9]+){0,3})\s*伤害/, tierIndex)
-  const heal = extractTierSeriesValue(skillText, /(?:治疗|回复)\s*([0-9]+(?:\/[0-9]+){0,3})/, tierIndex)
-  const shield = extractTierSeriesValue(skillText, /(?:获得|提供)\s*([0-9]+(?:\/[0-9]+){0,3})\s*护盾/, tierIndex)
-  const burn = extractTierSeriesValue(skillText, /(?:造成|附加|获得)?\s*([0-9]+(?:\/[0-9]+){0,3})\s*灼烧/, tierIndex)
-  const poison = extractTierSeriesValue(skillText, /(?:造成|附加|获得)?\s*([0-9]+(?:\/[0-9]+){0,3})\s*(?:剧毒|中毒)/, tierIndex)
-  const regen = extractTierSeriesValue(skillText, /(?:获得|提供)\s*([0-9]+(?:\/[0-9]+){0,3})\s*(?:再生|生命回复)/, tierIndex)
-  const multicast = extractTierSeriesValue(skillText, /(?:触发|连续发射|连发(?:次数)?\s*[:：]?)\s*([0-9]+(?:\/[0-9]+){0,3})\s*次?/, tierIndex)
+  const damage = extractTierSeriesValue(skillText, /造成\s*([0-9]+(?:[\/|][0-9]+)*)\s*伤害/, tierIndex)
+  const heal = extractTierSeriesValue(skillText, /(?:治疗|回复)\s*([0-9]+(?:[\/|][0-9]+)*)/, tierIndex)
+  const shield = extractTierSeriesValue(skillText, /(?:获得|提供)\s*([0-9]+(?:[\/|][0-9]+)*)\s*护盾/, tierIndex)
+  const burn = extractTierSeriesValue(skillText, /(?:造成|附加|获得)?\s*([0-9]+(?:[\/|][0-9]+)*)\s*灼烧/, tierIndex)
+  const poison = extractTierSeriesValue(skillText, /(?:造成|附加|获得)?\s*([0-9]+(?:[\/|][0-9]+)*)\s*(?:剧毒|中毒)/, tierIndex)
+  const regen = extractTierSeriesValue(skillText, /(?:获得|提供)\s*([0-9]+(?:[\/|][0-9]+)*)\s*(?:再生|生命回复)/, tierIndex)
+  const multicast = extractTierSeriesValue(skillText, /(?:触发|连续发射|连发(?:次数)?\s*[:：]?)\s*([0-9]+(?:[\/|][0-9]+)*)\s*次?/, tierIndex)
 
   return {
     cooldownMs: parseCooldownMsByTier(item, tierIndex),

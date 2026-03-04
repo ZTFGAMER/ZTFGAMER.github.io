@@ -3,10 +3,18 @@ export const SHOP_STATE_STORAGE_KEY = 'bigbazzar_shop_state_v1'
 const LIFE_STATE_STORAGE_KEY = 'bigbazzar_life_state_v1'
 const LIFE_STATE_STORAGE_VERSION = 1
 const DEFAULT_MAX_LIVES = 5
+const TROPHY_STATE_STORAGE_KEY = 'bigbazzar_trophy_state_v1'
+const TROPHY_STATE_STORAGE_VERSION = 1
+const DEFAULT_WIN_TARGET = 10
 
 export type LifeState = {
   current: number
   max: number
+}
+
+export type TrophyState = {
+  wins: number
+  target: number
 }
 
 function clampLives(current: number, max: number): LifeState {
@@ -22,6 +30,27 @@ function saveLifeState(state: LifeState): LifeState {
   try {
     localStorage.setItem(LIFE_STATE_STORAGE_KEY, JSON.stringify({
       version: LIFE_STATE_STORAGE_VERSION,
+      state: normalized,
+    }))
+  } catch {
+    // ignore
+  }
+  return normalized
+}
+
+function clampTrophies(wins: number, target: number): TrophyState {
+  const safeTarget = Number.isFinite(target) ? Math.max(1, Math.round(target)) : DEFAULT_WIN_TARGET
+  const safeWins = Number.isFinite(wins)
+    ? Math.max(0, Math.min(safeTarget, Math.round(wins)))
+    : 0
+  return { wins: safeWins, target: safeTarget }
+}
+
+function saveTrophyState(state: TrophyState): TrophyState {
+  const normalized = clampTrophies(state.wins, state.target)
+  try {
+    localStorage.setItem(TROPHY_STATE_STORAGE_KEY, JSON.stringify({
+      version: TROPHY_STATE_STORAGE_VERSION,
       state: normalized,
     }))
   } catch {
@@ -66,7 +95,40 @@ export function clearCurrentRunState(): void {
   try {
     localStorage.removeItem(SHOP_STATE_STORAGE_KEY)
     localStorage.removeItem(LIFE_STATE_STORAGE_KEY)
+    localStorage.removeItem(TROPHY_STATE_STORAGE_KEY)
   } catch {
     // ignore
   }
+}
+
+export function getWinTrophyState(defaultTarget = DEFAULT_WIN_TARGET): TrophyState {
+  try {
+    const raw = localStorage.getItem(TROPHY_STATE_STORAGE_KEY)
+    if (!raw) return saveTrophyState({ wins: 0, target: defaultTarget })
+    const parsed = JSON.parse(raw) as {
+      version?: unknown
+      state?: { wins?: unknown; target?: unknown }
+    } | null
+    if (!parsed || parsed.version !== TROPHY_STATE_STORAGE_VERSION || !parsed.state) {
+      return saveTrophyState({ wins: 0, target: defaultTarget })
+    }
+    const wins = Number(parsed.state.wins)
+    const target = Number(parsed.state.target)
+    return saveTrophyState(clampTrophies(wins, Number.isFinite(target) ? target : defaultTarget))
+  } catch {
+    return saveTrophyState({ wins: 0, target: defaultTarget })
+  }
+}
+
+export function setWinTrophyState(wins: number, target = DEFAULT_WIN_TARGET): TrophyState {
+  return saveTrophyState({ wins, target })
+}
+
+export function addWinTrophy(defaultTarget = DEFAULT_WIN_TARGET): TrophyState {
+  const state = getWinTrophyState(defaultTarget)
+  return saveTrophyState({ wins: state.wins + 1, target: state.target })
+}
+
+export function resetWinTrophyState(target = DEFAULT_WIN_TARGET): TrophyState {
+  return saveTrophyState({ wins: 0, target })
 }

@@ -22,6 +22,7 @@ export interface BattleSnapshotBundle {
   day: number
   activeColCount: number
   createdAtMs: number
+  showBasicSynthesisGuide?: boolean
   entities: BattleSnapshotEntity[]
 }
 
@@ -32,6 +33,7 @@ export function setBattleSnapshot(snapshot: BattleSnapshotBundle): void {
     day: snapshot.day,
     activeColCount: snapshot.activeColCount,
     createdAtMs: snapshot.createdAtMs,
+    showBasicSynthesisGuide: snapshot.showBasicSynthesisGuide === true,
     entities: snapshot.entities.map((it) => ({ ...it })),
   }
 }
@@ -42,6 +44,7 @@ export function getBattleSnapshot(): BattleSnapshotBundle | null {
     day: currentSnapshot.day,
     activeColCount: currentSnapshot.activeColCount,
     createdAtMs: currentSnapshot.createdAtMs,
+    showBasicSynthesisGuide: currentSnapshot.showBasicSynthesisGuide === true,
     entities: currentSnapshot.entities.map((it) => ({ ...it })),
   }
 }

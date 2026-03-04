@@ -16,6 +16,10 @@ export interface ItemStatBadgeOverride {
   multicast?: number
 }
 
+export interface ItemStatBadgeTextOptions {
+  archetypeSuffix?: string
+}
+
 const STAT_ORDER: StatKey[] = ['damage', 'shield', 'heal', 'burn', 'poison']
 
 const ARCHETYPE_ORDER: ArchetypeKey[] = ['warrior', 'archer', 'assassin']
@@ -71,11 +75,17 @@ export function createItemStatBadges(
   maxWidth: number,
   override?: ItemStatBadgeOverride,
   mode: ItemBadgeDisplayMode = 'stats',
+  textOptions?: ItemStatBadgeTextOptions,
 ): Container {
   const isArchetypeMode = mode === 'archetype'
   const archetypes = isArchetypeMode ? parseArchetypes(item) : []
+  const archetypeSuffix = (textOptions?.archetypeSuffix ?? '').trim()
   const badges = isArchetypeMode
-    ? archetypes.map((k) => ({ key: k, text: getArchetypeLabel(k), color: getArchetypeColor(k) }))
+    ? archetypes.map((k) => ({
+      key: k,
+      text: `${getArchetypeLabel(k)}${archetypeSuffix}`,
+      color: getArchetypeColor(k),
+    }))
     : STAT_ORDER
       .map((k) => ({ key: k, value: override?.[k] ?? item[k] }))
       .filter((it) => Number.isFinite(it.value) && it.value > 0)

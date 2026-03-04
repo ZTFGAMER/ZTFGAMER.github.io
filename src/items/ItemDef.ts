@@ -10,6 +10,8 @@ export interface SkillText {
 export type ItemTier = 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
 export type ItemSizeRaw = 'Small / 小型' | 'Medium / 中型' | 'Large / 大型'
 export type ItemSizeNorm = '1x1' | '2x1' | '3x1'
+export type SkillArchetype = 'warrior' | 'archer' | 'assassin' | 'utility'
+export type SkillTier = 'bronze' | 'silver' | 'gold'
 
 export interface ItemDef {
   id:               string
@@ -100,6 +102,56 @@ export interface GameConfig {
   sellMinDaysByRarity: number[]    // 各品质最早可出售的 Day
   itemVisualScale:     number      // 装备显示缩放（5/6）
   shopTierChancesByDay: number[][] // Day -> [Bronze, Silver, Gold, Diamond] 百分比
+  gameplayModeValues?: {
+    compactMode?: {
+      enabled?: boolean
+      itemSet?: 'default' | 'compact'
+      cellScale?: number
+      cellHeightRatio?: number
+      squareCell?: boolean
+      backpackRows?: number
+      battleCols?: number
+      mediumValueScale?: number
+    }
+    enemyDraftLab?: {
+      enabled?: boolean
+      sameArchetypeBias?: number
+      dailyItemCount?: number[]
+      dailyAvgQuality?: number[]
+    }
+  }
+  runRules?: {
+    trophyWinsToFinalVictory?: number
+    muteLogsInMobileRelease?: boolean
+  }
+  skillSystem?: {
+    triggerDaysByTier: {
+      bronze: number[]
+      silver: number[]
+      gold: number[]
+    }
+    chooseCount: number
+    pools: {
+      bronze: Array<{
+        id: string
+        name: string
+        archetype: SkillArchetype
+        desc: string
+      }>
+      silver: Array<{
+        id: string
+        name: string
+        archetype: SkillArchetype
+        desc: string
+      }>
+      gold: Array<{
+        id: string
+        name: string
+        archetype: SkillArchetype
+        desc: string
+      }>
+    }
+  }
   shopRules?: {
     ammoSupportRequiresAmmoOwned?: boolean
     ammoSupportItemNames?: string[]
@@ -119,6 +171,7 @@ export interface GameConfig {
       }
       ownedWeightMultiplier?: number
     }>
+    quickBuyLevelChancesByDay?: number[][]
     quickBuyPriceMultiplier?: {
       [tierStar: string]: number
     }
@@ -133,6 +186,30 @@ export interface GameConfig {
       Silver?: number
       Gold?: number
       Diamond?: number
+    }
+    initialUnlocksByStarterClass?: {
+      swordsman?: string[]
+      archer?: string[]
+      assassin?: string[]
+    }
+    unlockStartingTierWeights?: {
+      Bronze?: number
+      Silver?: number
+      Gold?: number
+      Diamond?: number
+    }
+    crossIdSynthesisSameArchetypeChance?: number
+    minTierDropWeightsByResultLevel?: {
+      Bronze?: number[]
+      Silver?: number[]
+      Gold?: number[]
+      Diamond?: number[]
+    }
+    synthesisMinTierDropWeightsByResultLevel?: {
+      Bronze?: number[]
+      Silver?: number[]
+      Gold?: number[]
+      Diamond?: number[]
     }
     sellFixedPriceBySize?: {
       small?: number[]
@@ -171,13 +248,15 @@ export interface GameConfig {
   combatRuntime: {
     tickMs: number
     fatigueStartMs: number
-    fatigueIntervalMs: number
-    fatigueDamagePctPerInterval: number
-    fatigueDamageFixedPerInterval: number
-    fatigueDamagePctRampPerInterval: number
-    fatigueDamageFixedRampPerInterval: number
+    fatigueTickMs: number
+    fatigueBaseValue: number
+    fatigueDoubleEveryMs: number
+    fatigueIntervalMs?: number
+    fatigueDamagePctPerInterval?: number
+    fatigueDamageFixedPerInterval?: number
+    fatigueDamagePctRampPerInterval?: number
+    fatigueDamageFixedRampPerInterval?: number
     timeoutMs?: number
-    fatigueTickMs?: number
     fatigueDamagePctPerSec?: number
     critMultiplier: number
     burnTickMs: number

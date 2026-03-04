@@ -19,11 +19,24 @@ import type { ItemSizeNorm, PlacedItem } from './GridSystem'
 import { getAllItems, getConfig as getGameConfig } from '@/core/DataLoader'
 import { getItemIconUrl } from '@/core/assetPath'
 import { getTierColor } from '@/config/colorPalette'
-import { createItemStatBadges, type ItemBadgeDisplayMode, type ItemStatBadgeOverride } from '@/ui/itemStatBadges'
+import {
+  createItemStatBadges,
+  type ItemBadgeDisplayMode,
+  type ItemStatBadgeOverride,
+} from '@/ui/itemStatBadges'
 import { resolveItemTierBaseStats } from '@/items/itemTierStats'
 
-export const CELL_SIZE = 128
-export const CELL_HEIGHT = CELL_SIZE * 2
+const gameplayMode = getGameConfig().gameplayModeValues?.compactMode
+const compactEnabled = gameplayMode?.enabled === true
+const cellScale = compactEnabled ? Math.max(0.25, Number(gameplayMode?.cellScale ?? 0.5)) : 1
+const configuredRatio = Number(gameplayMode?.cellHeightRatio)
+const cellHeightRatio = compactEnabled
+  ? (Number.isFinite(configuredRatio) && configuredRatio > 0
+    ? configuredRatio
+    : (gameplayMode?.squareCell !== false ? 1 : 2))
+  : 2
+export const CELL_SIZE = Math.round(128 * cellScale)
+export const CELL_HEIGHT = Math.round(CELL_SIZE * cellHeightRatio)
 
 // ---- 尺寸表 ----
 
@@ -34,6 +47,11 @@ const SIZE_PX: Record<ItemSizeNorm, { pw: number; ph: number }> = {
 }
 
 const MULTI_ROW_PICKUP_BOTTOM_TRIM = Math.round(CELL_SIZE * 0.32)
+const UPGRADE_ARROW_SCALE = 0.5
+const UPGRADE_ARROW_BASE_W = 40
+const UPGRADE_ARROW_BASE_H = 48
+const UPGRADE_ARROW_HALF_W = (UPGRADE_ARROW_BASE_W * UPGRADE_ARROW_SCALE) / 2
+const UPGRADE_ARROW_HALF_H = (UPGRADE_ARROW_BASE_H * UPGRADE_ARROW_SCALE) / 2
 
 /** 每种尺寸占用的格子数 [cols, rows] */
 const SIZE_DIMS: Record<ItemSizeNorm, [number, number]> = {
@@ -56,6 +74,17 @@ function getTier(defId: string, tierOverride?: string): string {
   return tierByDefId.get(defId) ?? 'Bronze'
 }
 
+function getBaseTier(defId: string): string {
+  if (!tierByDefId) {
+    tierByDefId = new Map<string, string>()
+    for (const item of getAllItems()) {
+      const tier = item.starting_tier.split('/')[0]?.trim() ?? 'Bronze'
+      tierByDefId.set(item.id, tier)
+    }
+  }
+  return tierByDefId.get(defId) ?? 'Bronze'
+}
+
 function parseTierStar(tierRaw?: string): number {
   if (!tierRaw) return 1
   const m = tierRaw.match(/#(\d+)/)
@@ -67,10 +96,10 @@ function parseTierStar(tierRaw?: string): number {
 function tierToLevelLabel(tierRaw?: string): string {
   const tier = getTier('', tierRaw)
   const star = tier === 'Diamond' ? 1 : parseTierStar(tierRaw)
-  if (tier === 'Bronze') return `Lv${star}`
-  if (tier === 'Silver') return `Lv${star + 2}`
-  if (tier === 'Gold') return `Lv${star + 4}`
-  return 'Lv7'
+  if (tier === 'Bronze') return String(star)
+  if (tier === 'Silver') return String(star + 2)
+  if (tier === 'Gold') return String(star + 4)
+  return '7'
 }
 
 // ---- ItemNode ----
@@ -85,6 +114,7 @@ interface ItemNode {
   ammoBadgeBg: Graphics
   ammoIconText: Text
   ammoText: Text
+  starBadgeBg: Graphics
   starText: Text
   upgradeArrow: Graphics
   upgradeBaseY: number
@@ -102,14 +132,13 @@ interface ItemNode {
   origY:      number
 }
 
-function parseAvailableTiers(raw: string): string[] {
-  const s = (raw || '').trim()
-  if (!s) return ['Bronze', 'Silver', 'Gold', 'Diamond']
-  const out = s
-    .split('/')
-    .map((v) => parseTierName(v.trim()))
-    .filter((v): v is string => Boolean(v))
-  return out.length > 0 ? out : ['Bronze', 'Silver', 'Gold', 'Diamond']
+function getArchetypeBadgeByDefId(defId: string): { label: string; color: number } {
+  const item = getAllItems().find((it) => it.id === defId)
+  const tags = `${item?.tags ?? ''}`
+  if (tags.includes('战士')) return { label: '战', color: 0xcc4b4b }
+  if (tags.includes('弓手')) return { label: '弓', color: 0x34a853 }
+  if (tags.includes('刺客')) return { label: '刺', color: 0x4b7bcc }
+  return { label: '?', color: 0x7b6ad2 }
 }
 
 function parseTierName(raw: string): string {
@@ -119,11 +148,27 @@ function parseTierName(raw: string): string {
   return 'Bronze'
 }
 
-function tierIndexFromRaw(item: { available_tiers: string }, tierRaw?: string): number {
-  const tiers = parseAvailableTiers(item.available_tiers)
-  const tier = parseTierName(tierRaw ?? 'Bronze')
-  const baseIdx = Math.max(0, tiers.indexOf(tier))
-  return baseIdx + (parseTierStar(tierRaw) - 1)
+function tierScoreFromRaw(raw?: string): number {
+  const tier = parseTierName(raw ?? 'Bronze')
+  const star = tier === 'Diamond' ? 1 : parseTierStar(raw)
+  if (tier === 'Bronze') return star === 2 ? 2 : 1
+  if (tier === 'Silver') return star === 2 ? 4 : 3
+  if (tier === 'Gold') return star === 2 ? 6 : 5
+  return 7
+}
+
+function startTierScore(raw?: string): number {
+  const tier = parseTierName(raw ?? 'Bronze')
+  if (tier === 'Silver') return 3
+  if (tier === 'Gold') return 5
+  if (tier === 'Diamond') return 7
+  return 1
+}
+
+function tierIndexFromRaw(item: { available_tiers: string; starting_tier?: string }, tierRaw?: string): number {
+  const score = tierScoreFromRaw(tierRaw)
+  const start = startTierScore(item.starting_tier)
+  return Math.max(0, score - start)
 }
 
 function pickTierSeriesValue(series: string, tierIndex: number): number {
@@ -176,9 +221,11 @@ export class GridZone extends Container {
   private statBadgeOffsetY = 0
   private tierStarFontSize = getGameConfig().textSizes.itemTierStar
   private tierStarStrokeWidth = 2
+  private tierStarOffsetX = 0
+  private tierStarOffsetY = 0
+  private ammoBadgeOffsetY = 0
   private upgradeHintIds = new Set<string>()
   private upgradeHintTick: (() => void) | null = null
-  private upgradeHintT = 0
 
   // 当前被拖拽的节点（状态追踪；位置由 DragController/dragLayer 管理）
   dragNode: ItemNode | null = null
@@ -414,12 +461,14 @@ export class GridZone extends Container {
         stroke: { color: 0xffffff, width: this.tierStarStrokeWidth },
       },
     })
+    const starBadgeBg = new Graphics()
+    starBadgeBg.eventMode = 'none'
+    this.badgeLayer.addChild(starBadgeBg)
     starText.eventMode = 'none'
     this.badgeLayer.addChild(starText)
 
     const upgradeArrow = new Graphics()
     upgradeArrow.visible = false
-    // 2x 放大箭头（40x48）
     upgradeArrow.moveTo(0, 24)
     upgradeArrow.lineTo(20, 0)
     upgradeArrow.lineTo(40, 24)
@@ -429,6 +478,7 @@ export class GridZone extends Container {
     upgradeArrow.lineTo(12, 24)
     upgradeArrow.fill({ color: 0xffffff, alpha: 0.95 })
     upgradeArrow.stroke({ color: 0x1a1a2a, width: 3, alpha: 0.85 })
+    upgradeArrow.scale.set(UPGRADE_ARROW_SCALE)
 
     // 占位 Sprite（异步替换为真实图片）
     const sprite = new Sprite(Texture.WHITE)
@@ -448,6 +498,7 @@ export class GridZone extends Container {
       ammoBadgeBg,
       ammoIconText,
       ammoText,
+      starBadgeBg,
       starText,
       upgradeArrow,
       upgradeBaseY: 0,
@@ -502,6 +553,8 @@ export class GridZone extends Container {
     node.statBadges.destroy({ children: true })
     if (node.ammoBadge.parent) node.ammoBadge.parent.removeChild(node.ammoBadge)
     node.ammoBadge.destroy({ children: true })
+    if (node.starBadgeBg.parent) node.starBadgeBg.parent.removeChild(node.starBadgeBg)
+    node.starBadgeBg.destroy()
     if (node.starText.parent) node.starText.parent.removeChild(node.starText)
     node.starText.destroy()
     if (this.dragNode === node) this.dragNode = null
@@ -532,6 +585,7 @@ export class GridZone extends Container {
     node.selectedG.visible = false
     node.statBadges.visible = false
     node.ammoBadge.visible = false
+    node.starBadgeBg.visible = false
     node.starText.visible = false
     node.upgradeArrow.visible = false
 
@@ -567,7 +621,8 @@ export class GridZone extends Container {
     node.bg.visible = true
     node.selectedG.visible = this.selectedId === instanceId
     node.statBadges.visible = true
-    node.starText.visible = true
+    node.starBadgeBg.visible = this.statBadgeMode !== 'archetype'
+    node.starText.visible = this.statBadgeMode !== 'archetype'
     node.upgradeArrow.visible = this.upgradeHintIds.has(instanceId)
     this.updateNodeAmmoBadge(node)
     this.updateStatBadgePosition(node)
@@ -592,7 +647,8 @@ export class GridZone extends Container {
     node.bg.visible = true
     node.selectedG.visible = this.selectedId === instanceId
     node.statBadges.visible = true
-    node.starText.visible = true
+    node.starBadgeBg.visible = this.statBadgeMode !== 'archetype'
+    node.starText.visible = this.statBadgeMode !== 'archetype'
     node.upgradeArrow.visible = this.upgradeHintIds.has(instanceId)
     this.updateNodeAmmoBadge(node)
 
@@ -615,6 +671,8 @@ export class GridZone extends Container {
     node?.statBadges.destroy({ children: true })
     if (node?.ammoBadge.parent) node.ammoBadge.parent.removeChild(node.ammoBadge)
     node?.ammoBadge.destroy({ children: true })
+    if (node?.starBadgeBg.parent) node.starBadgeBg.parent.removeChild(node.starBadgeBg)
+    node?.starBadgeBg.destroy()
     if (node?.starText.parent) node.starText.parent.removeChild(node.starText)
     node?.starText.destroy()
     this.nodes.delete(instanceId)
@@ -728,9 +786,30 @@ export class GridZone extends Container {
   }
 
   setTierStarStrokeWidth(_width: number): void {
-    this.tierStarStrokeWidth = 2
+    this.tierStarStrokeWidth = Math.max(0, Math.round(_width))
     for (const node of this.nodes.values()) {
       this.redrawItemBorder(node)
+    }
+  }
+
+  setTierStarOffsetX(offsetX: number): void {
+    this.tierStarOffsetX = Math.round(offsetX)
+    for (const node of this.nodes.values()) {
+      this.updateStatBadgePosition(node)
+    }
+  }
+
+  setTierStarOffsetY(offsetY: number): void {
+    this.tierStarOffsetY = Math.round(offsetY)
+    for (const node of this.nodes.values()) {
+      this.updateStatBadgePosition(node)
+    }
+  }
+
+  setAmmoBadgeOffsetY(offsetY: number): void {
+    this.ammoBadgeOffsetY = Math.round(offsetY)
+    for (const node of this.nodes.values()) {
+      this.updateStatBadgePosition(node)
     }
   }
 
@@ -787,12 +866,13 @@ export class GridZone extends Container {
   }
 
   setUpgradeHints(instanceIds: string[]): void {
-    this.upgradeHintIds = new Set(instanceIds)
+    void instanceIds
+    // 用户要求：关闭可升级箭头显示
+    this.upgradeHintIds = new Set()
     for (const [id, node] of this.nodes) {
       node.upgradeArrow.visible = this.upgradeHintIds.has(id)
     }
-    if (this.upgradeHintIds.size > 0 && !this.upgradeHintTick) this.startUpgradeHintAnim()
-    if (this.upgradeHintIds.size === 0 && this.upgradeHintTick) this.stopUpgradeHintAnim()
+    if (this.upgradeHintTick) this.stopUpgradeHintAnim()
   }
 
   private redrawItemBorder(node: ItemNode): void {
@@ -809,7 +889,7 @@ export class GridZone extends Container {
 
   private applyNodeVisualLayout(node: ItemNode): void {
     const { pw, ph } = SIZE_PX[node.size]
-    const tier = getTier(node.defId, node.tier)
+    const tier = getBaseTier(node.defId)
     const tierColor = getTierColor(tier)
     const frameInset = this.getItemFrameInset()
     const frameW = Math.max(1, pw - frameInset * 2)
@@ -835,24 +915,39 @@ export class GridZone extends Container {
 
     if (node.sprite) {
       const spriteInset = this.getItemSpriteInset(frameInset)
-      node.sprite.x = spriteInset
-      node.sprite.y = spriteInset
-      node.sprite.width = Math.max(1, pw - spriteInset * 2)
-      node.sprite.height = Math.max(1, ph - spriteInset * 2)
+      const baseCellInner = Math.max(1, CELL_SIZE - spriteInset * 2)
+      const spriteSide = Math.max(1, Math.min(frameW, baseCellInner))
+      node.sprite.width = spriteSide
+      node.sprite.height = spriteSide
+      node.sprite.x = frameInset + (frameW - spriteSide) / 2
+      node.sprite.y = frameInset + (frameH - spriteSide) / 2
     }
 
     this.updateNodeStatBadges(node)
     this.updateNodeAmmoBadge(node)
     this.updateStatBadgePosition(node)
 
-    node.starText.text = tierToLevelLabel(node.tier)
+    const levelText = tierToLevelLabel(node.tier)
+    const arch = getArchetypeBadgeByDefId(node.defId)
+    node.starText.text = `${arch.label}${levelText}`
     node.starText.style.fill = 0xffffff
-    node.starText.style.stroke = { color: 0x000000, width: this.tierStarStrokeWidth }
-    node.starText.style.fontSize = this.tierStarFontSize
+    node.starText.style.stroke = { color: 0x000000, width: 2 }
+    node.starText.style.fontSize = this.statBadgeFontSize
+    node.starBadgeBg.clear()
+    const padX = 8
+    const padY = 3
+    const badgeW = Math.max(44, node.starText.width + padX * 2)
+    const badgeH = Math.max(16, node.starText.height + padY * 2)
+    node.starBadgeBg.roundRect(0, 0, badgeW, badgeH, 6)
+    node.starBadgeBg.fill({ color: arch.color, alpha: 0.95 })
+    node.starBadgeBg.roundRect(0, 0, badgeW, badgeH, 6)
+    node.starBadgeBg.stroke({ color: 0x000000, width: 2, alpha: 0.88 })
+    node.starBadgeBg.visible = this.statBadgeMode !== 'archetype'
+    node.starText.visible = this.statBadgeMode !== 'archetype'
 
     // 箭头位于物品可视区域中心
-    node.upgradeArrow.x = frameInset + frameW / 2 - 20
-    node.upgradeBaseY = frameInset + frameH / 2 - 24
+    node.upgradeArrow.x = frameInset + frameW / 2 - UPGRADE_ARROW_HALF_W
+    node.upgradeBaseY = frameInset + frameH / 2 - UPGRADE_ARROW_HALF_H
     node.upgradeArrow.y = node.upgradeBaseY
 
     if (node.selectedG.visible) this.redrawSelection(node)
@@ -878,6 +973,9 @@ export class GridZone extends Container {
           ...(node.statOverride ?? {}),
         },
         this.statBadgeMode,
+        {
+          archetypeSuffix: this.statBadgeMode === 'archetype' ? tierToLevelLabel(node.tier) : '',
+        },
       )
       node.statBadges.addChild(badges)
     }
@@ -885,6 +983,10 @@ export class GridZone extends Container {
   }
 
   private updateNodeAmmoBadge(node: ItemNode): void {
+    if (this.statBadgeMode === 'archetype') {
+      node.ammoBadge.visible = false
+      return
+    }
     const itemDef = getAllItems().find((it) => it.id === node.defId)
     if (!itemDef) {
       node.ammoBadge.visible = false
@@ -921,21 +1023,6 @@ export class GridZone extends Container {
     node.ammoBadgeBg.clear()
     node.ammoBadgeBg.roundRect(0, 0, Math.max(24, w), Math.max(16, h), 7)
     node.ammoBadgeBg.fill({ color: 0x000000, alpha: 0.45 })
-  }
-
-  private startUpgradeHintAnim(): void {
-    this.upgradeHintT = 0
-    this.upgradeHintTick = () => {
-      this.upgradeHintT += 0.08
-      const wave = (Math.sin(this.upgradeHintT) + 1) / 2
-      for (const id of this.upgradeHintIds) {
-        const node = this.nodes.get(id)
-        if (!node) continue
-        node.upgradeArrow.alpha = 0.55 + wave * 0.45
-        node.upgradeArrow.y = node.upgradeBaseY + Math.sin(this.upgradeHintT * 1.6) * 8
-      }
-    }
-    Ticker.shared.add(this.upgradeHintTick)
   }
 
   private stopUpgradeHintAnim(): void {
@@ -1067,13 +1154,16 @@ export class GridZone extends Container {
     const badgeYOffset = this.statBadgeMode === 'archetype' ? 14 : 0
     node.statBadges.x = node.container.x + pw / 2
     node.statBadges.y = node.container.y + this.statBadgeOffsetY + badgeYOffset
-    node.starText.x = node.container.x + frameInset + frameW / 2 - node.starText.width / 2
-    node.starText.y = node.container.y + frameInset + frameH - node.starText.height - 8
-    const ammoLift = node.size === '1x1' ? 22 : 14
-    const ammoDefaultY = node.container.y + frameInset + frameH - node.ammoBadge.height - 6 - ammoLift
-    const ammoMaxY = node.starText.y - node.ammoBadge.height - 4
-    node.ammoBadge.x = node.container.x + frameInset + frameW - node.ammoBadge.width - 6
-    node.ammoBadge.y = Math.min(ammoDefaultY, ammoMaxY)
+    const badgeW = node.starBadgeBg.width
+    const badgeH = node.starBadgeBg.height
+    node.starBadgeBg.x = node.container.x + frameInset + frameW / 2 - badgeW / 2 + this.tierStarOffsetX
+    node.starBadgeBg.y = node.container.y + frameInset + frameH - 1 + this.tierStarOffsetY
+    node.starText.x = node.starBadgeBg.x + (badgeW - node.starText.width) / 2
+    node.starText.y = node.starBadgeBg.y + (badgeH - node.starText.height) / 2
+    const ammoBaseY = node.container.y + frameInset + frameH - node.ammoBadge.height - 4 + this.ammoBadgeOffsetY
+    const ammoMaxY = node.starBadgeBg.y - node.ammoBadge.height - 4
+    node.ammoBadge.x = node.container.x + frameInset + (frameW - node.ammoBadge.width) / 2
+    node.ammoBadge.y = node.starBadgeBg.visible ? Math.min(ammoBaseY, ammoMaxY) : ammoBaseY
   }
 
 }

@@ -34,6 +34,14 @@ export interface ItemInfoRuntimeOverride {
   ammoMax?: number
 }
 
+export interface ItemInfoCustomDisplay {
+  overrideName?: string
+  lines?: string[]
+  suppressStats?: boolean
+  hideTierBadge?: boolean
+  useQuestionIcon?: boolean
+}
+
 function parseTierName(raw: string): string {
   for (const t of TIER_ORDER) {
     if (raw.includes(t)) return t
@@ -48,31 +56,41 @@ function parseTierStar(raw: string): 1 | 2 {
   return 2
 }
 
+function tierScoreFromRaw(raw: string): number {
+  const tier = parseTierName(raw)
+  const star = tier === 'Diamond' ? 1 : parseTierStar(raw)
+  if (tier === 'Bronze') return star === 2 ? 2 : 1
+  if (tier === 'Silver') return star === 2 ? 4 : 3
+  if (tier === 'Gold') return star === 2 ? 6 : 5
+  return 7
+}
+
+function startTierScoreFromItem(item: ItemDef): number {
+  const tier = parseTierName(item.starting_tier || 'Bronze')
+  if (tier === 'Silver') return 3
+  if (tier === 'Gold') return 5
+  if (tier === 'Diamond') return 7
+  return 1
+}
+
 function formatTierLabel(rawTier: string): string {
   const tier = parseTierName(rawTier) || 'Bronze'
   const star = tier === 'Diamond' ? 1 : parseTierStar(rawTier)
-  if (tier === 'Bronze') return `Lv${star}`
-  if (tier === 'Silver') return `Lv${star + 2}`
-  if (tier === 'Gold') return `Lv${star + 4}`
-  return 'Lv7'
-}
-
-function parseAvailableTiers(raw: string): string[] {
-  const s = (raw || '').trim()
-  if (!s) return [...TIER_ORDER]
-  const out = s
-    .split('/')
-    .map(v => parseTierName(v.trim()))
-    .filter((v): v is string => Boolean(v))
-  const uniq = Array.from(new Set(out))
-  return uniq.length > 0 ? uniq : [...TIER_ORDER]
+  if (tier === 'Bronze') return `青铜Lv${star}`
+  if (tier === 'Silver') return `白银Lv${star + 2}`
+  if (tier === 'Gold') return `黄金Lv${star + 4}`
+  return '钻石Lv7'
 }
 
 function pickTierValue(series: string, tierIndex: number): string {
   const parts = series.split(/[\/|]/).map(v => v.trim()).filter(Boolean)
   if (parts.length <= 1) return series
   const idx = Math.max(0, Math.min(parts.length - 1, tierIndex))
-  return parts[idx] ?? parts[0] ?? series
+  const picked = parts[idx] ?? parts[0] ?? series
+  const head = parts[0] ?? ''
+  const headSign = head.match(/^[+\-]/)?.[0] ?? ''
+  if (headSign && !/^[+\-]/.test(picked)) return `${headSign}${picked}`
+  return picked
 }
 
 function formatDescByTier(raw: string, tierIndex: number): string {
@@ -80,18 +98,12 @@ function formatDescByTier(raw: string, tierIndex: number): string {
   return raw.replace(/\+?\d+(?:\.\d+)?(?:[\/|]\+?\d+(?:\.\d+)?)+/g, (m) => pickTierValue(m, tierIndex))
 }
 
-function formatDescDiffByTier(raw: string, fromTierIndex: number, toTierIndex: number): { text: string; changed: boolean } {
-  let changed = false
-  const text = raw.replace(/\+?\d+(?:\.\d+)?(?:[\/|]\+?\d+(?:\.\d+)?)+/g, (m) => {
+function formatDescArrowByTier(raw: string, fromTierIndex: number, toTierIndex: number): string {
+  return raw.replace(/\+?\d+(?:\.\d+)?(?:[\/|]\+?\d+(?:\.\d+)?)+/g, (m) => {
     const from = pickTierValue(m, fromTierIndex)
     const to = pickTierValue(m, toTierIndex)
-    if (from !== to) {
-      changed = true
-      return `${from}->${to}`
-    }
-    return to
+    return `${from}->${to}`
   })
-  return { text, changed }
 }
 
 function formatCooldownLine(item: ItemDef, tierIndex: number): string | null {
@@ -130,10 +142,11 @@ type SimpleStatEntry = {
 
 function speedTierText(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) return '无'
-  if (ms <= 2500) return '很快'
-  if (ms <= 4000) return '快'
-  if (ms <= 6500) return '中等'
-  if (ms <= 9000) return '慢'
+  if (ms <= 600) return '极快'
+  if (ms <= 1000) return '很快'
+  if (ms <= 1500) return '快'
+  if (ms <= 2500) return '中等'
+  if (ms <= 4000) return '慢'
   return '很慢'
 }
 
@@ -154,10 +167,20 @@ function extractSimpleStatEntries(
   }
 
   const damage = find(/(?:造成|攻击造成)\s*([+\-]?\d+(?:\.\d+)?)\s*伤害/)
+  const multicast = (() => {
+    if (typeof rt?.multicast === 'number') return Math.max(1, Math.round(rt.multicast))
+    for (const line of lines) {
+      const m = line.match(/(?:连发次数|连续发射)\s*[:：]?\s*(\d+)\s*次?/)
+      if (m?.[1]) return Math.max(1, Math.round(Number(m[1])))
+    }
+    if (Number.isFinite(item.multicast) && item.multicast > 1) return Math.max(1, Math.round(item.multicast))
+    return 1
+  })()
+
   if (damage) {
     out.push({
       label: '伤害',
-      value: damage,
+      value: multicast > 1 ? `${damage}*${multicast}` : damage,
       color: 0xff6b6b,
       icon: '✦',
     })
@@ -200,6 +223,29 @@ function extractSimpleStatEntries(
         icon: '⏱',
       })
     }
+  }
+
+  const ammoValue = (() => {
+    if (typeof rt?.ammoMax === 'number' && rt.ammoMax > 0) {
+      if (typeof rt.ammoCurrent === 'number') {
+        return `${Math.max(0, Math.round(rt.ammoCurrent))}/${Math.max(1, Math.round(rt.ammoMax))}`
+      }
+      return `${Math.max(1, Math.round(rt.ammoMax))}`
+    }
+    for (const line of lines) {
+      const m = line.match(/弹药\s*[:：]\s*(\d+(?:\s*\/\s*\d+)?)/)
+      if (m?.[1]) return m[1].replace(/\s+/g, '')
+    }
+    return null
+  })()
+
+  if (ammoValue) {
+    out.push({
+      label: '弹药',
+      value: ammoValue,
+      color: 0xffd36b,
+      icon: '◉',
+    })
   }
 
   return out
@@ -247,7 +293,9 @@ function applyRuntimeValueToLine(line: string, rt?: ItemInfoRuntimeOverride): st
   if (shield !== null) out = out.replace(/(?:获得|提供)\s*\d+(?:\.\d+)?\s*护盾/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${shield}`))
   if (burn !== null) out = out.replace(/造成\s*\d+(?:\.\d+)?\s*灼烧/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${burn}`))
   if (poison !== null) out = out.replace(/造成\s*\d+(?:\.\d+)?\s*剧毒/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${poison}`))
-  if (multicast !== null) out = out.replace(/(?:连续发射|攻击次数\+)\s*\d+(?:\.\d+)?\s*次/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${multicast}`))
+  if (multicast !== null) {
+    out = out.replace(/(?:连续发射|连发次数[:：]?|攻击次数\+)\s*\d+(?:\.\d+)?\s*次?/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${multicast}`))
+  }
   if (typeof rt.ammoMax === 'number') {
     const ammoText = typeof rt.ammoCurrent === 'number'
       ? `${Math.max(0, Math.round(rt.ammoCurrent))}/${Math.max(0, Math.round(rt.ammoMax))}`
@@ -270,6 +318,7 @@ export class SellPopup extends Container {
   private panel:   Container      // 弹窗主体
   private panelBg: Graphics
   private iconSp:  Sprite
+  private iconQuestionT: Text
   private iconFrame: Graphics
   private nameT:   Text
   private tierBadgeBg: Graphics
@@ -286,6 +335,7 @@ export class SellPopup extends Container {
   private lastUpgradeFromTier: string | undefined = undefined
   private lastInfoMode: ItemInfoMode = 'detailed'
   private lastRuntimeOverride: ItemInfoRuntimeOverride | undefined = undefined
+  private lastCustomDisplay: ItemInfoCustomDisplay | undefined = undefined
   private textSize = { name: 22, tier: 14, cooldown: 16, priceCorner: 20, desc: 16, simpleDesc: 16 }
   private cornerRadius = 10
 
@@ -323,6 +373,20 @@ export class SellPopup extends Container {
     this.iconSp.y       = 0
     this.iconSp.alpha   = 0
     this.panel.addChild(this.iconSp)
+
+    this.iconQuestionT = new Text({
+      text: '?',
+      style: {
+        fontSize: 72,
+        fill: 0xe6ecff,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        stroke: { color: 0x000000, width: 4 },
+      },
+    })
+    this.iconQuestionT.anchor.set(0.5)
+    this.iconQuestionT.visible = false
+    this.panel.addChild(this.iconQuestionT)
 
     this.iconFrame = new Graphics()
     this.panel.addChild(this.iconFrame)
@@ -413,7 +477,7 @@ export class SellPopup extends Container {
     this.minH = Math.max(0, height)
     this.currentMinH = this.minH
     if (this.lastItem) {
-      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride)
+      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay)
     } else {
       this.redrawPanel(this.minH)
       this.setAnchor(0, this.anchorY)
@@ -423,7 +487,7 @@ export class SellPopup extends Container {
   setSmallMinHeight(height: number): void {
     this.minHSmall = Math.max(0, height)
     if (this.lastItem) {
-      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride)
+      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay)
     }
   }
 
@@ -444,19 +508,19 @@ export class SellPopup extends Container {
     this.tierBadgeT.style.fontSize = this.textSize.tier
     this.cooldownT.style.fontSize = this.textSize.cooldown
     this.priceT.style.fontSize = this.textSize.priceCorner
-    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride)
+    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay)
   }
 
   setCornerRadius(radius: number): void {
     this.cornerRadius = Math.max(0, radius)
-    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride)
+    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay)
   }
 
   setWidth(width: number): void {
     this.panelW = Math.max(POPUP_MIN_W, Math.min(this.canvasW, width))
     this.nameT.style.wordWrapWidth = this.panelW - 24
     if (this.lastItem) {
-      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride)
+      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay)
     } else {
       this.redrawPanel(POPUP_MIN_H)
       this.setAnchor(0, this.anchorY)
@@ -464,7 +528,7 @@ export class SellPopup extends Container {
   }
 
   /** 展示弹窗（需传入物品信息及出售价格） */
-  show(item: ItemDef, price: number, priceMode: 'sell' | 'buy' | 'none' = 'sell', tierOverride?: string, upgradeFromTier?: string, infoMode: ItemInfoMode = 'detailed', runtimeOverride?: ItemInfoRuntimeOverride): void {
+  show(item: ItemDef, price: number, priceMode: 'sell' | 'buy' | 'none' = 'sell', tierOverride?: string, upgradeFromTier?: string, infoMode: ItemInfoMode = 'detailed', runtimeOverride?: ItemInfoRuntimeOverride, customDisplay?: ItemInfoCustomDisplay): void {
     this.lastItem = item
     this.lastPrice = price
     this.lastPriceMode = priceMode
@@ -472,13 +536,14 @@ export class SellPopup extends Container {
     this.lastUpgradeFromTier = upgradeFromTier
     this.lastInfoMode = infoMode
     this.lastRuntimeOverride = runtimeOverride
+    this.lastCustomDisplay = customDisplay
     const cfg = getGameConfig()
     const visualScale = cfg.itemVisualScale
     const size = normalizeSize(item.size)
     const baseIconW = (size === '1x1' ? CELL_SIZE : size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3) * visualScale
-    const baseIconH = (CELL_SIZE * 2) * visualScale
-    const iconW = baseIconW * (2 / 3)
-    const iconH = baseIconH * (2 / 3)
+    const baseIconH = baseIconW
+    const iconW = baseIconW
+    const iconH = baseIconH
     this.currentMinH = size === '1x1' ? this.minHSmall : this.minH
 
     const pad = 16
@@ -487,17 +552,16 @@ export class SellPopup extends Container {
 
     const tierRaw = tierOverride ?? (parseTierName(item.starting_tier) || 'Bronze')
     const tier = parseTierName(tierRaw) || 'Bronze'
-    const tierStar = tier === 'Diamond' ? 1 : parseTierStar(tierRaw)
-    const tierColor = getTierColor(tier)
+    const baseTier = parseTierName(item.starting_tier || 'Bronze') || 'Bronze'
+    const tierColor = getTierColor(baseTier)
     const tierLabel = formatTierLabel(tierRaw)
-    const availableTiers = parseAvailableTiers(item.available_tiers)
-    const tierBaseIndex = Math.max(0, availableTiers.indexOf(tier))
-    const tierIndex = tierBaseIndex + (tierStar - 1)
+    const fromTierLabel = formatTierLabel(upgradeFromTier ?? tierRaw)
+    const startScore = startTierScoreFromItem(item)
+    const tierIndex = Math.max(0, tierScoreFromRaw(tierRaw) - startScore)
     const fromTier = parseTierName(upgradeFromTier ?? tierRaw) || tier
     const fromStar = fromTier === 'Diamond' ? 1 : parseTierStar(upgradeFromTier ?? tierRaw)
-    const fromTierIndexRaw = availableTiers.indexOf(fromTier)
-    const fromTierBaseIndex = fromTierIndexRaw >= 0 ? fromTierIndexRaw : tierBaseIndex
-    const fromTierIndex = fromTierBaseIndex + (fromStar - 1)
+    const fromRaw = fromTier === 'Diamond' ? 'Diamond' : `${fromTier}#${fromStar}`
+    const fromTierIndex = Math.max(0, tierScoreFromRaw(fromRaw) - startScore)
     const inUpgradePreview = Boolean(upgradeFromTier && fromTier !== tier)
     // 先更新字体，再计算布局
     this.nameT.style.fontSize  = this.textSize.name
@@ -505,7 +569,7 @@ export class SellPopup extends Container {
     this.cooldownT.style.fontSize = this.textSize.cooldown
     this.priceT.style.fontSize = this.textSize.priceCorner
 
-    this.nameT.text  = item.name_cn
+    this.nameT.text  = customDisplay?.overrideName?.trim() || item.name_cn
     this.priceT.text = ''
     this.priceT.visible = false
     const cooldownLine = (() => {
@@ -516,7 +580,7 @@ export class SellPopup extends Container {
       if (!inUpgradePreview) return formatCooldownLine(item, tierIndex)
       const oldSec = getCooldownSecText(item, fromTierIndex)
       const newSec = getCooldownSecText(item, tierIndex)
-      if (oldSec && newSec && oldSec !== newSec) return `间隔：${oldSec}秒 -> ${newSec}秒`
+      if (oldSec && newSec) return `间隔：${oldSec}秒 -> ${newSec}秒`
       return formatCooldownLine(item, tierIndex)
     })()
     this.cooldownT.text = cooldownLine ?? ''
@@ -529,8 +593,24 @@ export class SellPopup extends Container {
     const descGuideTiered = item.simple_desc_tiered?.trim() || undefined
 
     const statLines = skillLinesRaw.map((s) => applyRuntimeValueToLine(formatDescByTier(s, tierIndex), runtimeOverride))
-    const simpleStats = extractSimpleStatEntries(statLines, item, tierIndex, runtimeOverride, infoMode)
+    const simpleStats = customDisplay?.suppressStats
+      ? []
+      : (() => {
+        if (!inUpgradePreview) return extractSimpleStatEntries(statLines, item, tierIndex, runtimeOverride, infoMode)
+        const fromLines = skillLinesRaw.map((s) => applyRuntimeValueToLine(formatDescByTier(s, fromTierIndex), runtimeOverride))
+        const fromStats = extractSimpleStatEntries(fromLines, item, fromTierIndex, runtimeOverride, infoMode)
+        const toStats = extractSimpleStatEntries(statLines, item, tierIndex, runtimeOverride, infoMode)
+        const fromMap = new Map(fromStats.map((s) => [`${s.label}|${s.icon}`, s.value]))
+        return toStats.map((s) => {
+          const key = `${s.label}|${s.icon}`
+          const fromValue = fromMap.get(key) ?? s.value
+          return { ...s, value: `${fromValue}->${s.value}` }
+        })
+      })()
     const descLines = (() => {
+      if (customDisplay?.lines && customDisplay.lines.length > 0) {
+        return customDisplay.lines
+      }
       if (infoMode === 'simple') {
         return [
           formatSimpleGameplayLine(statLines, descGuideSimple),
@@ -548,23 +628,17 @@ export class SellPopup extends Container {
       }
 
       if (descGuideTiered) {
-        const diff = formatDescDiffByTier(descGuideTiered, fromTierIndex, tierIndex)
-        return diff.changed ? [diff.text] : ['（当前升级无数值变化）']
+        return [formatDescArrowByTier(descGuideTiered, fromTierIndex, tierIndex)]
       }
 
-      const changed = skillLinesRaw
-        .map((s) => formatDescDiffByTier(s, fromTierIndex, tierIndex))
-        .filter((v) => v.changed)
-        .map((v) => v.text)
-
-      return changed.length > 0 ? changed : ['（当前升级无数值变化）']
+      return skillLinesRaw.map((s) => formatDescArrowByTier(s, fromTierIndex, tierIndex))
     })()
 
     const isSimple = infoMode === 'simple'
 
     const frameX = pad
     const frameY = top
-    // 边框与图标一致，统一缩小到 2/3
+    // 边框与图标一致，按物品基础可视尺寸展示
     const frameW = iconW
     const frameH = iconH
 
@@ -573,7 +647,11 @@ export class SellPopup extends Container {
     this.iconSp.height = Math.max(1, frameH - iconInset * 2)
     this.iconSp.x = frameX + iconInset
     this.iconSp.y = frameY + iconInset
-    this.iconSp.visible = true
+    this.iconSp.visible = !customDisplay?.useQuestionIcon
+    this.iconQuestionT.visible = Boolean(customDisplay?.useQuestionIcon)
+    this.iconQuestionT.style.fontSize = Math.max(28, Math.round(frameH * 0.56))
+    this.iconQuestionT.x = frameX + frameW / 2
+    this.iconQuestionT.y = frameY + frameH / 2
 
     this.iconFrame.clear()
     this.iconFrame.roundRect(frameX, frameY, frameW, frameH, this.cornerRadius)
@@ -594,7 +672,7 @@ export class SellPopup extends Container {
     this.nameT.y = top
     this.nameT.visible = !isSimple
 
-    this.tierBadgeT.text = tierLabel
+    this.tierBadgeT.text = inUpgradePreview ? `${fromTierLabel}->${tierLabel}` : tierLabel
     const badgePadX = 10
     const badgePadY = 4
     const badgeW = this.tierBadgeT.width + badgePadX * 2
@@ -613,8 +691,9 @@ export class SellPopup extends Container {
       this.tierBadgeBg.fill({ color: tierColor, alpha: 0.92 })
       this.tierBadgeBg.stroke({ color: 0xffffff, width: 1, alpha: 0.5 })
     }
-    this.tierBadgeBg.visible = !isSimple
-    this.tierBadgeT.visible = !isSimple
+    const showTierBadge = !isSimple && !customDisplay?.hideTierBadge
+    this.tierBadgeBg.visible = showTierBadge
+    this.tierBadgeT.visible = showTierBadge
 
     // 描述区布局
     this.descCon.x = rightX
@@ -708,14 +787,16 @@ export class SellPopup extends Container {
     this.applyPanelPosition()
 
     // 异步加载图标
-    const url = getItemIconUrl(item.id)
-    this.iconSp.alpha = 0
-    Assets.load<Texture>(url).then(tex => {
-      this.iconSp.texture = tex
-      this.iconSp.alpha   = 1
-    }).catch((err) => {
-      console.warn('[SellPopup] 图标加载失败', url, err)
-    })
+    if (!customDisplay?.useQuestionIcon) {
+      const url = getItemIconUrl(item.id)
+      this.iconSp.alpha = 0
+      Assets.load<Texture>(url).then(tex => {
+        this.iconSp.texture = tex
+        this.iconSp.alpha   = 1
+      }).catch((err) => {
+        console.warn('[SellPopup] 图标加载失败', url, err)
+      })
+    }
 
     this.visible = true
   }

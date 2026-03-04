@@ -8,6 +8,7 @@ import type { GameConfig, ItemDef } from '@/items/ItemDef'
 // Vite 支持直接 import JSON（resolveJsonModule）
 import rawConfig   from '../../data/game_config.json'
 import rawItems    from '../../data/vanessa_items.json'
+import rawItemsCompact from '../../data/vanessa_items_compact.json'
 
 // ---- GameConfig ---- //
 // game_config.json 是一个数组，每条是一个 ConfigEntry
@@ -44,7 +45,10 @@ function extractConfig(entries: ConfigEntry[]): GameConfig {
     largeItemPrices:    get<number[]>('large_item_prices'),
     sellMinDaysByRarity:get<number[]>('sell_min_days_by_rarity'),
     itemVisualScale:    get<number>('item_visual_scale'),
-    shopTierChancesByDay:get<number[][]>('shop_tier_chances_by_day'),
+    shopTierChancesByDay:getOptional<number[][]>('shop_tier_chances_by_day') ?? [[100, 0, 0, 0]],
+    gameplayModeValues: getOptional<GameConfig['gameplayModeValues']>('gameplay_mode_values'),
+    runRules:           getOptional<GameConfig['runRules']>('run_rules'),
+    skillSystem:        getOptional<GameConfig['skillSystem']>('skill_system'),
     shopRules:          getOptional<GameConfig['shopRules']>('shop_rules'),
     textSizes:          get<GameConfig['textSizes']>('text_sizes'),
     combatRuntime:      get<GameConfig['combatRuntime']>('combat_runtime'),
@@ -199,7 +203,9 @@ export function getConfig(): GameConfig {
 
 export function getAllItems(): ItemDef[] {
   if (!_items) {
-    const all = rawItems as unknown as unknown[]
+    const mode = getConfig().gameplayModeValues?.compactMode
+    const useCompact = mode?.enabled === true && mode.itemSet === 'compact'
+    const all = (useCompact ? rawItemsCompact : rawItems) as unknown as unknown[]
     const out: ItemDef[] = []
     for (const raw of all) {
       const it = normalizeItem(raw)

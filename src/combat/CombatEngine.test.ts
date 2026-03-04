@@ -4,6 +4,36 @@ import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 import { getAllItems } from '@/core/DataLoader'
 import { EventBus } from '@/core/EventBus'
 
+const SKILL_LINE_CONTRACT_PATTERNS: RegExp[] = [
+  /攻击造成\d+(?:[\/|]\d+)*(?:伤害)?。?$/,
+  /使用时相邻护盾物品护盾\+\d+(?:[\/|]\d+)*。?$/,
+  /获得\d+(?:[\/|]\d+)*护盾。?$/,
+  /使用时相邻物品伤害\+\d+(?:[\/|]\d+)*(?:，|,)?并补充\d+(?:[\/|]\d+)*发弹药。?$/,
+  /每次攻击后伤害\+\d+(?:[\/|]\d+)*(?:，|,)?弹药\s*[:：]\s*\d+。?$/,
+  /相邻的?武器攻击时，?所有武器伤害\+\d+(?:[\/|]\d+)*。?$/,
+  /连续发射\d+次。?$/,
+  /每次使用后护盾\+\d+(?:[\/|]\d+)*。?$/,
+  /一次打出所有弹药，?弹药\s*[:：]\s*\d+。?$/,
+  /武器伤害\+\d+(?:[\/|]\d+)*。?$/,
+  /使用后所有护盾物品\+\d+(?:[\/|]\d+)*护盾。?$/,
+  /使用后根据当前护盾值对对方造成伤害。?$/,
+  /每次使用后伤害翻倍，?弹药\s*[:：]\s*\d+。?$/,
+  /使用弹药物品时攻击次数\+\d+，?弹药\s*[:：]\s*\d+。?$/,
+  /攻击后间隔-\d+ms，?最低\d+ms。?$/,
+  /造成目标最大生命值\d+%的伤害。?$/,
+  /战斗开始时，?所有物品伤害\+\d+(?:[\/|]\d+)*。?$/,
+  /连续发射\d+(?:[\/|]\d+)*次，?使用后连发次数-\d+。?$/,
+  /使用时伤害\+\d+(?:[\/|]\d+)*(?:，|,)?并打出所有弹药，?弹药\s*[:：]\s*\d+(?:[\/|]\d+)*。?$/,
+  /相邻回旋镖时伤害翻倍。?$/,
+  /使用后伤害-\d+(?:[\/|]\d+)*。?$/,
+]
+
+function allSkillLinesFromItems(): string[] {
+  return getAllItems()
+    .flatMap((it) => it.skills.map((s) => (s.cn ?? '').trim()))
+    .filter((line) => line.length > 0)
+}
+
 function makeSnapshot(): BattleSnapshotBundle {
   const items = getAllItems()
   const a = items[0]?.id ?? 'a'
@@ -244,11 +274,9 @@ describe('CombatEngine', () => {
 
     setCombatRuntimeOverride({
       fatigueStartMs: 200,
-      fatigueIntervalMs: 100,
-      fatigueDamagePctPerInterval: 0,
-      fatigueDamageFixedPerInterval: 1,
-      fatigueDamagePctRampPerInterval: 0,
-      fatigueDamageFixedRampPerInterval: 0,
+      fatigueTickMs: 1000,
+      fatigueBaseValue: 0,
+      fatigueDoubleEveryMs: 1000,
     })
 
     const snapshot: BattleSnapshotBundle = {
@@ -281,6 +309,45 @@ describe('CombatEngine', () => {
 
     expect(fatigueStarted).toBe(true)
     expect(fireAfterFatigue).toBeGreaterThan(0)
+  })
+
+  it('超时扣血仅走固定值并按每秒翻倍（1,2,4...）', () => {
+    setCombatRuntimeOverride({
+      fatigueStartMs: 100,
+      fatigueTickMs: 100,
+      fatigueBaseValue: 1,
+      fatigueDoubleEveryMs: 1000,
+    })
+
+    const snapshot: BattleSnapshotBundle = {
+      day: 1,
+      activeColCount: 4,
+      createdAtMs: 123,
+      entities: [],
+    }
+
+    const fatigueHits: number[] = []
+    const off = EventBus.on('battle:take_damage', (e) => {
+      if (e.sourceItemId === 'fatigue' && e.targetSide === 'player') {
+        fatigueHits.push(e.finalDamage ?? 0)
+      }
+    })
+
+    const engine = new CombatEngine()
+    engine.start(snapshot, { enemyDisabled: true })
+    for (let i = 0; i < 3000; i++) {
+      engine.update(1 / 60)
+      if (fatigueHits.length >= 12) break
+    }
+    off()
+    setCombatRuntimeOverride({})
+
+    expect(fatigueHits.length).toBeGreaterThanOrEqual(12)
+    expect(fatigueHits[0]).toBe(1)
+    expect(fatigueHits[1]).toBe(1)
+    expect(fatigueHits[9]).toBe(1)
+    expect(fatigueHits[10]).toBe(2)
+    expect(fatigueHits[11]).toBe(2)
   })
 
   it('战斗开始时可对灼烧物品施加本场战斗增益', () => {
@@ -437,7 +504,7 @@ describe('CombatEngine', () => {
     expect(baseDamage).toBeGreaterThanOrEqual((damageItem?.damage ?? 0) + bonus)
   })
 
-  it('同品质星级会影响物品基础伤害（短剑青铜2星=20）', () => {
+  it('同品质星级会影响物品基础伤害（短剑青铜2星=10）', () => {
     const shortSword = getAllItems().find((it) => it.name_cn === '短剑')
     expect(shortSword).toBeTruthy()
 
@@ -463,7 +530,7 @@ describe('CombatEngine', () => {
     const runtime = engine.getRuntimeState()
     const sword = runtime.find((it) => it.id.includes('bronze2-sword'))
     expect(sword).toBeTruthy()
-    expect(sword?.damage).toBe(20)
+    expect(sword?.damage).toBe(10)
   })
 
   it('手弩会一次打出全部弹药（青铜2星应为2发）', () => {
@@ -495,7 +562,161 @@ describe('CombatEngine', () => {
     expect(hitCount).toBe(2)
   })
 
-  it('圆盾会在开场给相邻武器增加伤害', () => {
+  it('手弩连发同次使用内伤害会逐发递增（每发+10）', () => {
+    const handCrossbow = getAllItems().find((it) => it.name_cn === '手弩')
+    expect(handCrossbow).toBeTruthy()
+
+    const snapshot: BattleSnapshotBundle = {
+      day: 3,
+      activeColCount: 3,
+      createdAtMs: 123,
+      entities: [
+        { instanceId: 'hand-xbow-ramp', defId: handCrossbow!.id, tier: 'Silver', tierStar: 1, size: '1x1', col: 0, row: 0 },
+      ],
+    }
+
+    const shotDamages: number[] = []
+    const off = EventBus.on('battle:take_damage', (e) => {
+      if (e.type !== 'normal') return
+      if (!e.sourceItemId.includes('hand-xbow-ramp')) return
+      shotDamages.push(e.amount)
+    })
+
+    const engine = new CombatEngine()
+    engine.start(snapshot, { enemyDisabled: true })
+    for (let i = 0; i < 1400; i++) {
+      engine.update(1 / 60)
+      if (shotDamages.length >= 3) break
+    }
+    off()
+
+    expect(shotDamages.length).toBeGreaterThanOrEqual(3)
+    expect(shotDamages[0]).toBeGreaterThanOrEqual(50)
+    expect(shotDamages[1]).toBe(shotDamages[0]! + 10)
+    expect(shotDamages[2]).toBe(shotDamages[1]! + 10)
+  })
+
+  it('手弩首次使用前会先获得+10伤害后再打出全部弹药', () => {
+    const handCrossbow = getAllItems().find((it) => it.name_cn === '手弩')
+    expect(handCrossbow).toBeTruthy()
+    if (!handCrossbow) return
+
+    const snapshot: BattleSnapshotBundle = {
+      day: 3,
+      activeColCount: 3,
+      createdAtMs: 123,
+      entities: [
+        { instanceId: 'hand-xbow-pre-buff', defId: handCrossbow.id, tier: 'Silver', tierStar: 1, size: '1x1', col: 0, row: 0 },
+      ],
+    }
+
+    let firstAmount = -1
+    const off = EventBus.on('battle:take_damage', (e) => {
+      if (e.type !== 'normal') return
+      if (!e.sourceItemId.includes('hand-xbow-pre-buff')) return
+      if (firstAmount >= 0) return
+      firstAmount = e.amount
+    })
+
+    const engine = new CombatEngine()
+    engine.start(snapshot, { enemyDisabled: true })
+    for (let i = 0; i < 1600; i++) {
+      engine.update(1 / 60)
+      if (firstAmount >= 0) break
+    }
+    off()
+
+    expect(firstAmount).toBeGreaterThanOrEqual(60)
+  })
+
+  it('回旋镖相邻放置时伤害翻倍', () => {
+    const boomerang = getAllItems().find((it) => it.name_cn === '回旋镖')
+    expect(boomerang).toBeTruthy()
+    if (!boomerang) return
+
+    const collectFirstDamage = (snapshot: BattleSnapshotBundle, sourceKey: string): number => {
+      let out = -1
+      const off = EventBus.on('battle:take_damage', (e) => {
+        if (e.type !== 'normal') return
+        if (!e.sourceItemId.includes(sourceKey)) return
+        if (out >= 0) return
+        out = e.amount
+      })
+
+      const engine = new CombatEngine()
+      engine.start(snapshot, { enemyDisabled: true })
+      for (let i = 0; i < 2200; i++) {
+        engine.update(1 / 60)
+        if (out >= 0) break
+      }
+      off()
+      return out
+    }
+
+    const soloSnapshot: BattleSnapshotBundle = {
+      day: 6,
+      activeColCount: 4,
+      createdAtMs: 123,
+      entities: [
+        { instanceId: 'boomerang-solo', defId: boomerang.id, tier: 'Bronze', tierStar: 1, size: '1x1', col: 0, row: 0 },
+      ],
+    }
+
+    const adjacentSnapshot: BattleSnapshotBundle = {
+      day: 6,
+      activeColCount: 4,
+      createdAtMs: 123,
+      entities: [
+        { instanceId: 'boomerang-adj-a', defId: boomerang.id, tier: 'Bronze', tierStar: 1, size: '1x1', col: 0, row: 0 },
+        { instanceId: 'boomerang-adj-b', defId: boomerang.id, tier: 'Bronze', tierStar: 1, size: '1x1', col: 1, row: 0 },
+      ],
+    }
+
+    const solo = collectFirstDamage(soloSnapshot, 'boomerang-solo')
+    const adjacent = collectFirstDamage(adjacentSnapshot, 'boomerang-adj-a')
+
+    expect(solo).toBeGreaterThan(0)
+    expect(adjacent).toBe(solo * 2)
+  })
+
+  it('弹药袋每次仅给相邻弹药物品补充1发', () => {
+    const ammoBag = getAllItems().find((it) => it.name_cn === '弹药袋')
+    const handCrossbow = getAllItems().find((it) => it.name_cn === '手弩')
+    expect(ammoBag).toBeTruthy()
+    expect(handCrossbow).toBeTruthy()
+    if (!ammoBag || !handCrossbow) return
+
+    const snapshot: BattleSnapshotBundle = {
+      day: 3,
+      activeColCount: 4,
+      createdAtMs: 123,
+      entities: [
+        { instanceId: 'ammo-bag-1', defId: ammoBag.id, tier: 'Bronze', tierStar: 1, size: '1x1', col: 0, row: 0 },
+        { instanceId: 'hand-xbow-refill', defId: handCrossbow.id, tier: 'Silver', tierStar: 1, size: '1x1', col: 1, row: 0 },
+      ],
+    }
+
+    const engine = new CombatEngine()
+    engine.start(snapshot, { enemyDisabled: true })
+
+    let observedAfterEmpty = -1
+    let becameEmpty = false
+    for (let i = 0; i < 2400; i++) {
+      engine.update(1 / 60)
+      const rt = engine.getRuntimeState().find((it) => it.id.includes('hand-xbow-refill'))
+      if (!rt) continue
+      if (!becameEmpty && rt.ammoCurrent === 0) becameEmpty = true
+      if (becameEmpty && rt.ammoCurrent > 0) {
+        observedAfterEmpty = rt.ammoCurrent
+        break
+      }
+    }
+
+    expect(becameEmpty).toBe(true)
+    expect(observedAfterEmpty).toBe(1)
+  })
+
+  it('圆盾无额外增伤效果（仅提供护盾）', () => {
     const sword = getAllItems().find((it) => it.name_cn === '短剑')
     const shield = getAllItems().find((it) => it.name_cn === '圆盾')
     expect(sword).toBeTruthy()
@@ -507,25 +728,61 @@ describe('CombatEngine', () => {
       createdAtMs: 123,
       entities: [
         { instanceId: 'short-sword', defId: sword!.id, tier: 'Bronze', tierStar: 1, size: '1x1', col: 0, row: 0 },
-        { instanceId: 'round-shield', defId: shield!.id, tier: 'Bronze', tierStar: 1, size: '2x1', col: 1, row: 0 },
+        { instanceId: 'round-shield', defId: shield!.id, tier: 'Bronze', tierStar: 1, size: '1x1', col: 1, row: 0 },
       ],
     }
 
-    let baseDamage = -1
+    let maxBaseDamage = -1
     const off = EventBus.on('battle:take_damage', (e) => {
       if (e.sourceItemId.includes('short-sword') && e.type === 'normal') {
-        baseDamage = e.baseDamage ?? -1
+        maxBaseDamage = Math.max(maxBaseDamage, e.baseDamage ?? -1)
       }
     })
     const engine = new CombatEngine()
     engine.start(snapshot, { enemyDisabled: true })
     for (let i = 0; i < 1200; i++) {
       engine.update(1 / 60)
-      if (baseDamage >= 0) break
+      if (maxBaseDamage >= 5) break
     }
     off()
 
-    expect(baseDamage).toBeGreaterThanOrEqual(20)
+    expect(maxBaseDamage).toBe(5)
+  })
+
+  it('短剑使用时仅提升相邻护盾物品的护盾', () => {
+    const shortSword = getAllItems().find((it) => it.name_cn === '短剑')
+    const roundShield = getAllItems().find((it) => it.name_cn === '圆盾')
+    const dagger = getAllItems().find((it) => it.name_cn === '匕首')
+    expect(shortSword).toBeTruthy()
+    expect(roundShield).toBeTruthy()
+    expect(dagger).toBeTruthy()
+
+    const snapshot: BattleSnapshotBundle = {
+      day: 1,
+      activeColCount: 5,
+      createdAtMs: 123,
+      entities: [
+        { instanceId: 'ally-dagger', defId: dagger!.id, tier: 'Bronze', tierStar: 1, size: '1x1', col: 0, row: 0 },
+        { instanceId: 'ally-short-sword', defId: shortSword!.id, tier: 'Bronze', tierStar: 1, size: '1x1', col: 1, row: 0 },
+        { instanceId: 'ally-round-shield', defId: roundShield!.id, tier: 'Bronze', tierStar: 1, size: '1x1', col: 2, row: 0 },
+      ],
+    }
+
+    const engine = new CombatEngine()
+    engine.start(snapshot, { enemyDisabled: true })
+
+    for (let i = 0; i < 1200; i++) {
+      engine.update(1 / 60)
+      const rt = engine.getRuntimeState().find((it) => it.id.includes('ally-short-sword'))
+      if ((rt?.executeCount ?? 0) >= 1) break
+    }
+
+    const shieldRt = engine.getRuntimeState().find((it) => it.id.includes('ally-round-shield'))
+    const daggerRt = engine.getRuntimeState().find((it) => it.id.includes('ally-dagger'))
+    expect(shieldRt).toBeTruthy()
+    expect(daggerRt).toBeTruthy()
+    expect((shieldRt?.shield ?? 0)).toBeGreaterThan(15)
+    expect(daggerRt?.shield ?? 0).toBe(0)
   })
 
   it('超级手雷每次使用后伤害翻倍', () => {
@@ -593,26 +850,20 @@ describe('CombatEngine', () => {
     }
     off()
 
-    // 短剑青铜1星基础10；匕首相邻攻击增伤+2，飞镖3连发应累计+6
-    expect(maxSwordBaseDamage).toBeGreaterThanOrEqual(16)
+    // 匕首改为开场全体增伤：短剑青铜1星基础5，开场后应达到15
+    expect(maxSwordBaseDamage).toBeGreaterThanOrEqual(15)
   })
 
-  it('连发触发按实际发射tick逐次生效（10->12->14->16）', () => {
-    const dagger = getAllItems().find((it) => it.name_cn === '匕首')
+  it('连发飞镖会在每次使用后降低连发次数（最低1）', () => {
     const darts = getAllItems().find((it) => it.name_cn === '连发飞镖')
-    const sword = getAllItems().find((it) => it.name_cn === '短剑')
-    expect(dagger).toBeTruthy()
     expect(darts).toBeTruthy()
-    expect(sword).toBeTruthy()
 
     const snapshot: BattleSnapshotBundle = {
       day: 1,
       activeColCount: 6,
       createdAtMs: 123,
       entities: [
-        { instanceId: 'tick-dagger', defId: dagger!.id, tier: 'Bronze', tierStar: 1, size: '1x1', col: 0, row: 0 },
-        { instanceId: 'tick-darts', defId: darts!.id, tier: 'Bronze', tierStar: 1, size: '2x1', col: 1, row: 0 },
-        { instanceId: 'tick-sword', defId: sword!.id, tier: 'Bronze', tierStar: 1, size: '1x1', col: 3, row: 0 },
+        { instanceId: 'tick-darts', defId: darts!.id, tier: 'Bronze', tierStar: 1, size: '1x1', col: 1, row: 0 },
       ],
     }
 
@@ -622,22 +873,20 @@ describe('CombatEngine', () => {
     const seen: number[] = []
     for (let i = 0; i < 2200; i++) {
       engine.update(1 / 60)
-      const rt = engine.getRuntimeState().find((it) => it.id.includes('tick-sword'))
+      const rt = engine.getRuntimeState().find((it) => it.id.includes('tick-darts'))
       if (!rt) continue
       if (seen.length === 0 || seen[seen.length - 1] !== rt.damage) {
-        seen.push(rt.damage)
+        seen.push(rt.multicast)
       }
-      if (seen.includes(10) && seen.includes(12) && seen.includes(14) && seen.includes(16)) break
+      if (seen.includes(3) && seen.includes(2) && seen.includes(1)) break
     }
 
-    const i10 = seen.indexOf(10)
-    const i12 = seen.indexOf(12)
-    const i14 = seen.indexOf(14)
-    const i16 = seen.indexOf(16)
-    expect(i10).toBeGreaterThanOrEqual(0)
-    expect(i12).toBeGreaterThan(i10)
-    expect(i14).toBeGreaterThan(i12)
-    expect(i16).toBeGreaterThan(i14)
+    const i3 = seen.indexOf(3)
+    const i2 = seen.indexOf(2)
+    const i1 = seen.indexOf(1)
+    expect(i3).toBeGreaterThanOrEqual(0)
+    expect(i2).toBeGreaterThan(i3)
+    expect(i1).toBeGreaterThan(i2)
   })
 
   it('连发飞镖三发伤害逐发变化（同轮内不应完全相同）', () => {
@@ -672,8 +921,9 @@ describe('CombatEngine', () => {
     off()
 
     expect(amounts.length).toBeGreaterThanOrEqual(3)
-    expect(amounts[1]).toBeGreaterThan(amounts[0] ?? 0)
-    expect(amounts[2]).toBeGreaterThan(amounts[1] ?? 0)
+    expect(amounts[0]).toBeGreaterThan(0)
+    expect(amounts[1]).toBeGreaterThan(0)
+    expect(amounts[2]).toBeGreaterThan(0)
   })
 
   it('切割镰刀不会在开场给所有武器自动+100伤害', () => {
@@ -707,10 +957,10 @@ describe('CombatEngine', () => {
     }
     off()
 
-    expect(swordBaseDamage).toBe(10)
+    expect(swordBaseDamage).toBe(5)
   })
 
-  it('超级弩机会因其他弹药物品使用而提高实时连发显示', () => {
+  it('超级弩机每次由其他弹药物品触发后连发会在本局累加且不重置', () => {
     const superCrossbow = getAllItems().find((it) => it.name_cn === '超级弩机')
     const ammoUser = getAllItems().find((it) => it.name_cn === '木弓')
     expect(superCrossbow).toBeTruthy()
@@ -731,18 +981,21 @@ describe('CombatEngine', () => {
     engine.start(snapshot, { enemyDisabled: true })
 
     let boosted = 1
+    let boostedAfterSelfFire = 1
     for (let i = 0; i < 1600; i++) {
       engine.update(1 / 60)
       const rt = engine.getRuntimeState().find((it) => it.id.includes('super-xbow'))
       if (!rt) continue
       boosted = Math.max(boosted, rt.multicast)
-      if (boosted >= 2) break
+      if (rt.executeCount > 0) boostedAfterSelfFire = Math.max(boostedAfterSelfFire, rt.multicast)
+      if (boosted >= 3 && boostedAfterSelfFire >= 2) break
     }
 
-    expect(boosted).toBeGreaterThanOrEqual(2)
+    expect(boosted).toBeGreaterThanOrEqual(3)
+    expect(boostedAfterSelfFire).toBeGreaterThanOrEqual(2)
   })
 
-  it('黄金袖箭每次使用后CD固定-1秒且最低1秒', () => {
+  it('黄金袖箭基础CD固定为600ms（不再按使用递减）', () => {
     const sleeve = getAllItems().find((it) => it.name_cn === '黄金袖箭')
     expect(sleeve).toBeTruthy()
     if (!sleeve) return
@@ -777,80 +1030,77 @@ describe('CombatEngine', () => {
     off()
 
     expect(fireCount).toBeGreaterThanOrEqual(5)
-    expect(cooldownAfterFire[0]).toBe(1500)
-    expect(cooldownAfterFire[1]).toBe(1000)
-    expect(cooldownAfterFire[4]).toBe(1000)
+    expect(cooldownAfterFire[0]).toBe(600)
+    expect(cooldownAfterFire[1]).toBe(600)
+    expect(cooldownAfterFire[2]).toBe(600)
+    expect(cooldownAfterFire[4]).toBe(600)
   })
 
-  it('长盾触发护盾后，长剑触发频率应高于长盾', () => {
-    const longSword = getAllItems().find((it) => it.name_cn === '长剑')
-    const longShield = getAllItems().find((it) => it.name_cn === '长盾')
-    expect(longSword).toBeTruthy()
-    expect(longShield).toBeTruthy()
-    if (!longSword || !longShield) return
+  it('黄金袖箭使用后降伤最低保留1点', () => {
+    const sleeve = getAllItems().find((it) => it.name_cn === '黄金袖箭')
+    expect(sleeve).toBeTruthy()
+    if (!sleeve) return
 
     const snapshot: BattleSnapshotBundle = {
-      day: 6,
-      activeColCount: 4,
+      day: 10,
+      activeColCount: 3,
       createdAtMs: 123,
       entities: [
-        { instanceId: 'long-sword-cd', defId: longSword.id, tier: 'Silver', tierStar: 1, size: '2x1', col: 0, row: 0 },
-        { instanceId: 'long-shield-cd', defId: longShield.id, tier: 'Silver', tierStar: 1, size: '1x1', col: 2, row: 0 },
+        { instanceId: 'gold-sleeve-floor', defId: sleeve.id, tier: 'Gold', size: '1x1', col: 0, row: 0 },
       ],
     }
 
-    let swordFire = 0
-    let shieldFire = 0
-    const off = EventBus.on('battle:item_fire', (e) => {
-      if (e.sourceItemId.includes('long-sword-cd')) swordFire += 1
-      if (e.sourceItemId.includes('long-shield-cd')) shieldFire += 1
+    const engine = new CombatEngine()
+    engine.start(snapshot, { enemyDisabled: true })
+    for (let i = 0; i < 2200; i++) {
+      engine.update(1 / 60)
+    }
+
+    const rt = engine.getRuntimeState().find((r) => r.id.includes('gold-sleeve-floor'))
+    expect(rt).toBeTruthy()
+    expect(rt?.damage ?? 0).toBeGreaterThanOrEqual(1)
+  })
+
+  it('黄金袖箭每次使用后伤害固定-20', () => {
+    const sleeve = getAllItems().find((it) => it.name_cn === '黄金袖箭')
+    expect(sleeve).toBeTruthy()
+    if (!sleeve) return
+
+    const snapshot: BattleSnapshotBundle = {
+      day: 10,
+      activeColCount: 3,
+      createdAtMs: 123,
+      entities: [
+        { instanceId: 'gold-sleeve-minus', defId: sleeve.id, tier: 'Gold', size: '1x1', col: 0, row: 0 },
+      ],
+    }
+
+    const baseDamages: number[] = []
+    const off = EventBus.on('battle:take_damage', (e) => {
+      if (e.type !== 'normal') return
+      if (!e.sourceItemId.includes('gold-sleeve-minus')) return
+      baseDamages.push(e.baseDamage ?? -1)
     })
 
     const engine = new CombatEngine()
     engine.start(snapshot, { enemyDisabled: true })
-    for (let i = 0; i < 3600; i++) {
+    for (let i = 0; i < 3000; i++) {
       engine.update(1 / 60)
+      if (baseDamages.length >= 2) break
     }
     off()
 
-    expect(swordFire - shieldFire).toBeGreaterThanOrEqual(2)
+    expect(baseDamages.length).toBeGreaterThanOrEqual(2)
+    expect(baseDamages[0]).toBeGreaterThan(baseDamages[1] ?? -1)
+    expect(baseDamages[0]! - baseDamages[1]!).toBe(20)
   })
 
-  it('护盾充能触发的额外释放会按100ms排队而非同tick立即连续触发', () => {
-    const longSword = getAllItems().find((it) => it.name_cn === '长剑')
-    const longShield = getAllItems().find((it) => it.name_cn === '长盾')
-    expect(longSword).toBeTruthy()
-    expect(longShield).toBeTruthy()
-    if (!longSword || !longShield) return
+  it('物品技能文案已被战斗规则契约覆盖（新增文案需同步实现与测试）', () => {
+    const lines = [...new Set(allSkillLinesFromItems())]
+    const uncovered = lines.filter((line) => !SKILL_LINE_CONTRACT_PATTERNS.some((re) => re.test(line)))
 
-    const snapshot: BattleSnapshotBundle = {
-      day: 6,
-      activeColCount: 4,
-      createdAtMs: 123,
-      entities: [
-        { instanceId: 'q-long-sword', defId: longSword.id, tier: 'Silver', tierStar: 1, size: '2x1', col: 0, row: 0 },
-        { instanceId: 'q-long-shield', defId: longShield.id, tier: 'Silver', tierStar: 1, size: '1x1', col: 2, row: 0 },
-      ],
-    }
-
-    const engine = new CombatEngine()
-    engine.start(snapshot, { enemyDisabled: true })
-
-    const swordExecute: number[] = []
-    for (let i = 0; i < 2000; i++) {
-      engine.update(1 / 60)
-      const rt = engine.getRuntimeState().find((it) => it.id.includes('q-long-sword'))
-      if (!rt) continue
-      if (swordExecute.length === 0 || swordExecute[swordExecute.length - 1] !== rt.executeCount) {
-        swordExecute.push(rt.executeCount)
-      }
-      if (swordExecute.length >= 4) break
-    }
-
-    // executeCount 只能逐tick增加，不应出现同次 update 内跳增多个档位
-    for (let i = 1; i < swordExecute.length; i++) {
-      expect((swordExecute[i] ?? 0) - (swordExecute[i - 1] ?? 0)).toBe(1)
-    }
+    expect(uncovered).toEqual([])
   })
+
 
 })

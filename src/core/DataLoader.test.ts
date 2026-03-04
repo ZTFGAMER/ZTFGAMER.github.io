@@ -20,10 +20,10 @@ describe('DataLoader — game_config.json', () => {
     expect(getConfig().backpackSlots).toBe(6)
   })
 
-  it('dailyBattleSlots 固定 6 格配置', () => {
+  it('dailyBattleSlots 固定 5 格配置', () => {
     const slots = getConfig().dailyBattleSlots
     expect(slots).toHaveLength(3)
-    expect(slots).toEqual([6, 6, 6])
+    expect(slots).toEqual([5, 5, 5])
   })
 
   it('shopRefreshPrices 有 10 级递增', () => {
@@ -48,13 +48,29 @@ describe('DataLoader — game_config.json', () => {
     expect(p[3]).toBe(16)  // 钻 16 金
   })
 
-  it('shopTierChancesByDay 配置为 20 天并匹配预期关键节点', () => {
+  it('shopTierChancesByDay 配置存在（兼容旧配置）', () => {
     const chances = getConfig().shopTierChancesByDay
-    expect(chances).toHaveLength(20)
+    expect(chances.length).toBeGreaterThanOrEqual(1)
     expect(chances[0]).toEqual([100, 0, 0, 0])
-    expect(chances[8]).toEqual([10, 40, 40, 10])
-    expect(chances[9]).toEqual([0, 30, 50, 20])
-    expect(chances[19]).toEqual([0, 30, 50, 20])
+  })
+
+  it('shopRules 已配置初始解锁池与起始品质权重', () => {
+    const rules = getConfig().shopRules
+    expect(rules?.initialUnlocksByStarterClass?.swordsman?.length).toBe(2)
+    expect(rules?.initialUnlocksByStarterClass?.archer?.length).toBe(2)
+    expect(rules?.initialUnlocksByStarterClass?.assassin?.length).toBe(2)
+    expect(rules?.unlockStartingTierWeights?.Bronze).toBe(75)
+    expect(rules?.unlockStartingTierWeights?.Silver).toBe(20)
+    expect(rules?.unlockStartingTierWeights?.Gold).toBe(4)
+    expect(rules?.unlockStartingTierWeights?.Diamond).toBe(1)
+  })
+
+  it('shopRules 已配置按关卡的 lv1~lv7 概率表', () => {
+    const rows = getConfig().shopRules?.quickBuyLevelChancesByDay
+    expect(rows).toBeTruthy()
+    expect(rows).toHaveLength(20)
+    expect(rows?.[0]).toEqual([1, 0, 0, 0, 0, 0, 0])
+    expect(rows?.[19]).toEqual([0.05, 0.35, 0.3, 0.15, 0.1, 0, 0])
   })
 
   it('敌我 daily health 都配置为 20 天', () => {
@@ -63,6 +79,27 @@ describe('DataLoader — game_config.json', () => {
     expect(cfg.dailyPlayerHealth).toBeTruthy()
     expect(cfg.dailyEnemyHealth).toHaveLength(20)
     expect(cfg.dailyPlayerHealth).toHaveLength(20)
+  })
+
+  it('skillSystem 已配置偶数日三选一', () => {
+    const skill = getConfig().skillSystem
+    expect(skill).toBeTruthy()
+    expect(skill?.chooseCount).toBe(3)
+    expect(skill?.triggerDaysByTier.bronze).toEqual([2, 4])
+    expect(skill?.triggerDaysByTier.silver).toEqual([6, 8])
+    expect(skill?.triggerDaysByTier.gold).toEqual([10, 14])
+    expect((skill?.pools.bronze.length ?? 0)).toBeGreaterThanOrEqual(3)
+    expect((skill?.pools.silver.length ?? 0)).toBeGreaterThanOrEqual(3)
+    expect((skill?.pools.gold.length ?? 0)).toBeGreaterThanOrEqual(3)
+  })
+
+  it('shopRules 已配置最低品质掉落权重矩阵', () => {
+    const m = getConfig().shopRules?.minTierDropWeightsByResultLevel
+    expect(m).toBeTruthy()
+    expect(m?.Bronze).toHaveLength(7)
+    expect(m?.Silver).toHaveLength(7)
+    expect(m?.Gold).toHaveLength(7)
+    expect(m?.Diamond).toHaveLength(7)
   })
 })
 
@@ -86,11 +123,17 @@ describe('DataLoader — vanessa_items.json', () => {
     expect(items).toEqual(expected)
   })
 
-  it('包含基础尺寸物品（1x1/2x1）', () => {
+  it('紧凑模式下物品尺寸符合模式配置', () => {
     const items = getAllItems()
     const sizes = new Set(items.map(i => normalizeSize(i.size)))
-    expect(sizes.has('1x1')).toBe(true)
-    expect(sizes.has('2x1')).toBe(true)
+    const compact = getConfig().gameplayModeValues?.compactMode
+    if (compact?.enabled && compact.itemSet === 'compact') {
+      expect(sizes.size).toBe(1)
+      expect(sizes.has('1x1')).toBe(true)
+    } else {
+      expect(sizes.has('1x1')).toBe(true)
+      expect(sizes.has('2x1')).toBe(true)
+    }
   })
 
   it('cooldown 均为非负数', () => {

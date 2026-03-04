@@ -7,7 +7,7 @@ import { Application, Assets, Sprite, Texture } from 'pixi.js'
 import { SceneManager } from '@/scenes/SceneManager'
 import { ShopScene }    from '@/scenes/ShopScene'
 import { BattleScene, getBattleFxPerfStats }  from '@/scenes/BattleScene'
-import { validateData, getAllItems } from '@/core/DataLoader'
+import { validateData, getAllItems, getConfig } from '@/core/DataLoader'
 import { setApp, setStageLayout } from '@/core/AppContext'
 import { clearStoredConfig } from '@/config/debugConfig'
 import { PhaseManager, type GamePhase } from '@/core/PhaseManager'
@@ -226,7 +226,21 @@ function showFatalError(message: string): void {
   body.appendChild(box)
 }
 
+function applyReleaseLogSwitch(): void {
+  const env = (import.meta as { env?: { DEV?: boolean } }).env
+  if (env?.DEV) return
+  if (window.location.protocol !== 'app:') return
+  if (!getConfig().runRules?.muteLogsInMobileRelease) return
+  const muted: (..._args: unknown[]) => void = () => {}
+  console.log = muted
+  console.info = muted
+  console.warn = muted
+  console.debug = muted
+  console.error = muted
+}
+
 async function bootstrap(): Promise<void> {
+  applyReleaseLogSwitch()
   if (window.location.protocol === 'app:') {
     clearStoredConfig()
   }

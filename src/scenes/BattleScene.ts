@@ -4,7 +4,16 @@ import { clearBattleOutcome, setBattleOutcome } from '@/combat/BattleOutcomeStor
 import { CombatEngine, setCombatRuntimeOverride, type CombatBoardItem } from '@/combat/CombatEngine'
 import { SceneManager } from '@/scenes/SceneManager'
 import { getApp } from '@/core/AppContext'
-import { clearCurrentRunState, deductLife, getLifeState, resetLifeState } from '@/core/RunState'
+import {
+  addWinTrophy,
+  clearCurrentRunState,
+  deductLife,
+  getLifeState,
+  getWinTrophyState,
+  resetLifeState,
+  resetWinTrophyState,
+  SHOP_STATE_STORAGE_KEY,
+} from '@/core/RunState'
 import { Assets, Container, Graphics, Sprite, Texture, Text } from 'pixi.js'
 import { GridZone, CELL_SIZE, CELL_HEIGHT } from '@/grid/GridZone'
 import { getAllItems, getConfig as getGameCfg } from '@/core/DataLoader'
@@ -12,7 +21,7 @@ import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import type { ItemDef, ItemSizeNorm } from '@/items/ItemDef'
 import { EventBus } from '@/core/EventBus'
 import { SellPopup, type ItemInfoMode, type ItemInfoRuntimeOverride } from '@/shop/SellPopup'
-import { getBattleEffectColor, getBattleFloatTextColor, getBattleOrbColor } from '@/config/colorPalette'
+import { getBattleEffectColor, getBattleFloatTextColor, getBattleOrbColor, getTierColor } from '@/config/colorPalette'
 import { getItemIconUrl, getItemIconUrlByName, getSceneImageUrl } from '@/core/assetPath'
 
 const CANVAS_W = 640
@@ -28,9 +37,19 @@ let battleEndMask: Graphics | null = null
 let settlementPanel: Container | null = null
 let settlementTitleText: Text | null = null
 let settlementLifeText: Text | null = null
+let settlementTrophyText: Text | null = null
 let settlementDescText: Text | null = null
 let settlementActionBtn: Container | null = null
 let settlementActionLabel: Text | null = null
+let settlementStatsBtn: Container | null = null
+let statsBtn: Container | null = null
+let statsBtnText: Text | null = null
+let damageStatsMask: Graphics | null = null
+let damageStatsPanel: Container | null = null
+let damageStatsTitleText: Text | null = null
+let damageStatsRowsCon: Container | null = null
+let damageStatsTabPlayerBtn: Container | null = null
+let damageStatsTabEnemyBtn: Container | null = null
 let sceneFadeOverlay: Graphics | null = null
 let heroHudG: Graphics | null = null
 let enemyHpInfoCon: Container | null = null
@@ -79,23 +98,39 @@ let battleExitTransitionElapsedMs = 0
 let battleExitTransitionDurationMs = 0
 let settlementResolved = false
 let settlementGameOver = false
+let settlementFinalVictory = false
+let settlementRevealAtMs: number | null = null
+let battlePresentationMs = 0
+let damageStatsPanelVisible = false
+let damageStatsDirty = false
+let damageStatsLastRenderAtMs = 0
+let damageStatsTab: 'player' | 'enemy' = 'player'
 const BATTLE_SPEED_STEPS = [1, 2, 4, 8] as const
+const TOP_ACTION_BTN_H = 58
+const TOP_ACTION_BTN_HALF_H = TOP_ACTION_BTN_H / 2
+const TOP_ACTION_BTN_SAFE_PAD = 8
+const DAMAGE_STATS_PANEL_W = 560
+const DAMAGE_STATS_PANEL_H = 700
 const FX_MAX_PROJECTILES = 40
 const FX_MAX_FLOATING_NUMBERS = 30
 const FX_MAX_ACTIVE_TOTAL = 80
 const FX_POOL_MAX_PROJECTILES = 48
 const FX_POOL_MAX_FLOATING_NUMBERS = 40
+const FX_POOL_MAX_PULSE_FLASHES = 32
 
 type TickAnim = (dtMs: number) => boolean
 const activeFx: TickAnim[] = []
 const projectileSpritePool: Sprite[] = []
 const projectileDotPool: Graphics[] = []
 const floatingNumberPool: Text[] = []
+const pulseFlashPool: Graphics[] = []
 let activeProjectileCount = 0
 let activeFloatingNumberCount = 0
+let pendingDelayedDamageVisualCount = 0
 let droppedProjectileCount = 0
 let droppedFloatingNumberCount = 0
 let projectileUseCursor = 1
+const sourceNextDamageVisualAtMs = new Map<string, number>()
 
 export type BattleFxPerfStats = {
   activeFx: number
@@ -151,6 +186,569 @@ let enemyFreezeOverlay: Graphics | null = null
 let playerFreezeOverlay: Graphics | null = null
 let enemyStatusLayer: Container | null = null
 let playerStatusLayer: Container | null = null
+let playerSkillIconBarCon: Container | null = null
+let battleSkillDetailPopupCon: Container | null = null
+let battleSkillDetailSkillId: string | null = null
+let battleSkillIconBarKey = ''
+let lastHudTickIndex = -1
+type BattleSkillPick = {
+  id: string
+  name: string
+  desc: string
+  archetype: 'warrior' | 'archer' | 'assassin' | 'utility'
+  tier: 'bronze' | 'silver' | 'gold'
+}
+let battlePickedSkills: BattleSkillPick[] = []
+
+type ItemBattleStat = {
+  sourceItemId: string
+  side: 'player' | 'enemy'
+  defId: string
+  itemName: string
+  baseTier: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
+  tierRaw: string
+  level: number
+  damage: number
+  shield: number
+}
+
+const battleStatsByItemId = new Map<string, ItemBattleStat>()
+
+function parseTierLevel(tierRaw: string): number {
+  const tier = `${tierRaw}`
+  const m = tier.match(/#(\d+)/)
+  const star = Math.max(1, Math.min(2, Number(m?.[1] ?? 1) || 1))
+  if (tier.includes('Silver')) return star + 2
+  if (tier.includes('Gold')) return star + 4
+  if (tier.includes('Diamond')) return 7
+  return star
+}
+
+function parseBaseTier(raw?: string): 'Bronze' | 'Silver' | 'Gold' | 'Diamond' {
+  const s = `${raw ?? ''}`
+  if (s.includes('Diamond')) return 'Diamond'
+  if (s.includes('Gold')) return 'Gold'
+  if (s.includes('Silver')) return 'Silver'
+  return 'Bronze'
+}
+
+function tierCn(tier: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'): string {
+  if (tier === 'Silver') return '白银'
+  if (tier === 'Gold') return '黄金'
+  if (tier === 'Diamond') return '钻石'
+  return '青铜'
+}
+
+function loadPickedSkillsFromShopState(): BattleSkillPick[] {
+  try {
+    const raw = localStorage.getItem(SHOP_STATE_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as { state?: { pickedSkills?: unknown } } | null
+    const state = parsed && typeof parsed === 'object' && parsed.state && typeof parsed.state === 'object'
+      ? parsed.state
+      : parsed
+    const list = (state as { pickedSkills?: unknown } | null)?.pickedSkills
+    if (!Array.isArray(list)) return []
+    return list
+      .map((it) => {
+        const rec = it as Record<string, unknown>
+        const id = String(rec.id ?? '').trim()
+        const name = String(rec.name ?? '').trim()
+        const desc = String(rec.desc ?? '').trim()
+        const archetype = String(rec.archetype ?? '') as BattleSkillPick['archetype']
+        const tier = String(rec.tier ?? '') as BattleSkillPick['tier']
+        if (!id || !name) return null
+        if (archetype !== 'warrior' && archetype !== 'archer' && archetype !== 'assassin' && archetype !== 'utility') return null
+        if (tier !== 'bronze' && tier !== 'silver' && tier !== 'gold') return null
+        return { id, name, desc, archetype, tier }
+      })
+      .filter((v): v is BattleSkillPick => !!v)
+  } catch {
+    return []
+  }
+}
+
+function battleSkillTierColor(tier: BattleSkillPick['tier']): number {
+  if (tier === 'bronze') return 0xbe8b46
+  if (tier === 'silver') return 0x9aafc8
+  return 0xd0ac43
+}
+
+function battleSkillArchetypeColor(archetype: BattleSkillPick['archetype']): number {
+  if (archetype === 'warrior') return 0xc45f3a
+  if (archetype === 'archer') return 0x4f9f57
+  if (archetype === 'assassin') return 0x3d74bd
+  return 0x8a6bb5
+}
+
+function layoutBattleSkillIconBar(): void {
+  if (!playerSkillIconBarCon) return
+  const hpCenter = getHeroBarCenter('player')
+  const hpTopY = hpCenter.y - getDebugCfg('battleHpBarH') / 2
+  playerSkillIconBarCon.x = hpCenter.x
+  playerSkillIconBarCon.y = hpTopY - 52
+}
+
+function hideBattleSkillDetailPopup(): void {
+  battleSkillDetailSkillId = null
+  if (battleSkillDetailPopupCon) battleSkillDetailPopupCon.visible = false
+}
+
+function showBattleSkillDetailPopup(skill: BattleSkillPick): void {
+  if (!root) return
+  if (!battleSkillDetailPopupCon) {
+    battleSkillDetailPopupCon = new Container()
+    battleSkillDetailPopupCon.zIndex = 90
+    root.addChild(battleSkillDetailPopupCon)
+  }
+  const con = battleSkillDetailPopupCon
+  con.removeChildren().forEach((c) => c.destroy({ children: true }))
+
+  const panelW = Math.max(360, Math.min(CANVAS_W - 24, getDebugCfg('itemInfoWidth')))
+  const pad = 16
+  const iconSize = Math.max(72, Math.round(CELL_SIZE * 0.66))
+  const tierColor = battleSkillTierColor(skill.tier)
+  const mainColor = battleSkillArchetypeColor(skill.archetype)
+  const textX = pad + iconSize + 16
+  const textW = panelW - textX - pad
+
+  const title = new Text({
+    text: skill.name,
+    style: {
+      fontSize: getDebugCfg('itemInfoNameFontSize'),
+      fill: 0xffefc8,
+      fontFamily: 'Arial',
+      fontWeight: 'bold',
+    },
+  })
+  const desc = new Text({
+    text: skill.desc,
+    style: {
+      fontSize: getDebugCfg('itemInfoSimpleDescFontSize'),
+      fill: 0xd7e2fa,
+      fontFamily: 'Arial',
+      wordWrap: true,
+      breakWords: true,
+      wordWrapWidth: textW,
+      lineHeight: Math.round(getDebugCfg('itemInfoSimpleDescFontSize') * 1.25),
+    },
+  })
+
+  const dividerY = pad + 44
+  const descY = dividerY + 12
+  const contentBottom = Math.max(pad + iconSize, descY + desc.height)
+  const panelH = Math.max(getDebugCfg('itemInfoMinHSmall'), contentBottom + pad)
+  const px = CANVAS_W / 2 - panelW / 2
+  const py = getBattleInfoPanelCenterY() - panelH / 2
+
+  const bg = new Graphics()
+  bg.roundRect(px, py, panelW, panelH, Math.max(0, getDebugCfg('gridItemCornerRadius')))
+  bg.fill({ color: 0x1e1e30, alpha: 0.97 })
+  bg.stroke({ color: 0x5566aa, width: 2 })
+  con.addChild(bg)
+
+  const iconBg = new Graphics()
+  iconBg.roundRect(px + pad, py + pad, iconSize, iconSize, 18)
+  iconBg.fill({ color: 0x1d2a45, alpha: 1 })
+  iconBg.stroke({ color: tierColor, width: 3, alpha: 1 })
+  con.addChild(iconBg)
+
+  const dot = new Graphics()
+  dot.circle(px + pad + iconSize - 10, py + pad + 10, 8)
+  dot.fill({ color: mainColor, alpha: 1 })
+  con.addChild(dot)
+
+  const letter = new Text({
+    text: skill.name.slice(0, 1),
+    style: { fontSize: 56, fill: 0xf5f7ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  letter.anchor.set(0.5)
+  letter.x = px + pad + iconSize / 2
+  letter.y = py + pad + iconSize / 2 + 2
+  con.addChild(letter)
+
+  title.x = px + textX
+  title.y = py + pad + 2
+  con.addChild(title)
+
+  const divider = new Graphics()
+  divider.moveTo(px + textX, py + dividerY)
+  divider.lineTo(px + panelW - pad, py + dividerY)
+  divider.stroke({ color: 0x5a628f, width: 1, alpha: 0.9 })
+  con.addChild(divider)
+
+  desc.x = px + textX
+  desc.y = py + descY
+  con.addChild(desc)
+
+  battleSkillDetailSkillId = skill.id
+  con.visible = true
+}
+
+function refreshBattleSkillIconBar(forceRebuild = false): void {
+  if (!root || !playerZone) return
+  if (!playerSkillIconBarCon) {
+    playerSkillIconBarCon = new Container()
+    playerSkillIconBarCon.zIndex = 75
+    root.addChild(playerSkillIconBarCon)
+  }
+  const con = playerSkillIconBarCon
+  if (battlePickedSkills.length <= 0) {
+    con.visible = false
+    battleSkillIconBarKey = ''
+    return
+  }
+
+  const nextKey = battlePickedSkills.map((s) => `${s.id}:${s.tier}:${s.archetype}`).join('|')
+  if (!forceRebuild && battleSkillIconBarKey === nextKey) {
+    con.visible = true
+    layoutBattleSkillIconBar()
+    return
+  }
+
+  con.removeChildren().forEach((c) => c.destroy({ children: true }))
+  battleSkillIconBarKey = nextKey
+
+  const gap = 12
+  const iconSize = 54
+  const rowW = battlePickedSkills.length * iconSize + Math.max(0, battlePickedSkills.length - 1) * gap
+  const bg = new Graphics()
+  bg.roundRect(-rowW / 2 - 16, -38, rowW + 32, 78, 18)
+  bg.fill({ color: 0x0f1728, alpha: 0.88 })
+  bg.stroke({ color: 0x6f809e, width: 2, alpha: 0.9 })
+  con.addChild(bg)
+
+  for (let i = 0; i < battlePickedSkills.length; i++) {
+    const s = battlePickedSkills[i]!
+    const cell = new Container()
+    cell.eventMode = 'static'
+    cell.cursor = 'pointer'
+    const x = -rowW / 2 + i * (iconSize + gap)
+    const iconBg = new Graphics()
+    iconBg.roundRect(x, -26, iconSize, iconSize, 14)
+    iconBg.fill({ color: 0x1d2a45, alpha: 1 })
+    iconBg.stroke({ color: battleSkillTierColor(s.tier), width: 3, alpha: 1 })
+    cell.addChild(iconBg)
+
+    const dot = new Graphics()
+    dot.circle(x + iconSize - 9, -18, 7)
+    dot.fill({ color: battleSkillArchetypeColor(s.archetype), alpha: 1 })
+    cell.addChild(dot)
+
+    const letter = new Text({
+      text: s.name.slice(0, 1),
+      style: { fontSize: 24, fill: 0xf5f7ff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    letter.anchor.set(0.5)
+    letter.x = x + iconSize / 2
+    letter.y = 0
+    cell.addChild(letter)
+
+    cell.on('pointerdown', (e) => {
+      e.stopPropagation()
+      clearBattleItemSelection()
+      if (battleSkillDetailSkillId === s.id) hideBattleSkillDetailPopup()
+      else showBattleSkillDetailPopup(s)
+    })
+
+    con.addChild(cell)
+  }
+
+  layoutBattleSkillIconBar()
+  con.visible = true
+}
+
+function ensureBattleStatEntry(sourceItemId: string, side: 'player' | 'enemy', defId = ''): ItemBattleStat {
+  const prev = battleStatsByItemId.get(sourceItemId)
+  if (prev) return prev
+  const boardItem = engine?.getBoardState().items.find((it) => it.id === sourceItemId)
+  const resolvedDefId = defId
+    || boardItem?.defId
+    || ''
+  const tierRaw = boardItem?.tier ?? 'Bronze#1'
+  const itemDef = getAllItems().find((it) => it.id === resolvedDefId)
+  const itemName = itemDef?.name_cn
+    ?? resolvedDefId
+    ?? sourceItemId
+  const stat: ItemBattleStat = {
+    sourceItemId,
+    side,
+    defId: resolvedDefId,
+    itemName,
+    baseTier: parseBaseTier(itemDef?.starting_tier),
+    tierRaw,
+    level: parseTierLevel(tierRaw),
+    damage: 0,
+    shield: 0,
+  }
+  battleStatsByItemId.set(sourceItemId, stat)
+  return stat
+}
+
+function bootstrapBattleStatEntriesFromBoard(): void {
+  if (!engine) return
+  for (const it of engine.getBoardState().items) {
+    ensureBattleStatEntry(it.id, it.side, it.defId)
+  }
+  damageStatsDirty = true
+}
+
+function refreshDamageStatsPanel(force = false): void {
+  if (!damageStatsPanel || !damageStatsTitleText || !damageStatsRowsCon) return
+  if (!force && !damageStatsDirty && battlePresentationMs - damageStatsLastRenderAtMs < 180) return
+  const rows = Array.from(battleStatsByItemId.values())
+    .filter((it) => it.side === damageStatsTab)
+    .sort((a, b) => (b.damage + b.shield) - (a.damage + a.shield) || b.damage - a.damage)
+  const maxStatValue = Math.max(1, ...rows.map((r) => Math.max(r.damage, r.shield)))
+
+  damageStatsTitleText.text = engine?.isFinished() ? '战斗统计（已结束）' : '战斗统计（进行中）'
+  damageStatsRowsCon.removeChildren().forEach((c) => c.destroy({ children: true }))
+
+  if (rows.length <= 0) {
+    const empty = new Text({
+      text: '暂无统计',
+      style: { fontSize: 24, fill: 0xbfd0ef, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    empty.anchor.set(0.5)
+    empty.x = 0
+    empty.y = 40
+    damageStatsRowsCon.addChild(empty)
+  } else {
+    const rowW = 520
+    const rowH = 88
+    for (let i = 0; i < Math.min(6, rows.length); i++) {
+      const stat = rows[i]!
+      const y = -210 + i * (rowH + 10)
+      const row = new Container()
+
+      const rowBg = new Graphics()
+      rowBg.roundRect(-rowW / 2, y, rowW, rowH, 12)
+      rowBg.fill({ color: 0x1a2744, alpha: 0.88 })
+      rowBg.stroke({ color: 0x5f79a8, width: 1, alpha: 0.9 })
+      row.addChild(rowBg)
+
+      const iconSide = 46
+      const iconX = -rowW / 2 + 36
+      const iconY = y + rowH / 2
+      const iconFrame = new Graphics()
+      iconFrame.roundRect(iconX - iconSide / 2, iconY - iconSide / 2, iconSide, iconSide, 9)
+      iconFrame.fill({ color: 0x1d2a45, alpha: 1 })
+      iconFrame.stroke({ color: getTierColor(stat.baseTier), width: 2, alpha: 0.98 })
+      row.addChild(iconFrame)
+
+      const iconUrl = getItemIconUrl(stat.defId)
+      const icon = new Sprite(Texture.from(iconUrl))
+      icon.anchor.set(0.5)
+      icon.x = iconX
+      icon.y = iconY
+      icon.width = 42
+      icon.height = 42
+      row.addChild(icon)
+
+      const name = new Text({
+        text: `${i + 1}. ${stat.itemName} ${tierCn(stat.baseTier)}Lv${stat.level}`,
+        style: { fontSize: 21, fill: 0xeaf2ff, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      name.x = -rowW / 2 + 64
+      name.y = y + 8
+      row.addChild(name)
+
+      const barW = 228
+      const barH = 13
+      const barX = -rowW / 2 + 64
+
+      const dmgBg = new Graphics()
+      dmgBg.roundRect(barX, y + 42, barW, barH, 6)
+      dmgBg.fill({ color: 0x2a3557, alpha: 1 })
+      row.addChild(dmgBg)
+      const dmgRatio = Math.min(1, Math.max(0, stat.damage / maxStatValue))
+      const dmgFillW = stat.damage > 0 ? Math.max(2, Math.round(barW * dmgRatio)) : 0
+      if (dmgFillW > 0) {
+        const dmgFg = new Graphics()
+        dmgFg.roundRect(barX, y + 42, dmgFillW, barH, 6)
+        dmgFg.fill({ color: 0xe95d5d, alpha: 1 })
+        row.addChild(dmgFg)
+      }
+      const dmgText = new Text({
+        text: `伤害 ${Math.round(stat.damage)}`,
+        style: { fontSize: 18, fill: 0xffd6d6, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      dmgText.x = barX + barW + 10
+      dmgText.y = y + 34
+      row.addChild(dmgText)
+
+      const shBg = new Graphics()
+      shBg.roundRect(barX, y + 62, barW, barH, 6)
+      shBg.fill({ color: 0x2a3557, alpha: 1 })
+      row.addChild(shBg)
+      const shieldRatio = Math.min(1, Math.max(0, stat.shield / maxStatValue))
+      const shieldFillW = stat.shield > 0 ? Math.max(2, Math.round(barW * shieldRatio)) : 0
+      if (shieldFillW > 0) {
+        const shFg = new Graphics()
+        shFg.roundRect(barX, y + 62, shieldFillW, barH, 6)
+        shFg.fill({ color: Math.round(getDebugCfg('battleColorShield')), alpha: 1 })
+        row.addChild(shFg)
+      }
+      const shText = new Text({
+        text: `护盾 ${Math.round(stat.shield)}`,
+        style: { fontSize: 18, fill: 0xd8ebff, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      shText.x = barX + barW + 10
+      shText.y = y + 54
+      row.addChild(shText)
+
+      damageStatsRowsCon.addChild(row)
+    }
+  }
+
+  damageStatsDirty = false
+  damageStatsLastRenderAtMs = battlePresentationMs
+}
+
+function setDamageStatsPanelVisible(v: boolean): void {
+  damageStatsPanelVisible = v
+  if (damageStatsMask) damageStatsMask.visible = v
+  if (damageStatsPanel) damageStatsPanel.visible = v
+  if (statsBtnText) statsBtnText.text = v ? '关统计' : '统计'
+  if (v) refreshDamageStatsPanel(true)
+}
+
+function makeDamageStatsButton(): Container {
+  const con = new Container()
+  const bg = new Graphics()
+  const w = 116
+  const h = TOP_ACTION_BTN_H
+  bg.roundRect(-w / 2, -h / 2, w, h, 14)
+  bg.stroke({ color: 0x96b2ff, width: 2, alpha: 0.95 })
+  bg.fill({ color: 0x1f2945, alpha: 0.9 })
+  con.addChild(bg)
+
+  statsBtnText = new Text({
+    text: '统计',
+    style: { fontSize: 26, fill: 0xd9e4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  statsBtnText.anchor.set(0.5)
+  con.addChild(statsBtnText)
+
+  con.x = 92
+  con.y = getClampedTopActionBtnY()
+  con.zIndex = 185
+  con.eventMode = 'static'
+  con.cursor = 'pointer'
+  con.on('pointerdown', (e) => {
+    e.stopPropagation()
+    setDamageStatsPanelVisible(!damageStatsPanelVisible)
+  })
+  return con
+}
+
+function makeSettlementStatsButton(): Container {
+  const con = makeDamageStatsButton()
+  con.x = -220
+  con.y = -160
+  con.visible = false
+  return con
+}
+
+function setDamageStatsTab(tab: 'player' | 'enemy'): void {
+  damageStatsTab = tab
+  const activeFill = 0x4969a8
+  const idleFill = 0x253455
+  const updateBtn = (btn: Container | null, active: boolean) => {
+    if (!btn) return
+    const bg = btn.getChildAt(0)
+    if (bg instanceof Graphics) {
+      bg.clear()
+      bg.roundRect(-62, -20, 124, 40, 12)
+      bg.fill({ color: active ? activeFill : idleFill, alpha: 0.95 })
+      bg.stroke({ color: 0x8ab2ef, width: 2, alpha: 0.95 })
+    }
+  }
+  updateBtn(damageStatsTabPlayerBtn, tab === 'player')
+  updateBtn(damageStatsTabEnemyBtn, tab === 'enemy')
+  damageStatsDirty = true
+  refreshDamageStatsPanel(true)
+}
+
+function makeStatsTabButton(label: string, tab: 'player' | 'enemy'): Container {
+  const con = new Container()
+  const bg = new Graphics()
+  bg.roundRect(-62, -20, 124, 40, 12)
+  bg.fill({ color: 0x253455, alpha: 0.95 })
+  bg.stroke({ color: 0x8ab2ef, width: 2, alpha: 0.95 })
+  con.addChild(bg)
+  const txt = new Text({
+    text: label,
+    style: { fontSize: 20, fill: 0xe3edff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  txt.anchor.set(0.5)
+  con.addChild(txt)
+  con.eventMode = 'static'
+  con.cursor = 'pointer'
+  con.on('pointerdown', (e) => {
+    e.stopPropagation()
+    setDamageStatsTab(tab)
+  })
+  return con
+}
+
+function makeDamageStatsMask(): Graphics {
+  const mask = new Graphics()
+  mask.rect(0, 0, CANVAS_W, CANVAS_H)
+  mask.fill({ color: 0x000000, alpha: 0.6 })
+  mask.zIndex = 230
+  mask.visible = false
+  mask.eventMode = 'static'
+  mask.cursor = 'pointer'
+  mask.on('pointerdown', (e) => {
+    e.stopPropagation()
+    setDamageStatsPanelVisible(false)
+  })
+  return mask
+}
+
+function makeDamageStatsPanel(): Container {
+  const panel = new Container()
+  const panelW = DAMAGE_STATS_PANEL_W
+  const panelH = DAMAGE_STATS_PANEL_H
+  const bg = new Graphics()
+  bg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 20)
+  bg.fill({ color: 0x121a2f, alpha: 0.94 })
+  bg.stroke({ color: 0x7ea6e3, width: 2, alpha: 0.95 })
+  panel.addChild(bg)
+
+  damageStatsTitleText = new Text({
+    text: '战斗统计',
+    style: { fontSize: 28, fill: 0xffefc8, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  damageStatsTitleText.anchor.set(0.5, 0)
+  damageStatsTitleText.x = 0
+  damageStatsTitleText.y = -panelH / 2 + 14
+  panel.addChild(damageStatsTitleText)
+
+  damageStatsTabPlayerBtn = makeStatsTabButton('我方', 'player')
+  damageStatsTabPlayerBtn.x = -70
+  damageStatsTabPlayerBtn.y = -panelH / 2 + 76
+  panel.addChild(damageStatsTabPlayerBtn)
+
+  damageStatsTabEnemyBtn = makeStatsTabButton('敌方', 'enemy')
+  damageStatsTabEnemyBtn.x = 70
+  damageStatsTabEnemyBtn.y = -panelH / 2 + 76
+  panel.addChild(damageStatsTabEnemyBtn)
+
+  damageStatsRowsCon = new Container()
+  damageStatsRowsCon.y = 34
+  panel.addChild(damageStatsRowsCon)
+
+  panel.x = CANVAS_W / 2
+  panel.y = getClampedStatsPanelY(panelH)
+  panel.zIndex = 231
+  panel.visible = false
+  panel.eventMode = 'static'
+  panel.on('pointerdown', (e) => e.stopPropagation())
+  setDamageStatsTab('player')
+  return panel
+}
 
 function resolveItemSide(sourceItemId: string, preferred?: 'player' | 'enemy'): 'player' | 'enemy' | null {
   if (preferred === 'player' || preferred === 'enemy') return preferred
@@ -645,7 +1243,8 @@ function animateItemFirePulse(sourceItemId: string, side: 'player' | 'enemy'): v
     return
   }
 
-  const flash = new Graphics()
+  const flash = pulseFlashPool.pop() ?? new Graphics()
+  flash.clear()
   flash.roundRect(4, 4, node.container.width - 8, node.container.height - 8, Math.max(4, getDebugCfg('gridItemCornerRadius')))
   flash.stroke({ color: 0xffdf66, width: 3, alpha: 0.95 })
   flash.alpha = 0
@@ -675,7 +1274,10 @@ function tickPulseStates(dtMs: number): void {
     if (p >= 1) {
       st.node.visual.scale.set(1)
       if (st.flash.parent) st.flash.parent.removeChild(st.flash)
-      st.flash.destroy()
+      st.flash.clear()
+      st.flash.alpha = 1
+      if (pulseFlashPool.length < FX_POOL_MAX_PULSE_FLASHES) pulseFlashPool.push(st.flash)
+      else st.flash.destroy()
       pulseStates.delete(id)
     }
   }
@@ -802,10 +1404,16 @@ function spawnProjectile(from: { x: number; y: number }, to: { x: number; y: num
   let visual: Graphics | Sprite
   let recycle: (() => void) | null = null
   let spinRadPerSec = 0
+  let spinDir = -1
   let lockFacingRad: number | null = null
+  let forceLinearFlight = false
+  const travelDx = to.x - from.x
+  const travelDy = to.y - from.y
   if (useSprite && sourceDef) {
     const sprite = acquireProjectileSprite(from)
-    const px = Math.max(8, getDebugCfg('battleProjectileItemSizePx'))
+    const sourceSide = sourceItemId ? resolveItemSide(sourceItemId) : null
+    const sourceItemScale = sourceSide === 'enemy' ? getEnemyAreaScale() : getBattleItemScale()
+    const px = Math.max(8, Math.round(getDebugCfg('battleProjectileItemSizePx') * Math.max(0.25, sourceItemScale)))
     sprite.width = px
     sprite.height = px
     fxLayer.addChild(sprite)
@@ -817,9 +1425,11 @@ function spawnProjectile(from: { x: number; y: number }, to: { x: number; y: num
     const attackStyle = sourceDef.attack_style ?? ''
     if (attackStyle.includes('旋转')) {
       spinRadPerSec = Math.abs(getDebugCfg('battleProjectileSpinDegPerSec')) * Math.PI / 180
+      spinDir = travelDx >= 0 ? -1 : 1
     } else if (attackStyle.includes('直线')) {
       // 资源默认朝上；Pixi 0 弧度朝右，需补 +90° 对齐前向
       lockFacingRad = Math.atan2(to.y - from.y, to.x - from.x) + Math.PI / 2
+      forceLinearFlight = true
     }
 
     const urls = collectProjectileIconUrls(sourceDef, sourceItemId)
@@ -834,8 +1444,22 @@ function spawnProjectile(from: { x: number; y: number }, to: { x: number; y: num
     recycle = () => releaseProjectileDot(dot)
   }
 
-  const duration = getDebugCfg('battleProjectileFlyMs')
-  const arcH = getDebugCfg('battleProjectileArcHeight')
+  const durationMinRaw = Math.max(1, getDebugCfg('battleProjectileFlyMsMin'))
+  const durationMaxRaw = Math.max(1, getDebugCfg('battleProjectileFlyMsMax'))
+  const durationMin = Math.min(durationMinRaw, durationMaxRaw)
+  const durationMax = Math.max(durationMinRaw, durationMaxRaw)
+  const duration = durationMax > durationMin
+    ? durationMin + Math.random() * (durationMax - durationMin)
+    : durationMin
+  const arcH = forceLinearFlight ? 0 : getDebugCfg('battleProjectileArcHeight')
+  const sideArcMax = Math.max(0, getDebugCfg('battleProjectileSideArcMax'))
+  const dx = travelDx
+  const dy = travelDy
+  const dist = Math.max(1, Math.hypot(dx, dy))
+  const nx = -dy / dist
+  const ny = dx / dist
+  const sideArcSign = Math.random() < 0.5 ? -1 : 1
+  const sideArcAmplitude = forceLinearFlight ? 0 : sideArcSign * (Math.random() * sideArcMax)
   const scaleStart = useSprite ? getDebugCfg('battleProjectileScaleStart') : 1
   const scalePeak = useSprite ? getDebugCfg('battleProjectileScalePeak') : 1
   const scaleEnd = useSprite ? getDebugCfg('battleProjectileScaleEnd') : 1
@@ -844,16 +1468,17 @@ function spawnProjectile(from: { x: number; y: number }, to: { x: number; y: num
   activeFx.push((dtMs) => {
     t += dtMs
     const p = Math.min(1, t / duration)
-    visual.x = from.x + (to.x - from.x) * p
-    visual.y = from.y + (to.y - from.y) * p - arcH * 4 * p * (1 - p)
+    const parabola = 4 * p * (1 - p)
+    const sideOffset = sideArcAmplitude * parabola
+    visual.x = from.x + (to.x - from.x) * p + nx * sideOffset
+    visual.y = from.y + (to.y - from.y) * p + ny * sideOffset - arcH * parabola
 
     const k = p <= peakT
       ? lerp(scaleStart, scalePeak, p / peakT)
       : lerp(scalePeak, scaleEnd, (p - peakT) / (1 - peakT))
     visual.scale.set(k)
     if (spinRadPerSec > 0) {
-      // 向左旋转
-      visual.rotation -= spinRadPerSec * (dtMs / 1000)
+      visual.rotation += spinRadPerSec * spinDir * (dtMs / 1000)
     } else if (lockFacingRad !== null) {
       visual.rotation = lockFacingRad
     }
@@ -901,6 +1526,28 @@ function spawnFloatingNumber(to: { x: number; y: number }, text: string, color: 
     }
     return true
   })
+}
+
+function scheduleDamageVisual(delayMs: number, fn: () => void): void {
+  if (delayMs <= 0) {
+    fn()
+    return
+  }
+  pendingDelayedDamageVisualCount += 1
+  let elapsed = 0
+  activeFx.push((dtMs) => {
+    elapsed += dtMs
+    if (elapsed >= delayMs) {
+      pendingDelayedDamageVisualCount = Math.max(0, pendingDelayedDamageVisualCount - 1)
+      fn()
+      return false
+    }
+    return true
+  })
+}
+
+function hasPendingDamageImpactPresentation(): boolean {
+  return pendingDelayedDamageVisualCount > 0 || activeProjectileCount > 0
 }
 
 function makeBackButton(): Container {
@@ -957,12 +1604,20 @@ function makeSettlementPanel(): Container {
   settlementLifeText.y = -38
   panel.addChild(settlementLifeText)
 
+  settlementTrophyText = new Text({
+    text: '🏆 0/10',
+    style: { fontSize: 30, fill: 0xffe8b4, fontFamily: 'Arial', fontWeight: 'bold', stroke: { color: 0x000000, width: 3 } },
+  })
+  settlementTrophyText.anchor.set(0.5)
+  settlementTrophyText.y = 14
+  panel.addChild(settlementTrophyText)
+
   settlementDescText = new Text({
     text: '准备下一步行动',
     style: { fontSize: 26, fill: 0xe7edf9, fontFamily: 'Arial', fontWeight: 'bold', stroke: { color: 0x000000, width: 2 } },
   })
   settlementDescText.anchor.set(0.5)
-  settlementDescText.y = 24
+  settlementDescText.y = 62
   panel.addChild(settlementDescText)
 
   settlementActionBtn = new Container()
@@ -982,9 +1637,10 @@ function makeSettlementPanel(): Container {
   settlementActionBtn.cursor = 'pointer'
   settlementActionBtn.on('pointerdown', () => {
     if (battleExitTransitionDurationMs > 0) return
-    if (settlementGameOver) {
+    if (settlementGameOver || settlementFinalVictory) {
       clearCurrentRunState()
       resetLifeState()
+      resetWinTrophyState(getGameCfg().runRules?.trophyWinsToFinalVictory ?? 10)
       clearBattleSnapshot()
       clearBattleOutcome()
       window.location.reload()
@@ -1006,14 +1662,21 @@ function resolveBattleSettlement(): void {
   const result = engine.getResult()
   const winner = result?.winner ?? 'draw'
   const before = getLifeState()
+  const trophyTarget = getGameCfg().runRules?.trophyWinsToFinalVictory ?? 10
+  const trophyBefore = getWinTrophyState(trophyTarget)
   const after = winner === 'enemy' ? deductLife() : before
+  const trophyAfter = winner === 'player' ? addWinTrophy(trophyTarget) : trophyBefore
   const delta = after.current - before.current
   settlementResolved = true
   settlementGameOver = winner === 'enemy' && after.current <= 0
+  settlementFinalVictory = winner === 'player' && trophyAfter.wins >= trophyAfter.target
 
-  if (!settlementTitleText || !settlementLifeText || !settlementDescText || !settlementActionLabel) return
+  if (!settlementTitleText || !settlementLifeText || !settlementTrophyText || !settlementDescText || !settlementActionLabel) return
 
-  if (winner === 'player') {
+  if (settlementFinalVictory) {
+    settlementTitleText.text = '最终胜利'
+    settlementTitleText.style.fill = 0xffe2a0
+  } else if (winner === 'player') {
     settlementTitleText.text = '战斗胜利'
     settlementTitleText.style.fill = 0xffe2a0
   } else if (winner === 'enemy') {
@@ -1028,8 +1691,15 @@ function resolveBattleSettlement(): void {
     ? `❤️ ${before.current}/${before.max} -> ${after.current}/${after.max} (-1)`
     : `❤️ ${after.current}/${after.max}`
   settlementLifeText.style.fill = after.current <= 1 ? 0xff6a6a : 0xffd4d4
+  settlementTrophyText.text = winner === 'player'
+    ? `🏆 ${trophyBefore.wins}/${trophyBefore.target} -> ${trophyAfter.wins}/${trophyAfter.target} (+1)`
+    : `🏆 ${trophyAfter.wins}/${trophyAfter.target}`
+  settlementTrophyText.style.fill = trophyAfter.wins >= trophyAfter.target ? 0xffde79 : 0xffe8b4
 
-  if (settlementGameOver) {
+  if (settlementFinalVictory) {
+    settlementDescText.text = `🏆 已达成${trophyAfter.target}场胜利，点击重新开始`
+    settlementActionLabel.text = '重新开始'
+  } else if (settlementGameOver) {
     settlementDescText.text = '❤️ 已耗尽，点击重新开始'
     settlementActionLabel.text = '重新开始'
   } else {
@@ -1042,7 +1712,7 @@ function makeSpeedButton(): Container {
   const con = new Container()
   const bg = new Graphics()
   const w = 116
-  const h = 58
+  const h = TOP_ACTION_BTN_H
   bg.roundRect(-w / 2, -h / 2, w, h, 14)
   bg.stroke({ color: 0x96b2ff, width: 2, alpha: 0.95 })
   bg.fill({ color: 0x1f2945, alpha: 0.9 })
@@ -1056,7 +1726,7 @@ function makeSpeedButton(): Container {
   con.addChild(speedBtnText)
 
   con.x = CANVAS_W - 84
-  con.y = getDebugCfg('battleSpeedBtnY')
+  con.y = getClampedTopActionBtnY()
   con.zIndex = 185
   con.eventMode = 'static'
   con.cursor = 'pointer'
@@ -1095,6 +1765,22 @@ function drawInfoText(con: Container, centerX: number, centerY: number, parts: A
   con.x = centerX - totalW / 2
   const maxH = nodes.reduce((m, n) => Math.max(m, n.height), 0)
   con.y = centerY - maxH / 2
+}
+
+function getClampedTopActionBtnY(): number {
+  const y = getDebugCfg('battleSpeedBtnY')
+  const minY = TOP_ACTION_BTN_HALF_H + TOP_ACTION_BTN_SAFE_PAD
+  const maxY = CANVAS_H - TOP_ACTION_BTN_HALF_H - TOP_ACTION_BTN_SAFE_PAD
+  return Math.max(minY, Math.min(maxY, y))
+}
+
+function getClampedStatsPanelY(panelH: number): number {
+  const y = getDebugCfg('battleStatsPanelY')
+  const halfH = panelH / 2
+  const pad = 12
+  const minY = halfH + pad
+  const maxY = CANVAS_H - halfH - pad
+  return Math.max(minY, Math.min(maxY, y))
 }
 
 function drawHeroBars(
@@ -1165,7 +1851,10 @@ function applyZoneVisualStyle(zone: GridZone): void {
   zone.setStatBadgeFontSize(getDebugCfg('itemStatBadgeFontSize'))
   zone.setTierStarFontSize(getDebugCfg('itemTierStarFontSize'))
   zone.setTierStarStrokeWidth(getDebugCfg('itemTierStarStrokeWidth'))
+  zone.setTierStarOffsetX(getDebugCfg('itemTierStarOffsetX'))
+  zone.setTierStarOffsetY(getDebugCfg('itemTierStarOffsetY'))
   zone.setStatBadgeOffsetY(getDebugCfg('itemStatBadgeOffsetY'))
+  zone.setAmmoBadgeOffsetY(6)
 }
 
 async function mountZoneItems(zone: GridZone, items: CombatBoardItem[]): Promise<void> {
@@ -1401,13 +2090,24 @@ export const BattleScene: Scene = {
     }
     enteredSnapshot = snapshot
     battleDay = Math.max(1, snapshot.day)
+    battlePickedSkills = loadPickedSkillsFromShopState()
     settlementResolved = false
     settlementGameOver = false
+    settlementFinalVictory = false
+    settlementRevealAtMs = null
+    battlePresentationMs = 0
+    sourceNextDamageVisualAtMs.clear()
     battleSpeed = 1
+    lastHudTickIndex = -1
     activeProjectileCount = 0
     activeFloatingNumberCount = 0
+    pendingDelayedDamageVisualCount = 0
     droppedProjectileCount = 0
     droppedFloatingNumberCount = 0
+    battleStatsByItemId.clear()
+    damageStatsPanelVisible = false
+    damageStatsDirty = false
+    damageStatsLastRenderAtMs = 0
     root = new Container()
     root.sortableChildren = true
     stage.addChild(root)
@@ -1511,6 +2211,7 @@ export const BattleScene: Scene = {
     applyLayout(activeCols)
     root.addChild(enemyZone)
     root.addChild(playerZone)
+    refreshBattleSkillIconBar()
 
     enemyCdOverlay = new Graphics()
     playerCdOverlay = new Graphics()
@@ -1584,13 +2285,24 @@ export const BattleScene: Scene = {
     speedBtn = makeSpeedButton()
     root.addChild(speedBtn)
 
+    statsBtn = makeDamageStatsButton()
+    root.addChild(statsBtn)
+
+    damageStatsMask = makeDamageStatsMask()
+    root.addChild(damageStatsMask)
+
     backBtn = makeBackButton()
     backBtn.zIndex = 190
     backBtn.visible = false
     root.addChild(backBtn)
 
     settlementPanel = makeSettlementPanel()
+    settlementStatsBtn = makeSettlementStatsButton()
+    settlementPanel.addChild(settlementStatsBtn)
     root.addChild(settlementPanel)
+
+    damageStatsPanel = makeDamageStatsPanel()
+    root.addChild(damageStatsPanel)
 
     engine = new CombatEngine()
     setCombatRuntimeOverride({
@@ -1598,19 +2310,20 @@ export const BattleScene: Scene = {
       poisonTickMs: getDebugCfg('gameplayPoisonTickMs'),
       regenTickMs: getDebugCfg('gameplayRegenTickMs'),
       fatigueStartMs: getDebugCfg('gameplayFatigueStartMs'),
-      fatigueIntervalMs: getDebugCfg('gameplayFatigueIntervalMs'),
-      fatigueDamagePctPerInterval: getDebugCfg('gameplayFatigueDamagePctPerInterval'),
-      fatigueDamageFixedPerInterval: getDebugCfg('gameplayFatigueDamageFixedPerInterval'),
-      fatigueDamagePctRampPerInterval: getDebugCfg('gameplayFatigueDamagePctRampPerInterval'),
-      fatigueDamageFixedRampPerInterval: getDebugCfg('gameplayFatigueDamageFixedRampPerInterval'),
+      fatigueTickMs: getDebugCfg('gameplayFatigueTickMs'),
+      fatigueBaseValue: getDebugCfg('gameplayFatigueBaseValue'),
+      fatigueDoubleEveryMs: getDebugCfg('gameplayFatigueDoubleEveryMs'),
       burnShieldFactor: getDebugCfg('gameplayBurnShieldFactor'),
       burnDecayPct: getDebugCfg('gameplayBurnDecayPct'),
       healCleansePct: getDebugCfg('gameplayHealCleansePct'),
+      enemyDraftEnabled: getDebugCfg('enemyDraftEnabled'),
+      enemyDraftSameArchetypeBias: getDebugCfg('enemyDraftSameArchetypeBias'),
     })
     engine.start(snapshot)
     console.log(`[BattleScene] 进入战斗场景 day=${snapshot.day} entities=${snapshot.entities.length} cols=${snapshot.activeColCount}`)
 
     const board = engine.getBoardState()
+    bootstrapBattleStatEntriesFromBoard()
     await mountZoneItems(playerZone, board.items.filter((it) => it.side === 'player'))
     await mountZoneItems(enemyZone, board.items.filter((it) => it.side === 'enemy'))
 
@@ -1625,6 +2338,7 @@ export const BattleScene: Scene = {
 
     onStageTapHidePopup = () => {
       clearBattleItemSelection()
+      hideBattleSkillDetailPopup()
     }
     stage.on('pointerdown', onStageTapHidePopup)
 
@@ -1633,10 +2347,19 @@ export const BattleScene: Scene = {
       pushBattleLog(`开火 ${e.side === 'player' ? '我方' : '敌方'} ${e.itemId} x${e.multicast}`)
     })
     offDamageEvent = EventBus.on('battle:take_damage', (e) => {
+      if (engine) {
+        const boardNow = engine.getBoardState()
+        drawHeroBars(boardNow.player, boardNow.enemy)
+      }
       const side = e.targetSide ?? (e.targetId === 'hero_enemy' ? 'enemy' : 'player')
       const fromSide = e.sourceSide === 'player' || e.sourceSide === 'enemy'
         ? e.sourceSide
         : (side === 'enemy' ? 'player' : 'enemy')
+      if (e.sourceItemId && !e.sourceItemId.startsWith('status_') && e.sourceItemId !== 'fatigue') {
+        const stat = ensureBattleStatEntry(e.sourceItemId, fromSide)
+        stat.damage += Math.max(0, e.amount)
+        damageStatsDirty = true
+      }
       const enemyAttackToPlayer = side === 'player' && fromSide === 'enemy'
       const from = (e.sourceItemId === 'fatigue' || e.sourceItemId.startsWith('status_'))
         ? getHeroBarCenter(fromSide)
@@ -1647,7 +2370,7 @@ export const BattleScene: Scene = {
         : enemyAttackToPlayer
           ? (getPlayerPortraitHitPoint() ?? to)
           : to
-      const damageShown = e.type === 'normal' ? (e.finalDamage ?? e.amount) : e.amount
+      const damageShown = e.amount
       const bulletColor = e.type === 'burn' ? getBattleOrbColor('burn') : e.type === 'poison' ? getBattleOrbColor('poison') : getBattleOrbColor('hp')
       const isFatigueDamage = e.sourceItemId === 'fatigue'
       const isCritDamage = e.type === 'normal' && e.isCrit
@@ -1659,11 +2382,13 @@ export const BattleScene: Scene = {
             ? getBattleFloatTextColor('crit')
             : getBattleFloatTextColor('damage')
       const textSize = isCritDamage ? getDebugCfg('battleTextFontSizeCrit') : getDebugCfg('battleTextFontSizeDamage')
-      if (e.sourceItemId.startsWith('status_') || isFatigueDamage) {
-        if (enemyAttackToPlayer) triggerPlayerPortraitHitFx()
-        spawnFloatingNumber(to, `-${damageShown}`, textColor, textSize)
-        pushBattleLog(`结算 ${e.type} ${side === 'enemy' ? '敌方' : '我方'} ${damageShown}`)
-      } else {
+      const playDamageVisual = () => {
+        if (e.sourceItemId.startsWith('status_') || isFatigueDamage) {
+          if (enemyAttackToPlayer) triggerPlayerPortraitHitFx()
+          spawnFloatingNumber(to, `-${damageShown}`, textColor, textSize)
+          pushBattleLog(`结算 ${e.type} ${side === 'enemy' ? '敌方' : '我方'} ${damageShown}`)
+          return
+        }
         spawnProjectile(from, projectileTarget, bulletColor, () => {
           if (side === 'enemy') {
             triggerEnemyPortraitHitFx()
@@ -1674,9 +2399,23 @@ export const BattleScene: Scene = {
         }, e.sourceItemId)
         pushBattleLog(`伤害 ${side === 'enemy' ? '敌方' : '我方'} ${damageShown}`)
       }
+
+      if (e.sourceItemId.startsWith('status_') || isFatigueDamage) {
+        playDamageVisual()
+      } else {
+        const gapMs = Math.max(0, getDebugCfg('battleMulticastVisualGapMs'))
+        const dueMs = Math.max(battlePresentationMs, sourceNextDamageVisualAtMs.get(e.sourceItemId) ?? battlePresentationMs)
+        sourceNextDamageVisualAtMs.set(e.sourceItemId, dueMs + gapMs)
+        scheduleDamageVisual(dueMs - battlePresentationMs, playDamageVisual)
+      }
     })
     offShieldEvent = EventBus.on('battle:gain_shield', (e) => {
       const side = e.targetSide ?? (e.targetId === 'hero_enemy' ? 'enemy' : 'player')
+      if (e.sourceItemId && !e.sourceItemId.startsWith('status_')) {
+        const stat = ensureBattleStatEntry(e.sourceItemId, side)
+        stat.shield += Math.max(0, e.amount)
+        damageStatsDirty = true
+      }
       const from = getItemCenterById(e.sourceItemId, side) ?? getHeroBarCenter(side)
       const to = getHeroBarCenter(side)
       const projectileTarget = side === 'enemy' ? (getEnemyPortraitHitPoint() ?? to) : to
@@ -1767,11 +2506,21 @@ export const BattleScene: Scene = {
     settlementPanel = null
     settlementTitleText = null
     settlementLifeText = null
+    settlementTrophyText = null
     settlementDescText = null
     settlementActionBtn = null
     settlementActionLabel = null
     speedBtn = null
     speedBtnText = null
+    statsBtn = null
+    statsBtnText = null
+    settlementStatsBtn = null
+    damageStatsMask = null
+    damageStatsPanel = null
+    damageStatsTitleText = null
+    damageStatsRowsCon = null
+    damageStatsTabPlayerBtn = null
+    damageStatsTabEnemyBtn = null
     battleEndMask = null
     sceneFadeOverlay = null
     heroHudG = null
@@ -1785,6 +2534,10 @@ export const BattleScene: Scene = {
     playerFreezeOverlay = null
     enemyStatusLayer = null
     playerStatusLayer = null
+    playerSkillIconBarCon = null
+    battleSkillDetailPopupCon = null
+    battleSkillDetailSkillId = null
+    battlePickedSkills = []
     fxLayer = null
     offFireEvent?.(); offFireEvent = null
     offDamageEvent?.(); offDamageEvent = null
@@ -1821,17 +2574,25 @@ export const BattleScene: Scene = {
     battleExitTransitionDurationMs = 0
     settlementResolved = false
     settlementGameOver = false
+    settlementFinalVictory = false
+    settlementRevealAtMs = null
+    battlePresentationMs = 0
     enteredSnapshot = null
     battleSpeed = 1
     activeProjectileCount = 0
     activeFloatingNumberCount = 0
+    pendingDelayedDamageVisualCount = 0
     droppedProjectileCount = 0
     droppedFloatingNumberCount = 0
     activeFx.length = 0
+    sourceNextDamageVisualAtMs.clear()
     for (const [, st] of pulseStates) {
       st.node?.visual.scale.set(1)
       if (st.flash.parent) st.flash.parent.removeChild(st.flash)
-      st.flash.destroy()
+      st.flash.clear()
+      st.flash.alpha = 1
+      if (pulseFlashPool.length < FX_POOL_MAX_PULSE_FLASHES) pulseFlashPool.push(st.flash)
+      else st.flash.destroy()
     }
     pulseStates.clear()
     pulseDedupAtMs.clear()
@@ -1841,6 +2602,15 @@ export const BattleScene: Scene = {
       fx.root.destroy({ children: true })
     }
     statusFxByKey.clear()
+    while (pulseFlashPool.length > 0) {
+      pulseFlashPool.pop()?.destroy()
+    }
+    battleSkillIconBarKey = ''
+    lastHudTickIndex = -1
+    battleStatsByItemId.clear()
+    damageStatsPanelVisible = false
+    damageStatsDirty = false
+    damageStatsLastRenderAtMs = 0
     engine = null
     console.log('[BattleScene] 离开战斗场景')
   },
@@ -1849,14 +2619,20 @@ export const BattleScene: Scene = {
     if (tickBattleExitTransition(dt * 1000)) return
     const speed = Math.max(1, battleSpeed)
     const simDt = dt * speed
+    const dtMs = simDt * 1000
+    battlePresentationMs += dtMs
     const introDone = tickBattleIntro(simDt * 1000)
     if (introDone) engine.update(simDt)
-    enemyPresentationVisible = !engine.isFinished()
+    const pendingDamageImpactFx = hasPendingDamageImpactPresentation()
+    enemyPresentationVisible = !engine.isFinished() || pendingDamageImpactFx
     enemyZone.visible = enemyPresentationVisible
     if (enemyBossSprite) enemyBossSprite.visible = enemyPresentationVisible
     if (enemyBossFlashSprite) enemyBossFlashSprite.visible = enemyPresentationVisible
     const board = engine.getBoardState()
     const runtime = engine.getRuntimeState()
+    const debugState = engine.getDebugState()
+    const tickChanged = debugState.tickIndex !== lastHudTickIndex
+    const pulseActive = pulseStates.size > 0
     const runtimeChargePercentById = new Map(runtime.map((it) => [it.id, it.chargePercent]))
     const activeCols = getDayActiveCols(battleDay)
     enemyZone.setActiveColCount(activeCols)
@@ -1864,20 +2640,24 @@ export const BattleScene: Scene = {
     applyZoneVisualStyle(enemyZone)
     applyZoneVisualStyle(playerZone)
     applyLayout(activeCols)
+    layoutBattleSkillIconBar()
 
     const playerItems = board.items.filter((it) => it.side === 'player')
     const enemyItems = board.items.filter((it) => it.side === 'enemy')
-    drawCooldownOverlay(playerZone, playerCdOverlay, playerItems, runtimeChargePercentById)
-    drawCooldownOverlay(enemyZone, enemyCdOverlay, enemyItems, runtimeChargePercentById)
     const runtimeById = new Map(runtime.map((it) => [it.id, it]))
-    updateRuntimeStatBadges(playerZone, playerItems, runtimeById)
-    updateRuntimeStatBadges(enemyZone, enemyItems, runtimeById)
-    updateZoneStatusFx(playerZone, 'player', playerItems, runtimeById, playerFreezeOverlay, playerStatusLayer)
-    updateZoneStatusFx(enemyZone, 'enemy', enemyItems, runtimeById, enemyFreezeOverlay, enemyStatusLayer)
+    if (tickChanged || pulseActive) {
+      drawCooldownOverlay(playerZone, playerCdOverlay, playerItems, runtimeChargePercentById)
+      drawCooldownOverlay(enemyZone, enemyCdOverlay, enemyItems, runtimeChargePercentById)
+      updateZoneStatusFx(playerZone, 'player', playerItems, runtimeById, playerFreezeOverlay, playerStatusLayer)
+      updateZoneStatusFx(enemyZone, 'enemy', enemyItems, runtimeById, enemyFreezeOverlay, enemyStatusLayer)
+    }
+    if (tickChanged) {
+      updateRuntimeStatBadges(playerZone, playerItems, runtimeById)
+      updateRuntimeStatBadges(enemyZone, enemyItems, runtimeById)
+      drawHeroBars(board.player, board.enemy)
+      lastHudTickIndex = debugState.tickIndex
+    }
 
-    drawHeroBars(board.player, board.enemy)
-
-    const dtMs = simDt * 1000
     tickPulseStates(dtMs)
     tickEnemyPortraitFx(dtMs)
     tickPlayerPortraitFx(dtMs)
@@ -1886,17 +2666,26 @@ export const BattleScene: Scene = {
     }
 
     if (statusText) {
-      const s = engine.getDebugState()
-      statusText.text = `phase:${engine.getPhase()} ticks:${s.tickIndex} fatigue:${s.inFatigue ? 'on' : 'off'} fx:${activeFx.length} p:${activeProjectileCount}/${FX_MAX_PROJECTILES} t:${activeFloatingNumberCount}/${FX_MAX_FLOATING_NUMBERS} drop:${droppedProjectileCount + droppedFloatingNumberCount}`
+      statusText.text = `phase:${engine.getPhase()} ticks:${debugState.tickIndex} fatigue:${debugState.inFatigue ? 'on' : 'off'} fx:${activeFx.length} p:${activeProjectileCount}/${FX_MAX_PROJECTILES} t:${activeFloatingNumberCount}/${FX_MAX_FLOATING_NUMBERS} drop:${droppedProjectileCount + droppedFloatingNumberCount}`
     }
 
     if (battleEndMask) {
       if (engine.isFinished()) {
-        resolveBattleSettlement()
-        battleEndMask.visible = true
-        battleEndMask.clear()
-        battleEndMask.rect(0, 0, CANVAS_W, CANVAS_H)
-        battleEndMask.fill({ color: 0x000000, alpha: 0.45 })
+        if (!settlementResolved) {
+          if (!pendingDamageImpactFx) {
+            const extraDelayMs = Math.max(0, getDebugCfg('battleSettlementDelayMs'))
+            if (settlementRevealAtMs === null) settlementRevealAtMs = battlePresentationMs + extraDelayMs
+            if (battlePresentationMs >= settlementRevealAtMs) resolveBattleSettlement()
+          } else {
+            settlementRevealAtMs = null
+          }
+        }
+        battleEndMask.visible = settlementResolved
+        if (battleEndMask.visible) {
+          battleEndMask.clear()
+          battleEndMask.rect(0, 0, CANVAS_W, CANVAS_H)
+          battleEndMask.fill({ color: 0x000000, alpha: 0.45 })
+        }
       } else if (battleEndMask.visible) {
         battleEndMask.visible = false
       }
@@ -1904,8 +2693,24 @@ export const BattleScene: Scene = {
 
     if (speedBtn) {
       speedBtn.visible = !engine.isFinished()
-      speedBtn.y = getDebugCfg('battleSpeedBtnY')
+      speedBtn.y = getClampedTopActionBtnY()
       if (speedBtnText) speedBtnText.text = `x${battleSpeed}`
+    }
+
+    if (statsBtn) {
+      statsBtn.visible = !engine.isFinished()
+      statsBtn.y = getClampedTopActionBtnY()
+    }
+
+    if (settlementStatsBtn) {
+      settlementStatsBtn.visible = settlementResolved
+    }
+
+    if (damageStatsPanel?.visible) {
+      refreshDamageStatsPanel()
+    }
+    if (damageStatsPanel) {
+      damageStatsPanel.y = getClampedStatsPanelY(DAMAGE_STATS_PANEL_H)
     }
 
     if (backBtn) {
@@ -1915,7 +2720,11 @@ export const BattleScene: Scene = {
     }
 
     if (settlementPanel) {
-      settlementPanel.visible = engine.isFinished()
+      settlementPanel.visible = settlementResolved
+    }
+
+    if (engine.isFinished() && !settlementResolved && damageStatsPanelVisible) {
+      setDamageStatsPanelVisible(false)
     }
 
     if (fatigueToastCon?.visible) {
@@ -1934,6 +2743,12 @@ export const BattleScene: Scene = {
         if (!boardHit) clearBattleItemSelection()
         else showBattleItemInfo(selectedItemId, selectedItemSide, true)
       }
+    }
+
+    if (battleSkillDetailPopupCon?.visible) {
+      const active = battlePickedSkills.find((s) => s.id === battleSkillDetailSkillId)
+      if (!active) hideBattleSkillDetailPopup()
+      else showBattleSkillDetailPopup(active)
     }
   },
 }

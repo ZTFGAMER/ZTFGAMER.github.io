@@ -4,7 +4,6 @@ import { getAllItems, getConfig } from '@/core/DataLoader'
 import type { ItemDef, ItemSizeNorm } from '@/items/ItemDef'
 import { normalizeSize } from '@/items/ItemDef'
 import { resolveItemTierBaseStats } from '@/items/itemTierStats'
-import { getDailyGoldForDay } from '@/shop/ShopManager'
 
 export type CombatPhase = 'IDLE' | 'INIT' | 'SETUP' | 'TICK' | 'RESOLVE' | 'END'
 
@@ -140,12 +139,29 @@ function parseTierStar(raw: string): 1 | 2 {
   return 2
 }
 
+function tierScoreFromRaw(raw: string): number {
+  const tier = parseTierName(raw)
+  const star = tier === 'Diamond' ? 1 : parseTierStar(raw)
+  if (tier === 'Bronze') return star === 2 ? 2 : 1
+  if (tier === 'Silver') return star === 2 ? 4 : 3
+  if (tier === 'Gold') return star === 2 ? 6 : 5
+  return 7
+}
+
+function startTierScore(def: ItemDef | null): number {
+  if (!def) return 1
+  const tier = parseTierName(def.starting_tier || 'Bronze')
+  if (tier === 'Silver') return 3
+  if (tier === 'Gold') return 5
+  if (tier === 'Diamond') return 7
+  return 1
+}
+
 function tierIndexFromRaw(def: ItemDef | null, tierRaw: string): number {
   if (!def) return 0
-  const tiers = parseAvailableTiers(def.available_tiers)
-  const tier = parseTierName(tierRaw)
-  const baseIdx = Math.max(0, tiers.indexOf(tier))
-  return baseIdx + (parseTierStar(tierRaw) - 1)
+  const score = tierScoreFromRaw(tierRaw)
+  const start = startTierScore(def)
+  return Math.max(0, score - start)
 }
 
 function ammoFromSkillLines(lines: string[], tierIndex: number): number {
@@ -179,32 +195,58 @@ function pickTierSeriesValue(series: string, tierIndex: number): number {
 type EnemyTier = 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
 type EnemyStar = 1 | 2
 
-type EnemyDraftItem = {
-  defId: string
-  size: ItemSizeNorm
-  tier: EnemyTier
-  star: EnemyStar
-}
-
 function tierStarToRaw(tier: EnemyTier, star: EnemyStar): string {
   return tier === 'Diamond' ? 'Diamond' : `${tier}#${star}`
 }
 
-function tierStarScore(tier: EnemyTier, star: EnemyStar): number {
-  if (tier === 'Diamond') return 7
-  if (tier === 'Gold') return star === 2 ? 6 : 5
-  if (tier === 'Silver') return star === 2 ? 4 : 3
-  return star === 2 ? 2 : 1
+function qualityScoreToTierStar(score: number): { tier: EnemyTier; star: EnemyStar } {
+  const s = Math.max(1, Math.min(7, Math.round(score)))
+  if (s >= 7) return { tier: 'Diamond', star: 1 }
+  if (s >= 6) return { tier: 'Gold', star: 2 }
+  if (s >= 5) return { tier: 'Gold', star: 1 }
+  if (s >= 4) return { tier: 'Silver', star: 2 }
+  if (s >= 3) return { tier: 'Silver', star: 1 }
+  if (s >= 2) return { tier: 'Bronze', star: 2 }
+  return { tier: 'Bronze', star: 1 }
 }
 
-function nextTierStar(tier: EnemyTier, star: EnemyStar): { tier: EnemyTier; star: EnemyStar } | null {
-  if (tier === 'Bronze' && star === 1) return { tier: 'Bronze', star: 2 }
-  if (tier === 'Bronze' && star === 2) return { tier: 'Silver', star: 1 }
-  if (tier === 'Silver' && star === 1) return { tier: 'Silver', star: 2 }
-  if (tier === 'Silver' && star === 2) return { tier: 'Gold', star: 1 }
-  if (tier === 'Gold' && star === 1) return { tier: 'Gold', star: 2 }
-  if (tier === 'Gold' && star === 2) return { tier: 'Diamond', star: 1 }
-  return null
+function dailyCurveValue(values: number[] | undefined, day: number, fallback: number): number {
+  if (!Array.isArray(values) || values.length === 0) return fallback
+  const idx = Math.max(0, Math.min(values.length - 1, Math.floor(day) - 1))
+  const v = Number(values[idx])
+  return Number.isFinite(v) ? v : fallback
+}
+
+function buildQualityScores(itemCount: number, targetAvg: number): number[] {
+  const count = Math.max(1, Math.round(itemCount))
+  const avg = Math.max(1, Math.min(7, targetAvg))
+  const maxScore = Math.max(1, Math.min(7, Math.floor(avg + 1)))
+  const targetSum = Math.max(count, Math.min(count * maxScore, Math.floor(avg * count)))
+  const base = Math.max(1, Math.min(maxScore, Math.floor(avg)))
+  const scores = Array.from({ length: count }, () => base)
+  let sum = base * count
+
+  let cursor = 0
+  while (sum < targetSum) {
+    const i = cursor % count
+    if (scores[i]! < maxScore) {
+      scores[i] = scores[i]! + 1
+      sum += 1
+    }
+    cursor += 1
+    if (cursor > count * 16) break
+  }
+  cursor = 0
+  while (sum > targetSum) {
+    const i = cursor % count
+    if (scores[i]! > 1) {
+      scores[i] = scores[i]! - 1
+      sum -= 1
+    }
+    cursor += 1
+    if (cursor > count * 16) break
+  }
+  return scores
 }
 
 function makeSeededRng(seed: number): () => number {
@@ -216,12 +258,6 @@ function makeSeededRng(seed: number): () => number {
     s ^= s << 5
     return ((s >>> 0) % 1000000) / 1000000
   }
-}
-
-function getEnemyGoldFactorByDay(day: number): number {
-  const d = Math.max(1, Math.min(20, Math.floor(day)))
-  const t = (d - 1) / 19
-  return 0.5 + t
 }
 
 function getPrimaryArchetypeTag(rawTags: string): string {
@@ -250,14 +286,16 @@ type CombatRuntimeOverride = {
   poisonTickMs?: number
   regenTickMs?: number
   fatigueStartMs?: number
+  fatigueTickMs?: number
+  fatigueBaseValue?: number
+  fatigueDoubleEveryMs?: number
   fatigueIntervalMs?: number
-  fatigueDamagePctPerInterval?: number
   fatigueDamageFixedPerInterval?: number
-  fatigueDamagePctRampPerInterval?: number
-  fatigueDamageFixedRampPerInterval?: number
   burnShieldFactor?: number
   burnDecayPct?: number
   healCleansePct?: number
+  enemyDraftEnabled?: number
+  enemyDraftSameArchetypeBias?: number
 }
 
 let runtimeOverride: CombatRuntimeOverride = {}
@@ -269,6 +307,12 @@ export function setCombatRuntimeOverride(next: CombatRuntimeOverride): void {
 function rv<K extends keyof CombatRuntimeOverride>(key: K, fallback: number): number {
   const v = runtimeOverride[key]
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback
+}
+
+function rvBool<K extends keyof CombatRuntimeOverride>(key: K, fallback: boolean): boolean {
+  const v = runtimeOverride[key]
+  if (typeof v === 'number' && Number.isFinite(v)) return v >= 0.5
+  return fallback
 }
 
 function parseControlSpecsFromDef(def: ItemDef, cr: ReturnType<typeof getConfig>['combatRuntime']): ControlSpec[] {
@@ -396,7 +440,7 @@ export class CombatEngine {
 
     if (this.phase === 'TICK') {
       const fatigueStartMs = Math.max(0, rv('fatigueStartMs', cfg.fatigueStartMs ?? cfg.timeoutMs ?? 40000))
-      const fatigueIntervalMs = Math.max(1, rv('fatigueIntervalMs', cfg.fatigueIntervalMs ?? cfg.fatigueTickMs ?? 1000))
+      const fatigueIntervalMs = Math.max(1, rv('fatigueTickMs', cfg.fatigueTickMs ?? cfg.fatigueIntervalMs ?? 1000))
 
       if (!this.inFatigue && this.elapsedMs >= fatigueStartMs) {
         this.inFatigue = true
@@ -480,31 +524,47 @@ export class CombatEngine {
 
   getRuntimeState(): CombatItemRuntimeState[] {
     return this.items.map((it) => ({
-      id: it.id,
-      side: it.side,
-      currentChargeMs: it.runtime.currentChargeMs,
-      cooldownMs: Math.max(0, it.baseStats.cooldownMs),
-      chargePercent: Math.max(0, Math.min(1, it.runtime.currentChargeMs / Math.max(1, it.baseStats.cooldownMs))),
-      executeCount: it.runtime.executeCount,
-      tempDamageBonus: it.runtime.tempDamageBonus,
-      ammoMax: it.runtime.ammoMax,
-      ammoCurrent: it.runtime.ammoCurrent,
-      freezeMs: it.runtime.modifiers.freezeMs,
-      slowMs: it.runtime.modifiers.slowMs,
-      hasteMs: it.runtime.modifiers.hasteMs,
-      damage: Math.max(0, it.baseStats.damage + it.runtime.tempDamageBonus),
-      heal: Math.max(0, it.baseStats.heal),
-      shield: Math.max(0, it.baseStats.shield + this.shieldGainBonusForItem(it)),
-      burn: Math.max(0, it.baseStats.burn),
-      poison: Math.max(0, it.baseStats.poison),
-      multicast: (() => {
-        const base = Math.max(1, Math.round(it.baseStats.multicast))
-        const boosted = Math.max(1, base + Math.max(0, Math.round(it.runtime.bonusMulticast)))
+      ...(() => {
+        const baseDamage = Math.max(0, it.baseStats.damage + it.runtime.tempDamageBonus)
+        let runtimeDamage = baseDamage
         const def = this.findItemDef(it.defId)
-        if (!def) return boosted
-        const allAmmoShot = this.skillLines(def).some((s) => /一次打出所有弹药/.test(s))
-        if (!allAmmoShot || it.runtime.ammoMax <= 0) return boosted
-        return Math.max(boosted, Math.max(1, it.runtime.ammoCurrent))
+        if (def && this.skillLines(def).some((s) => /相邻回旋镖时伤害翻倍/.test(s))) {
+          const hasAdjacentSame = this.items.some((other) =>
+            other.id !== it.id
+            && other.side === it.side
+            && other.defId === it.defId
+            && this.isAdjacentByFootprint(other, it),
+          )
+          if (hasAdjacentSame) runtimeDamage *= 2
+        }
+        return {
+          id: it.id,
+          side: it.side,
+          currentChargeMs: it.runtime.currentChargeMs,
+          cooldownMs: Math.max(0, it.baseStats.cooldownMs),
+          chargePercent: Math.max(0, Math.min(1, it.runtime.currentChargeMs / Math.max(1, it.baseStats.cooldownMs))),
+          executeCount: it.runtime.executeCount,
+          tempDamageBonus: it.runtime.tempDamageBonus,
+          ammoMax: it.runtime.ammoMax,
+          ammoCurrent: it.runtime.ammoCurrent,
+          freezeMs: it.runtime.modifiers.freezeMs,
+          slowMs: it.runtime.modifiers.slowMs,
+          hasteMs: it.runtime.modifiers.hasteMs,
+          damage: runtimeDamage,
+          heal: Math.max(0, it.baseStats.heal),
+          shield: Math.max(0, it.baseStats.shield + this.shieldGainBonusForItem(it)),
+          burn: Math.max(0, it.baseStats.burn),
+          poison: Math.max(0, it.baseStats.poison),
+          multicast: (() => {
+            const base = Math.max(1, Math.round(it.baseStats.multicast))
+            const boosted = Math.max(1, base + Math.max(0, Math.round(it.runtime.bonusMulticast)))
+            const localDef = this.findItemDef(it.defId)
+            if (!localDef) return boosted
+            const allAmmoShot = this.skillLines(localDef).some((s) => /一次打出所有弹药/.test(s))
+            if (!allAmmoShot || it.runtime.ammoMax <= 0) return boosted
+            return Math.max(boosted, Math.max(1, it.runtime.ammoCurrent))
+          })(),
+        }
       })(),
     }))
   }
@@ -579,137 +639,68 @@ export class CombatEngine {
   private makeEnemyRunners(snapshot: BattleSnapshotBundle): CombatItemRunner[] {
     const all = getAllItems()
     if (!all.length) return []
+    const cfg = getConfig()
+    const labCfg = cfg.gameplayModeValues?.enemyDraftLab
+    const labEnabled = rvBool('enemyDraftEnabled', labCfg?.enabled === true)
     const configuredDefs = this.pickEnemyDefsByDay(all)
-    const seedDefsRaw = configuredDefs.length > 0 ? configuredDefs : all
-    const bronzeCapDefs = seedDefsRaw.filter((def) => parseAvailableTiers(def.available_tiers).includes('Bronze'))
-    const day1Defs = bronzeCapDefs.filter((def) => {
-      const startTier = parseAvailableTiers(def.starting_tier)[0] ?? 'Bronze'
-      return startTier === 'Bronze'
-    })
-    const seedDefs = this.day <= 1
-      ? (day1Defs.length > 0 ? day1Defs : bronzeCapDefs)
-      : (bronzeCapDefs.length > 0 ? bronzeCapDefs : seedDefsRaw)
+    const seedDefs = configuredDefs.length > 0 ? configuredDefs : all
     if (seedDefs.length === 0) return []
 
-    const cfg = getConfig()
     const rng = makeSeededRng(this.day * 977 + snapshot.activeColCount * 131 + seedDefs.length * 17)
 
-    const teaching = this.buildEnemyTeachingRunners(snapshot, all, rng)
-    if (teaching && teaching.length > 0) return teaching
+    if (!labEnabled) {
+      const teaching = this.buildEnemyTeachingRunners(snapshot, all, rng)
+      if (teaching && teaching.length > 0) return teaching
+    }
 
-    const playerDailyGold = getDailyGoldForDay(cfg, this.day)
-    const enemyGoldFactor = getEnemyGoldFactorByDay(this.day)
-    let enemyGold = Math.max(3, Math.round(playerDailyGold * enemyGoldFactor))
+    const sameArchetypeBias = Math.max(0, Math.min(1, rv('enemyDraftSameArchetypeBias', labCfg?.sameArchetypeBias ?? 0.85)))
+    const targetCount = Math.max(1, Math.min(
+      snapshot.activeColCount,
+      Math.round(dailyCurveValue(labCfg?.dailyItemCount, this.day, 5)),
+    ))
+    const targetAvgQuality = Math.max(1, Math.min(7, dailyCurveValue(labCfg?.dailyAvgQuality, this.day, 3)))
+    const qualityScores = buildQualityScores(targetCount, targetAvgQuality)
 
-    const archetypeCount = new Map<string, number>()
+    const byArchetype = new Map<string, ItemDef[]>()
     for (const def of seedDefs) {
+      const size = normalizeSize(def.size)
+      if (size !== '1x1') continue
       const tag = getPrimaryArchetypeTag(def.tags)
       if (!tag) continue
-      archetypeCount.set(tag, (archetypeCount.get(tag) ?? 0) + 1)
+      const bucket = byArchetype.get(tag) ?? []
+      bucket.push(def)
+      byArchetype.set(tag, bucket)
     }
-    const archetypes = Array.from(archetypeCount.entries())
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .map(([tag]) => tag)
+    const archetypes = Array.from(byArchetype.keys())
     const preferredArchetype = archetypes.length > 0
-      ? archetypes[(this.day - 1) % archetypes.length]!
+      ? archetypes[Math.floor(rng() * archetypes.length)]!
       : ''
 
-    const sizeWidth = (size: ItemSizeNorm): number => {
-      if (size === '1x1') return 1
-      if (size === '2x1') return 2
-      return 3
-    }
-
-    const maxCells = snapshot.activeColCount + Math.max(0, cfg.backpackSlots)
-    const boardOcc: boolean[] = Array.from({ length: snapshot.activeColCount }, () => false)
-    const inventory: EnemyDraftItem[] = []
-
-    const usedInventoryCells = (): number => inventory.reduce((sum, it) => sum + sizeWidth(it.size), 0)
-
-    const evolveOne = (): boolean => {
-      for (let i = 0; i < inventory.length; i++) {
-        const a = inventory[i]!
-        for (let j = i + 1; j < inventory.length; j++) {
-          const b = inventory[j]!
-          if (a.defId !== b.defId || a.tier !== b.tier || a.star !== b.star) continue
-          const next = nextTierStar(a.tier, a.star)
-          if (!next) return false
-          const evolvable = all.filter((def) => {
-            if (normalizeSize(def.size) !== a.size) return false
-            return parseAvailableTiers(def.available_tiers).includes(next.tier)
-          })
-          if (evolvable.length === 0) return false
-          const evolved = evolvable[Math.floor(rng() * evolvable.length)]
-          if (!evolved) return false
-          inventory[i] = { defId: evolved.id, size: a.size, tier: next.tier, star: next.star }
-          inventory.splice(j, 1)
-          return true
-        }
-      }
-      return false
-    }
-
-    let guard = 0
-    while (enemyGold >= 3 && guard < 128) {
-      guard++
-      const freeCells = maxCells - usedInventoryCells()
-      if (freeCells <= 0) break
-      const buyable = seedDefs.filter((def) => sizeWidth(normalizeSize(def.size)) <= freeCells)
-      if (buyable.length === 0) break
-      const buyablePreferred = preferredArchetype
-        ? buyable.filter((def) => getPrimaryArchetypeTag(def.tags) === preferredArchetype)
-        : []
-      const usePreferred = buyablePreferred.length > 0 && rng() < 0.85
-      const pool = usePreferred ? buyablePreferred : buyable
-      const picked = pool[Math.floor(rng() * pool.length)]
-      if (!picked) break
-      enemyGold -= 3
-      inventory.push({ defId: picked.id, size: normalizeSize(picked.size), tier: 'Bronze', star: 1 })
-      let merged = true
-      let mergeGuard = 0
-      while (merged && mergeGuard < 24) {
-        mergeGuard++
-        merged = evolveOne()
-      }
-    }
-
-    const shuffled = inventory
-      .map((it) => ({ it, r: rng() }))
-      .sort((a, b) => b.r - a.r || tierStarScore(b.it.tier, b.it.star) - tierStarScore(a.it.tier, a.it.star))
-      .map((v) => v.it)
+    const order = Array.from({ length: snapshot.activeColCount }, (_, i) => i)
+      .sort((a, b) => Math.abs(a - (snapshot.activeColCount - 1) / 2) - Math.abs(b - (snapshot.activeColCount - 1) / 2))
 
     const out: CombatItemRunner[] = []
     let serial = 0
-    const findSlot = (size: ItemSizeNorm): { col: number; row: number } | null => {
-      const w = sizeWidth(size)
-      for (let c = 0; c + w <= snapshot.activeColCount; c++) {
-        let ok = true
-        for (let k = 0; k < w; k++) {
-          if (boardOcc[c + k]) { ok = false; break }
-        }
-        if (ok) return { col: c, row: 0 }
-      }
-      return null
-    }
-
-    for (const it of shuffled) {
-      const slot = findSlot(it.size)
-      if (!slot) continue
-      const w = sizeWidth(it.size)
-      for (let k = 0; k < w; k++) boardOcc[slot.col + k] = true
-      const def = all.find((d) => d.id === it.defId)
-      if (!def) continue
+    const poolBase = seedDefs.filter((d) => normalizeSize(d.size) === '1x1')
+    for (let i = 0; i < qualityScores.length && i < order.length; i++) {
+      const score = qualityScores[i]!
+      const desired = qualityScoreToTierStar(score)
+      const tierPool = poolBase.filter((def) => parseAvailableTiers(def.available_tiers).includes(desired.tier))
+      const sameArchPool = preferredArchetype
+        ? tierPool.filter((def) => getPrimaryArchetypeTag(def.tags) === preferredArchetype)
+        : []
+      const chosenPool = (sameArchPool.length > 0 && rng() < sameArchetypeBias) ? sameArchPool : tierPool
+      const picked = chosenPool[Math.floor(rng() * chosenPool.length)] ?? tierPool[Math.floor(rng() * tierPool.length)] ?? poolBase[Math.floor(rng() * poolBase.length)]
+      if (!picked) continue
       serial++
-      out.push(this.buildEnemyRunner(def, `E-${this.day}-${serial}-${def.id}`, slot.col, slot.row, it.size, it.tier, it.star))
+      out.push(this.buildEnemyRunner(picked, `E-${this.day}-${serial}-${picked.id}`, order[i]!, 0, '1x1', desired.tier, desired.star))
     }
 
     if (out.length === 0) {
-      const fallback = seedDefs[Math.floor(rng() * seedDefs.length)]
+      const fallback = poolBase[Math.floor(rng() * poolBase.length)] ?? seedDefs[0]
       if (!fallback) return []
-      const fallbackSize = normalizeSize(fallback.size)
-      const slot = findSlot(fallbackSize)
-      if (!slot) return []
-      out.push(this.buildEnemyRunner(fallback, `E-fallback-${fallback.id}`, slot.col, slot.row, fallbackSize, 'Bronze', 1))
+      const slot = order[0] ?? 0
+      out.push(this.buildEnemyRunner(fallback, `E-fallback-${fallback.id}`, slot, 0, '1x1', 'Bronze', 1))
     }
     return out
   }
@@ -1026,7 +1017,7 @@ export class CombatEngine {
       }
 
       const allWeaponDamageLine = lines.find(
-        (s) => /武器伤害\+\d+(?:\/\d+)*/.test(s)
+        (s) => /(?:武器|物品)伤害\+\d+(?:[\/|]\d+)*/.test(s)
           && !/相邻/.test(s)
           && !/其他武器攻击时该(?:武器|物品)伤害\+/.test(s),
       )
@@ -1195,7 +1186,7 @@ export class CombatEngine {
       const selfGrowLine = lines.find((s) => /其他武器攻击时该武器伤害\+\d+(?:\/\d+)*/.test(s))
       if (selfGrowLine) {
         const v = Math.round(this.tierValueFromLine(selfGrowLine, tIdx))
-        if (v > 0) owner.runtime.tempDamageBonus += v
+        if (v > 0 && owner.baseStats.damage > 0) owner.runtime.tempDamageBonus += v
       }
 
       const extraFireLine = lines.find((s) => /相邻武器攻击时额外触发此武器攻击/.test(s))
@@ -1234,7 +1225,7 @@ export class CombatEngine {
       const line = this.skillLines(def).find((s) => /相邻物品攻击造成伤害时.*该物品\+\d+(?:\/\d+)*伤害/.test(s))
       if (!line) continue
       const v = Math.round(this.tierValueFromLine(line, this.tierIndex(def, owner.tier)))
-      if (v > 0) owner.runtime.tempDamageBonus += v
+      if (v > 0 && owner.baseStats.damage > 0) owner.runtime.tempDamageBonus += v
     }
   }
 
@@ -1405,14 +1396,15 @@ export class CombatEngine {
     const def = this.findItemDef(item.defId)
     const lines = this.skillLines(def)
     const tIdx = this.tierIndex(def, item.tier)
-    const isAllAmmoShot = lines.some((s) => /一次打出所有弹药/.test(s))
+    const isAllAmmoShot = lines.some((s) => /(?:一次)?打出所有弹药/.test(s))
+    const useDamageLine = lines.find((s) => /使用时伤害\+\d+(?:[\/|]\d+)*/.test(s))
+    const useDamageBonus = useDamageLine ? Math.round(this.tierValueFromLine(useDamageLine, tIdx)) : 0
     let fireCount = Math.max(1, item.baseStats.multicast + item.runtime.bonusMulticast)
-    item.runtime.bonusMulticast = 0
     if (item.runtime.ammoMax > 0) {
       if (item.runtime.ammoCurrent <= 0) return
       fireCount = isAllAmmoShot
         ? Math.max(1, item.runtime.ammoCurrent)
-        : Math.min(fireCount, item.runtime.ammoCurrent)
+        : fireCount
     }
     this.applyAdjacentUseHasteTriggers(item)
     this.applyAdjacentUseBurnTriggers(item)
@@ -1490,6 +1482,44 @@ export class CombatEngine {
             excludeId: item.id,
           })
           this.applyHasteToTargetItems(item, targets, Math.round(sec * 1000))
+        }
+      }
+    }
+
+    const adjacentShieldUseLine = lines.find((s) => /使用时相邻(?:的)?(?:护盾物品)?护盾\+\d+(?:[\/|]\d+)*/.test(s))
+    if (adjacentShieldUseLine) {
+      const v = Math.round(this.tierValueFromLine(adjacentShieldUseLine, tIdx))
+      if (v > 0) {
+        for (const ally of this.items) {
+          if (ally.side !== item.side || ally.id === item.id) continue
+          if (!this.isAdjacentByFootprint(ally, item)) continue
+          if (ally.baseStats.shield <= 0) continue
+          ally.baseStats.shield += v
+        }
+      }
+    }
+
+    const adjacentDamageUseLine = lines.find((s) => /使用时相邻物品伤害\+\d+(?:[\/|]\d+)*/.test(s))
+    if (adjacentDamageUseLine) {
+      const v = Math.round(this.tierValueFromLine(adjacentDamageUseLine, tIdx))
+      if (v > 0) {
+        for (const ally of this.items) {
+          if (ally.side !== item.side || ally.id === item.id) continue
+          if (!this.isAdjacentByFootprint(ally, item)) continue
+          if (ally.baseStats.damage <= 0) continue
+          ally.baseStats.damage += v
+        }
+      }
+    }
+
+    const allShieldUseLine = lines.find((s) => /使用后所有护盾物品\+\d+(?:[\/|]\d+)*护盾/.test(s))
+    if (allShieldUseLine) {
+      const v = Math.round(this.tierValueFromLine(allShieldUseLine, tIdx))
+      if (v > 0) {
+        for (const ally of this.items) {
+          if (ally.side !== item.side) continue
+          if (ally.baseStats.shield <= 0) continue
+          ally.baseStats.shield += v
         }
       }
     }
@@ -1637,7 +1667,18 @@ export class CombatEngine {
     }
 
     const baseDamage = Math.max(0, item.baseStats.damage)
-    let damageAfterBonus = Math.max(0, baseDamage + item.runtime.tempDamageBonus)
+    let damageAfterBonus = Math.max(0, baseDamage + item.runtime.tempDamageBonus + useDamageBonus)
+
+    const adjacentBoomerangDouble = lines.some((s) => /相邻回旋镖时伤害翻倍/.test(s))
+    if (adjacentBoomerangDouble) {
+      const hasAdjacentSame = this.items.some((ally) =>
+        ally.side === item.side
+        && ally.id !== item.id
+        && ally.defId === item.defId
+        && this.isAdjacentByFootprint(ally, item),
+      )
+      if (hasAdjacentSame) damageAfterBonus *= 2
+    }
 
     // 等同当前自身护盾值
     if (lines.some((s) => /等同于当前自身护盾值|根据当前护盾值对对方造成伤害/.test(s))) {
@@ -1672,13 +1713,14 @@ export class CombatEngine {
         if (attackers.length === 1) fireCount = Math.max(fireCount, 2)
       }
       for (let i = 0; i < fireCount; i++) {
+        const shotDamage = Math.max(0, damageAfterBonus + useDamageBonus * i)
         this.pendingHits.push({
           dueTick: this.tickIndex + i,
           side: item.side,
           sourceItemId: item.id,
           defId: item.defId,
           baseDamage,
-          damage: damageAfterBonus,
+          damage: shotDamage,
           attackerDamageAtQueue: Math.max(0, item.baseStats.damage + item.runtime.tempDamageBonus),
           crit: item.baseStats.crit,
         })
@@ -1690,9 +1732,17 @@ export class CombatEngine {
       else item.runtime.ammoCurrent = Math.max(0, item.runtime.ammoCurrent - 1)
     }
 
-    const refillAmmoLine = lines.find((s) => /补充\d+(?:\/\d+)*发弹药/.test(s))
+    if (lines.some((s) => /连发次数-1/.test(s))) {
+      item.baseStats.multicast = Math.max(1, item.baseStats.multicast - 1)
+    }
+
+    const refillAmmoLine = lines.find((s) => /补充\d+(?:\/\d+)*(?:发)?弹药/.test(s))
     if (refillAmmoLine) {
-      const gain = Math.round(this.tierValueFromLine(refillAmmoLine, tIdx))
+      const gain = (() => {
+        const m = refillAmmoLine.match(/补充\s*(\d+(?:[\/|]\d+)*)\s*(?:发)?弹药/)
+        if (!m?.[1]) return 0
+        return Math.max(0, Math.round(pickTierSeriesValue(m[1], tIdx)))
+      })()
       if (gain > 0) {
         for (const ally of this.items) {
           if (ally.side !== item.side || ally.id === item.id) continue
@@ -1706,7 +1756,7 @@ export class CombatEngine {
     const postAttackDamageLine = lines.find((s) => /每次攻击后伤害\+\d+(?:\/\d+)*/.test(s))
     if (postAttackDamageLine) {
       const v = Math.round(this.tierValueFromLine(postAttackDamageLine, tIdx))
-      if (v > 0) item.baseStats.damage += v
+      if (v > 0 && item.baseStats.damage > 0) item.baseStats.damage += v
     }
 
     const postUseShieldLine = lines.find((s) => /每次使用后护盾\+\d+(?:\/\d+)*/.test(s))
@@ -1736,8 +1786,24 @@ export class CombatEngine {
     if (lines.some((s) => /每次使用后自身CD减少1秒/.test(s))) {
       item.baseStats.cooldownMs = Math.max(300, item.baseStats.cooldownMs - 1000)
     }
-    if (lines.some((s) => /攻击后间隔不断缩短/.test(s))) {
-      item.baseStats.cooldownMs = Math.max(1000, item.baseStats.cooldownMs - 1000)
+    const postUseCooldownLine = lines.find((s) => /攻击后间隔/.test(s))
+    if (postUseCooldownLine) {
+      let reduceMs = 1000
+      let minMs = 1000
+      const matched = postUseCooldownLine.match(/间隔[^\d]*(\d+)\s*ms[^\d]*最低[^\d]*(\d+)\s*ms/i)
+      if (matched) {
+        const parsedReduce = Number(matched[1])
+        const parsedMin = Number(matched[2])
+        if (Number.isFinite(parsedReduce) && parsedReduce > 0) reduceMs = parsedReduce
+        if (Number.isFinite(parsedMin) && parsedMin > 0) minMs = parsedMin
+      }
+      item.baseStats.cooldownMs = Math.max(minMs, item.baseStats.cooldownMs - reduceMs)
+    }
+
+    const postUseDamageReduceLine = lines.find((s) => /使用后伤害-\d+/.test(s))
+    if (postUseDamageReduceLine) {
+      const v = Math.round(this.tierValueFromLine(postUseDamageReduceLine, tIdx))
+      if (v > 0) item.baseStats.damage = Math.max(1, item.baseStats.damage - v)
     }
 
     // 飞出时加速相邻物品
@@ -2019,16 +2085,16 @@ export class CombatEngine {
 
   private stepFatigue(): void {
     const cr = getConfig().combatRuntime
-    const pctBase = Math.max(0, rv('fatigueDamagePctPerInterval', cr.fatigueDamagePctPerInterval ?? cr.fatigueDamagePctPerSec ?? 0.1))
-    const fixedBase = Math.max(0, rv('fatigueDamageFixedPerInterval', cr.fatigueDamageFixedPerInterval ?? 0))
-    const pctRamp = Math.max(0, rv('fatigueDamagePctRampPerInterval', cr.fatigueDamagePctRampPerInterval ?? 0))
-    const fixedRamp = Math.max(0, rv('fatigueDamageFixedRampPerInterval', cr.fatigueDamageFixedRampPerInterval ?? 0))
-    const stack = this.fatigueTickCount
-    const pct = pctBase + pctRamp * stack
-    const fixed = fixedBase + fixedRamp * stack
+    const tickMs = Math.max(1, rv('fatigueTickMs', cr.fatigueTickMs ?? cr.fatigueIntervalMs ?? 1000))
+    const fixedBase = Math.max(0, rv('fatigueBaseValue', cr.fatigueBaseValue ?? cr.fatigueDamageFixedPerInterval ?? 1))
+    const doubleEveryMs = Math.max(1, rv('fatigueDoubleEveryMs', cr.fatigueDoubleEveryMs ?? 1000))
+    const elapsedFatigueMs = this.fatigueTickCount * tickMs
+    const stack = Math.floor(elapsedFatigueMs / doubleEveryMs)
+    const factor = Math.pow(2, Math.min(30, stack))
+    const panelDamage = Math.max(1, Math.round(fixedBase * factor))
 
-    const pPanel = Math.max(1, Math.round(this.playerHero.maxHp * pct + fixed))
-    const ePanel = Math.max(1, Math.round(this.enemyHero.maxHp * pct + fixed))
+    const pPanel = panelDamage
+    const ePanel = panelDamage
 
     const applyOne = (hero: HeroState, panel: number): { panel: number; hpDamage: number } => {
       let remaining = panel

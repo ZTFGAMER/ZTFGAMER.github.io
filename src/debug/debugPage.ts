@@ -30,6 +30,7 @@ const LAYOUT_POSITION_KEYS = [
   'battleBackBtnX',
   'battleBackBtnY',
   'battleSpeedBtnY',
+  'battleStatsPanelY',
   'goldTextCenterX',
   'goldTextY',
   'dayDebugX',
@@ -43,6 +44,8 @@ const LAYOUT_POSITION_KEYS = [
   'backpackAreaBgHeight',
   'itemInfoBottomGapToShop',
   'itemStatBadgeOffsetY',
+  'itemTierStarOffsetX',
+  'itemTierStarOffsetY',
   'itemInfoWidth',
   'itemInfoMinH',
   'itemInfoMinHSmall',
@@ -99,13 +102,17 @@ const BATTLE_VFX_KEYS = [
   'battleFirePulseScaleMax',
   'battleFirePulseMs',
   'battleProjectileFlyMs',
+  'battleProjectileFlyMsMin',
+  'battleProjectileFlyMsMax',
   'battleProjectileItemSizePx',
   'battleProjectileArcHeight',
+  'battleProjectileSideArcMax',
   'battleProjectileScaleStart',
   'battleProjectileScalePeak',
   'battleProjectileScaleEnd',
   'battleProjectileScalePeakT',
   'battleProjectileSpinDegPerSec',
+  'battleMulticastVisualGapMs',
   'battleStatusTextStrokeWidth',
   'battleStatusBadgePadX',
   'battleStatusBadgePadY',
@@ -151,24 +158,33 @@ const BATTLE_VFX_KEYS = [
   'shopToBattleButtonsAlpha',
   'battleIntroFadeInMs',
   'battleToShopTransitionMs',
+  'battleSettlementDelayMs',
   'shopPassiveJumpMoveMs',
   'shopPassiveJumpHoldMs',
   'shopPassiveJumpFadeMs',
   'shopPassiveJumpFontSize',
+  'crossSynthesisCarouselSpeedPx',
 ]
 const GAMEPLAY_KEYS = [
   'gameplayBurnTickMs',
   'gameplayPoisonTickMs',
   'gameplayRegenTickMs',
   'gameplayFatigueStartMs',
-  'gameplayFatigueIntervalMs',
-  'gameplayFatigueDamagePctPerInterval',
-  'gameplayFatigueDamageFixedPerInterval',
-  'gameplayFatigueDamagePctRampPerInterval',
-  'gameplayFatigueDamageFixedRampPerInterval',
+  'gameplayFatigueTickMs',
+  'gameplayFatigueBaseValue',
+  'gameplayFatigueDoubleEveryMs',
   'gameplayBurnShieldFactor',
   'gameplayBurnDecayPct',
   'gameplayHealCleansePct',
+]
+const GAMEPLAY_CHECKBOX_KEYS = [
+  'gameplayGrantAllClassItems',
+]
+const ENEMY_DATA_PARAM_KEYS: string[] = [
+  'enemyDraftSameArchetypeBias',
+]
+const ENEMY_DATA_CHECKBOX_KEYS = [
+  'enemyDraftEnabled',
 ]
 const COLOR_KEYS = [
   'tierColorBronze',
@@ -198,7 +214,7 @@ const COLOR_KEYS = [
   'battleTextColorRegen',
   'battleEnemyPortraitFlashColor',
 ]
-const DRAG_KEYS = Object.keys(CONFIG_DEFS).filter((key) => !LAYOUT_KEYS.includes(key) && !PERSPECTIVE_KEYS.includes(key) && !TOAST_KEYS.includes(key) && !BATTLE_VFX_KEYS.includes(key) && !GAMEPLAY_KEYS.includes(key) && !COLOR_KEYS.includes(key))
+const DRAG_KEYS = Object.keys(CONFIG_DEFS).filter((key) => !LAYOUT_KEYS.includes(key) && !PERSPECTIVE_KEYS.includes(key) && !TOAST_KEYS.includes(key) && !BATTLE_VFX_KEYS.includes(key) && !GAMEPLAY_KEYS.includes(key) && !GAMEPLAY_CHECKBOX_KEYS.includes(key) && !ENEMY_DATA_PARAM_KEYS.includes(key) && !ENEMY_DATA_CHECKBOX_KEYS.includes(key) && !COLOR_KEYS.includes(key))
 
 function buildSearchText(key: string): string {
   const def = CONFIG_DEFS[key]
@@ -555,6 +571,21 @@ document.addEventListener('DOMContentLoaded', () => {
   for (const key of GAMEPLAY_KEYS) {
     if (!CONFIG_DEFS[key]) continue
     buildParamRow(key, 'params-gameplay')
+  }
+
+  for (const key of GAMEPLAY_CHECKBOX_KEYS) {
+    if (!CONFIG_DEFS[key]) continue
+    buildCheckboxRow(key, 'params-gameplay')
+  }
+
+  for (const key of ENEMY_DATA_CHECKBOX_KEYS) {
+    if (!CONFIG_DEFS[key]) continue
+    buildCheckboxRow(key, 'params-enemy-data')
+  }
+
+  for (const key of ENEMY_DATA_PARAM_KEYS) {
+    if (!CONFIG_DEFS[key]) continue
+    buildParamRow(key, 'params-enemy-data')
   }
 
   for (const key of COLOR_KEYS) {
