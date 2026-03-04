@@ -5,6 +5,36 @@
 
 ---
 
+### 本次对话追加（2026-03-04，GHE推送 + TF上传 + Vercel更新 + Notebook回传尝试）
+
+- 用户指令：上传 GHE、打并上传 TF 包、更新 Vercel，然后回传 Notebook。
+- 已完成发布执行：
+  - GHE：已推送 `main`，提交：
+    - `8683649` `feat: ship gameplay and battle UI polish updates`
+    - `a6c4c7c` `chore: bump iOS build number to 11`
+  - TestFlight：`npm run release:tf` 成功，关键结果：
+    - `Delivery UUID: 0030c546-1c94-4644-b673-467b378aa891`
+    - `No errors uploading archive at '/Users/zhengtengfei/Documents/web_ai_game/bigbazzar/ios/build/export-testflight/BigBazzar.ipa'`
+    - `CURRENT_PROJECT_VERSION=11`
+  - Vercel：`vercel --prod --yes` 成功：
+    - 生产别名：`https://bigbazzar.vercel.app`
+    - 本次部署：`https://bigbazzar-ndcnoeph8-zhengtengfeis-projects.vercel.app`
+- Notebook 回传状态：
+  - 主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）上传 source 超时（`Timeout 60000ms exceeded`）；
+  - 设计师 Notebook（`98dc4c7c-dcf5-4391-a65e-1529a4a6b6e5`）上传 source 超时（`Timeout 30000ms exceeded`）；
+  - 设计师回传稿已落盘：`design/notebook_updates/2026-03-04_release_feedback_to_designer.md`。
+- 当前阶段：发布已完成，Notebook 回传待网络/登录恢复后重试。
+
+### 本次对话追加（2026-03-04，回传设计师 Notebook 发布结果）
+
+- 用户指令：将发布结果回传到设计师 Notebook（`98dc4c7c-dcf5-4391-a65e-1529a4a6b6e5`），并返回 `source_id` 或回传结果原文。
+- 已准备回传文件：`design/notebook_updates/2026-03-04_release_feedback_to_designer.md`。
+- 回传执行结果：
+  - `python3 scripts/run.py source_uploader.py --file ... --notebook-url https://notebooklm.google.com/notebook/98dc4c7c-dcf5-4391-a65e-1529a4a6b6e5`
+  - 失败：`Timeout 30000ms exceeded`（等待跳转 `https://notebooklm.google.com/` 超时）。
+  - 复试 `--show-browser` 仍超时；`ask_question.py --notebook-url ...` 也超时（`Timeout 10000ms exceeded`）。
+- 当前阶段：设计师 Notebook 本轮未成功回传，待网络/Notebook 可达后重试；回传内容文件已落盘可直接复用。
+
 ### 本次对话追加（2026-03-04，回退上一轮“技能条滚动+选中框”改动）
 
 - 用户指令：`把最后的修改回退了吧`。
