@@ -5,6 +5,27 @@
 
 ---
 
+### 本次对话追加（2026-03-04，GHE 推送 + Vercel 更新 + TestFlight 构建10上传）
+
+- 用户需求：上传 GHE、更新 Vercel、打并上传 TF 包。
+- 已完成：
+  - GHE：
+    - 提交并推送主分支：`81d2edb`（功能与配置整合）、`5c8b127`（iOS build number 升到 10）；
+    - 远端：`origin/main`（`https://habby.ghe.com/zhengtengfei-161/bigbazzar.git`）。
+  - Vercel：
+    - 生产部署完成并更新别名；
+    - 生产别名：`https://bigbazzar.vercel.app`；
+    - 本次部署：`https://bigbazzar-7gd8cwrw2-zhengtengfeis-projects.vercel.app`。
+  - TestFlight：
+    - 执行 `npm run release:tf` 全流程成功；
+    - iOS 构建号：`9 -> 10`；
+    - 归档/导出成功（`ARCHIVE SUCCEEDED` / `EXPORT SUCCEEDED`）；
+    - 上传成功（`Upload succeeded` / `UPLOAD SUCCEEDED with no errors`）。
+- 验证：
+  - Web 构建与部署成功；
+  - TF 上传成功，等待 App Store Connect 处理完成。
+- 当前阶段：进入发布后验收阶段（检查线上网页与 TestFlight 构建可见性）。
+
 ### 本次对话追加（2026-03-04，进度同步）
 
 - 已按用户要求同步当前阶段进度：
