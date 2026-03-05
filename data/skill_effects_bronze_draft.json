@@ -15,13 +15,13 @@
       "icon": "skill1",
       "tier": "bronze",
       "archetype": "warrior",
-      "summary": "战斗开始时，最左侧的护盾物品护盾增加。",
+      "summary": "最左侧护盾增加。",
       "effect": {
         "scope": "battle",
         "trigger": "on_battle_start",
         "type": "shield_add",
         "target": "leftmost_shield_item",
-        "value": 20,
+        "value": 25,
         "max_triggers_per_battle": 1
       }
     },
@@ -31,13 +31,13 @@
       "icon": "skill2",
       "tier": "bronze",
       "archetype": "warrior",
-      "summary": "战斗开始时，最右侧的护盾物品护盾增加。",
+      "summary": "最右侧护盾增加。",
       "effect": {
         "scope": "battle",
         "trigger": "on_battle_start",
         "type": "shield_add",
         "target": "rightmost_shield_item",
-        "value": 30,
+        "value": 25,
         "max_triggers_per_battle": 1
       }
     },
@@ -47,13 +47,13 @@
       "icon": "skill3",
       "tier": "bronze",
       "archetype": "warrior",
-      "summary": "战斗开始时，所有护盾物品护盾增加。",
+      "summary": "所有护盾小幅增加。",
       "effect": {
         "scope": "battle",
         "trigger": "on_battle_start",
         "type": "shield_add",
         "target": "all_shield_items",
-        "value": 15,
+        "value": 10,
         "max_triggers_per_battle": 1
       }
     },
@@ -69,7 +69,7 @@
         "trigger": "on_use_shield_item",
         "type": "adjacent_damage_add",
         "target": "adjacent_items",
-        "value": 4,
+        "value": 3,
         "max_triggers_per_battle": -1
       }
     },
@@ -79,13 +79,13 @@
       "icon": "skill5",
       "tier": "bronze",
       "archetype": "warrior",
-      "summary": "使用护盾物品时该物品增加护盾。",
+      "summary": "使用护盾物品时，增加护盾。",
       "effect": {
         "scope": "battle",
         "trigger": "on_use_shield_item",
         "type": "self_shield_add",
         "target": "source_item",
-        "value": 6,
+        "value": 5,
         "max_triggers_per_battle": -1
       }
     },
@@ -127,13 +127,13 @@
       "icon": "skill8",
       "tier": "bronze",
       "archetype": "archer",
-      "summary": "战斗开始时，最左侧的弹药物品弹药量增加。",
+      "summary": "最左侧弹药量增加。",
       "effect": {
         "scope": "battle",
         "trigger": "on_battle_start",
         "type": "ammo_capacity_add",
         "target": "leftmost_ammo_item",
-        "value": 1,
+        "value": 2,
         "max_triggers_per_battle": 1
       }
     },
@@ -143,13 +143,13 @@
       "icon": "skill9",
       "tier": "bronze",
       "archetype": "archer",
-      "summary": "每场战斗首次弹药耗尽时装填弹药。",
+      "summary": "弹药耗尽时装填弹药。",
       "effect": {
         "scope": "battle",
         "trigger": "on_first_ammo_empty",
         "type": "ammo_refill_add",
         "target": "source_ammo_item",
-        "value": 1,
+        "value": 2,
         "max_triggers_per_battle": 1
       }
     },
@@ -207,13 +207,13 @@
       "icon": "skill13",
       "tier": "bronze",
       "archetype": "assassin",
-      "summary": "每场战斗前5秒内，所有物品伤害增加。",
+      "summary": "开场一段时间内，物品伤害增加。",
       "effect": {
         "scope": "battle",
         "trigger": "time_window",
         "type": "damage_add",
         "target": "all_items",
-        "value": 20,
+        "value": 12,
         "window_ms": 5000,
         "max_triggers_per_battle": -1
       }
@@ -224,13 +224,13 @@
       "icon": "skill14",
       "tier": "bronze",
       "archetype": "assassin",
-      "summary": "每场战斗前5秒内，所有物品间隔时间缩短。",
+      "summary": "开场一段时间内，物品间隔缩短。",
       "effect": {
         "scope": "battle",
         "trigger": "time_window",
         "type": "cooldown_reduce_pct",
         "target": "all_items",
-        "value": 0.15,
+        "value": 0.1,
         "window_ms": 5000,
         "max_triggers_per_battle": -1
       }
@@ -258,13 +258,13 @@
       "icon": "skill16",
       "tier": "bronze",
       "archetype": "assassin",
-      "summary": "战斗开始时，武器伤害增加。",
+      "summary": "战斗开始时，物品伤害增加。",
       "effect": {
         "scope": "battle",
         "trigger": "on_battle_start",
         "type": "damage_add",
         "target": "all_weapon_items",
-        "value": 10,
+        "value": 8,
         "max_triggers_per_battle": 1
       }
     },
@@ -274,13 +274,13 @@
       "icon": "skill18",
       "tier": "bronze",
       "archetype": "assassin",
-      "summary": "每场战斗敌人生命值首次降至一半时，所有物品伤害增加。",
+      "summary": "敌人生命降低时，物品伤害增加。",
       "effect": {
         "scope": "battle",
         "trigger": "on_enemy_hp_first_below_pct",
         "type": "damage_add",
         "target": "all_items",
-        "value": 20,
+        "value": 15,
         "threshold_pct": 0.5,
         "max_triggers_per_battle": 1
       }
@@ -297,7 +297,7 @@
         "trigger": "on_battle_start",
         "type": "damage_add",
         "target": "leftmost_and_rightmost_weapon_items",
-        "value": 15,
+        "value": 12,
         "max_triggers_per_battle": 1
       }
     },
@@ -307,7 +307,7 @@
       "icon": "skill20",
       "tier": "bronze",
       "archetype": "utility",
-      "summary": "每天随机获得1个青铜物品。",
+      "summary": "每天随机获得物品。",
       "effect": {
         "scope": "run",
         "trigger": "on_new_day_enter_shop",

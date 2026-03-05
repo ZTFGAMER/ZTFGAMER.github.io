@@ -798,7 +798,7 @@ export class CombatEngine {
   }
 
   private isWeaponItem(item: CombatItemRunner): boolean {
-    return item.baseStats.damage > 0
+    return this.isDamageBonusEligible(item)
   }
 
   private isShieldItem(item: CombatItemRunner): boolean {
@@ -809,12 +809,16 @@ export class CombatEngine {
     return item.runtime.ammoMax > 0
   }
 
+  private isDamageBonusEligible(item: CombatItemRunner): boolean {
+    return item.baseStats.damage > 0 && !this.isShieldItem(item)
+  }
+
   private cooldownReductionPct(item: CombatItemRunner): number {
     const side = item.side
     let pct = 0
     if (this.hasSkill(side, 'skill6')) pct += 0.05
     if (this.hasSkill(side, 'skill12') && this.isAmmoItem(item)) pct += 0.1
-    if (this.hasSkill(side, 'skill14') && this.elapsedMs <= 5000) pct += 0.2
+    if (this.hasSkill(side, 'skill14') && this.elapsedMs <= 5000) pct += 0.1
     if (this.hasSkill(side, 'skill38') && this.heroOf(side).hp > this.heroOf(this.oppositeSide(side)).hp) pct += 0.2
     if (this.hasSkill(side, 'skill40')) pct += 0.1
     if (this.hasSkill(side, 'skill26') && ((side === 'player' ? this.skillPlayerHalfShieldCdTriggered : this.skillEnemyHalfShieldCdTriggered)) && this.isShieldItem(item)) pct += 0.15
@@ -833,17 +837,18 @@ export class CombatEngine {
   }
 
   private runtimeGlobalDamageBonus(item: CombatItemRunner): number {
+    if (!this.isDamageBonusEligible(item)) return 0
     const side = item.side
     let bonus = side === 'player' ? this.skillExecuteDamageBonus : this.skillEnemyExecuteDamageBonus
-    if (this.hasSkill(side, 'skill13') && this.elapsedMs <= 5000) bonus += 30
+    if (this.hasSkill(side, 'skill13') && this.elapsedMs <= 5000) bonus += 12
     if (this.hasSkill(side, 'skill53')) bonus += this.totalAmmoCurrent(side) * 3
-    if (this.hasSkill(side, 'skill27') && this.effectiveCooldownMs(item) < 2500) bonus += 25
+    if (this.hasSkill(side, 'skill27') && this.effectiveCooldownMs(item) < 2500) bonus += 20
     if (this.hasSkill(side, 'skill37')) bonus += Math.floor(Math.max(0, this.heroOf(side).shield) / 10)
     return bonus
   }
 
   private uniqueDamageItem(side: 'player' | 'enemy'): CombatItemRunner | null {
-    const items = this.items.filter((it) => it.side === side && it.baseStats.damage > 0)
+    const items = this.items.filter((it) => it.side === side && this.isDamageBonusEligible(it))
     return items.length === 1 ? items[0]! : null
   }
 
@@ -897,10 +902,10 @@ export class CombatEngine {
     const ammoItems = this.sortedPlayerItems((it) => this.isAmmoItem(it))
     const weaponItems = this.sortedPlayerItems((it) => this.isWeaponItem(it))
 
-    if (this.hasPlayerSkill('skill1') && shieldItems.length > 0) shieldItems[0]!.baseStats.shield += 30
-    if (this.hasPlayerSkill('skill2') && shieldItems.length > 0) shieldItems[shieldItems.length - 1]!.baseStats.shield += 30
+    if (this.hasPlayerSkill('skill1') && shieldItems.length > 0) shieldItems[0]!.baseStats.shield += 25
+    if (this.hasPlayerSkill('skill2') && shieldItems.length > 0) shieldItems[shieldItems.length - 1]!.baseStats.shield += 25
     if (this.hasPlayerSkill('skill3')) {
-      for (const one of shieldItems) one.baseStats.shield += 15
+      for (const one of shieldItems) one.baseStats.shield += 10
     }
 
     if (this.hasPlayerSkill('skill7')) {
@@ -933,8 +938,8 @@ export class CombatEngine {
 
     if (this.hasPlayerSkill('skill8') && ammoItems.length > 0) {
       const one = ammoItems[0]!
-      one.runtime.ammoMax += 1
-      one.runtime.ammoCurrent = Math.min(one.runtime.ammoMax, one.runtime.ammoCurrent + 1)
+      one.runtime.ammoMax += 2
+      one.runtime.ammoCurrent = Math.min(one.runtime.ammoMax, one.runtime.ammoCurrent + 2)
     }
     if (this.hasPlayerSkill('skill51')) {
       for (const one of ammoItems) {
@@ -953,14 +958,14 @@ export class CombatEngine {
     }
 
     if (this.hasPlayerSkill('skill16')) {
-      for (const one of weaponItems) one.baseStats.damage += 10
+      for (const one of weaponItems) one.baseStats.damage += 8
     }
 
     if (this.hasPlayerSkill('skill19') && weaponItems.length > 0) {
       const first = weaponItems[0]!
       const last = weaponItems[weaponItems.length - 1]!
-      first.baseStats.damage += 18
-      if (last.id !== first.id) last.baseStats.damage += 18
+      first.baseStats.damage += 12
+      if (last.id !== first.id) last.baseStats.damage += 12
     }
 
     if (this.hasPlayerSkill('skill59')) {
@@ -973,7 +978,7 @@ export class CombatEngine {
         if (one.side !== 'player') continue
         if (one.baseStats.damage <= 0) continue
         if ((countByDef.get(one.defId) ?? 0) < 2) continue
-        one.baseStats.damage += 30
+        one.baseStats.damage += 25
       }
     }
 
@@ -1004,7 +1009,7 @@ export class CombatEngine {
     if (owner === 'player') {
       if (!this.skillEnemyHalfTriggered && (this.hasPlayerSkill('skill18') || this.hasPlayerSkill('skill45'))) {
         this.skillEnemyHalfTriggered = true
-        if (this.hasPlayerSkill('skill18')) this.skillExecuteDamageBonus += 30
+        if (this.hasPlayerSkill('skill18')) this.skillExecuteDamageBonus += 15
         if (this.hasPlayerSkill('skill45')) {
           for (const it of this.items) {
             if (it.side !== 'player') continue
@@ -1015,7 +1020,7 @@ export class CombatEngine {
     } else {
       if (!this.skillEnemyHalfTriggeredFromEnemy && (this.hasEnemySkill('skill18') || this.hasEnemySkill('skill45'))) {
         this.skillEnemyHalfTriggeredFromEnemy = true
-        if (this.hasEnemySkill('skill18')) this.skillEnemyExecuteDamageBonus += 30
+        if (this.hasEnemySkill('skill18')) this.skillEnemyExecuteDamageBonus += 15
         if (this.hasEnemySkill('skill45')) {
           for (const it of this.items) {
             if (it.side !== 'enemy') continue
@@ -1113,7 +1118,7 @@ export class CombatEngine {
   }
 
   private leftmostPlayerDamageItem(): CombatItemRunner | null {
-    const all = this.sortedPlayerItems((it) => it.baseStats.damage > 0)
+    const all = this.sortedPlayerItems((it) => this.isDamageBonusEligible(it))
     return all[0] ?? null
   }
 
@@ -1211,13 +1216,13 @@ export class CombatEngine {
 
   private applyPlayerOnDealDamageSkillTriggers(attacker: CombatItemRunner): void {
     if (attacker.side !== 'player') return
-    if (this.hasPlayerSkill('skill58') && attacker.baseStats.damage > 0) {
+    if (this.hasPlayerSkill('skill58') && this.isDamageBonusEligible(attacker)) {
       attacker.baseStats.damage += 2
     }
     if (this.hasPlayerSkill('skill57')) {
       attacker.baseStats.cooldownMs = Math.max(
         this.minReducedCdMsFor(attacker),
-        Math.round(attacker.baseStats.cooldownMs * 0.98),
+        Math.round(attacker.baseStats.cooldownMs * 0.99),
       )
     }
   }
@@ -1646,7 +1651,7 @@ export class CombatEngine {
         if (v > 0) {
           for (const ally of this.items) {
             if (ally.side !== owner.side || ally.id === owner.id) continue
-            if (ally.baseStats.damage <= 0) continue
+            if (!this.isDamageBonusEligible(ally)) continue
             if (!this.isAdjacentByFootprint(ally, owner)) continue
             ally.baseStats.damage += v
           }
@@ -1663,7 +1668,7 @@ export class CombatEngine {
         if (v > 0) {
           for (const ally of this.items) {
             if (ally.side !== owner.side) continue
-            if (ally.baseStats.damage <= 0) continue
+            if (!this.isDamageBonusEligible(ally)) continue
             ally.baseStats.damage += v
           }
         }
@@ -1798,7 +1803,7 @@ export class CombatEngine {
         const v = Math.round(this.tierValueFromLine(allWeaponBuffLine, tIdx))
         if (v > 0) {
           for (const ally of this.items) {
-            if (ally.side !== owner.side || ally.baseStats.damage <= 0) continue
+            if (ally.side !== owner.side || !this.isDamageBonusEligible(ally)) continue
             ally.baseStats.damage += v
           }
         }
@@ -1807,7 +1812,7 @@ export class CombatEngine {
       const selfGrowLine = lines.find((s) => /其他武器攻击时该武器伤害\+\d+(?:\/\d+)*/.test(s))
       if (selfGrowLine) {
         const v = Math.round(this.tierValueFromLine(selfGrowLine, tIdx))
-        if (v > 0 && owner.baseStats.damage > 0) owner.runtime.tempDamageBonus += v
+        if (v > 0 && this.isDamageBonusEligible(owner)) owner.runtime.tempDamageBonus += v
       }
 
       const extraFireLine = lines.find((s) => /相邻武器攻击时额外触发此武器攻击/.test(s))
@@ -1831,7 +1836,7 @@ export class CombatEngine {
     if (v <= 0) return
     for (const ally of this.items) {
       if (ally.side !== source.side || ally.id === source.id) continue
-      if (ally.baseStats.damage <= 0) continue
+      if (!this.isDamageBonusEligible(ally)) continue
       if (!this.isAdjacentByFootprint(ally, source)) continue
       ally.runtime.tempDamageBonus += v
     }
@@ -1846,7 +1851,7 @@ export class CombatEngine {
       const line = this.skillLines(def).find((s) => /相邻物品攻击造成伤害时.*该物品\+\d+(?:\/\d+)*伤害/.test(s))
       if (!line) continue
       const v = Math.round(this.tierValueFromLine(line, this.tierIndex(def, owner.tier)))
-      if (v > 0 && owner.baseStats.damage > 0) owner.runtime.tempDamageBonus += v
+      if (v > 0 && this.isDamageBonusEligible(owner)) owner.runtime.tempDamageBonus += v
     }
   }
 
@@ -2073,19 +2078,19 @@ export class CombatEngine {
       for (const ally of this.items) {
         if (ally.side !== item.side || ally.id === item.id) continue
         if (!this.isAdjacentByFootprint(ally, item)) continue
-        if (ally.baseStats.damage <= 0) continue
-        ally.baseStats.damage += 4
+        if (!this.isDamageBonusEligible(ally)) continue
+        ally.baseStats.damage += 3
       }
     }
     if (item.side === 'player' && this.hasPlayerSkill('skill5') && this.isShieldItem(item)) {
-      item.baseStats.shield += 6
+      item.baseStats.shield += 5
     }
     if (item.side === 'player' && this.hasPlayerSkill('skill11') && this.isAmmoItem(item)) {
       for (const ally of this.items) {
         if (ally.side !== item.side || ally.id === item.id) continue
         if (!this.isAdjacentByFootprint(ally, item)) continue
         if (!this.isAmmoItem(ally)) continue
-        if (ally.baseStats.damage <= 0) continue
+        if (!this.isDamageBonusEligible(ally)) continue
         ally.baseStats.damage += 5
       }
     }
@@ -2098,7 +2103,7 @@ export class CombatEngine {
       for (const line of lines) {
         const v = Math.round(this.tierValueFromLine(line, tIdx))
         if (v <= 0) continue
-        if (/冻结.*\+\d+(?:\/\d+)*伤害/.test(line)) item.runtime.tempDamageBonus += v
+        if (/冻结.*\+\d+(?:\/\d+)*伤害/.test(line) && this.isDamageBonusEligible(item)) item.runtime.tempDamageBonus += v
         if (/冻结.*\+\d+(?:\/\d+)*灼烧/.test(line)) item.baseStats.burn += v
         if (/冻结.*\+\d+(?:\/\d+)*剧毒/.test(line)) item.baseStats.poison += v
       }
@@ -2107,7 +2112,7 @@ export class CombatEngine {
       for (const line of lines) {
         const v = Math.round(this.tierValueFromLine(line, tIdx))
         if (v <= 0) continue
-        if (/减速.*\+\d+(?:\/\d+)*伤害/.test(line)) item.runtime.tempDamageBonus += v
+        if (/减速.*\+\d+(?:\/\d+)*伤害/.test(line) && this.isDamageBonusEligible(item)) item.runtime.tempDamageBonus += v
         if (/减速.*\+\d+(?:\/\d+)*灼烧/.test(line)) item.baseStats.burn += v
       }
     }
@@ -2188,7 +2193,7 @@ export class CombatEngine {
         for (const ally of this.items) {
           if (ally.side !== item.side || ally.id === item.id) continue
           if (!this.isAdjacentByFootprint(ally, item)) continue
-          if (ally.baseStats.damage <= 0) continue
+          if (!this.isDamageBonusEligible(ally)) continue
           ally.baseStats.damage += v
         }
       }
@@ -2431,7 +2436,7 @@ export class CombatEngine {
         && becameEmpty
       ) {
         this.skillFirstAmmoEmptyTriggered = true
-        item.runtime.ammoCurrent = Math.min(item.runtime.ammoMax, item.runtime.ammoCurrent + 1)
+        item.runtime.ammoCurrent = Math.min(item.runtime.ammoMax, item.runtime.ammoCurrent + 2)
       }
       if (item.side === 'player' && this.hasPlayerSkill('skill52') && becameEmpty) {
         if (Math.random() < 0.3) {
@@ -2442,15 +2447,15 @@ export class CombatEngine {
         for (const ally of this.items) {
           if (ally.side !== 'player') continue
           if (this.isAmmoItem(ally)) continue
-          if (ally.baseStats.damage <= 0) continue
-          ally.baseStats.damage += 4 * ammoSpent
+          if (!this.isDamageBonusEligible(ally)) continue
+          ally.baseStats.damage += 7
         }
       }
       if (item.side === 'player' && this.hasPlayerSkill('skill85') && becameEmpty) {
         for (const ally of this.items) {
           if (ally.side !== 'player' || ally.id === item.id) continue
           if (!this.isAdjacentByFootprint(ally, item)) continue
-          if (ally.baseStats.damage <= 0) continue
+          if (!this.isDamageBonusEligible(ally)) continue
           ally.baseStats.damage += 50
         }
       }
@@ -2480,7 +2485,7 @@ export class CombatEngine {
     const postAttackDamageLine = lines.find((s) => /每次攻击后伤害\+\d+(?:\/\d+)*/.test(s))
     if (postAttackDamageLine) {
       const v = Math.round(this.tierValueFromLine(postAttackDamageLine, tIdx))
-      if (v > 0 && item.baseStats.damage > 0) item.baseStats.damage += v
+      if (v > 0 && this.isDamageBonusEligible(item)) item.baseStats.damage += v
     }
 
     const postUseShieldLine = lines.find((s) => /每次使用后护盾\+\d+(?:\/\d+)*/.test(s))
@@ -2502,7 +2507,7 @@ export class CombatEngine {
       }
     }
 
-    if (lines.some((s) => /每次使用后伤害翻倍/.test(s))) {
+    if (lines.some((s) => /每次使用后伤害翻倍/.test(s)) && this.isDamageBonusEligible(item)) {
       item.baseStats.damage = Math.max(0, item.baseStats.damage * 2)
     }
 

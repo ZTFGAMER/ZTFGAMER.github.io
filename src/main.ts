@@ -376,7 +376,7 @@ async function bootstrap(): Promise<void> {
     }).__getSoakStats = () => getSoakStats()
 
     const params = new URLSearchParams(window.location.search)
-    if (params.get('soak') === '1') {
+    if (params.get('soak') === '1' && params.get('soakAuto') === '1') {
       const rounds = Number(params.get('rounds') ?? '')
       const battleMs = Number(params.get('battleMs') ?? '')
       const shopMs = Number(params.get('shopMs') ?? '')
@@ -385,6 +385,8 @@ async function bootstrap(): Promise<void> {
         battleMs: Number.isFinite(battleMs) && battleMs > 0 ? battleMs : undefined,
         shopMs: Number.isFinite(shopMs) && shopMs > 0 ? shopMs : undefined,
       })
+    } else if (params.get('soak') === '1') {
+      console.log('[SoakTest] 检测到 soak=1，已忽略自动启动；如需自动压测请追加 soakAuto=1')
     }
   }
 

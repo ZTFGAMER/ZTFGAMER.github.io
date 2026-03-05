@@ -16,7 +16,7 @@
       "tier": "silver",
       "archetype": "warrior",
       "summary": "每次获得护盾，都会让最左侧物品伤害增加。",
-      "detail": "每次获得护盾，都会让最左侧伤害物品伤害+10（若不存在伤害物品则不触发）。",
+      "detail": "每次获得护盾，都会让最左侧物品伤害+10。",
       "effect": {
         "scope": "battle",
         "trigger": "on_gain_shield",
@@ -172,13 +172,13 @@
       "tier": "silver",
       "archetype": "archer",
       "summary": "消耗弹药时，非弹药物品伤害增加。",
-      "detail": "消耗弹药时，非弹药物品伤害+4。",
+      "detail": "消耗弹药时，非弹药物品伤害+7。",
       "effect": {
         "scope": "battle",
         "trigger": "on_ammo_spent",
         "type": "damage_add",
         "target": "all_non_ammo_items",
-        "value": 4,
+        "value": 7,
         "max_triggers_per_battle": -1
       }
     },
@@ -189,14 +189,14 @@
       "tier": "silver",
       "archetype": "assassin",
       "summary": "间隔时间短的物品伤害增加。",
-      "detail": "间隔时间低于2.5秒的物品伤害+25。",
+      "detail": "间隔时间低于2.5秒的物品伤害+20。",
       "effect": {
         "scope": "battle",
         "trigger": "passive_always",
         "type": "damage_add",
         "target": "items_with_cooldown_below_ms",
         "cooldown_lt_ms": 2500,
-        "value": 25,
+        "value": 20,
         "max_triggers_per_battle": -1
       }
     },
@@ -224,13 +224,13 @@
       "tier": "silver",
       "archetype": "assassin",
       "summary": "造成伤害后物品间隔缩短。",
-      "detail": "造成伤害后物品间隔缩短2%。",
+      "detail": "造成伤害后物品间隔缩短1%。",
       "effect": {
         "scope": "battle",
         "trigger": "on_deal_damage",
         "type": "self_cooldown_reduce_pct",
         "target": "source_item",
-        "value": 0.02,
+        "value": 0.01,
         "max_triggers_per_battle": -1
       }
     },
@@ -241,13 +241,13 @@
       "tier": "silver",
       "archetype": "assassin",
       "summary": "开场时所有相同的物品伤害增加。",
-      "detail": "开场时所有相同的物品伤害+30。",
+      "detail": "开场时所有相同的物品伤害+25。",
       "effect": {
         "scope": "battle",
         "trigger": "on_battle_start",
         "type": "damage_add_for_duplicates",
         "target": "all_duplicate_items",
-        "value": 30,
+        "value": 25,
         "max_triggers_per_battle": 1
       }
     },

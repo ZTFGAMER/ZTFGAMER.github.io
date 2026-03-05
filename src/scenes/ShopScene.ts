@@ -56,7 +56,6 @@ const MINI_W    = 6 * MINI_CELL
 const SHOP_QUICK_BUY_PRICE = 3
 const BACKPACK_GAP_FROM_BATTLE = 52
 const SHOP_STATE_STORAGE_VERSION = 2
-const UNLOCK_REVEAL_TOTAL_MS = 2500
 
 // ---- 场景级状态 ----
 let shopManager:    ShopManager    | null = null
@@ -93,7 +92,6 @@ let hintToastHideTimer: ReturnType<typeof setTimeout> | null = null
 let battleGuideHandCon: Container | null = null
 let battleGuideHandTick: (() => void) | null = null
 let unlockRevealLayer: Container | null = null
-let unlockRevealQueue: string[] = []
 let unlockRevealTickFn: (() => void) | null = null
 let unlockRevealActive = false
 
@@ -230,6 +228,7 @@ type SavedShopState = {
   skill15NextBuyDiscount?: boolean
   skill30BuyCounter?: number
   skill30NextBuyFree?: boolean
+  quickBuyNoSynthRefreshStreak?: number
 }
 
 let pendingBattleTransition = false
@@ -281,6 +280,7 @@ let skill15NextBuyDiscountPrepared = false
 let skill15NextBuyDiscount = false
 let skill30BuyCounter = 0
 let skill30NextBuyFree = false
+let quickBuyNoSynthRefreshStreak = 0
 let nextQuickBuyOffer: {
   itemId: string
   tier: TierKey
@@ -631,166 +631,15 @@ function showMoveToBattleGuideHand(): void {
   Ticker.shared.add(battleGuideHandTick)
 }
 
-function stopUnlockRevealPlayback(clearQueue = false): void {
+function stopUnlockRevealPlayback(): void {
   if (unlockRevealTickFn) {
     Ticker.shared.remove(unlockRevealTickFn)
     unlockRevealTickFn = null
   }
   unlockRevealActive = false
-  if (clearQueue) unlockRevealQueue = []
   if (!unlockRevealLayer) return
   unlockRevealLayer.visible = false
   unlockRevealLayer.removeChildren().forEach((ch) => ch.destroy({ children: true }))
-}
-
-function ensureUnlockRevealLayer(stage: Container): Container {
-  if (unlockRevealLayer) return unlockRevealLayer
-  const layer = new Container()
-  layer.eventMode = 'none'
-  layer.visible = false
-  layer.zIndex = 11000
-  stage.addChild(layer)
-  unlockRevealLayer = layer
-  return layer
-}
-
-function playNextUnlockReveal(): void {
-  if (unlockRevealActive) return
-  const nextDefId = unlockRevealQueue.shift()
-  if (!nextDefId) return
-  const def = getItemDefById(nextDefId)
-  if (!def) {
-    playNextUnlockReveal()
-    return
-  }
-
-  const stage = getApp().stage
-  const layer = ensureUnlockRevealLayer(stage)
-  layer.removeChildren().forEach((ch) => ch.destroy({ children: true }))
-  layer.visible = true
-  if (layer.parent) layer.parent.addChild(layer)
-
-  const panelW = 520
-  const panelH = 248
-  const panelX = (CANVAS_W - panelW) / 2
-  const panelY = 132
-  const tier = parseTierName(def.starting_tier) ?? 'Bronze'
-  const tierColor = getTierColor(tier)
-  const baseLevel = tier === 'Bronze' ? 1 : tier === 'Silver' ? 3 : tier === 'Gold' ? 5 : 7
-  const previewScale = Math.max(0.55, Math.min(1.2, getBattleItemScale()))
-
-  const con = new Container()
-  con.x = panelX + panelW / 2
-  con.y = panelY + panelH / 2
-  con.alpha = 0
-  con.scale.set(0.86)
-
-  const bg = new Graphics()
-  bg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 24)
-  bg.fill({ color: 0x10182b, alpha: 0.92 })
-  bg.stroke({ color: tierColor, width: 3, alpha: 0.95 })
-  con.addChild(bg)
-
-  const tierBorderWidth = Math.max(1, Math.round(getDebugCfg('tierBorderWidth')))
-  const cardW = Math.max(72, Math.round(CELL_SIZE * previewScale))
-  const cardH = Math.max(72, Math.round(CELL_HEIGHT * previewScale))
-  const cardX = -cardW / 2
-  const cardY = -Math.round(panelH * 0.42)
-  const frameInset = Math.max(3, 2 + Math.ceil(tierBorderWidth / 2))
-  const frameW = Math.max(1, cardW - frameInset * 2)
-  const frameH = Math.max(1, cardH - frameInset * 2)
-  const frameRadius = Math.max(0, Math.round(getDebugCfg('gridItemCornerRadius')) - (frameInset - 3))
-
-  const iconFrame = new Graphics()
-  iconFrame.roundRect(cardX + frameInset, cardY + frameInset, frameW, frameH, frameRadius)
-  iconFrame.fill({ color: 0x0b1222, alpha: 0.95 })
-  iconFrame.stroke({ color: tierColor, width: tierBorderWidth, alpha: 0.98 })
-  con.addChild(iconFrame)
-
-  const glow = new Graphics()
-  glow.roundRect(cardX + frameInset + tierBorderWidth + 2, cardY + frameInset + tierBorderWidth + 2, Math.max(1, frameW - (tierBorderWidth + 2) * 2), Math.max(1, frameH - (tierBorderWidth + 2) * 2), Math.max(8, frameRadius - 4))
-  glow.fill({ color: tierColor, alpha: 0.24 })
-  glow.stroke({ color: 0xffffff, width: 2, alpha: 0.22 })
-  glow.blendMode = 'add'
-  con.addChild(glow)
-
-  const badgeCon = createItemStatBadges(
-    def,
-    Math.max(12, Math.round(getDebugCfg('itemStatBadgeFontSize') * previewScale)),
-    Math.max(44, cardW - 8),
-    undefined,
-    'archetype',
-    { archetypeSuffix: String(baseLevel) },
-  )
-  badgeCon.x = 0
-  badgeCon.y = cardY + Math.round(getDebugCfg('itemStatBadgeOffsetY') * previewScale) + Math.round(14 * previewScale)
-
-  const icon = new Sprite(Texture.WHITE)
-  icon.anchor.set(0.5)
-  icon.x = 0
-  const spriteInset = frameInset + Math.max(2, Math.ceil(tierBorderWidth / 2))
-  const baseCellInner = Math.max(1, cardW - spriteInset * 2)
-  const spriteSide = Math.max(1, Math.min(frameW, baseCellInner))
-  icon.y = cardY + frameInset + frameH / 2
-  icon.width = spriteSide
-  icon.height = spriteSide
-  con.addChild(icon)
-  con.addChild(badgeCon)
-  void Assets.load<Texture>(getItemIconUrl(def.id)).then((tex) => {
-    icon.texture = tex
-  }).catch(() => {
-    // ignore missing icon
-  })
-
-  const title = new Text({
-    text: `解锁物品 ${def.name_cn}`,
-    style: {
-      fontSize: getConfig().textSizes.itemInfoName,
-      fill: 0xfff2cf,
-      fontFamily: 'Arial',
-      fontWeight: 'bold',
-      stroke: { color: 0x000000, width: 4 },
-    },
-  })
-  title.anchor.set(0.5)
-  title.x = 0
-  const frameBottom = cardY + frameInset + frameH
-  const titleGap = Math.max(16, Math.round(22 * previewScale))
-  title.y = frameBottom + titleGap + title.height / 2
-  const titleBottom = title.y + title.height / 2 + 12
-  const panelBottom = panelH / 2
-  if (titleBottom > panelBottom) {
-    title.y -= (titleBottom - panelBottom)
-  }
-  const minTitleY = frameBottom + 10 + title.height / 2
-  if (title.y < minTitleY) title.y = minTitleY
-  con.addChild(title)
-
-  layer.addChild(con)
-  unlockRevealActive = true
-  const startMs = Date.now()
-  unlockRevealTickFn = () => {
-    const elapsed = Date.now() - startMs
-    const p = Math.max(0, Math.min(1, elapsed / UNLOCK_REVEAL_TOTAL_MS))
-    const fadeIn = Math.min(1, p / 0.18)
-    const fadeOut = p > 0.82 ? (1 - p) / 0.18 : 1
-    con.alpha = Math.max(0, Math.min(1, fadeIn * Math.max(0, Math.min(1, fadeOut))))
-    const scaleIn = Math.min(1, p / 0.2)
-    con.scale.set(0.86 + (1 - Math.pow(1 - scaleIn, 3)) * 0.14)
-    glow.rotation += 0.05
-    glow.alpha = 0.2 + 0.12 * Math.sin(elapsed / 120)
-
-    if (elapsed >= UNLOCK_REVEAL_TOTAL_MS) {
-      stopUnlockRevealPlayback(false)
-      playNextUnlockReveal()
-    }
-  }
-  Ticker.shared.add(unlockRevealTickFn)
-}
-
-function enqueueUnlockReveal(defId: string): void {
-  unlockRevealQueue.push(defId)
-  playNextUnlockReveal()
 }
 
 function updatePhaseToggleButton(): void {
@@ -948,6 +797,7 @@ function captureShopState(): SavedShopState | null {
     skill15NextBuyDiscount,
     skill30BuyCounter,
     skill30NextBuyFree,
+    quickBuyNoSynthRefreshStreak,
   }
 }
 
@@ -992,6 +842,7 @@ function applySavedShopState(state: SavedShopState): void {
   skill15NextBuyDiscount = state.skill15NextBuyDiscount === true
   skill30BuyCounter = Math.max(0, Math.round(Number(state.skill30BuyCounter ?? 0) || 0))
   skill30NextBuyFree = state.skill30NextBuyFree === true
+  quickBuyNoSynthRefreshStreak = Math.max(0, Math.round(Number(state.quickBuyNoSynthRefreshStreak ?? 0) || 0))
   if (!hasPickedSkill('skill15')) resetSkill15NextBuyDiscountState()
   if (!hasPickedSkill('skill30')) resetSkill30BundleState()
   nextQuickBuyOffer = (state.nextQuickBuyOffer && typeof state.nextQuickBuyOffer === 'object')
@@ -1793,11 +1644,11 @@ function pickCrossSynthesisResultWithCycle(
   candidates: ItemDef[],
   resultTier: TierKey,
   resultStar: 1 | 2,
-  minStartingTier: TierKey,
+  _minStartingTier: TierKey,
 ): ItemDef | null {
   if (candidates.length <= 0) return null
   const desiredMinTier = pickCrossSynthesisDesiredMinTier(resultTier, resultStar)
-  let targetMinTier = maxTier(desiredMinTier, minStartingTier)
+  let targetMinTier = desiredMinTier
   let pool = candidates.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === targetMinTier)
   if (pool.length <= 0) {
     const startIdx = Math.max(0, TIER_ORDER.indexOf(targetMinTier))
@@ -1881,7 +1732,6 @@ function unlockItemToPool(defId: string): boolean {
   if (unlockedItemIds.has(defId)) return false
   unlockedItemIds.add(defId)
   shopManager?.unlockItem(defId)
-  enqueueUnlockReveal(defId)
   return true
 }
 
@@ -1889,6 +1739,7 @@ function seedInitialUnlockPoolByStarterClass(_pick: StarterClass): void {
   unlockedItemIds.clear()
   resetSkill15NextBuyDiscountState()
   resetSkill30BundleState()
+  quickBuyNoSynthRefreshStreak = 0
   nextQuickBuyOffer = null
   // 按当前规则：开局解锁“所有青铜物品”，不再仅限所选职业
   const bronzeIds = getAllItems()
@@ -2080,6 +1931,7 @@ function refreshBattlePassiveStatBadges(showJump = true): void {
 
   const isWeapon = (id: string): boolean => (next.get(id)?.damage ?? 0) > 0
   const isShield = (id: string): boolean => (next.get(id)?.shield ?? 0) > 0
+  const isDamageBonusEligible = (id: string): boolean => isWeapon(id) && !isShield(id)
 
   for (const owner of placed) {
     const def = byId.get(owner.defId)
@@ -2107,7 +1959,7 @@ function refreshBattlePassiveStatBadges(showJump = true): void {
       const v = Math.round(tierValueFromSkillLineByStar(def, tier, star, roundShieldLine))
       if (v > 0) {
         for (const aid of adjacentIds) {
-          if (!isWeapon(aid)) continue
+          if (!isDamageBonusEligible(aid)) continue
           const st = next.get(aid)
           if (!st) continue
           st.damage += v
@@ -2124,7 +1976,7 @@ function refreshBattlePassiveStatBadges(showJump = true): void {
       const v = Math.round(tierValueFromSkillLineByStar(def, tier, star, boomerangLine))
       if (v > 0) {
         for (const st of next.values()) {
-          if (st.damage <= 0) continue
+          if (st.damage <= 0 || st.shield > 0) continue
           st.damage += v
         }
       }
@@ -2378,15 +2230,16 @@ function isPointInItemBounds(view: GridZone, item: PlacedItem, gx: number, gy: n
   return gx >= x0 && gx <= x1 && gy >= y0 && gy <= y1
 }
 
-function collectBackpackSynthesisGuideIds(
+function collectSynthesisGuideIds(
+  system: GridSystem | null,
   defId: string,
   tier: TierKey,
   star: 1 | 2,
   excludeInstanceId?: string,
 ): string[] {
-  if (!backpackSystem) return []
+  if (!system) return []
   const out: string[] = []
-  for (const it of backpackSystem.getAllItems()) {
+  for (const it of system.getAllItems()) {
     if (excludeInstanceId && it.instanceId === excludeInstanceId) continue
     const itTier = instanceToTier.get(it.instanceId) ?? 'Bronze'
     const itStar = getInstanceTierStar(it.instanceId)
@@ -2402,17 +2255,23 @@ function refreshBackpackSynthesisGuideArrows(
   star: 1 | 2,
   excludeInstanceId?: string,
 ): void {
-  if (!backpackView) return
-  if (!isBattleZoneNoSynthesisEnabled() || !defId || !tier || tier === 'Diamond') {
+  if (!backpackView || !battleView) return
+  if (!defId || !tier || tier === 'Diamond') {
     backpackView.setDragGuideArrows([])
+    battleView.setDragGuideArrows([])
     return
   }
-  const ids = collectBackpackSynthesisGuideIds(defId, tier, star, excludeInstanceId)
-  backpackView.setDragGuideArrows(ids)
+  const backpackIds = collectSynthesisGuideIds(backpackSystem, defId, tier, star, excludeInstanceId)
+  const battleIds = isBattleZoneNoSynthesisEnabled()
+    ? []
+    : collectSynthesisGuideIds(battleSystem, defId, tier, star, excludeInstanceId)
+  backpackView.setDragGuideArrows(backpackIds)
+  battleView.setDragGuideArrows(battleIds)
 }
 
 function clearBackpackSynthesisGuideArrows(): void {
   backpackView?.setDragGuideArrows([])
+  battleView?.setDragGuideArrows([])
 }
 
 function findSynthesisTargetAtPointer(
@@ -2590,7 +2449,7 @@ function getCrossIdEvolvePool(
   sourceDef: ItemDef,
   targetSize: ItemSizeNorm,
   resultTier: TierKey,
-  minStartingTier: TierKey,
+  _minStartingTier: TierKey,
 ): {
   basePool: ItemDef[]
   sameArchPool: ItemDef[]
@@ -2599,7 +2458,6 @@ function getCrossIdEvolvePool(
   const basePool = getAllItems().filter((it) =>
     normalizeSize(it.size) === targetSize
     && parseAvailableTiers(it.available_tiers).includes(resultTier)
-    && compareTier(parseTierName(it.starting_tier) ?? 'Bronze', minStartingTier) >= 0
   )
   const sourceArch = getPrimaryArchetype(sourceDef.tags)
   if (!sourceArch) {
@@ -2670,31 +2528,25 @@ function synthesizeTarget(
   const targetDef = getItemDefById(targetItem.defId)
   if (!targetDef) return null
 
-  const isCrossIdSynthesis = defId !== targetItem.defId
+  const isSameIdSynthesis = defId === targetItem.defId
   const minStartingTier = getCrossSynthesisMinStartingTier(sourceDef, targetDef)
   let guaranteeNewUnlock = shouldGuaranteeNewUnlock(upgradeTo.tier, upgradeTo.star)
   let resultLevel = tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1
   const buildCandidates = (targetTier: TierKey) => {
-    if (defId === targetItem.defId) {
-      return getAllItems().filter((it) => it.id === defId && parseAvailableTiers(it.available_tiers).includes(targetTier))
-    }
-    if (guaranteeNewUnlock) {
-      return getCrossIdEvolvePool(sourceDef, targetItem.size, targetTier, minStartingTier).otherArchPool
+    if (isSameIdSynthesis) {
+      const sameArchPool = getCrossIdEvolvePool(sourceDef, targetItem.size, targetTier, minStartingTier).sameArchPool
+      return sameArchPool.filter((it) => it.id !== defId)
     }
     return pickCrossIdEvolveCandidates(sourceDef, targetItem.size, targetTier, minStartingTier)
   }
   let evolveCandidates = buildCandidates(upgradeTo.tier)
-  let evolvedDef = isCrossIdSynthesis
-    ? pickCrossSynthesisResultWithCycle(evolveCandidates, upgradeTo.tier, upgradeTo.star, minStartingTier)
-    : pickSynthesisResultWithGuarantee(evolveCandidates, upgradeTo.tier, upgradeTo.star)
+  let evolvedDef = pickCrossSynthesisResultWithCycle(evolveCandidates, upgradeTo.tier, upgradeTo.star, minStartingTier)
   if (!evolvedDef && wantsExtraUpgrade) {
     upgradeTo = baseUpgrade
     guaranteeNewUnlock = shouldGuaranteeNewUnlock(upgradeTo.tier, upgradeTo.star)
     resultLevel = tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1
     evolveCandidates = buildCandidates(upgradeTo.tier)
-    evolvedDef = isCrossIdSynthesis
-      ? pickCrossSynthesisResultWithCycle(evolveCandidates, upgradeTo.tier, upgradeTo.star, minStartingTier)
-      : pickSynthesisResultWithGuarantee(evolveCandidates, upgradeTo.tier, upgradeTo.star)
+    evolvedDef = pickCrossSynthesisResultWithCycle(evolveCandidates, upgradeTo.tier, upgradeTo.star, minStartingTier)
   }
   if (!evolvedDef) return null
 
@@ -2759,39 +2611,23 @@ function showSynthesisHoverInfo(
   const targetItem = system.getItem(target.instanceId)
   if (!targetItem) return
   const isSameItem = sourceDefId === targetItem.defId
-  const key = `${sourceDefId}|${sourceTier}|${sourceStar}|${target.instanceId}|${isSameItem}`
+  const mode = isSameItem ? 'same_archetype' : 'cross_archetype'
+  const key = `${sourceDefId}|${sourceTier}|${sourceStar}|${target.instanceId}|${mode}`
   if (synthHoverInfoKey === key) return
   synthHoverInfoKey = key
 
   const buyPrice = shopManager.getItemPrice(sourceDef, sourceTier)
-  if (isSameItem) {
-    const customDisplay: ItemInfoCustomDisplay = {
-      overrideName: `${sourceDef.name_cn}（可合成）`,
-      suppressStats: false,
-    }
-    sellPopup.show(
-      sourceDef,
-      buyPrice,
-      'buy',
-      toVisualTier(upgradeTo.tier, upgradeTo.star),
-      toVisualTier(sourceTier, sourceStar),
-      'detailed',
-      undefined,
-      customDisplay,
-    )
-  } else {
-    const customDisplay: ItemInfoCustomDisplay = {
-      overrideName: '随机合成',
-      lines: [
-        `等级 ${tierStarLabelCn(sourceTier, sourceStar)} -> ${tierStarLabelCn(upgradeTo.tier, upgradeTo.star)}`,
-        '随机获得更高等级的物品',
-      ],
-      suppressStats: true,
-      hideTierBadge: true,
-      useQuestionIcon: true,
-    }
-    sellPopup.show(sourceDef, buyPrice, 'buy', toVisualTier(sourceTier, sourceStar), undefined, 'detailed', undefined, customDisplay)
+  const customDisplay: ItemInfoCustomDisplay = {
+    overrideName: '随机合成',
+    lines: [
+      `等级 ${tierStarLabelCn(sourceTier, sourceStar)} -> ${tierStarLabelCn(upgradeTo.tier, upgradeTo.star)}`,
+      isSameItem ? '随机获得本职业其他物品' : '随机获得其他职业物品',
+    ],
+    suppressStats: true,
+    hideTierBadge: true,
+    useQuestionIcon: true,
   }
+  sellPopup.show(sourceDef, buyPrice, 'buy', toVisualTier(sourceTier, sourceStar), undefined, 'detailed', undefined, customDisplay)
 }
 
 function synthesisLevelLabel(tier: TierKey, star: 1 | 2): string {
@@ -3267,11 +3103,11 @@ function getItemDefByCn(nameCn: string): ItemDef | null {
 }
 
 function pickGuideCrossArchetypeItem(pick: StarterClass): ItemDef | null {
-  // 展示用“其他职业”示例：优先选择目标职业“最低品质=白银”的物品
+  // 展示用“其他职业”示例：每个职业固定挑一个青铜物品
   const preferredByPick: Record<StarterClass, string[]> = {
-    swordsman: ['手弩'],
-    archer: ['回旋镖'],
-    assassin: ['长盾'],
+    swordsman: ['木弓'],
+    archer: ['匕首'],
+    assassin: ['短剑'],
   }
   const targetTagByPick: Record<StarterClass, string> = {
     swordsman: '弓手',
@@ -3281,11 +3117,26 @@ function pickGuideCrossArchetypeItem(pick: StarterClass): ItemDef | null {
 
   for (const nameCn of preferredByPick[pick]) {
     const hit = getItemDefByCn(nameCn)
-    if (hit && parseTierName(hit.starting_tier) === 'Silver') return hit
+    if (hit && parseTierName(hit.starting_tier) === 'Bronze') return hit
   }
   const targetTag = targetTagByPick[pick]
-  return getAllItems().find((it) => `${it.tags ?? ''}`.includes(targetTag) && parseTierName(it.starting_tier) === 'Silver')
+  return getAllItems().find((it) => `${it.tags ?? ''}`.includes(targetTag) && parseTierName(it.starting_tier) === 'Bronze')
     ?? getAllItems().find((it) => `${it.tags ?? ''}`.includes(targetTag))
+    ?? null
+}
+
+function pickGuideSameArchetypeResultItem(pick: StarterClass, sourceItem: ItemDef): ItemDef | null {
+  const preset = STARTER_CLASS_PRESETS[pick]
+  if (preset) {
+    for (const nameCn of preset.gifts) {
+      if (nameCn === sourceItem.name_cn) continue
+      const hit = getItemDefByCn(nameCn)
+      if (hit) return hit
+    }
+  }
+  const sourceArch = getPrimaryArchetype(sourceItem.tags)
+  if (!sourceArch) return null
+  return getAllItems().find((it) => getPrimaryArchetype(it.tags) === sourceArch && it.id !== sourceItem.id)
     ?? null
 }
 
@@ -3426,8 +3277,9 @@ function showStarterSynthesisGuide(stage: Container, pick: StarterClass): void {
   if (!preset) return
   const itemA = getItemDefByCn(preset.gifts[0])
   const itemB = getItemDefByCn(preset.gifts[1])
+  const sameArchetypeResultItem = itemA ? pickGuideSameArchetypeResultItem(pick, itemA) : null
   const otherArchetypeItem = pickGuideCrossArchetypeItem(pick)
-  if (!itemA || !itemB || !otherArchetypeItem) return
+  if (!itemA || !itemB || !sameArchetypeResultItem || !otherArchetypeItem) return
 
   starterBattleGuideShown = true
   saveShopStateToStorage(captureShopState())
@@ -3458,84 +3310,72 @@ function showStarterSynthesisGuide(stage: Container, pick: StarterClass): void {
   panel.addChild(panelBg)
 
   const title = new Text({
-    text: '基础合成规则',
+    text: '合成转化规则',
     style: { fontSize: 52, fill: 0xffefc8, fontFamily: 'Arial', fontWeight: 'bold' },
   })
   title.anchor.set(0.5)
   title.y = -354
   panel.addChild(title)
 
-  const line1 = new Text({
-    text: '相同物品合成  →  升级为更高级',
-    style: { fontSize: 32, fill: 0xdce8ff, fontFamily: 'Arial', fontWeight: 'bold' },
-  })
-  line1.anchor.set(0.5)
-  line1.y = -268
-  panel.addChild(line1)
+  const verticalDivider = new Graphics()
+  verticalDivider.moveTo(0, -304)
+  verticalDivider.lineTo(0, 260)
+  verticalDivider.stroke({ color: 0x5b6790, width: 2, alpha: 0.95 })
+  panel.addChild(verticalDivider)
 
-  const row1 = new Container()
-  row1.y = -186
-  const r1a = createGuideItemCard(itemA, '1')
-  r1a.x = -216
-  row1.addChild(r1a)
-  const plus1 = new Text({ text: '+', style: { fontSize: 52, fill: 0x8ec6ff, fontFamily: 'Arial', fontWeight: 'bold' } })
-  plus1.x = -104
-  plus1.y = 22
-  row1.addChild(plus1)
-  const r1b = createGuideItemCard(itemA, '1')
-  r1b.x = -44
-  row1.addChild(r1b)
-  const arrow1 = new Text({ text: '→', style: { fontSize: 58, fill: 0x8ec6ff, fontFamily: 'Arial', fontWeight: 'bold' } })
-  arrow1.x = 84
-  arrow1.y = 18
-  row1.addChild(arrow1)
-  const r1c = createGuideItemCard(itemA, '2')
-  r1c.x = 166
-  row1.addChild(r1c)
-  panel.addChild(row1)
+  const createGuideColumn = (
+    centerX: number,
+    label: string,
+    leftDef: ItemDef,
+    leftLv: string,
+    rightDef: ItemDef,
+    rightLv: string,
+    resultDef: ItemDef,
+    resultLv: string,
+  ): Container => {
+    const col = new Container()
+    col.x = centerX
 
-  const divider = new Graphics()
-  divider.moveTo(-248, -22)
-  divider.lineTo(248, -22)
-  divider.stroke({ color: 0x5b6790, width: 1, alpha: 0.9 })
-  panel.addChild(divider)
+    const line = new Text({
+      text: label,
+      style: { fontSize: 28, fill: 0xdce8ff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    line.anchor.set(0.5)
+    line.y = -266
+    col.addChild(line)
 
-  const line2 = new Text({
-    text: '同职业物品合成  →  随机升级',
-    style: { fontSize: 32, fill: 0xdce8ff, fontFamily: 'Arial', fontWeight: 'bold' },
-  })
-  line2.anchor.set(0.5)
-  line2.y = 48
-  panel.addChild(line2)
+    const topRow = new Container()
+    topRow.y = -176
+    const a = createGuideItemCard(leftDef, leftLv, 'Bronze')
+    a.x = -114
+    topRow.addChild(a)
+    const plus = new Text({ text: '+', style: { fontSize: 50, fill: 0x8ec6ff, fontFamily: 'Arial', fontWeight: 'bold' } })
+    plus.anchor.set(0.5)
+    plus.x = 0
+    plus.y = 42
+    topRow.addChild(plus)
+    const b = createGuideItemCard(rightDef, rightLv, 'Bronze')
+    b.x = 22
+    topRow.addChild(b)
+    col.addChild(topRow)
 
-  const line2Sub = new Text({
-    text: '可能获得更高品质的物品',
-    style: { fontSize: 24, fill: 0xaec8f5, fontFamily: 'Arial', fontWeight: 'bold' },
-  })
-  line2Sub.anchor.set(0.5)
-  line2Sub.y = 92
-  panel.addChild(line2Sub)
+    const downArrow = new Text({ text: '↓', style: { fontSize: 60, fill: 0x8ec6ff, fontFamily: 'Arial', fontWeight: 'bold' } })
+    downArrow.anchor.set(0.5)
+    downArrow.y = -12
+    col.addChild(downArrow)
 
-  const row2 = new Container()
-  row2.y = 130
-  const r2a = createGuideItemCard(itemA, '2', 'Bronze')
-  r2a.x = -216
-  row2.addChild(r2a)
-  const plus2 = new Text({ text: '+', style: { fontSize: 52, fill: 0x8ec6ff, fontFamily: 'Arial', fontWeight: 'bold' } })
-  plus2.x = -104
-  plus2.y = 22
-  row2.addChild(plus2)
-  const r2b = createGuideItemCard(itemB, '2', 'Bronze')
-  r2b.x = -44
-  row2.addChild(r2b)
-  const arrow2 = new Text({ text: '→', style: { fontSize: 58, fill: 0x8ec6ff, fontFamily: 'Arial', fontWeight: 'bold' } })
-  arrow2.x = 84
-  arrow2.y = 18
-  row2.addChild(arrow2)
-  const r2c = createGuideItemCard(otherArchetypeItem, '3', 'Silver')
-  r2c.x = 166
-  row2.addChild(r2c)
-  panel.addChild(row2)
+    const resultRow = new Container()
+    resultRow.y = 66
+    const result = createGuideItemCard(resultDef, resultLv, 'Bronze')
+    result.x = -46
+    resultRow.addChild(result)
+    col.addChild(resultRow)
+
+    return col
+  }
+
+  panel.addChild(createGuideColumn(-145, '相同物品 -> 本职业', itemA, '1', itemA, '1', sameArchetypeResultItem, '2'))
+  panel.addChild(createGuideColumn(145, '不同物品 -> 其他职业', itemA, '1', itemB, '1', otherArchetypeItem, '2'))
 
   const closeBtn = new Container()
   closeBtn.eventMode = 'static'
@@ -3606,7 +3446,7 @@ function ensureStarterClassSelection(stage: Container): void {
   const cardH = 504
   const gapX = 16
   const cardX = (CANVAS_W - (cardW * 3 + gapX * 2)) / 2
-  const startY = 310
+  const startY = 460
   let selected: StarterClass | null = starterClass
 
   const confirm = new Container()
@@ -3875,24 +3715,60 @@ function starterClassToArchetype(starter: StarterClass | null): SkillArchetype |
   return null
 }
 
+function toSkillArchetype(raw: string): SkillArchetype | null {
+  const key = String(raw || '').trim().toLowerCase()
+  if (key === 'warrior' || key === '战士') return 'warrior'
+  if (key === 'archer' || key === '弓手') return 'archer'
+  if (key === 'assassin' || key === '刺客') return 'assassin'
+  if (key === 'utility' || key === '通用') return 'utility'
+  return null
+}
+
+function getDominantBattleArchetype(): SkillArchetype | null {
+  if (!battleSystem) return null
+  const counts = new Map<SkillArchetype, number>()
+  for (const it of battleSystem.getAllItems()) {
+    const def = getItemDefById(it.defId)
+    const archetype = toSkillArchetype(getPrimaryArchetype(def?.tags ?? ''))
+    if (!archetype || archetype === 'utility') continue
+    counts.set(archetype, (counts.get(archetype) ?? 0) + 1)
+  }
+  if (counts.size <= 0) return null
+  let maxCount = 0
+  const top: SkillArchetype[] = []
+  for (const [archetype, count] of counts) {
+    if (count > maxCount) {
+      maxCount = count
+      top.length = 0
+      top.push(archetype)
+      continue
+    }
+    if (count === maxCount) top.push(archetype)
+  }
+  if (top.length <= 0) return null
+  return top[Math.floor(Math.random() * top.length)] ?? null
+}
+
 function pickSkillChoices(baseTier: SkillTier, day: number): SkillPick[] {
-  const skillCfg = getConfig().skillSystem
   const picks: SkillPick[] = []
   const usedIds = new Set<string>()
   const alreadyPicked = new Set(pickedSkills.map((s) => s.id))
   const plan = getSkillDailyDraftPlanRows().find((it) => Math.round(Number(it.day) || 0) === day)
-  const chooseCount = (plan && (Number(plan.onlyStarterArchetype) || 0) >= 0.5)
-    ? 2
-    : Math.max(1, skillCfg?.chooseCount ?? 3)
+  const chooseCount = 2
   const firstDayArchetype = (plan && (Number(plan.onlyStarterArchetype) || 0) >= 0.5)
     ? starterClassToArchetype(starterClass)
     : null
+  const dominantBattleArchetype = firstDayArchetype ? null : getDominantBattleArchetype()
 
-  const tryPickOne = (forcedArchetype: SkillArchetype | null): boolean => {
+  const tryPickOne = (
+    forcedArchetype: SkillArchetype | null,
+    blockedArchetype: SkillArchetype | null,
+  ): boolean => {
     for (let attempt = 0; attempt < 24; attempt++) {
       const tier = pickMixedSkillTier(baseTier, day)
       let source = makeSkillPoolByTier(tier).filter((s) => !usedIds.has(s.id) && !alreadyPicked.has(s.id))
       if (forcedArchetype) source = source.filter((s) => s.archetype === forcedArchetype)
+      if (blockedArchetype) source = source.filter((s) => s.archetype !== blockedArchetype)
       if (source.length <= 0) continue
       const picked = source[Math.floor(Math.random() * source.length)]
       if (!picked) continue
@@ -3903,9 +3779,31 @@ function pickSkillChoices(baseTier: SkillTier, day: number): SkillPick[] {
     return false
   }
 
-  while (picks.length < chooseCount) {
-    const ok = tryPickOne(firstDayArchetype)
-    if (!ok) break
+  if (firstDayArchetype) {
+    while (picks.length < chooseCount) {
+      const ok = tryPickOne(firstDayArchetype, null)
+      if (!ok) break
+    }
+  } else {
+    if (dominantBattleArchetype) {
+      const pickedDominant = tryPickOne(dominantBattleArchetype, null)
+      if (!pickedDominant) {
+        const fallbackFirst = tryPickOne(null, null)
+        if (!fallbackFirst) return picks
+      }
+    } else {
+      const first = tryPickOne(null, null)
+      if (!first) return picks
+    }
+
+    while (picks.length < chooseCount) {
+      const blockedArchetype = picks[0]?.archetype ?? null
+      const ok = tryPickOne(null, blockedArchetype)
+      if (!ok) {
+        const fallback = tryPickOne(null, null)
+        if (!fallback) break
+      }
+    }
   }
 
   const allSameArchetype = picks.length >= 3 && picks.every((s) => s.archetype === picks[0]!.archetype)
@@ -4183,10 +4081,10 @@ function ensureSkillDraftSelection(stage: Container): void {
   title.y = 228
   overlay.addChild(title)
 
-  const shownChoices = draft.choices.slice(0, 3)
-  const cardW = 188
+  const shownChoices = draft.choices.slice(0, 2)
+  const cardW = 238
   const cardH = 470
-  const gapX = 16
+  const gapX = shownChoices.length === 2 ? 50 : 16
   const totalW = cardW * shownChoices.length + gapX * Math.max(0, shownChoices.length - 1)
   const cardX = (CANVAS_W - totalW) / 2
   const cardY = 580
@@ -4383,9 +4281,9 @@ function levelToTierStar(level: number): { tier: TierKey; star: 1 | 2 } | null {
 }
 
 function getAllowedLevelsByStartingTier(tier: TierKey): Array<1 | 2 | 3 | 4 | 5 | 6 | 7> {
-  if (tier === 'Bronze') return [1, 2]
-  if (tier === 'Silver') return [3, 4]
-  if (tier === 'Gold') return [5, 6]
+  if (tier === 'Bronze') return [1, 2, 3, 4, 5, 6, 7]
+  if (tier === 'Silver') return [3, 4, 5, 6, 7]
+  if (tier === 'Gold') return [5, 6, 7]
   return [7]
 }
 
@@ -4407,8 +4305,7 @@ function collectPoolCandidatesByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): PoolCan
   if (!tierStar) return []
   const allById = new Map(getAllItems().map((it) => [it.id, it] as const))
   const out: PoolCandidate[] = []
-  for (const defId of unlockedItemIds) {
-    const item = allById.get(defId)
+  for (const item of allById.values()) {
     if (!item) continue
     const minTier = parseTierName(item.starting_tier) ?? 'Bronze'
     if (!getAllowedLevelsByStartingTier(minTier).includes(level)) continue
@@ -4435,7 +4332,6 @@ function findCandidateByOffer(offer: { itemId: string; tier: TierKey; star: 1 | 
   if (!item) return null
   const size = normalizeSize(item.size)
   if (!findFirstBattlePlace(size) && !findFirstBackpackPlace(size)) return null
-  if (!unlockedItemIds.has(offer.itemId)) return null
   const minTier = parseTierName(item.starting_tier) ?? 'Bronze'
   if (!getAllowedLevelsByStartingTier(minTier).includes(levelKey)) return null
   if (!parseAvailableTiers(item.available_tiers).includes(offer.tier)) return null
@@ -4446,6 +4342,71 @@ function findCandidateByOffer(offer: { itemId: string; tier: TierKey; star: 1 | 
     star: offer.star,
     price: offer.price,
   }
+}
+
+function canOfferImmediateSynthesis(candidate: PoolCandidate): boolean {
+  if (!battleSystem || !backpackSystem) return false
+  const scan = (items: ReturnType<GridSystem['getAllItems']>): boolean => {
+    for (const it of items) {
+      const itTier = instanceToTier.get(it.instanceId) ?? 'Bronze'
+      const itStar = getInstanceTierStar(it.instanceId)
+      if (canSynthesizePair(candidate.item.id, it.defId, candidate.tier, candidate.star, itTier, itStar)) {
+        return true
+      }
+    }
+    return false
+  }
+  return scan(battleSystem.getAllItems()) || scan(backpackSystem.getAllItems())
+}
+
+function applyQuickBuySynthesisRewrite(picked: PoolCandidate, levelCandidates: PoolCandidate[]): PoolCandidate {
+  if (!battleSystem || !backpackSystem) return picked
+  const sameDefCount = new Map<string, number>()
+  const sameArchetypeDefs = new Map<string, Set<string>>()
+  const collect = (items: ReturnType<GridSystem['getAllItems']>) => {
+    for (const it of items) {
+      const itTier = instanceToTier.get(it.instanceId) ?? 'Bronze'
+      const itStar = getInstanceTierStar(it.instanceId)
+      if (itTier !== picked.tier || itStar !== picked.star) continue
+      sameDefCount.set(it.defId, (sameDefCount.get(it.defId) ?? 0) + 1)
+      const def = getItemDefById(it.defId)
+      const arch = getPrimaryArchetype(def?.tags ?? '')
+      if (!arch) continue
+      const set = sameArchetypeDefs.get(arch) ?? new Set<string>()
+      set.add(it.defId)
+      sameArchetypeDefs.set(arch, set)
+    }
+  }
+  collect(battleSystem.getAllItems())
+  collect(backpackSystem.getAllItems())
+
+  const pickedArch = getPrimaryArchetype(picked.item.tags)
+  if (!pickedArch) return picked
+
+  const sameDefOwnedCount = sameDefCount.get(picked.item.id) ?? 0
+  if (sameDefOwnedCount >= 3) {
+    const sameArchetypeOther = levelCandidates.filter((c) =>
+      c.item.id !== picked.item.id
+      && c.tier === picked.tier
+      && c.star === picked.star
+      && getPrimaryArchetype(c.item.tags) === pickedArch,
+    )
+    const swapped = sameArchetypeOther[Math.floor(Math.random() * sameArchetypeOther.length)] ?? null
+    if (swapped) return swapped
+  }
+
+  const sameArchDefSet = sameArchetypeDefs.get(pickedArch)
+  if ((sameArchDefSet?.size ?? 0) >= 3) {
+    const ownedSameItemCandidates = levelCandidates.filter((c) =>
+      c.tier === picked.tier
+      && c.star === picked.star
+      && sameArchDefSet!.has(c.item.id),
+    )
+    const swapped = ownedSameItemCandidates[Math.floor(Math.random() * ownedSameItemCandidates.length)] ?? null
+    if (swapped) return swapped
+  }
+
+  return picked
 }
 
 function getQuickBuyLevelWeightsByDay(day: number): [number, number, number, number, number, number, number] {
@@ -4468,7 +4429,7 @@ function rollNextQuickBuyOffer(force = false): PoolCandidate | null {
     const keep = findCandidateByOffer(nextQuickBuyOffer)
     if (keep) return keep
   }
-  const byLevel = {
+  const byLevel: Record<1 | 2 | 3 | 4 | 5 | 6 | 7, PoolCandidate[]> = {
     1: collectPoolCandidatesByLevel(1),
     2: collectPoolCandidatesByLevel(2),
     3: collectPoolCandidatesByLevel(3),
@@ -4517,10 +4478,31 @@ function rollNextQuickBuyOffer(force = false): PoolCandidate | null {
     nextQuickBuyOffer = null
     return null
   }
-  const picked = levelCandidates[Math.floor(Math.random() * levelCandidates.length)] ?? null
-  if (!picked) {
+  const rawPicked = levelCandidates[Math.floor(Math.random() * levelCandidates.length)] ?? null
+  if (!rawPicked) {
     nextQuickBuyOffer = null
     return null
+  }
+  let picked = applyQuickBuySynthesisRewrite(rawPicked, levelCandidates)
+
+  if (force && quickBuyNoSynthRefreshStreak >= 2 && !canOfferImmediateSynthesis(picked)) {
+    const synthCandidates: PoolCandidate[] = []
+    const levels: Array<1 | 2 | 3 | 4 | 5 | 6 | 7> = [1, 2, 3, 4, 5, 6, 7]
+    for (const lv of levels) {
+      if (effectiveWeights[lv - 1] <= 0) continue
+      for (const one of byLevel[lv]) {
+        const rewritten = applyQuickBuySynthesisRewrite(one, byLevel[lv])
+        if (!canOfferImmediateSynthesis(rewritten)) continue
+        synthCandidates.push(rewritten)
+      }
+    }
+    const forced = synthCandidates[Math.floor(Math.random() * synthCandidates.length)] ?? null
+    if (forced) picked = forced
+  }
+
+  if (force) {
+    if (canOfferImmediateSynthesis(picked)) quickBuyNoSynthRefreshStreak = 0
+    else quickBuyNoSynthRefreshStreak = Math.min(3, quickBuyNoSynthRefreshStreak + 1)
   }
 
   nextQuickBuyOffer = {
@@ -4579,7 +4561,8 @@ function buyRandomBronzeToBoardOrBackpack(): void {
 
   const size = normalizeSize(item.size)
   const backpackSlot = findFirstBackpackPlace(size)
-  if (!backpackSlot) {
+  const battleSlot = backpackSlot ? null : findFirstBattlePlace(size)
+  if (!backpackSlot && !battleSlot) {
     showHintToast('backpack_full_buy', '背包已满，无法购买', 0xff8f8f)
     refreshShopUI()
     return
@@ -4599,12 +4582,22 @@ function buyRandomBronzeToBoardOrBackpack(): void {
   markShopPurchaseDone()
   const id = nextId()
   const visualTier = toVisualTier(tier, star)
-  backpackSystem.place(backpackSlot.col, backpackSlot.row, size, item.id, id)
-  void backpackView.addItem(id, item.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
-    backpackView!.setItemTier(id, visualTier)
-    drag?.refreshZone(backpackView!)
-  })
-  console.log(`[ShopScene] 购买(${tier}#${star})→背包 ${item.name_cn} -${priced.finalPrice}G，金币: ${manager.gold}`)
+  if (backpackSlot) {
+    backpackSystem.place(backpackSlot.col, backpackSlot.row, size, item.id, id)
+    void backpackView.addItem(id, item.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
+      backpackView!.setItemTier(id, visualTier)
+      drag?.refreshZone(backpackView!)
+    })
+    console.log(`[ShopScene] 购买(${tier}#${star})→背包 ${item.name_cn} -${priced.finalPrice}G，金币: ${manager.gold}`)
+  } else if (battleSlot && battleSystem && battleView) {
+    battleSystem.place(battleSlot.col, battleSlot.row, size, item.id, id)
+    void battleView.addItem(id, item.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
+      battleView!.setItemTier(id, visualTier)
+      drag?.refreshZone(battleView!)
+    })
+    showHintToast('backpack_full_buy', '背包已满，已放入上阵区', 0xffd48f)
+    console.log(`[ShopScene] 购买(${tier}#${star})→上阵区 ${item.name_cn} -${priced.finalPrice}G，金币: ${manager.gold}`)
+  }
   instanceToDefId.set(id, item.id)
   instanceToTier.set(id, tier)
   instanceToTierStar.set(id, star)
@@ -6848,6 +6841,7 @@ export const ShopScene: Scene = {
       hasBoughtOnce = false
       resetSkill15NextBuyDiscountState()
       resetSkill30BundleState()
+      quickBuyNoSynthRefreshStreak = 0
       pickedSkills = []
       draftedSkillDays = []
       pendingSkillDraft = null
@@ -6876,7 +6870,7 @@ export const ShopScene: Scene = {
     stopFlashEffect()
     stopGridDragButtonFlash()
     stopBattleGuideHandAnim()
-    stopUnlockRevealPlayback(true)
+    stopUnlockRevealPlayback()
 
     if (shopDragFloater) {
       stage.removeChild(shopDragFloater)
@@ -6983,7 +6977,6 @@ export const ShopScene: Scene = {
     battleGuideHandCon = null
     battleGuideHandTick = null
     unlockRevealLayer = null
-    unlockRevealQueue = []
     unlockRevealTickFn = null
     unlockRevealActive = false
     crossSynthesisConfirmOverlay = null
@@ -7012,6 +7005,7 @@ export const ShopScene: Scene = {
     hasBoughtOnce = false
     resetSkill15NextBuyDiscountState()
     resetSkill30BundleState()
+    quickBuyNoSynthRefreshStreak = 0
     pickedSkills    = []
     draftedSkillDays = []
     pendingSkillDraft = null
