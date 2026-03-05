@@ -2122,7 +2122,9 @@ export class CombatEngine {
     }
     const useRepeatCount = Math.max(1, fireCount)
     const tickMsCfg = Math.max(1, getConfig().combatRuntime.tickMs)
-    const shotIntervalMs = Math.max(tickMsCfg, this.effectiveCooldownMs(item) / Math.max(1, useRepeatCount))
+    const shotIntervalMs = useRepeatCount > 1
+      ? tickMsCfg
+      : Math.max(tickMsCfg, this.effectiveCooldownMs(item) / Math.max(1, useRepeatCount))
     const shotIntervalTick = Math.max(1, Math.round(shotIntervalMs / tickMsCfg))
 
     for (let i = 0; i < useRepeatCount; i++) {

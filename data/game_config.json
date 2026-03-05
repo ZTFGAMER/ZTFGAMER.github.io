@@ -1422,7 +1422,15 @@
         { "id": "event21", "dayStart": 1, "dayEnd": 20, "icon": "event21", "lane": "right", "shortDesc": "清空背包，并获得大量金币", "detailDesc": "清空背包，并获得x金币", "note": "x=（天数+3）*3，背包中必须有物品", "conditions": { "requireBackpackNotEmpty": true } },
         { "id": "event22", "dayStart": 1, "dayEnd": 20, "icon": "event22", "lane": "right", "shortDesc": "提升最大生命值", "detailDesc": "提升10%最大生命值", "note": "永久提升，所有最大生命值的比例加算" },
         { "id": "event23", "dayStart": 5, "dayEnd": 20, "icon": "event23", "lane": "right", "shortDesc": "恢复红心", "detailDesc": "恢复1个红心", "note": "选择2次后不能再出现选择，只有红心不满时才会随机到", "limits": { "maxSelectionsPerRun": 2 }, "conditions": { "requireHeartNotFull": true } },
-        { "id": "event24", "dayStart": 5, "dayEnd": 12, "icon": "event24", "lane": "left", "shortDesc": "全部物品随机转化并升级", "detailDesc": "全部物品随机转化并升级", "note": "选择1次后不能再出现选择", "limits": { "maxSelectionsPerRun": 1 } }
+        { "id": "event24", "dayStart": 5, "dayEnd": 12, "icon": "event24", "lane": "left", "shortDesc": "全部物品随机转化并升级", "detailDesc": "全部物品随机转化并升级", "note": "选择1次后不能再出现选择", "limits": { "maxSelectionsPerRun": 1 } },
+        { "id": "event25", "dayStart": 1, "dayEnd": 20, "icon": "event25", "lane": "right", "shortDesc": "投资金币，明天翻倍", "detailDesc": "清空全部金币，明天获得2倍" },
+        { "id": "event26", "dayStart": 1, "dayEnd": 20, "icon": "event26", "lane": "right", "shortDesc": "以双倍价格出售上阵区", "detailDesc": "以双倍价格出售上阵区所有物品", "note": "上阵区必须有物品", "conditions": { "requireBattleNotEmpty": true } },
+        { "id": "event27", "dayStart": 1, "dayEnd": 20, "icon": "event27", "lane": "left", "shortDesc": "所有合成全部随机", "detailDesc": "本日所有合成都是随机合成" },
+        { "id": "event28", "dayStart": 1, "dayEnd": 20, "icon": "event28", "lane": "right", "shortDesc": "3天后获得大量金币", "detailDesc": "3天后获得x金币", "note": "x=（天数+3）*5" },
+        { "id": "event29", "dayStart": 1, "dayEnd": 20, "icon": "event29", "lane": "right", "shortDesc": "5天后上阵区全部升级", "detailDesc": "5天后上阵区的所有物品升级" },
+        { "id": "event34", "dayStart": 1, "dayEnd": 20, "icon": "event34", "lane": "right", "shortDesc": "透支未来2天的收入", "detailDesc": "获得未来2天收入的60%，未来无法获得基础收入" },
+        { "id": "event35", "dayStart": 1, "dayEnd": 20, "icon": "event35", "lane": "left", "shortDesc": "转化等级最高的所有物品", "detailDesc": "转化等级最高的所有物品" },
+        { "id": "event36", "dayStart": 1, "dayEnd": 20, "icon": "event36", "lane": "left", "shortDesc": "升级等级最低的所有物品", "detailDesc": "升级等级最低的所有物品" }
       ]
     },
     "note": "事件配置表（仅配置，不含具体实现逻辑）"

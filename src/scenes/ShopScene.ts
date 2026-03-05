@@ -239,6 +239,12 @@ type SavedShopState = {
     forceSynthesisArchetype?: 'warrior' | 'archer' | 'assassin' | null
     forceSynthesisRemaining?: number
     extraUpgradeRemaining?: number
+    allSynthesisRandom?: boolean
+  }
+  futureEventState?: {
+    blockedBaseIncomeDays?: number[]
+    pendingGoldByDay?: Array<{ day: number; amount: number }>
+    pendingBattleUpgradeByDay?: Array<{ day: number; count: number }>
   }
   draftedSpecialShopDays?: number[]
   specialShopRefreshCount?: number
@@ -345,13 +351,18 @@ let dayEventState: {
   forceSynthesisArchetype: EventArchetype | null
   forceSynthesisRemaining: number
   extraUpgradeRemaining: number
+  allSynthesisRandom: boolean
 } = {
   forceBuyArchetype: null,
   forceBuyRemaining: 0,
   forceSynthesisArchetype: null,
   forceSynthesisRemaining: 0,
   extraUpgradeRemaining: 0,
+  allSynthesisRandom: false,
 }
+const blockedBaseIncomeDays = new Set<number>()
+const pendingGoldByDay = new Map<number, number>()
+const pendingBattleUpgradeByDay = new Map<number, number>()
 const skill20GrantedDays = new Set<number>()
 const unlockedItemIds = new Set<string>()
 const guaranteedNewUnlockTriggeredLevels = new Set<number>()
@@ -894,6 +905,12 @@ function captureShopState(): SavedShopState | null {
       forceSynthesisArchetype: dayEventState.forceSynthesisArchetype,
       forceSynthesisRemaining: dayEventState.forceSynthesisRemaining,
       extraUpgradeRemaining: dayEventState.extraUpgradeRemaining,
+      allSynthesisRandom: dayEventState.allSynthesisRandom,
+    },
+    futureEventState: {
+      blockedBaseIncomeDays: Array.from(blockedBaseIncomeDays.values()),
+      pendingGoldByDay: Array.from(pendingGoldByDay.entries()).map(([day, amount]) => ({ day, amount })),
+      pendingBattleUpgradeByDay: Array.from(pendingBattleUpgradeByDay.entries()).map(([day, count]) => ({ day, count })),
     },
     draftedSpecialShopDays,
     specialShopRefreshCount,
@@ -954,6 +971,24 @@ function applySavedShopState(state: SavedShopState): void {
     forceSynthesisArchetype: state.dayEventState?.forceSynthesisArchetype ?? null,
     forceSynthesisRemaining: Math.max(0, Math.round(Number(state.dayEventState?.forceSynthesisRemaining ?? 0) || 0)),
     extraUpgradeRemaining: Math.max(0, Math.round(Number(state.dayEventState?.extraUpgradeRemaining ?? 0) || 0)),
+    allSynthesisRandom: state.dayEventState?.allSynthesisRandom === true,
+  }
+  blockedBaseIncomeDays.clear()
+  for (const day of state.futureEventState?.blockedBaseIncomeDays ?? []) {
+    const one = Math.max(1, Math.round(Number(day) || 0))
+    if (one > 0) blockedBaseIncomeDays.add(one)
+  }
+  pendingGoldByDay.clear()
+  for (const row of state.futureEventState?.pendingGoldByDay ?? []) {
+    const day = Math.max(1, Math.round(Number(row?.day) || 0))
+    const amount = Math.max(0, Math.round(Number(row?.amount) || 0))
+    if (day > 0 && amount > 0) pendingGoldByDay.set(day, (pendingGoldByDay.get(day) ?? 0) + amount)
+  }
+  pendingBattleUpgradeByDay.clear()
+  for (const row of state.futureEventState?.pendingBattleUpgradeByDay ?? []) {
+    const day = Math.max(1, Math.round(Number(row?.day) || 0))
+    const count = Math.max(0, Math.round(Number(row?.count) || 0))
+    if (day > 0 && count > 0) pendingBattleUpgradeByDay.set(day, (pendingBattleUpgradeByDay.get(day) ?? 0) + count)
   }
   unlockedItemIds.clear()
   const savedUnlocks = Array.isArray(state.unlockedItemIds)
@@ -3215,6 +3250,10 @@ function synthesizeTarget(
       if (all.length > 0) return all
       return [sourceDef]
     }
+    if (dayEventState.allSynthesisRandom) {
+      if (all.length > 0) return all
+      return [sourceDef]
+    }
     if (isSameIdSynthesis) return [sourceDef]
     return all
   }
@@ -4509,6 +4548,114 @@ function canConvertAndUpgradePlacedItem(instanceId: string, zone: 'battle' | 'ba
   return candidates.length > 0
 }
 
+function schedulePendingGold(day: number, amount: number): void {
+  const d = Math.max(1, Math.round(day))
+  const a = Math.max(0, Math.round(amount))
+  if (d <= 0 || a <= 0) return
+  pendingGoldByDay.set(d, (pendingGoldByDay.get(d) ?? 0) + a)
+}
+
+function schedulePendingBattleUpgrade(day: number, count: number): void {
+  const d = Math.max(1, Math.round(day))
+  const c = Math.max(0, Math.round(count))
+  if (d <= 0 || c <= 0) return
+  pendingBattleUpgradeByDay.set(d, (pendingBattleUpgradeByDay.get(d) ?? 0) + c)
+}
+
+function convertPlacedItemKeepLevel(instanceId: string, zone: 'battle' | 'backpack'): boolean {
+  const system = zone === 'battle' ? battleSystem : backpackSystem
+  const view = zone === 'battle' ? battleView : backpackView
+  if (!system || !view) return false
+  const placed = system.getItem(instanceId)
+  if (!placed) return false
+  const tier = instanceToTier.get(instanceId) ?? 'Bronze'
+  const star = getInstanceTierStar(instanceId)
+  const level = Math.max(1, Math.min(7, tierStarLevelIndex(tier, star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const candidates = collectPoolCandidatesByLevel(level)
+    .filter((c) => normalizeSize(c.item.size) === placed.size)
+    .map((c) => c.item)
+    .filter((it) => it.id !== placed.defId)
+  const picked = candidates[Math.floor(Math.random() * candidates.length)]
+  if (!picked) return false
+
+  system.remove(instanceId)
+  if (!system.place(placed.col, placed.row, placed.size, picked.id, instanceId)) {
+    system.place(placed.col, placed.row, placed.size, placed.defId, instanceId)
+    return false
+  }
+  view.removeItem(instanceId)
+  void view.addItem(instanceId, picked.id, placed.size, placed.col, placed.row, toVisualTier(tier, star)).then(() => {
+    view.setItemTier(instanceId, toVisualTier(tier, star))
+    drag?.refreshZone(view)
+  })
+  instanceToDefId.set(instanceId, picked.id)
+  unlockItemToPool(picked.id)
+  return true
+}
+
+function upgradeLowestLevelItemsOnce(): number {
+  const all = getAllOwnedPlacedItems().filter((it) => canUpgradePlacedItem(it.item.instanceId, it.zone))
+  if (all.length <= 0) return 0
+  let minLevel = Number.POSITIVE_INFINITY
+  for (const one of all) {
+    const tier = instanceToTier.get(one.item.instanceId) ?? 'Bronze'
+    const star = getInstanceTierStar(one.item.instanceId)
+    minLevel = Math.min(minLevel, tierStarLevelIndex(tier, star) + 1)
+  }
+  let changed = 0
+  for (const one of all) {
+    const tier = instanceToTier.get(one.item.instanceId) ?? 'Bronze'
+    const star = getInstanceTierStar(one.item.instanceId)
+    const lv = tierStarLevelIndex(tier, star) + 1
+    if (lv !== minLevel) continue
+    if (upgradePlacedItem(one.item.instanceId, one.zone)) changed += 1
+  }
+  return changed
+}
+
+function convertHighestLevelItemsOnce(): number {
+  const all = getAllOwnedPlacedItems()
+  if (all.length <= 0) return 0
+  let maxLevel = 0
+  for (const one of all) {
+    const tier = instanceToTier.get(one.item.instanceId) ?? 'Bronze'
+    const star = getInstanceTierStar(one.item.instanceId)
+    maxLevel = Math.max(maxLevel, tierStarLevelIndex(tier, star) + 1)
+  }
+  let changed = 0
+  for (const one of all) {
+    const tier = instanceToTier.get(one.item.instanceId) ?? 'Bronze'
+    const star = getInstanceTierStar(one.item.instanceId)
+    const lv = tierStarLevelIndex(tier, star) + 1
+    if (lv !== maxLevel) continue
+    if (convertPlacedItemKeepLevel(one.item.instanceId, one.zone)) changed += 1
+  }
+  return changed
+}
+
+function applyFutureEventEffectsOnNewDay(day: number): void {
+  if (!shopManager) return
+  const pendingGold = Math.max(0, Math.round(pendingGoldByDay.get(day) ?? 0))
+  if (pendingGold > 0) {
+    shopManager.gold += pendingGold
+    pendingGoldByDay.delete(day)
+    showHintToast('no_gold_buy', `事件结算：获得${pendingGold}金币`, 0xa8f0b6)
+  }
+  const pendingBattleUp = Math.max(0, Math.round(pendingBattleUpgradeByDay.get(day) ?? 0))
+  if (pendingBattleUp > 0) {
+    pendingBattleUpgradeByDay.delete(day)
+    let changed = 0
+    for (let i = 0; i < pendingBattleUp; i++) {
+      const battleItems = getAllOwnedPlacedItems().filter((it) => it.zone === 'battle' && canUpgradePlacedItem(it.item.instanceId, 'battle'))
+      if (battleItems.length <= 0) break
+      for (const one of battleItems) {
+        if (upgradePlacedItem(one.item.instanceId, 'battle')) changed += 1
+      }
+    }
+    if (changed > 0) showHintToast('no_gold_buy', `事件结算：上阵区升级${changed}个物品`, 0x9be5ff)
+  }
+}
+
 function randomArchetypeItemsByDay(archetype: EventArchetype, count: number): PoolCandidate[] {
   const byLevel: Record<1 | 2 | 3 | 4 | 5 | 6 | 7, PoolCandidate[]> = {
     1: collectPoolCandidatesByLevel(1),
@@ -4697,6 +4844,67 @@ function applyEventEffect(event: EventChoice, fromTest = false): boolean {
     if (changed) showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}`, 0x9be5ff)
     return changed
   }
+  if (event.id === 'event25') {
+    const invested = Math.max(0, Math.round(shopManager.gold))
+    shopManager.gold = 0
+    schedulePendingGold(day + 1, invested * 2)
+    showHintToast('no_gold_buy', `${toastPrefix}已投资${invested}金币，明日返还${invested * 2}`, 0xa8f0b6)
+    return true
+  }
+  if (event.id === 'event26') {
+    if (!battleSystem) return false
+    const all = [...battleSystem.getAllItems()]
+    let sold = 0
+    for (const one of all) {
+      const def = getItemDefById(one.defId)
+      if (!def) continue
+      const tier = instanceToTier.get(one.instanceId) ?? 'Bronze'
+      const star = getInstanceTierStar(one.instanceId)
+      shopManager.gold += shopManager.getTierStarPrice(def, tier, star) * 2
+      removePlacedItemById(one.instanceId, 'battle')
+      sold++
+    }
+    if (sold > 0) showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}`, 0xa8f0b6)
+    return sold > 0
+  }
+  if (event.id === 'event27') {
+    dayEventState.allSynthesisRandom = true
+    showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}`, 0x8ff0b0)
+    return true
+  }
+  if (event.id === 'event28') {
+    const gain = (day + 3) * 5
+    schedulePendingGold(day + 3, gain)
+    showHintToast('no_gold_buy', `${toastPrefix}已预约3天后获得${gain}金币`, 0xa8f0b6)
+    return true
+  }
+  if (event.id === 'event29') {
+    schedulePendingBattleUpgrade(day + 5, 1)
+    showHintToast('no_gold_buy', `${toastPrefix}已预约5天后上阵区升级`, 0x9be5ff)
+    return true
+  }
+  if (event.id === 'event34') {
+    const day1 = day + 1
+    const day2 = day + 2
+    const futureBase1 = getDailyGoldForDay(getConfig(), day1)
+    const futureBase2 = getDailyGoldForDay(getConfig(), day2)
+    const gain = Math.max(0, Math.round((futureBase1 + futureBase2) * 0.6))
+    shopManager.gold += gain
+    blockedBaseIncomeDays.add(day1)
+    blockedBaseIncomeDays.add(day2)
+    showHintToast('no_gold_buy', `${toastPrefix}获得${gain}金币，未来2天基础收入已透支`, 0xa8f0b6)
+    return true
+  }
+  if (event.id === 'event35') {
+    const changed = convertHighestLevelItemsOnce()
+    if (changed > 0) showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}`, 0x9be5ff)
+    return changed > 0
+  }
+  if (event.id === 'event36') {
+    const changed = upgradeLowestLevelItemsOnce()
+    if (changed > 0) showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}`, 0x9be5ff)
+    return changed > 0
+  }
   return false
 }
 
@@ -4717,9 +4925,17 @@ function resetDayEventState(): void {
     forceSynthesisArchetype: null,
     forceSynthesisRemaining: 0,
     extraUpgradeRemaining: 0,
+    allSynthesisRandom: false,
   }
 }
 void resetDayEventState
+
+function resetFutureEventState(): void {
+  blockedBaseIncomeDays.clear()
+  pendingGoldByDay.clear()
+  pendingBattleUpgradeByDay.clear()
+}
+void resetFutureEventState
 
 function getEventPoolRows(): EventChoice[] {
   const rows = getConfig().eventSystem?.eventPool
@@ -7472,8 +7688,14 @@ function setDay(day: number): void {
     shopManager.setDay(currentDay)
     // Debug 改天数：每次实际变更天数都发放一次当日金币
     if (currentDay !== prevDay) {
-      shopManager.gold += getDailyGoldForDay(getConfig(), currentDay)
+      if (!blockedBaseIncomeDays.has(currentDay)) {
+        shopManager.gold += getDailyGoldForDay(getConfig(), currentDay)
+      } else {
+        blockedBaseIncomeDays.delete(currentDay)
+        showHintToast('no_gold_buy', '事件效果：今日基础收入已被透支', 0xffd48f)
+      }
       grantSilverDailyGoldBonusesOnNewDay()
+      applyFutureEventEffectsOnNewDay(currentDay)
     }
   }
   if (currentDay !== prevDay) grantSkill20DailyBronzeItemIfNeeded()
@@ -9670,6 +9892,7 @@ export const ShopScene: Scene = {
       specialShopOffers = []
       resetEventSelectionCounters()
       resetDayEventState()
+      resetFutureEventState()
       skillDetailMode = 'simple'
       skill20GrantedDays.clear()
       unlockedItemIds.clear()
@@ -9847,6 +10070,7 @@ export const ShopScene: Scene = {
     specialShopOffers = []
     resetEventSelectionCounters()
     resetDayEventState()
+    resetFutureEventState()
     skillDetailMode = 'simple'
     skill20GrantedDays.clear()
     showingBackpack = false
