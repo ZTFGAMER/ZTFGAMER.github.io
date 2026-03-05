@@ -27,8 +27,8 @@
       "icon": "skill38",
       "tier": "gold",
       "archetype": "warrior",
-      "summary": "你的血量大于敌方时，所有物品间隔缩减。",
-      "detail": "你的血量大于敌方时，所有物品间隔-20%。"
+      "summary": "拥有护盾时物品间隔缩减。",
+      "detail": "拥有护盾时，所有物品间隔-20%。"
     },
     {
       "id": "skill39",
@@ -91,7 +91,7 @@
       "tier": "gold",
       "archetype": "archer",
       "summary": "使用物品时为弹药物品充能。",
-      "detail": "每场前5次使用任意物品时，为1个弹药物品充能1秒。"
+      "detail": "每场前8次使用任意物品时，为1个弹药物品充能1秒。"
     },
     {
       "id": "skill40",
@@ -118,7 +118,7 @@
       "tier": "gold",
       "archetype": "assassin",
       "summary": "战斗开始时，根据获得奖杯数量提升伤害。",
-      "detail": "战斗开始时，每获得1个奖杯所有物品伤害+20。"
+      "detail": "战斗开始时，每获得1个奖杯所有物品伤害+15。"
     },
     {
       "id": "skill88",
@@ -171,8 +171,8 @@
       "icon": "skill49",
       "tier": "gold",
       "archetype": "utility",
-      "summary": "背包中没有物品时，最大生命值翻倍",
-      "detail": "背包中没有物品时，最大生命值翻倍。"
+      "summary": "上阵不满时生命值翻倍",
+      "detail": "上阵区不满时，最大生命值翻倍。"
     },
     {
       "id": "skill95",
@@ -181,7 +181,7 @@
       "tier": "gold",
       "archetype": "utility",
       "summary": "战斗开始时，根据持有金币数量增加伤害",
-      "detail": "战斗开始时，每持有1金币所有物品伤害+5。"
+      "detail": "战斗开始时，每持有1金币所有物品伤害+1。"
     }
   ]
 }

@@ -79,9 +79,9 @@ describe('CombatEngine gold skills', () => {
     expect(rt?.damage).toBe(10 + Math.floor(board.player.shield / 10))
   })
 
-  it('skill38: 我方血量高于敌方时全体CD-20%', () => {
+  it('skill38: 拥有护盾时全体CD-20%', () => {
     const engine = new CombatEngine()
-    engine.start(mkSnapshot([mkEntity('g38', 0, { cooldownMs: 1000, damage: 10 })]), { playerSkillIds: ['skill38'], enemyDisabled: true })
+    engine.start(mkSnapshot([mkEntity('g38', 0, { cooldownMs: 1000, damage: 10 })]), { playerSkillIds: ['skill36', 'skill38'], enemyDisabled: true })
     const rt = runtimeByInstance(engine, 'g38')
     expect(rt?.cooldownMs).toBe(800)
   })
@@ -159,7 +159,7 @@ describe('CombatEngine gold skills', () => {
     expect(boosted).toBe(true)
   })
 
-  it('skill86: 前5次使用会给弹药物品充能1秒', () => {
+  it('skill86: 前8次使用会给弹药物品充能1秒', () => {
     const ammoDefId = findAmmoDefId()
     const baseline = new CombatEngine()
     baseline.start(mkSnapshot([
@@ -205,7 +205,7 @@ describe('CombatEngine gold skills', () => {
       playerSkillIds: ['skill46'],
       enemyDisabled: true,
     })
-    expect(runtimeByInstance(engine, 'g46')?.damage).toBe(70)
+    expect(runtimeByInstance(engine, 'g46')?.damage).toBe(55)
   })
 
   it('skill88: 前5秒全体连发+1', () => {
@@ -260,13 +260,13 @@ describe('CombatEngine gold skills', () => {
     expect(skill47Healed).toBeGreaterThan(0)
   })
 
-  it('skill49: 背包为空时开场最大生命翻倍', () => {
+  it('skill49: 上阵区不满时开场最大生命翻倍', () => {
     const base = new CombatEngine()
-    base.start(mkSnapshot([]), { enemyDisabled: true, playerBackpackItemCount: 0 })
+    base.start(mkSnapshot([]), { enemyDisabled: true })
     const baseHp = base.getBoardState().player.maxHp
 
     const engine = new CombatEngine()
-    engine.start(mkSnapshot([]), { playerSkillIds: ['skill49'], enemyDisabled: true, playerBackpackItemCount: 0 })
+    engine.start(mkSnapshot([]), { playerSkillIds: ['skill49'], enemyDisabled: true })
     const hp = engine.getBoardState().player.maxHp
     expect(hp).toBe(baseHp * 2)
   })
@@ -277,6 +277,6 @@ describe('CombatEngine gold skills', () => {
       playerSkillIds: ['skill95'],
       enemyDisabled: true,
     })
-    expect(runtimeByInstance(engine, 'g95')?.damage).toBe(60)
+    expect(runtimeByInstance(engine, 'g95')?.damage).toBe(20)
   })
 })

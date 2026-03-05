@@ -445,6 +445,7 @@ export class CombatEngine {
   private skill33RegenPerTick = 0
   private skillEnemy33RegenPerTick = 0
   private playerBackpackItemCount = 0
+  private playerActiveColCount = 0
   private playerGoldAtBattleStart = 0
   private playerTrophyWinsAtBattleStart = 0
 
@@ -491,6 +492,7 @@ export class CombatEngine {
       0,
       Math.round(options?.playerBackpackItemCount ?? snapshot.playerBackpackItemCount ?? 0),
     )
+    this.playerActiveColCount = Math.max(1, Math.round(snapshot.activeColCount || 1))
     this.playerGoldAtBattleStart = Math.max(0, Math.round(options?.playerGold ?? snapshot.playerGold ?? 0))
     this.playerTrophyWinsAtBattleStart = Math.max(0, Math.round(options?.playerTrophyWins ?? snapshot.playerTrophyWins ?? 0))
 
@@ -682,6 +684,7 @@ export class CombatEngine {
     this.skillExecuteDamageBonus = 0
     this.skill33RegenPerTick = 0
     this.playerBackpackItemCount = 0
+    this.playerActiveColCount = 0
     this.playerGoldAtBattleStart = 0
     this.playerTrophyWinsAtBattleStart = 0
   }
@@ -819,7 +822,7 @@ export class CombatEngine {
     if (this.hasSkill(side, 'skill6')) pct += 0.05
     if (this.hasSkill(side, 'skill12') && this.isAmmoItem(item)) pct += 0.1
     if (this.hasSkill(side, 'skill14') && this.elapsedMs <= 5000) pct += 0.1
-    if (this.hasSkill(side, 'skill38') && this.heroOf(side).hp > this.heroOf(this.oppositeSide(side)).hp) pct += 0.2
+    if (this.hasSkill(side, 'skill38') && this.heroOf(side).shield > 0) pct += 0.2
     if (this.hasSkill(side, 'skill40')) pct += 0.1
     if (this.hasSkill(side, 'skill26') && ((side === 'player' ? this.skillPlayerHalfShieldCdTriggered : this.skillEnemyHalfShieldCdTriggered)) && this.isShieldItem(item)) pct += 0.15
     if (this.hasSkill(side, 'skill60') && !this.hasAnyShieldItems(side)) pct += 0.1
@@ -876,6 +879,21 @@ export class CombatEngine {
     return this.items.some((it) => it.side === side && this.isShieldItem(it))
   }
 
+  private occupiedColsBySide(side: 'player' | 'enemy'): number {
+    const occupied = new Set<number>()
+    for (const one of this.items) {
+      if (one.side !== side) continue
+      const width = this.itemWidth(one.size)
+      for (let c = 0; c < width; c++) occupied.add(one.col + c)
+    }
+    return occupied.size
+  }
+
+  private isPlayerBattleZoneNotFull(): boolean {
+    const cap = Math.max(1, this.playerActiveColCount)
+    return this.occupiedColsBySide('player') < cap
+  }
+
   private totalAmmoCurrent(side: 'player' | 'enemy'): number {
     let total = 0
     for (const it of this.items) {
@@ -913,7 +931,7 @@ export class CombatEngine {
       this.playerHero.hp = Math.min(this.playerHero.maxHp, Math.round(this.playerHero.hp * 1.1))
     }
 
-    if (this.hasPlayerSkill('skill49') && this.playerBackpackItemCount === 0) {
+    if (this.hasPlayerSkill('skill49') && this.isPlayerBattleZoneNotFull()) {
       this.playerHero.maxHp = Math.max(1, Math.round(this.playerHero.maxHp * 2))
       this.playerHero.hp = Math.min(this.playerHero.maxHp, Math.round(this.playerHero.hp * 2))
     }
@@ -983,16 +1001,16 @@ export class CombatEngine {
     }
 
     if (this.hasPlayerSkill('skill35') && this.playerBackpackItemCount > 0) {
-      const mul = 1 + this.playerBackpackItemCount * 0.03
+      const mul = 1 + this.playerBackpackItemCount * 0.02
       this.playerHero.maxHp = Math.max(1, Math.round(this.playerHero.maxHp * mul))
       this.playerHero.hp = Math.min(this.playerHero.maxHp, Math.round(this.playerHero.hp * mul))
     }
 
     if (this.hasPlayerSkill('skill46') && this.playerTrophyWinsAtBattleStart > 0) {
-      this.skillExecuteDamageBonus += this.playerTrophyWinsAtBattleStart * 20
+      this.skillExecuteDamageBonus += this.playerTrophyWinsAtBattleStart * 15
     }
     if (this.hasPlayerSkill('skill95') && this.playerGoldAtBattleStart > 0) {
-      this.skillExecuteDamageBonus += this.playerGoldAtBattleStart * 5
+      this.skillExecuteDamageBonus += this.playerGoldAtBattleStart
     }
 
     if (this.hasPlayerSkill('skill33')) {
@@ -2054,7 +2072,7 @@ export class CombatEngine {
     this.applyAdjacentUseBurnTriggers(item)
     this.applyBurnUseSlowTriggers(item)
 
-    if (item.side === 'player' && this.hasPlayerSkill('skill86') && this.skill86UseCount < 5) {
+    if (item.side === 'player' && this.hasPlayerSkill('skill86') && this.skill86UseCount < 8) {
       this.skill86UseCount += 1
       const ammoCandidates = this.items
         .filter((it) => it.side === 'player' && this.isAmmoItem(it))
@@ -2446,9 +2464,8 @@ export class CombatEngine {
       if (item.side === 'player' && this.hasPlayerSkill('skill54') && ammoSpent > 0) {
         for (const ally of this.items) {
           if (ally.side !== 'player') continue
-          if (this.isAmmoItem(ally)) continue
           if (!this.isDamageBonusEligible(ally)) continue
-          ally.baseStats.damage += 7
+          ally.baseStats.damage += 5
         }
       }
       if (item.side === 'player' && this.hasPlayerSkill('skill85') && becameEmpty) {

@@ -171,14 +171,14 @@
       "icon": "skill54",
       "tier": "silver",
       "archetype": "archer",
-      "summary": "消耗弹药时，非弹药物品伤害增加。",
-      "detail": "消耗弹药时，非弹药物品伤害+7。",
+      "summary": "消耗弹药增加伤害。",
+      "detail": "消耗弹药时，所有物品伤害+5。",
       "effect": {
         "scope": "battle",
         "trigger": "on_ammo_spent",
         "type": "damage_add",
-        "target": "all_non_ammo_items",
-        "value": 7,
+        "target": "all_items",
+        "value": 5,
         "max_triggers_per_battle": -1
       }
     },
@@ -350,13 +350,13 @@
       "tier": "silver",
       "archetype": "utility",
       "summary": "根据背包中的物品数量提升最大生命。",
-      "detail": "背包中每有1个物品最大生命值+3%。",
+      "detail": "背包中每有1个物品最大生命值+2%。",
       "effect": {
         "scope": "battle",
         "trigger": "on_battle_start",
         "type": "max_hp_mul_per_backpack_item",
         "target": "player_hero",
-        "value": 0.03,
+        "value": 0.02,
         "max_triggers_per_battle": 1
       }
     }
