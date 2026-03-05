@@ -1,5 +1,21 @@
 # 大巴扎 — 开发进度记录
 
+### 本次对话追加（2026-03-05，Vercel 生产发布 + GHE 更新 + TestFlight 上传）
+
+- 用户指令：`上传vercel，更新ghe。打tf包`。
+- 已完成：
+  - Vercel 生产发布：
+    - Production: `https://bigbazzar-ltpn0oqox-zhengtengfeis-projects.vercel.app`
+    - Alias: `https://bigbazzar.vercel.app`
+  - GHE 更新：
+    - 推送提交 `ac35810`（新增事件与难度曲线等改动）到 `origin/main`；
+    - 推送提交 `66a2e19`（iOS build number 13->14）到 `origin/main`。
+  - TestFlight 打包上传：
+    - 首次上传失败（`cfBundleVersion` 重复 13）；
+    - 已修复 `ios/project.yml` 的 `CURRENT_PROJECT_VERSION` 为 `14`；
+    - 重新执行 xcodegen/archive/export/upload 后成功，Delivery UUID：`7ebf2495-1003-491b-813d-876775cfb215`。
+- 当前阶段：发布与分发完成，等待用户在 Vercel 线上与 TestFlight 构建处理页进行验收。
+
 ### 本次对话追加（2026-03-05，新增 event25/26/27/28/29/34/35/36 并落地效果）
 
 - 用户需求：基于新清单新增 8 个事件，并接入对应效果逻辑。
