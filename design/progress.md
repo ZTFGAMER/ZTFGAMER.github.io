@@ -5,6 +5,18 @@
 
 ---
 
+### 本次对话追加（2026-03-05，GHE / TestFlight / Vercel 发布）
+
+- 用户需求：更新 GHE、打 TF 包并上传、更新 Vercel。
+- 已完成：
+  - GHE：已将本轮功能改动提交并推送到 `origin/main`（commit: `d3d2c4e`）。
+  - TF：已执行 `npm run release:tf`，完成 iOS Web 构建、Archive、Export 与上传流程；构建号同步提升到 `12`（`ios/project.yml`）。
+  - Vercel：已执行生产部署并完成别名切换：`https://bigbazzar.vercel.app`。
+- 产物与记录：
+  - TestFlight 导出包：`ios/build/export-testflight/BigBazzar.ipa`
+  - Vercel 本次生产地址：`https://bigbazzar-hlsu1r55p-zhengtengfeis-projects.vercel.app`
+- 当前阶段：发布完成，待用户验收线上与 TF 安装包表现。
+
 ### 本次对话追加（2026-03-05，15个物品数值与描述同步修正）
 
 - 用户需求：按给定表修正 15 个物品的数值与描述。
