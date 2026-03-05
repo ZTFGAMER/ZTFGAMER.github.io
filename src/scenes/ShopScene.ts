@@ -2617,11 +2617,15 @@ function showSynthesisHoverInfo(
   synthHoverInfoKey = key
 
   const buyPrice = shopManager.getItemPrice(sourceDef, sourceTier)
+  const highlightWord = isSameItem ? '本职业' : '其他职业'
+  const suffixWord = isSameItem ? '其他物品' : '物品'
   const customDisplay: ItemInfoCustomDisplay = {
-    overrideName: '随机合成',
-    lines: [
-      `等级 ${tierStarLabelCn(sourceTier, sourceStar)} -> ${tierStarLabelCn(upgradeTo.tier, upgradeTo.star)}`,
-      isSameItem ? '随机获得本职业其他物品' : '随机获得其他职业物品',
+    hideName: true,
+    lines: ['随机获得'],
+    richLineSegments: [
+      { text: '随机获得', fontSize: 28, fill: 0xbfc7f5 },
+      { text: highlightWord, fontSize: 40, fill: isSameItem ? 0x6ce0ff : 0xffd86b },
+      { text: suffixWord, fontSize: 28, fill: 0xbfc7f5 },
     ],
     suppressStats: true,
     hideTierBadge: true,
@@ -3093,7 +3097,7 @@ const STARTER_CLASS_PRESETS: Record<StarterClass, {
   assassin: {
     title: '刺客',
     subtitle: '低冷却连击，\n快速压制并终结对手。',
-    gifts: ['匕首', '连发飞镖'],
+    gifts: ['匕首', '连发镖'],
     heroImage: '/resource/hero/assassin.png',
   },
 }
@@ -4082,12 +4086,41 @@ function ensureSkillDraftSelection(stage: Container): void {
   overlay.addChild(title)
 
   const shownChoices = draft.choices.slice(0, 2)
+  let selectedSkillId: string | null = null
+  const selectedFrameById = new Map<string, Graphics>()
+  const descTextById = new Map<string, Text>()
+  const confirmAreaById = new Map<string, Container>()
   const cardW = 238
   const cardH = 470
   const gapX = shownChoices.length === 2 ? 50 : 16
   const totalW = cardW * shownChoices.length + gapX * Math.max(0, shownChoices.length - 1)
   const cardX = (CANVAS_W - totalW) / 2
   const cardY = 580
+
+  const commitDraftSkillPick = (skillId: string): void => {
+    upsertPickedSkill(skillId)
+    draftedSkillDays = Array.from(new Set([...draftedSkillDays, draft!.day])).sort((a, b) => a - b)
+    pendingSkillDraft = null
+    closeSkillDraftOverlay()
+    refreshSkillIconBar()
+    setTransitionInputEnabled(true)
+    applyPhaseInputLock()
+    refreshShopUI()
+    saveShopStateToStorage(captureShopState())
+  }
+
+  const applyDraftSelection = (skillId: string): void => {
+    selectedSkillId = skillId
+    for (const choice of shownChoices) {
+      const selected = choice.id === selectedSkillId
+      const frame = selectedFrameById.get(choice.id)
+      if (frame) frame.visible = selected
+      const desc = descTextById.get(choice.id)
+      if (desc) desc.text = selected ? (choice.detailDesc ?? choice.desc) : choice.desc
+      const confirmArea = confirmAreaById.get(choice.id)
+      if (confirmArea) confirmArea.visible = selected
+    }
+  }
 
   shownChoices.forEach((choice, idx) => {
     const con = new Container()
@@ -4102,6 +4135,13 @@ function ensureSkillDraftSelection(stage: Container): void {
     border.fill({ color: 0x18263e, alpha: 0.96 })
     border.stroke({ color: skillTierColor(choice.tier), width: 3, alpha: 1 })
     con.addChild(border)
+
+    const selectedFrame = new Graphics()
+    selectedFrame.roundRect(3, 3, cardW - 6, cardH - 6, 22)
+    selectedFrame.stroke({ color: 0xffe28a, width: 5, alpha: 1 })
+    selectedFrame.visible = false
+    con.addChild(selectedFrame)
+    selectedFrameById.set(choice.id, selectedFrame)
 
     const iconText = new Text({
       text: choice.name.slice(0, 1),
@@ -4172,18 +4212,29 @@ function ensureSkillDraftSelection(stage: Container): void {
     desc.x = 14
     desc.y = 308
     con.addChild(desc)
+    descTextById.set(choice.id, desc)
+
+    const confirmArea = new Container()
+    confirmArea.eventMode = 'none'
+    confirmArea.visible = false
+    const confirmAreaText = new Text({
+      text: '点击选择',
+      style: { fontSize: 22, fill: 0xdce6ff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    confirmAreaText.anchor.set(0.5)
+    confirmAreaText.x = cardW / 2
+    confirmAreaText.y = cardH - 42
+    confirmArea.addChild(confirmAreaText)
+    con.addChild(confirmArea)
+    confirmAreaById.set(choice.id, confirmArea)
 
     con.on('pointerdown', (e: FederatedPointerEvent) => {
       e.stopPropagation()
-      upsertPickedSkill(choice.id)
-      draftedSkillDays = Array.from(new Set([...draftedSkillDays, draft!.day])).sort((a, b) => a - b)
-      pendingSkillDraft = null
-      closeSkillDraftOverlay()
-      refreshSkillIconBar()
-      setTransitionInputEnabled(true)
-      applyPhaseInputLock()
-      refreshShopUI()
-      saveShopStateToStorage(captureShopState())
+      if (selectedSkillId === choice.id) {
+        commitDraftSkillPick(choice.id)
+        return
+      }
+      applyDraftSelection(choice.id)
     })
 
     overlay.addChild(con)

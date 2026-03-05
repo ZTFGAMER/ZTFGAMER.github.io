@@ -37,9 +37,19 @@ export interface ItemInfoRuntimeOverride {
 export interface ItemInfoCustomDisplay {
   overrideName?: string
   lines?: string[]
+  richLineSegments?: Array<{
+    text: string
+    fontSize?: number
+    fill?: number
+  }>
+  lineStyles?: Array<{
+    fontSize?: number
+    fill?: number
+  }>
   suppressStats?: boolean
   hideTierBadge?: boolean
   useQuestionIcon?: boolean
+  hideName?: boolean
 }
 
 function parseTierName(raw: string): string {
@@ -569,7 +579,8 @@ export class SellPopup extends Container {
     this.cooldownT.style.fontSize = this.textSize.cooldown
     this.priceT.style.fontSize = this.textSize.priceCorner
 
-    this.nameT.text  = customDisplay?.overrideName?.trim() || item.name_cn
+    const overrideName = customDisplay?.overrideName
+    this.nameT.text  = (typeof overrideName === 'string') ? overrideName.trim() : item.name_cn
     this.priceT.text = ''
     this.priceT.visible = false
     const cooldownLine = (() => {
@@ -670,7 +681,7 @@ export class SellPopup extends Container {
 
     this.nameT.x = rightX
     this.nameT.y = top
-    this.nameT.visible = !isSimple
+    this.nameT.visible = !isSimple && !customDisplay?.hideName
 
     this.tierBadgeT.text = inUpgradePreview ? `${fromTierLabel}->${tierLabel}` : tierLabel
     const badgePadX = 10
@@ -697,7 +708,11 @@ export class SellPopup extends Container {
 
     // 描述区布局
     this.descCon.x = rightX
-    const headerH = Math.max(this.nameT.height, this.tierBadgeT.height, this.cooldownT.visible ? this.cooldownT.height : 0)
+    const headerH = Math.max(
+      this.nameT.visible ? this.nameT.height : 0,
+      this.tierBadgeT.visible ? this.tierBadgeT.height : 0,
+      this.cooldownT.visible ? this.cooldownT.height : 0,
+    )
     this.descCon.y = isSimple
       ? (simpleNarrowLayout ? (frameY + frameH + 8) : top)
       : (top + headerH + 10)
@@ -745,32 +760,69 @@ export class SellPopup extends Container {
       }
     }
 
-    for (let i = 0; i < descLines.length; i++) {
-      const t = new Text({
-        text: descLines[i] ?? '',
-        style: {
-          fontSize: isSimple ? this.textSize.simpleDesc : this.textSize.desc,
-          fill: 0xbfc7f5,
-          fontFamily: 'Arial',
-          wordWrap: true,
-          wordWrapWidth: rightW,
-          breakWords: true,
-          lineHeight: Math.round((isSimple ? this.textSize.simpleDesc : this.textSize.desc) * 1.25),
-        },
-      })
-      t.x = 0
-      t.y = cursorY
-      this.descCon.addChild(t)
-      this.descTexts.push(t)
-      cursorY += t.height
-      if (descLines.length >= 2 && i < descLines.length - 1) {
-        const y = cursorY + Math.max(2, Math.round(lineGap / 2))
-        this.descDividerG.moveTo(0, y)
-        this.descDividerG.lineTo(rightW, y)
-        this.descDividerG.stroke({ color: 0x5a628f, width: 1, alpha: 0.9 })
-        cursorY += lineGap + 2
-      } else if (i < descLines.length - 1) {
-        cursorY += lineGap
+    const richLineSegments = customDisplay?.richLineSegments
+    if (richLineSegments && richLineSegments.length > 0) {
+      const row = new Container()
+      row.x = 0
+      row.y = cursorY
+      this.descCon.addChild(row)
+
+      const baseFontSize = isSimple ? this.textSize.simpleDesc : this.textSize.desc
+      const parts: Text[] = []
+      let rowW = 0
+      let rowH = 0
+      for (const seg of richLineSegments) {
+        const t = new Text({
+          text: seg.text,
+          style: {
+            fontSize: seg.fontSize ?? baseFontSize,
+            fill: seg.fill ?? 0xbfc7f5,
+            fontFamily: 'Arial',
+            wordWrap: false,
+          },
+        })
+        parts.push(t)
+        rowW += t.width
+        rowH = Math.max(rowH, t.height)
+      }
+      let x = Math.max(0, (rightW - rowW) / 2)
+      for (const t of parts) {
+        t.x = x
+        t.y = Math.max(0, (rowH - t.height) / 2)
+        row.addChild(t)
+        this.descTexts.push(t)
+        x += t.width
+      }
+      cursorY += rowH
+    } else {
+      for (let i = 0; i < descLines.length; i++) {
+        const lineStyle = customDisplay?.lineStyles?.[i]
+        const t = new Text({
+          text: descLines[i] ?? '',
+          style: {
+            fontSize: lineStyle?.fontSize ?? (isSimple ? this.textSize.simpleDesc : this.textSize.desc),
+            fill: lineStyle?.fill ?? 0xbfc7f5,
+            fontFamily: 'Arial',
+            wordWrap: true,
+            wordWrapWidth: rightW,
+            breakWords: true,
+            lineHeight: Math.round((isSimple ? this.textSize.simpleDesc : this.textSize.desc) * 1.25),
+          },
+        })
+        t.x = 0
+        t.y = cursorY
+        this.descCon.addChild(t)
+        this.descTexts.push(t)
+        cursorY += t.height
+        if (descLines.length >= 2 && i < descLines.length - 1) {
+          const y = cursorY + Math.max(2, Math.round(lineGap / 2))
+          this.descDividerG.moveTo(0, y)
+          this.descDividerG.lineTo(rightW, y)
+          this.descDividerG.stroke({ color: 0x5a628f, width: 1, alpha: 0.9 })
+          cursorY += lineGap + 2
+        } else if (i < descLines.length - 1) {
+          cursorY += lineGap
+        }
       }
     }
 
