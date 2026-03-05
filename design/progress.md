@@ -5,6 +5,18 @@
 
 ---
 
+### 本次对话追加（2026-03-05，更新 GHE + 更新 Vercel）
+
+- 用户指令：`更新ghe，更新vercel`。
+- 已完成（GHE）：
+  - 提交：`0fa8e35` `feat: tune skill cadence and item balance updates`；
+  - 推送：`origin/main`（`https://habby.ghe.com/zhengtengfei-161/bigbazzar.git`）成功。
+- 已完成（Vercel）：
+  - 执行：`vercel --prod --yes`；
+  - Production: `https://bigbazzar-jszkx8xo0-zhengtengfeis-projects.vercel.app`；
+  - Alias: `https://bigbazzar.vercel.app`。
+- 当前阶段：发布完成，等待用户线上验收。
+
 ### 本次对话追加（2026-03-05，Vercel 生产环境更新）
 
 - 用户指令：`更新versel`（更新 Vercel 线上部署）。
