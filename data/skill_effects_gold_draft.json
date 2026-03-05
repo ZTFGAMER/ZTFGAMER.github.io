@@ -18,7 +18,7 @@
       "icon": "skill37",
       "tier": "gold",
       "archetype": "warrior",
-      "summary": "根据拥有的护盾值提升物品伤害。",
+      "summary": "根据护盾提升伤害。",
       "detail": "每拥有10点护盾，所有物品伤害增加1点。"
     },
     {
@@ -36,7 +36,7 @@
       "icon": "skill39",
       "tier": "gold",
       "archetype": "warrior",
-      "summary": "每场战斗前10秒内，获得护盾翻倍。",
+      "summary": "开战时获得护盾翻倍。",
       "detail": "每场战斗前10秒内，获得护盾翻倍。"
     },
     {
@@ -45,7 +45,7 @@
       "icon": "skill82",
       "tier": "gold",
       "archetype": "warrior",
-      "summary": "所有护盾物品触发时造成等额伤害。",
+      "summary": "护盾物品造成伤害。",
       "detail": "所有护盾物品触发时造成等额伤害。"
     },
     {
@@ -54,7 +54,7 @@
       "icon": "skill43",
       "tier": "gold",
       "archetype": "archer",
-      "summary": "只有唯一伤害物品时，大幅强化该物品。",
+      "summary": "唯一攻击物品伤害翻倍。",
       "detail": "如果只有1个伤害物品，伤害翻倍。"
     },
     {
@@ -63,7 +63,7 @@
       "icon": "skill44",
       "tier": "gold",
       "archetype": "archer",
-      "summary": "只有唯一的弹药物品时，大幅强化该物品。",
+      "summary": "唯一弹药物品大幅强化。",
       "detail": "如果只有1个弹药物品，伤害+50%，并且弹药上限+10。"
     },
     {
@@ -72,7 +72,7 @@
       "icon": "skill84",
       "tier": "gold",
       "archetype": "archer",
-      "summary": "如果所有物品都是弹药物品，伤害大幅提升。",
+      "summary": "只有弹药物品时伤害增加。",
       "detail": "如果所有物品都是弹药物品，伤害+50%。"
     },
     {
@@ -81,7 +81,7 @@
       "icon": "skill85",
       "tier": "gold",
       "archetype": "archer",
-      "summary": "有物品弹药耗尽时，相邻物品伤害提升。",
+      "summary": "弹药耗尽时伤害提升。",
       "detail": "有物品弹药耗尽时，相邻物品伤害+50。"
     },
     {
@@ -90,7 +90,7 @@
       "icon": "skill86",
       "tier": "gold",
       "archetype": "archer",
-      "summary": "使用物品时为弹药物品充能。",
+      "summary": "开战时为弹药物品充能。",
       "detail": "每场前8次使用任意物品时，为1个弹药物品充能1秒。"
     },
     {
@@ -99,8 +99,8 @@
       "icon": "skill40",
       "tier": "gold",
       "archetype": "assassin",
-      "summary": "物品的间隔缩短，最短间隔可以突破极限。",
-      "detail": "物品的间隔-10%，最短间隔从0.5秒降为0.1秒。"
+      "summary": "间隔缩短并突破极限。",
+      "detail": "所有物品的间隔-10%，最短间隔从0.5秒降为0.1秒。"
     },
     {
       "id": "skill45",
@@ -108,7 +108,7 @@
       "icon": "skill45",
       "tier": "gold",
       "archetype": "assassin",
-      "summary": "敌人生命值首次降至一半时，为所有物品充能。",
+      "summary": "敌人受伤时为物品充能。",
       "detail": "每场战斗敌人生命值首次降至一半时，为所有物品充能2秒。"
     },
     {
@@ -117,7 +117,7 @@
       "icon": "skill46",
       "tier": "gold",
       "archetype": "assassin",
-      "summary": "战斗开始时，根据获得奖杯数量提升伤害。",
+      "summary": "根据奖杯数量提升伤害。",
       "detail": "战斗开始时，每获得1个奖杯所有物品伤害+15。"
     },
     {
@@ -126,7 +126,7 @@
       "icon": "skill88",
       "tier": "gold",
       "archetype": "assassin",
-      "summary": "每场战斗开始的一段时间内，所有物品连发次数增加。",
+      "summary": "开战时连发次数增加。",
       "detail": "每场战斗前5秒内，所有物品连发次数+1。"
     },
     {
@@ -135,7 +135,7 @@
       "icon": "skill87",
       "tier": "gold",
       "archetype": "assassin",
-      "summary": "使用最左侧物品为最右侧物品充能。",
+      "summary": "最左物品为最右物品充能。",
       "detail": "使用最左侧物品时为最右侧物品充能1秒。"
     },
     {
@@ -144,7 +144,7 @@
       "icon": "skill94",
       "tier": "gold",
       "archetype": "utility",
-      "summary": "每天金币数量成比例增加。",
+      "summary": "每天金币数量增加。",
       "detail": "每天金币数量增加15%。"
     },
     {
@@ -162,7 +162,7 @@
       "icon": "skill48",
       "tier": "gold",
       "archetype": "utility",
-      "summary": "合成时有几率提升更高等级",
+      "summary": "合成时额外升级",
       "detail": "合成时有20%几率额外提升1级。"
     },
     {
@@ -180,7 +180,7 @@
       "icon": "skill95",
       "tier": "gold",
       "archetype": "utility",
-      "summary": "战斗开始时，根据持有金币数量增加伤害",
+      "summary": "金币越多伤害越高",
       "detail": "战斗开始时，每持有1金币所有物品伤害+1。"
     }
   ]

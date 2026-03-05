@@ -2,7 +2,7 @@
 // ShopScene — 商店/准备场景（Phase 2 视觉验收版）
 // 布局（640×1384 画布）：
 //   y=430  商店面板 / 背包（互斥显示）
-//   y=840  按钮行：背包 | 刷新(金币) | 出售
+//   y=840  按钮行：背包 | 刷新(金币) | 丢弃
 //   y=1020 我的战斗区 5×2
 // 拖拽购买：从商店卡片拖到战斗区/背包按钮完成购买
 // ============================================================
@@ -10,7 +10,7 @@
 import { SceneManager, type Scene } from './SceneManager'
 import { getApp } from '@/core/AppContext'
 import { getConfig, getAllItems } from '@/core/DataLoader'
-import { clearCurrentRunState, getLifeState, getWinTrophyState, resetLifeState, SHOP_STATE_STORAGE_KEY } from '@/core/RunState'
+import { clearCurrentRunState, getLifeState, getWinTrophyState, resetLifeState, setLifeState, SHOP_STATE_STORAGE_KEY } from '@/core/RunState'
 import { GridSystem }        from '@/grid/GridSystem'
 import type { ItemSizeNorm, PlacedItem } from '@/grid/GridSystem'
 import { GridZone, CELL_SIZE, CELL_HEIGHT } from '@/grid/GridZone'
@@ -23,7 +23,7 @@ import { ShopManager, getDailyGoldForDay, type ShopSlot, type TierKey } from '@/
 import { ShopPanelView }     from '@/shop/ShopPanelView'
 import { SellPopup, type ItemInfoMode, type ItemInfoCustomDisplay } from '@/shop/SellPopup'
 import { getConfig as getDebugCfg, setConfig as setDebugCfg, onConfigChange as onDebugCfgChange } from '@/config/debugConfig'
-import { getItemIconUrl, getSkillIconUrl } from '@/core/assetPath'
+import { getEventIconUrl, getItemIconUrl, getSkillIconUrl } from '@/core/assetPath'
 import { getTierColor } from '@/config/colorPalette'
 import { createItemStatBadges } from '@/ui/itemStatBadges'
 import { PhaseManager } from '@/core/PhaseManager'
@@ -83,6 +83,8 @@ let refreshCostText:  Text            | null = null
 let settingsBtn:      Container       | null = null
 let settingsOverlay:  Container       | null = null
 let skillTestOverlay: Container       | null = null
+let eventTestOverlay: Container       | null = null
+let itemTestOverlay:  Container       | null = null
 let hintToastCon:     Container       | null = null
 let hintToastBg:      Graphics        | null = null
 let hintToastText:    Text            | null = null
@@ -115,7 +117,6 @@ let gridDragSellZoneBg: Graphics | null = null
 let gridDragSellZoneText: Text | null = null
 let gridDragCanSell = false
 let gridDragCanToBackpack = false
-let gridDragSellPrice = 0
 let gridDragSellHot = false
 let synthHoverInfoKey = ''
 let offDebugCfg:    (() => void) | null = null
@@ -229,6 +230,19 @@ type SavedShopState = {
   skill30BuyCounter?: number
   skill30NextBuyFree?: boolean
   quickBuyNoSynthRefreshStreak?: number
+  draftedEventDays?: number[]
+  pendingEventDraft?: PendingEventDraft | null
+  selectedEventCounts?: Array<{ id: string; count: number }>
+  dayEventState?: {
+    forceBuyArchetype?: 'warrior' | 'archer' | 'assassin' | null
+    forceBuyRemaining?: number
+    forceSynthesisArchetype?: 'warrior' | 'archer' | 'assassin' | null
+    forceSynthesisRemaining?: number
+    extraUpgradeRemaining?: number
+  }
+  draftedSpecialShopDays?: number[]
+  specialShopRefreshCount?: number
+  specialShopOffers?: Array<{ itemId: string; tier: TierKey; star: 1 | 2; basePrice?: number; price: number; purchased: boolean }> | null
 }
 
 let pendingBattleTransition = false
@@ -244,6 +258,8 @@ let hasBoughtOnce = false
 let classSelectOverlay: Container | null = null
 let starterGuideOverlay: Container | null = null
 let skillDraftOverlay: Container | null = null
+let eventDraftOverlay: Container | null = null
+let specialShopOverlay: Container | null = null
 let crossSynthesisConfirmOverlay: Container | null = null
 let crossSynthesisConfirmTick: (() => void) | null = null
 let crossSynthesisConfirmUnlockInput: (() => void) | null = null
@@ -268,11 +284,74 @@ type PendingSkillDraft = {
   day: number
   tier: SkillTier
   choices: SkillPick[]
+  rerolled?: boolean
+}
+
+type EventLane = 'left' | 'right'
+type EventArchetype = 'warrior' | 'archer' | 'assassin'
+
+type EventChoice = {
+  id: string
+  dayStart: number
+  dayEnd: number
+  icon: string
+  lane: EventLane
+  shortDesc: string
+  detailDesc: string
+  note?: string
+  limits?: {
+    maxSelectionsPerRun?: number
+  }
+  conditions?: {
+    requireArchetypeOwned?: EventArchetype
+    requireHeartNotFull?: boolean
+    requireBackpackNotEmpty?: boolean
+    requireBattleNotEmpty?: boolean
+    requireBattleArchetypeTopTie?: EventArchetype
+  }
+}
+
+type PendingEventDraft = {
+  day: number
+  choices: EventChoice[]
+  rerolled?: boolean
+}
+
+type SpecialShopOffer = {
+  itemId: string
+  tier: TierKey
+  star: 1 | 2
+  basePrice: number
+  price: number
+  purchased: boolean
 }
 
 let pickedSkills: SkillPick[] = []
 let draftedSkillDays: number[] = []
 let pendingSkillDraft: PendingSkillDraft | null = null
+let draftedEventDays: number[] = []
+let pendingEventDraft: PendingEventDraft | null = null
+let draftedSpecialShopDays: number[] = []
+let specialShopRefreshCount = 0
+let specialShopOffers: SpecialShopOffer[] = []
+let specialShopBackpackViewActive = false
+const specialShopCheckedInstanceIds = new Set<string>()
+let specialShopCheckLayer: Container | null = null
+let specialShopOverlayActionRefresh: (() => void) | null = null
+const selectedEventCountById = new Map<string, number>()
+let dayEventState: {
+  forceBuyArchetype: EventArchetype | null
+  forceBuyRemaining: number
+  forceSynthesisArchetype: EventArchetype | null
+  forceSynthesisRemaining: number
+  extraUpgradeRemaining: number
+} = {
+  forceBuyArchetype: null,
+  forceBuyRemaining: 0,
+  forceSynthesisArchetype: null,
+  forceSynthesisRemaining: 0,
+  extraUpgradeRemaining: 0,
+}
 const skill20GrantedDays = new Set<number>()
 const unlockedItemIds = new Set<string>()
 const guaranteedNewUnlockTriggeredLevels = new Set<number>()
@@ -344,6 +423,7 @@ function beginBattleStartTransition(): void {
   battleView?.clearHighlight()
   backpackView?.clearHighlight()
   setTransitionInputEnabled(false)
+  setBaseShopPrimaryButtonsVisible(false)
   if (battleZoneTitleText) {
     battleZoneTitleText.alpha = 0
     battleZoneTitleText.visible = false
@@ -671,10 +751,17 @@ function applyPhaseUiVisibility(): void {
   if (battleZoneTitleText && inShop) battleZoneTitleText.alpha = 1
   if (backpackZoneTitleText && inShop) backpackZoneTitleText.alpha = 1
 
-  if (bpBtnHandle) bpBtnHandle.container.visible = false
-  if (refreshBtnHandle) refreshBtnHandle.container.visible = inShop
-  if (sellBtnHandle) sellBtnHandle.container.visible = inShop
-  if (phaseBtnHandle) phaseBtnHandle.container.visible = true
+  if (specialShopBackpackViewActive) {
+    if (bpBtnHandle) bpBtnHandle.container.visible = false
+    if (refreshBtnHandle) refreshBtnHandle.container.visible = false
+    if (sellBtnHandle) sellBtnHandle.container.visible = false
+    if (phaseBtnHandle) phaseBtnHandle.container.visible = false
+  } else {
+    if (bpBtnHandle) bpBtnHandle.container.visible = false
+    if (refreshBtnHandle) refreshBtnHandle.container.visible = inShop
+    if (sellBtnHandle) sellBtnHandle.container.visible = inShop
+    if (phaseBtnHandle) phaseBtnHandle.container.visible = true
+  }
 
   if (refreshCostText) refreshCostText.visible = inShop
   if (goldText) goldText.visible = inShop
@@ -798,6 +885,19 @@ function captureShopState(): SavedShopState | null {
     skill30BuyCounter,
     skill30NextBuyFree,
     quickBuyNoSynthRefreshStreak,
+    draftedEventDays,
+    pendingEventDraft,
+    selectedEventCounts: Array.from(selectedEventCountById.entries()).map(([id, count]) => ({ id, count })),
+    dayEventState: {
+      forceBuyArchetype: dayEventState.forceBuyArchetype,
+      forceBuyRemaining: dayEventState.forceBuyRemaining,
+      forceSynthesisArchetype: dayEventState.forceSynthesisArchetype,
+      forceSynthesisRemaining: dayEventState.forceSynthesisRemaining,
+      extraUpgradeRemaining: dayEventState.extraUpgradeRemaining,
+    },
+    draftedSpecialShopDays,
+    specialShopRefreshCount,
+    specialShopOffers,
   }
 }
 
@@ -819,6 +919,42 @@ function applySavedShopState(state: SavedShopState): void {
   pendingSkillDraft = (state.pendingSkillDraft && typeof state.pendingSkillDraft === 'object')
     ? state.pendingSkillDraft
     : null
+  draftedEventDays = Array.isArray(state.draftedEventDays)
+    ? state.draftedEventDays.filter((d) => Number.isFinite(d)).map((d) => Math.max(1, Math.round(d)))
+    : []
+  pendingEventDraft = (state.pendingEventDraft && typeof state.pendingEventDraft === 'object')
+    ? state.pendingEventDraft
+    : null
+  draftedSpecialShopDays = Array.isArray(state.draftedSpecialShopDays)
+    ? state.draftedSpecialShopDays.filter((d) => Number.isFinite(d)).map((d) => Math.max(1, Math.round(d)))
+    : []
+  specialShopRefreshCount = Math.max(0, Math.round(Number(state.specialShopRefreshCount ?? 0) || 0))
+  specialShopOffers = Array.isArray(state.specialShopOffers)
+    ? state.specialShopOffers
+      .filter((it) => it && typeof it.itemId === 'string')
+      .map((it) => ({
+        itemId: it.itemId,
+        tier: it.tier,
+        star: normalizeTierStar(it.tier, it.star),
+        basePrice: Math.max(1, Math.round(Number(it.basePrice ?? it.price) || 1)),
+        price: Math.max(0, Math.round(Number(it.price) || 0)),
+        purchased: it.purchased === true,
+      }))
+    : []
+  selectedEventCountById.clear()
+  const savedEventCounts = Array.isArray(state.selectedEventCounts) ? state.selectedEventCounts : []
+  for (const row of savedEventCounts) {
+    if (!row || typeof row.id !== 'string') continue
+    const count = Math.max(0, Math.round(Number(row.count) || 0))
+    if (count > 0) selectedEventCountById.set(row.id, count)
+  }
+  dayEventState = {
+    forceBuyArchetype: state.dayEventState?.forceBuyArchetype ?? null,
+    forceBuyRemaining: Math.max(0, Math.round(Number(state.dayEventState?.forceBuyRemaining ?? 0) || 0)),
+    forceSynthesisArchetype: state.dayEventState?.forceSynthesisArchetype ?? null,
+    forceSynthesisRemaining: Math.max(0, Math.round(Number(state.dayEventState?.forceSynthesisRemaining ?? 0) || 0)),
+    extraUpgradeRemaining: Math.max(0, Math.round(Number(state.dayEventState?.extraUpgradeRemaining ?? 0) || 0)),
+  }
   unlockedItemIds.clear()
   const savedUnlocks = Array.isArray(state.unlockedItemIds)
     ? state.unlockedItemIds.filter((id): id is string => typeof id === 'string')
@@ -1079,10 +1215,28 @@ function removePickedSkill(skillId: string): void {
 
 function tryBuyShopSlotWithSkill(slot: ShopSlot): { ok: boolean; finalPrice: number; discount: number } {
   if (!shopManager || slot.purchased) return { ok: false, finalPrice: slot.price, discount: 0 }
+  if (dayEventState.forceBuyArchetype && dayEventState.forceBuyRemaining > 0) {
+    const currentArch = toSkillArchetype(getPrimaryArchetype(slot.item.tags))
+    if (currentArch !== dayEventState.forceBuyArchetype) {
+      const candidates = getAllItems().filter((it) => {
+        if (!parseAvailableTiers(it.available_tiers).includes(slot.tier)) return false
+        return toSkillArchetype(getPrimaryArchetype(it.tags)) === dayEventState.forceBuyArchetype
+      })
+      const replacement = candidates[Math.floor(Math.random() * candidates.length)]
+      if (replacement) {
+        slot.item = replacement
+        slot.price = shopManager.getItemPrice(replacement, slot.tier)
+      }
+    }
+  }
   const priced = resolveBuyPriceWithSkills(slot.price)
   if (shopManager.gold < priced.finalPrice) return { ok: false, finalPrice: priced.finalPrice, discount: priced.discount }
   shopManager.gold -= priced.finalPrice
   slot.purchased = true
+  if (dayEventState.forceBuyRemaining > 0) {
+    dayEventState.forceBuyRemaining = Math.max(0, dayEventState.forceBuyRemaining - 1)
+    if (dayEventState.forceBuyRemaining <= 0) dayEventState.forceBuyArchetype = null
+  }
   if (consumeSkill15NextBuyDiscountAfterSuccess()) showHintToast('no_gold_buy', '砍价高手触发：本次-1G', 0x8ff0b0)
   const skill30Ready = consumeSkill30BundleAfterSuccess(priced.freeBySkill30)
   if (priced.freeBySkill30) showHintToast('no_gold_buy', '打包购买触发：本次0金币', 0x9be5ff)
@@ -1097,8 +1251,196 @@ function closeSkillTestOverlay(): void {
   skillTestOverlay = null
 }
 
+function closeEventTestOverlay(): void {
+  if (!eventTestOverlay) return
+  if (eventTestOverlay.parent) eventTestOverlay.parent.removeChild(eventTestOverlay)
+  eventTestOverlay.destroy({ children: true })
+  eventTestOverlay = null
+}
+
+function closeItemTestOverlay(): void {
+  if (!itemTestOverlay) return
+  if (itemTestOverlay.parent) itemTestOverlay.parent.removeChild(itemTestOverlay)
+  itemTestOverlay.destroy({ children: true })
+  itemTestOverlay = null
+}
+
+function closeEventDraftOverlay(): void {
+  if (!eventDraftOverlay) return
+  if (eventDraftOverlay.parent) eventDraftOverlay.parent.removeChild(eventDraftOverlay)
+  eventDraftOverlay.destroy({ children: true })
+  eventDraftOverlay = null
+}
+
+function closeSpecialShopOverlay(): void {
+  setSpecialShopBackpackViewActive(false)
+  specialShopOverlayActionRefresh = null
+  if (!specialShopOverlay) return
+  if (specialShopOverlay.parent) specialShopOverlay.parent.removeChild(specialShopOverlay)
+  specialShopOverlay.destroy({ children: true })
+  specialShopOverlay = null
+}
+
+function setBaseShopPrimaryButtonsVisible(visible: boolean): void {
+  if (bpBtnHandle) bpBtnHandle.container.visible = visible
+  if (refreshBtnHandle) refreshBtnHandle.container.visible = visible
+  if (sellBtnHandle) sellBtnHandle.container.visible = visible
+  if (phaseBtnHandle) phaseBtnHandle.container.visible = visible
+}
+
+function getSpecialBulkSellUnitPriceByLevel(level: number): number {
+  if (level <= 1) return 3
+  if (level === 2) return 5
+  if (level === 3) return 10
+  if (level === 4) return 20
+  if (level === 5) return 30
+  if (level === 6) return 40
+  return 50
+}
+
+function getSpecialBulkSellPriceByInstance(instanceId: string): number {
+  const tier = getInstanceTier(instanceId) ?? 'Bronze'
+  const star = getInstanceTierStar(instanceId)
+  const level = tierStarLevelIndex(tier, star) + 1
+  return getSpecialBulkSellUnitPriceByLevel(level)
+}
+
+function getSpecialBulkSellTotalPrice(): number {
+  let sum = 0
+  for (const id of specialShopCheckedInstanceIds) {
+    sum += getSpecialBulkSellPriceByInstance(id)
+  }
+  return Math.max(0, Math.round(sum))
+}
+
+function clearSpecialShopCheckLayer(): void {
+  if (!specialShopCheckLayer) return
+  if (specialShopCheckLayer.parent) specialShopCheckLayer.parent.removeChild(specialShopCheckLayer)
+  specialShopCheckLayer.destroy({ children: true })
+  specialShopCheckLayer = null
+}
+
+function renderSpecialShopCheckMarks(): void {
+  clearSpecialShopCheckLayer()
+  if (!specialShopBackpackViewActive) return
+  const stage = getApp().stage
+  const layer = new Container()
+  layer.zIndex = 3490
+  layer.eventMode = 'none'
+
+  for (const id of specialShopCheckedInstanceIds) {
+    const inBattle = !!battleSystem?.getItem(id)
+    const system = inBattle ? battleSystem : backpackSystem
+    const view = inBattle ? battleView : backpackView
+    const placed = system?.getItem(id)
+    if (!system || !view || !placed) continue
+    const topLeft = view.cellToLocal(placed.col, placed.row)
+    const cols = getSizeCols(placed.size)
+    const gpos = view.toGlobal({
+      x: topLeft.x + cols * CELL_SIZE - 18,
+      y: topLeft.y + 16,
+    })
+    const spos = stage.toLocal(gpos)
+
+    const mark = new Container()
+    mark.x = spos.x
+    mark.y = spos.y
+    const dot = new Graphics()
+    dot.circle(0, 0, 16)
+    dot.fill({ color: 0x2ac96b, alpha: 0.96 })
+    dot.stroke({ color: 0x0b2b1a, width: 2, alpha: 0.95 })
+    const txt = new Text({
+      text: '✓',
+      style: { fontSize: 22, fill: 0xf6fff9, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    txt.anchor.set(0.5)
+    txt.y = -1
+    mark.addChild(dot, txt)
+    layer.addChild(mark)
+  }
+
+  stage.addChild(layer)
+  specialShopCheckLayer = layer
+}
+
+function setSpecialShopBackpackViewActive(active: boolean): void {
+  specialShopBackpackViewActive = active
+  if (!active) {
+    specialShopCheckedInstanceIds.clear()
+    clearSpecialShopCheckLayer()
+  }
+}
+
+function handleSpecialShopBackpackItemTap(instanceId: string, kind: 'battle' | 'backpack'): void {
+  if (!shopManager || !sellPopup) return
+  const defId = instanceToDefId.get(instanceId)
+  if (!defId) return
+  const item = getItemDefById(defId)
+  if (!item) return
+  const tier = getInstanceTier(instanceId)
+  const star = getInstanceTierStar(instanceId)
+
+  if (specialShopCheckedInstanceIds.has(instanceId)) specialShopCheckedInstanceIds.delete(instanceId)
+  else specialShopCheckedInstanceIds.add(instanceId)
+
+  battleView?.setSelected(kind === 'battle' ? instanceId : null)
+  backpackView?.setSelected(kind === 'backpack' ? instanceId : null)
+  shopPanel?.setSelectedSlot(-1)
+  currentSelection = kind === 'battle' ? { kind: 'battle', instanceId } : { kind: 'backpack', instanceId }
+  selectedSellAction = null
+
+  const picked = specialShopCheckedInstanceIds.has(instanceId)
+  const onePrice = getSpecialBulkSellPriceByInstance(instanceId)
+  const total = getSpecialBulkSellTotalPrice()
+  const customDisplay: ItemInfoCustomDisplay = {
+    overrideName: `${item.name_cn}${picked ? '（已勾选）' : '（未勾选）'}`,
+    lines: [`点击${picked ? '取消勾选' : '勾选'}该物品`, `单价 ${onePrice}G`, `当前总价 ${total}G`],
+  }
+  sellPopup.show(item, 0, 'none', toVisualTier(tier, star), undefined, 'detailed', undefined, customDisplay)
+  renderSpecialShopCheckMarks()
+  specialShopOverlayActionRefresh?.()
+  refreshShopUI()
+}
+
+function executeSpecialShopBulkSell(): void {
+  if (!shopManager) return
+  if (specialShopCheckedInstanceIds.size <= 0) {
+    showHintToast('no_gold_buy', '请先勾选要出售的物品', 0xffd48f)
+    return
+  }
+  let sold = 0
+  let total = 0
+  for (const id of [...specialShopCheckedInstanceIds]) {
+    const inBattle = !!battleSystem?.getItem(id)
+    const system = inBattle ? battleSystem : backpackSystem
+    const view = inBattle ? battleView : backpackView
+    const placed = system?.getItem(id)
+    if (!system || !view || !placed) continue
+    total += getSpecialBulkSellPriceByInstance(id)
+    system.remove(id)
+    view.removeItem(id)
+    removeInstanceMeta(id)
+    sold += 1
+  }
+  if (sold > 0) {
+    shopManager.gold += Math.max(0, Math.round(total))
+    specialShopCheckedInstanceIds.clear()
+    clearSelection()
+    renderSpecialShopCheckMarks()
+    specialShopOverlayActionRefresh?.()
+    refreshShopUI()
+    showHintToast('no_gold_buy', `已批量出售${sold}件，获得${Math.round(total)}G`, 0xa8f0b6)
+    saveShopStateToStorage(captureShopState())
+  }
+}
+void getSpecialBulkSellTotalPrice
+void renderSpecialShopCheckMarks
+void setSpecialShopBackpackViewActive
+
 function closeSettingsOverlay(): void {
   closeSkillTestOverlay()
+  closeEventTestOverlay()
+  closeItemTestOverlay()
   if (!settingsOverlay) return
   if (settingsOverlay.parent) settingsOverlay.parent.removeChild(settingsOverlay)
   settingsOverlay.destroy({ children: true })
@@ -1273,6 +1615,295 @@ function openSkillTestOverlay(): void {
   skillTestOverlay = overlay
 }
 
+function openEventTestOverlay(): void {
+  closeEventTestOverlay()
+  const stage = getApp().stage
+  const overlay = new Container()
+  overlay.zIndex = 7420
+  overlay.eventMode = 'static'
+  overlay.hitArea = new Rectangle(0, 0, CANVAS_W, CANVAS_H)
+
+  const mask = new Graphics()
+  mask.rect(0, 0, CANVAS_W, CANVAS_H)
+  mask.fill({ color: 0x020409, alpha: 0.7 })
+  overlay.addChild(mask)
+
+  const panel = new Container()
+  panel.x = CANVAS_W / 2
+  panel.y = CANVAS_H / 2
+  panel.eventMode = 'static'
+  panel.on('pointerdown', (e) => e.stopPropagation())
+  overlay.addChild(panel)
+
+  const panelW = 610
+  const panelH = 1180
+  const bg = new Graphics()
+  bg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 24)
+  bg.fill({ color: 0x13213a, alpha: 0.98 })
+  bg.stroke({ color: 0x9ec2ff, width: 3, alpha: 0.95 })
+  panel.addChild(bg)
+
+  const title = new Text({
+    text: '事件测试（按钮触发）',
+    style: { fontSize: 38, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  title.anchor.set(0.5)
+  title.y = -446
+  panel.addChild(title)
+
+  const subtitle = new Text({
+    text: '点击“触发”执行事件；可重置已选次数',
+    style: { fontSize: 20, fill: 0xa8bddf, fontFamily: 'Arial' },
+  })
+  subtitle.anchor.set(0.5)
+  subtitle.y = -402
+  panel.addChild(subtitle)
+
+  const resetBtn = new Container()
+  resetBtn.y = -356
+  resetBtn.eventMode = 'static'
+  resetBtn.cursor = 'pointer'
+  const resetBg = new Graphics()
+  resetBg.roundRect(-188, -22, 376, 44, 12)
+  resetBg.fill({ color: 0x3d5d93, alpha: 0.96 })
+  resetBg.stroke({ color: 0xbad6ff, width: 2, alpha: 0.95 })
+  const resetTxt = new Text({
+    text: '重置事件已选次数（本局）',
+    style: { fontSize: 20, fill: 0xf5faff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  resetTxt.anchor.set(0.5)
+  resetBtn.addChild(resetBg, resetTxt)
+  panel.addChild(resetBtn)
+
+  const listCon = new Container()
+  panel.addChild(listCon)
+
+  const drawRows = () => {
+    listCon.removeChildren().forEach((c) => c.destroy({ children: true }))
+    const rows = getEventPoolRows()
+    const topY = -304
+    const rowH = 42
+    rows.forEach((event, idx) => {
+      const y = topY + idx * rowH
+      const rowBg = new Graphics()
+      rowBg.roundRect(-276, y - 18, 552, 34, 10)
+      rowBg.fill({ color: idx % 2 === 0 ? 0x172844 : 0x15233c, alpha: 0.72 })
+      listCon.addChild(rowBg)
+
+      const cnt = getSelectedEventCount(event.id)
+      const limit = event.limits?.maxSelectionsPerRun
+      const right = event.lane === 'left' ? '左' : '右'
+      const suffix = typeof limit === 'number' && limit > 0 ? ` ${cnt}/${Math.round(limit)}` : ` ${cnt}`
+      const label = new Text({
+        text: `${event.id} [${right}] ${event.shortDesc}${suffix}`,
+        style: { fontSize: 16, fill: 0xe0ebff, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      label.x = -248
+      label.y = y - label.height / 2
+      listCon.addChild(label)
+
+      const btn = new Container()
+      btn.x = 214
+      btn.y = y
+      btn.eventMode = 'static'
+      btn.cursor = 'pointer'
+      const b = new Graphics()
+      const t = new Text({
+        text: '触发',
+        style: { fontSize: 16, fill: 0x0f1c33, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      t.anchor.set(0.5)
+      const canPick = isEventChoiceAvailable(event, currentDay)
+      b.roundRect(-40, -14, 80, 28, 10)
+      b.fill({ color: canPick ? 0x74dc9b : 0xa8b6cc, alpha: 0.98 })
+      b.stroke({ color: 0x0d1426, width: 2, alpha: 0.95 })
+      btn.on('pointerdown', (e) => {
+        e.stopPropagation()
+        const ok = applyEventEffect(event, true)
+        if (ok) {
+          markEventSelected(event.id)
+          refreshShopUI()
+          saveShopStateToStorage(captureShopState())
+        } else {
+          showHintToast('no_gold_buy', `[测试] 事件未生效：${event.shortDesc}`, 0xffb27a)
+        }
+        drawRows()
+      })
+      btn.addChild(b, t)
+      listCon.addChild(btn)
+    })
+  }
+
+  resetBtn.on('pointerdown', (e) => {
+    e.stopPropagation()
+    resetEventSelectionCounters()
+    draftedEventDays = []
+    pendingEventDraft = null
+    saveShopStateToStorage(captureShopState())
+    showHintToast('no_gold_buy', '[测试] 已重置事件次数', 0x9be5ff)
+    drawRows()
+  })
+
+  drawRows()
+
+  const closeBtn = new Container()
+  closeBtn.x = 0
+  closeBtn.y = 540
+  closeBtn.eventMode = 'static'
+  closeBtn.cursor = 'pointer'
+  const closeBg = new Graphics()
+  closeBg.roundRect(-122, -30, 244, 60, 18)
+  closeBg.fill({ color: 0x2d446c, alpha: 0.96 })
+  closeBg.stroke({ color: 0xa7c6ff, width: 3, alpha: 0.95 })
+  const closeText = new Text({ text: '关闭', style: { fontSize: 28, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' } })
+  closeText.anchor.set(0.5)
+  closeBtn.on('pointerdown', (e) => {
+    e.stopPropagation()
+    closeEventTestOverlay()
+  })
+  closeBtn.addChild(closeBg, closeText)
+  panel.addChild(closeBtn)
+
+  overlay.on('pointerdown', () => closeEventTestOverlay())
+  stage.addChild(overlay)
+  eventTestOverlay = overlay
+}
+
+function addSingleItemForTest(def: ItemDef): boolean {
+  const tier = parseTierName(def.starting_tier) ?? 'Bronze'
+  const star: 1 | 2 = 1
+  const ok = placeItemToInventoryOrBattle(def, tier, star)
+  if (!ok) {
+    showHintToast('backpack_full_buy', `[测试] 添加失败：${def.name_cn}（空间不足）`, 0xffb27a)
+    return false
+  }
+  showHintToast('no_gold_buy', `[测试] 已添加：${def.name_cn}`, 0x9be5ff)
+  refreshShopUI()
+  saveShopStateToStorage(captureShopState())
+  return true
+}
+
+function openItemTestOverlay(): void {
+  closeItemTestOverlay()
+  const stage = getApp().stage
+  const overlay = new Container()
+  overlay.zIndex = 7440
+  overlay.eventMode = 'static'
+  overlay.hitArea = new Rectangle(0, 0, CANVAS_W, CANVAS_H)
+
+  const mask = new Graphics()
+  mask.rect(0, 0, CANVAS_W, CANVAS_H)
+  mask.fill({ color: 0x020409, alpha: 0.7 })
+  overlay.addChild(mask)
+
+  const panel = new Container()
+  panel.x = CANVAS_W / 2
+  panel.y = CANVAS_H / 2
+  panel.eventMode = 'static'
+  panel.on('pointerdown', (e) => e.stopPropagation())
+  overlay.addChild(panel)
+
+  const panelW = 610
+  const panelH = 1180
+  const bg = new Graphics()
+  bg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 24)
+  bg.fill({ color: 0x13213a, alpha: 0.98 })
+  bg.stroke({ color: 0x9ec2ff, width: 3, alpha: 0.95 })
+  panel.addChild(bg)
+
+  const title = new Text({
+    text: '物品测试（手动添加）',
+    style: { fontSize: 38, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  title.anchor.set(0.5)
+  title.y = -446
+  panel.addChild(title)
+
+  const subtitle = new Text({
+    text: '点击“添加”将该物品放入背包/上阵区（1星）',
+    style: { fontSize: 20, fill: 0xa8bddf, fontFamily: 'Arial' },
+  })
+  subtitle.anchor.set(0.5)
+  subtitle.y = -402
+  panel.addChild(subtitle)
+
+  const listCon = new Container()
+  panel.addChild(listCon)
+
+  const all = [...getAllItems()].sort((a, b) => {
+    const ta = parseTierName(a.starting_tier) ?? 'Bronze'
+    const tb = parseTierName(b.starting_tier) ?? 'Bronze'
+    const order = { Bronze: 0, Silver: 1, Gold: 2, Diamond: 3 }
+    const diff = (order[ta] ?? 0) - (order[tb] ?? 0)
+    if (diff !== 0) return diff
+    return a.name_cn.localeCompare(b.name_cn, 'zh-Hans-CN')
+  })
+
+  const topY = -344
+  const rowH = 38
+  const maxRows = Math.min(all.length, 24)
+  for (let idx = 0; idx < maxRows; idx++) {
+    const def = all[idx]!
+    const y = topY + idx * rowH
+    const rowBg = new Graphics()
+    rowBg.roundRect(-276, y - 16, 552, 32, 10)
+    rowBg.fill({ color: idx % 2 === 0 ? 0x172844 : 0x15233c, alpha: 0.72 })
+    listCon.addChild(rowBg)
+
+    const tier = parseTierName(def.starting_tier) ?? 'Bronze'
+    const label = new Text({
+      text: `${def.name_cn}（${tier}）`,
+      style: { fontSize: 16, fill: 0xe0ebff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    label.x = -248
+    label.y = y - label.height / 2
+    listCon.addChild(label)
+
+    const btn = new Container()
+    btn.x = 214
+    btn.y = y
+    btn.eventMode = 'static'
+    btn.cursor = 'pointer'
+    const b = new Graphics()
+    b.roundRect(-40, -14, 80, 28, 10)
+    b.fill({ color: 0x74dc9b, alpha: 0.98 })
+    b.stroke({ color: 0x0d1426, width: 2, alpha: 0.95 })
+    const t = new Text({
+      text: '添加',
+      style: { fontSize: 16, fill: 0x0f1c33, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    t.anchor.set(0.5)
+    btn.on('pointerdown', (e) => {
+      e.stopPropagation()
+      addSingleItemForTest(def)
+    })
+    btn.addChild(b, t)
+    listCon.addChild(btn)
+  }
+
+  const closeBtn = new Container()
+  closeBtn.x = 0
+  closeBtn.y = 540
+  closeBtn.eventMode = 'static'
+  closeBtn.cursor = 'pointer'
+  const closeBg = new Graphics()
+  closeBg.roundRect(-122, -30, 244, 60, 18)
+  closeBg.fill({ color: 0x2d446c, alpha: 0.96 })
+  closeBg.stroke({ color: 0xa7c6ff, width: 3, alpha: 0.95 })
+  const closeText = new Text({ text: '关闭', style: { fontSize: 28, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' } })
+  closeText.anchor.set(0.5)
+  closeBtn.on('pointerdown', (e) => {
+    e.stopPropagation()
+    closeItemTestOverlay()
+  })
+  closeBtn.addChild(closeBg, closeText)
+  panel.addChild(closeBtn)
+
+  overlay.on('pointerdown', () => closeItemTestOverlay())
+  stage.addChild(overlay)
+  itemTestOverlay = overlay
+}
+
 function openSettingsOverlay(): void {
   closeSettingsOverlay()
   const stage = getApp().stage
@@ -1294,7 +1925,7 @@ function openSettingsOverlay(): void {
   overlay.addChild(panel)
 
   const panelW = 612
-  const panelH = 672
+  const panelH = 860
   const panelBg = new Graphics()
   panelBg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 24)
   panelBg.fill({ color: 0x121c33, alpha: 0.98 })
@@ -1407,9 +2038,51 @@ function openSettingsOverlay(): void {
   testBtn.addChild(testBg, testText)
   panel.addChild(testBtn)
 
+  const eventTestBtn = new Container()
+  eventTestBtn.x = 0
+  eventTestBtn.y = controlBaseY + controlGapY * (rows.length + 1)
+  eventTestBtn.eventMode = 'static'
+  eventTestBtn.cursor = 'pointer'
+  const eventTestBg = new Graphics()
+  eventTestBg.roundRect(-172, -28, 344, 56, 16)
+  eventTestBg.fill({ color: 0x3a5b93, alpha: 0.96 })
+  eventTestBg.stroke({ color: 0xb9d4ff, width: 3, alpha: 0.95 })
+  const eventTestText = new Text({
+    text: '事件测试',
+    style: { fontSize: 26, fill: 0xf3f9ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  eventTestText.anchor.set(0.5)
+  eventTestBtn.on('pointerdown', (e) => {
+    e.stopPropagation()
+    openEventTestOverlay()
+  })
+  eventTestBtn.addChild(eventTestBg, eventTestText)
+  panel.addChild(eventTestBtn)
+
+  const itemTestBtn = new Container()
+  itemTestBtn.x = 0
+  itemTestBtn.y = controlBaseY + controlGapY * (rows.length + 2)
+  itemTestBtn.eventMode = 'static'
+  itemTestBtn.cursor = 'pointer'
+  const itemTestBg = new Graphics()
+  itemTestBg.roundRect(-172, -28, 344, 56, 16)
+  itemTestBg.fill({ color: 0x3a5b93, alpha: 0.96 })
+  itemTestBg.stroke({ color: 0xb9d4ff, width: 3, alpha: 0.95 })
+  const itemTestText = new Text({
+    text: '物品测试',
+    style: { fontSize: 26, fill: 0xf3f9ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  itemTestText.anchor.set(0.5)
+  itemTestBtn.on('pointerdown', (e) => {
+    e.stopPropagation()
+    openItemTestOverlay()
+  })
+  itemTestBtn.addChild(itemTestBg, itemTestText)
+  panel.addChild(itemTestBtn)
+
   const closeBtn = new Container()
   closeBtn.x = 0
-  closeBtn.y = controlBaseY + controlGapY * (rows.length + 1)
+  closeBtn.y = controlBaseY + controlGapY * (rows.length + 3)
   closeBtn.eventMode = 'static'
   closeBtn.cursor = 'pointer'
   const closeBg = new Graphics()
@@ -1490,7 +2163,8 @@ function canSynthesizePair(
   if (!sourceDef || !targetDef) return false
   const sourceArch = getPrimaryArchetype(sourceDef.tags)
   const targetArch = getPrimaryArchetype(targetDef.tags)
-  return !!sourceArch && sourceArch === targetArch
+  if (!sourceArch || !targetArch) return false
+  return sourceArch === targetArch
 }
 
 const TIER_ORDER: TierKey[] = ['Bronze', 'Silver', 'Gold', 'Diamond']
@@ -1628,15 +2302,6 @@ function pickItemByMinTierWeight(candidates: ItemDef[], resultTier: TierKey, res
 }
 
 function pickSynthesisResultWithGuarantee(candidates: ItemDef[], resultTier: TierKey, resultStar: 1 | 2): ItemDef | null {
-  const resultLevel = tierStarLevelIndex(resultTier, resultStar) + 1
-  const shouldGuarantee = (resultLevel === 3 || resultLevel === 5 || resultLevel === 7)
-    && !guaranteedNewUnlockTriggeredLevels.has(resultLevel)
-
-  if (!shouldGuarantee) return pickItemByMinTierWeight(candidates, resultTier, resultStar)
-  const lockedCandidates = candidates.filter((it) => !unlockedItemIds.has(it.id))
-  if (lockedCandidates.length > 0) {
-    return pickItemByMinTierWeight(lockedCandidates, resultTier, resultStar)
-  }
   return pickItemByMinTierWeight(candidates, resultTier, resultStar)
 }
 
@@ -1667,8 +2332,9 @@ function pickCrossSynthesisResultWithCycle(
 }
 
 function shouldGuaranteeNewUnlock(resultTier: TierKey, resultStar: 1 | 2): boolean {
-  const level = tierStarLevelIndex(resultTier, resultStar) + 1
-  return (level === 3 || level === 5 || level === 7) && !guaranteedNewUnlockTriggeredLevels.has(level)
+  void resultTier
+  void resultStar
+  return false
 }
 
 function compareTier(a: TierKey, b: TierKey): number {
@@ -2236,17 +2902,19 @@ function collectSynthesisGuideIds(
   tier: TierKey,
   star: 1 | 2,
   excludeInstanceId?: string,
-): string[] {
-  if (!system) return []
-  const out: string[] = []
+): { sameIds: string[]; crossIds: string[] } {
+  if (!system) return { sameIds: [], crossIds: [] }
+  const sameIds: string[] = []
+  const crossIds: string[] = []
   for (const it of system.getAllItems()) {
     if (excludeInstanceId && it.instanceId === excludeInstanceId) continue
     const itTier = instanceToTier.get(it.instanceId) ?? 'Bronze'
     const itStar = getInstanceTierStar(it.instanceId)
     if (!canSynthesizePair(defId, it.defId, tier, star, itTier, itStar)) continue
-    out.push(it.instanceId)
+    if (it.defId === defId) sameIds.push(it.instanceId)
+    else crossIds.push(it.instanceId)
   }
-  return out
+  return { sameIds, crossIds }
 }
 
 function refreshBackpackSynthesisGuideArrows(
@@ -2261,12 +2929,12 @@ function refreshBackpackSynthesisGuideArrows(
     battleView.setDragGuideArrows([])
     return
   }
-  const backpackIds = collectSynthesisGuideIds(backpackSystem, defId, tier, star, excludeInstanceId)
-  const battleIds = isBattleZoneNoSynthesisEnabled()
-    ? []
+  const backpackGuide = collectSynthesisGuideIds(backpackSystem, defId, tier, star, excludeInstanceId)
+  const battleGuide = isBattleZoneNoSynthesisEnabled()
+    ? { sameIds: [], crossIds: [] }
     : collectSynthesisGuideIds(battleSystem, defId, tier, star, excludeInstanceId)
-  backpackView.setDragGuideArrows(backpackIds)
-  battleView.setDragGuideArrows(battleIds)
+  backpackView.setDragGuideArrows(backpackGuide.sameIds, backpackGuide.crossIds)
+  battleView.setDragGuideArrows(battleGuide.sameIds, battleGuide.crossIds)
 }
 
 function clearBackpackSynthesisGuideArrows(): void {
@@ -2449,7 +3117,7 @@ function getCrossIdEvolvePool(
   sourceDef: ItemDef,
   targetSize: ItemSizeNorm,
   resultTier: TierKey,
-  _minStartingTier: TierKey,
+  minStartingTier: TierKey,
 ): {
   basePool: ItemDef[]
   sameArchPool: ItemDef[]
@@ -2458,25 +3126,25 @@ function getCrossIdEvolvePool(
   const basePool = getAllItems().filter((it) =>
     normalizeSize(it.size) === targetSize
     && parseAvailableTiers(it.available_tiers).includes(resultTier)
+    && compareTier(parseTierName(it.starting_tier) ?? 'Bronze', minStartingTier) >= 0
   )
   const sourceArch = getPrimaryArchetype(sourceDef.tags)
   if (!sourceArch) {
-    return { basePool, sameArchPool: [], otherArchPool: basePool }
+    return { basePool, sameArchPool: basePool, otherArchPool: basePool }
   }
   const sameArchPool = basePool.filter((it) => getPrimaryArchetype(it.tags) === sourceArch)
-  const otherArchPool = basePool.filter((it) => getPrimaryArchetype(it.tags) !== sourceArch)
-  return { basePool, sameArchPool, otherArchPool }
+  return { basePool, sameArchPool, otherArchPool: basePool }
 }
 
 function pickCrossIdEvolveCandidates(sourceDef: ItemDef, targetSize: ItemSizeNorm, resultTier: TierKey, minStartingTier: TierKey): ItemDef[] {
-  const { otherArchPool } = getCrossIdEvolvePool(sourceDef, targetSize, resultTier, minStartingTier)
-  if (otherArchPool.length > 0) return otherArchPool
+  const { basePool } = getCrossIdEvolvePool(sourceDef, targetSize, resultTier, minStartingTier)
+  if (basePool.length > 0) return basePool
   return []
 }
 
 function getCrossIdPreviewCandidates(sourceDef: ItemDef, targetSize: ItemSizeNorm, resultTier: TierKey, minStartingTier: TierKey): ItemDef[] {
-  const { otherArchPool } = getCrossIdEvolvePool(sourceDef, targetSize, resultTier, minStartingTier)
-  return otherArchPool
+  const { basePool } = getCrossIdEvolvePool(sourceDef, targetSize, resultTier, minStartingTier)
+  return basePool
 }
 
 function highlightSynthesisTarget(target: SynthesisTarget | null): void {
@@ -2511,9 +3179,15 @@ function synthesizeTarget(
   if (!battleSystem || !backpackSystem || !battleView || !backpackView) return null
   const baseUpgrade = nextTierLevel(tier, star)
   if (!baseUpgrade) return null
-  const extraUpgrade = nextTierLevel(baseUpgrade.tier, baseUpgrade.star)
-  const wantsExtraUpgrade = shouldTriggerSkill48ExtraUpgrade(hasPickedSkill('skill48'), !!extraUpgrade, Math.random())
-  let upgradeTo = wantsExtraUpgrade && extraUpgrade ? extraUpgrade : baseUpgrade
+  let upgradeTo = baseUpgrade
+  const eventExtra = dayEventState.extraUpgradeRemaining > 0
+  if (eventExtra) {
+    const extra = nextTierLevel(upgradeTo.tier, upgradeTo.star)
+    if (extra) upgradeTo = extra
+  }
+  const skillExtra = nextTierLevel(upgradeTo.tier, upgradeTo.star)
+  const wantsSkillExtra = shouldTriggerSkill48ExtraUpgrade(hasPickedSkill('skill48'), !!skillExtra, Math.random())
+  if (wantsSkillExtra && skillExtra) upgradeTo = skillExtra
 
   const targetItem = zone === 'battle'
     ? battleSystem.getItem(targetInstanceId)
@@ -2529,19 +3203,24 @@ function synthesizeTarget(
   if (!targetDef) return null
 
   const isSameIdSynthesis = defId === targetItem.defId
+  const forceSynthesisActive = !!(dayEventState.forceSynthesisArchetype && dayEventState.forceSynthesisRemaining > 0)
   const minStartingTier = getCrossSynthesisMinStartingTier(sourceDef, targetDef)
   let guaranteeNewUnlock = shouldGuaranteeNewUnlock(upgradeTo.tier, upgradeTo.star)
   let resultLevel = tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1
   const buildCandidates = (targetTier: TierKey) => {
-    if (isSameIdSynthesis) {
-      const sameArchPool = getCrossIdEvolvePool(sourceDef, targetItem.size, targetTier, minStartingTier).sameArchPool
-      return sameArchPool.filter((it) => it.id !== defId)
+    const all = pickCrossIdEvolveCandidates(sourceDef, targetItem.size, targetTier, minStartingTier)
+    if (forceSynthesisActive) {
+      const forced = all.filter((it) => toSkillArchetype(getPrimaryArchetype(it.tags)) === dayEventState.forceSynthesisArchetype)
+      if (forced.length > 0) return forced
+      if (all.length > 0) return all
+      return [sourceDef]
     }
-    return pickCrossIdEvolveCandidates(sourceDef, targetItem.size, targetTier, minStartingTier)
+    if (isSameIdSynthesis) return [sourceDef]
+    return all
   }
   let evolveCandidates = buildCandidates(upgradeTo.tier)
   let evolvedDef = pickCrossSynthesisResultWithCycle(evolveCandidates, upgradeTo.tier, upgradeTo.star, minStartingTier)
-  if (!evolvedDef && wantsExtraUpgrade) {
+  if (!evolvedDef && (upgradeTo.tier !== baseUpgrade.tier || upgradeTo.star !== baseUpgrade.star)) {
     upgradeTo = baseUpgrade
     guaranteeNewUnlock = shouldGuaranteeNewUnlock(upgradeTo.tier, upgradeTo.star)
     resultLevel = tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1
@@ -2573,6 +3252,13 @@ function synthesizeTarget(
   instanceToDefId.set(targetInstanceId, evolvedDef.id)
   instanceToTier.set(targetInstanceId, upgradeTo.tier)
   instanceToTierStar.set(targetInstanceId, upgradeTo.star)
+  if (eventExtra && dayEventState.extraUpgradeRemaining > 0) {
+    dayEventState.extraUpgradeRemaining = Math.max(0, dayEventState.extraUpgradeRemaining - 1)
+  }
+  if (forceSynthesisActive && dayEventState.forceSynthesisRemaining > 0) {
+    dayEventState.forceSynthesisRemaining = Math.max(0, dayEventState.forceSynthesisRemaining - 1)
+    if (dayEventState.forceSynthesisRemaining <= 0) dayEventState.forceSynthesisArchetype = null
+  }
   unlockItemToPool(evolvedDef.id)
   if (guaranteeNewUnlock && (resultLevel === 3 || resultLevel === 5 || resultLevel === 7)) {
     guaranteedNewUnlockTriggeredLevels.add(resultLevel)
@@ -2617,19 +3303,23 @@ function showSynthesisHoverInfo(
   synthHoverInfoKey = key
 
   const buyPrice = shopManager.getItemPrice(sourceDef, sourceTier)
-  const highlightWord = isSameItem ? '本职业' : '其他职业'
-  const suffixWord = isSameItem ? '其他物品' : '物品'
+  if (isSameItem) {
+    sellPopup.show(sourceDef, buyPrice, 'buy', toVisualTier(upgradeTo.tier, upgradeTo.star), undefined, 'detailed')
+    return
+  }
+
   const customDisplay: ItemInfoCustomDisplay = {
     hideName: true,
-    lines: ['随机获得'],
+    lines: ['升级为 随机 物品'],
     richLineSegments: [
-      { text: '随机获得', fontSize: 28, fill: 0xbfc7f5 },
-      { text: highlightWord, fontSize: 40, fill: isSameItem ? 0x6ce0ff : 0xffd86b },
-      { text: suffixWord, fontSize: 28, fill: 0xbfc7f5 },
+      { text: '升级为 ', fontSize: 28, fill: 0xbfc7f5 },
+      { text: '随机', fontSize: 40, fill: 0xffd86b },
+      { text: ' 物品', fontSize: 28, fill: 0xbfc7f5 },
     ],
     suppressStats: true,
     hideTierBadge: true,
     useQuestionIcon: true,
+    centerRichLineInFrame: true,
   }
   sellPopup.show(sourceDef, buyPrice, 'buy', toVisualTier(sourceTier, sourceStar), undefined, 'detailed', undefined, customDisplay)
 }
@@ -3107,41 +3797,31 @@ function getItemDefByCn(nameCn: string): ItemDef | null {
 }
 
 function pickGuideCrossArchetypeItem(pick: StarterClass): ItemDef | null {
-  // 展示用“其他职业”示例：每个职业固定挑一个青铜物品
+  // 展示用“不同物品随机升级”示例：每个职业固定挑一个 3 级结果物品
   const preferredByPick: Record<StarterClass, string[]> = {
-    swordsman: ['木弓'],
-    archer: ['匕首'],
-    assassin: ['短剑'],
+    swordsman: ['长盾'],
+    archer: ['手弩'],
+    assassin: ['回旋镖'],
   }
   const targetTagByPick: Record<StarterClass, string> = {
-    swordsman: '弓手',
-    archer: '刺客',
-    assassin: '战士',
+    swordsman: '战士',
+    archer: '弓手',
+    assassin: '刺客',
   }
 
   for (const nameCn of preferredByPick[pick]) {
     const hit = getItemDefByCn(nameCn)
-    if (hit && parseTierName(hit.starting_tier) === 'Bronze') return hit
+    if (hit && parseTierName(hit.starting_tier) === 'Silver') return hit
   }
   const targetTag = targetTagByPick[pick]
-  return getAllItems().find((it) => `${it.tags ?? ''}`.includes(targetTag) && parseTierName(it.starting_tier) === 'Bronze')
+  return getAllItems().find((it) => `${it.tags ?? ''}`.includes(targetTag) && parseTierName(it.starting_tier) === 'Silver')
     ?? getAllItems().find((it) => `${it.tags ?? ''}`.includes(targetTag))
     ?? null
 }
 
 function pickGuideSameArchetypeResultItem(pick: StarterClass, sourceItem: ItemDef): ItemDef | null {
-  const preset = STARTER_CLASS_PRESETS[pick]
-  if (preset) {
-    for (const nameCn of preset.gifts) {
-      if (nameCn === sourceItem.name_cn) continue
-      const hit = getItemDefByCn(nameCn)
-      if (hit) return hit
-    }
-  }
-  const sourceArch = getPrimaryArchetype(sourceItem.tags)
-  if (!sourceArch) return null
-  return getAllItems().find((it) => getPrimaryArchetype(it.tags) === sourceArch && it.id !== sourceItem.id)
-    ?? null
+  void pick
+  return sourceItem
 }
 
 function grantStarterItemsByClass(pick: StarterClass): void {
@@ -3275,6 +3955,14 @@ function createGuideItemCard(item: ItemDef, levelText: string, tierForFrame: 'Br
   return con
 }
 
+function getGuideFrameTierByLevel(levelText: string): 'Bronze' | 'Silver' | 'Gold' | 'Diamond' {
+  const levelNum = Math.max(1, Math.round(Number(levelText) || 1))
+  if (levelNum >= 7) return 'Diamond'
+  if (levelNum >= 5) return 'Gold'
+  if (levelNum >= 3) return 'Silver'
+  return 'Bronze'
+}
+
 function showStarterSynthesisGuide(stage: Container, pick: StarterClass): void {
   if (starterGuideOverlay) return
   const preset = STARTER_CLASS_PRESETS[pick]
@@ -3314,7 +4002,7 @@ function showStarterSynthesisGuide(stage: Container, pick: StarterClass): void {
   panel.addChild(panelBg)
 
   const title = new Text({
-    text: '合成转化规则',
+    text: '合成规则',
     style: { fontSize: 52, fill: 0xffefc8, fontFamily: 'Arial', fontWeight: 'bold' },
   })
   title.anchor.set(0.5)
@@ -3370,7 +4058,7 @@ function showStarterSynthesisGuide(stage: Container, pick: StarterClass): void {
 
     const resultRow = new Container()
     resultRow.y = 66
-    const result = createGuideItemCard(resultDef, resultLv, 'Bronze')
+    const result = createGuideItemCard(resultDef, resultLv, getGuideFrameTierByLevel(resultLv))
     result.x = -46
     resultRow.addChild(result)
     col.addChild(resultRow)
@@ -3378,8 +4066,8 @@ function showStarterSynthesisGuide(stage: Container, pick: StarterClass): void {
     return col
   }
 
-  panel.addChild(createGuideColumn(-145, '相同物品 -> 本职业', itemA, '1', itemA, '1', sameArchetypeResultItem, '2'))
-  panel.addChild(createGuideColumn(145, '不同物品 -> 其他职业', itemA, '1', itemB, '1', otherArchetypeItem, '2'))
+  panel.addChild(createGuideColumn(-145, '相同物品 → 升级', itemA, '1', itemA, '1', sameArchetypeResultItem, '2'))
+  panel.addChild(createGuideColumn(145, '不同物品 → 随机升级', itemA, '2', itemB, '2', otherArchetypeItem, '3'))
 
   const closeBtn = new Container()
   closeBtn.eventMode = 'static'
@@ -3401,7 +4089,7 @@ function showStarterSynthesisGuide(stage: Container, pick: StarterClass): void {
     if (starterGuideOverlay?.parent) starterGuideOverlay.parent.removeChild(starterGuideOverlay)
     starterGuideOverlay?.destroy({ children: true })
     starterGuideOverlay = null
-    ensureSkillDraftSelection(stage)
+    ensureDailyChoiceSelection(stage)
   })
   panel.addChild(closeBtn)
 
@@ -3571,7 +4259,7 @@ function ensureStarterClassSelection(stage: Container): void {
     applyPhaseInputLock()
     refreshShopUI()
     showStarterSynthesisGuide(stage, selected)
-    ensureSkillDraftSelection(stage)
+    ensureDailyChoiceSelection(stage)
   })
 
   overlay.addChild(confirm)
@@ -3632,10 +4320,531 @@ function mountSkillIconSprite(
   })
 }
 
+function mountEventIconSprite(
+  parent: Container,
+  eventId: string,
+  iconStem: string | undefined,
+  centerX: number,
+  centerY: number,
+  iconSize: number,
+  fallback: Text,
+): void {
+  const stem = String(iconStem || eventId || '').replace(/\.png$/i, '').trim()
+  if (!stem) return
+  const iconUrl = getEventIconUrl(stem)
+  const sprite = new Sprite(Texture.WHITE)
+  sprite.anchor.set(0.5)
+  sprite.x = centerX
+  sprite.y = centerY
+  sprite.alpha = 0
+  parent.addChild(sprite)
+
+  void Assets.load<Texture>(iconUrl).then((tex) => {
+    const side = Math.round(iconSize * 0.82)
+    const sw = Math.max(1, tex.width)
+    const sh = Math.max(1, tex.height)
+    const scale = Math.min(side / sw, side / sh)
+    sprite.texture = tex
+    sprite.width = Math.max(1, Math.round(sw * scale))
+    sprite.height = Math.max(1, Math.round(sh * scale))
+    sprite.alpha = 1
+    fallback.visible = false
+  }).catch(() => {
+    sprite.destroy()
+  })
+}
+
+function getEventArchetypeCn(arch: EventArchetype): string {
+  if (arch === 'warrior') return '战士'
+  if (arch === 'archer') return '弓手'
+  return '刺客'
+}
+
+function getAllOwnedPlacedItems(): Array<{ item: PlacedItem; zone: 'battle' | 'backpack' }> {
+  const out: Array<{ item: PlacedItem; zone: 'battle' | 'backpack' }> = []
+  if (battleSystem) {
+    for (const it of battleSystem.getAllItems()) out.push({ item: it, zone: 'battle' })
+  }
+  if (backpackSystem) {
+    for (const it of backpackSystem.getAllItems()) out.push({ item: it, zone: 'backpack' })
+  }
+  return out
+}
+
+function pickRandomElements<T>(list: T[], count: number): T[] {
+  const arr = [...list]
+  const out: T[] = []
+  while (out.length < count && arr.length > 0) {
+    const idx = Math.floor(Math.random() * arr.length)
+    const picked = arr[idx]
+    if (picked !== undefined) out.push(picked)
+    arr.splice(idx, 1)
+  }
+  return out
+}
+
+function removePlacedItemById(instanceId: string, zone: 'battle' | 'backpack'): void {
+  const system = zone === 'battle' ? battleSystem : backpackSystem
+  const view = zone === 'battle' ? battleView : backpackView
+  if (!system || !view) return
+  system.remove(instanceId)
+  view.removeItem(instanceId)
+  removeInstanceMeta(instanceId)
+}
+
+function placeItemToInventoryOrBattle(def: ItemDef, tier: TierKey, star: 1 | 2): boolean {
+  if (!battleSystem || !battleView || !backpackSystem || !backpackView) return false
+  const size = normalizeSize(def.size)
+  const backpackSlot = findFirstBackpackPlace(size)
+  const battleSlot = backpackSlot ? null : findFirstBattlePlace(size)
+  if (!backpackSlot && !battleSlot) return false
+
+  const id = nextId()
+  const visualTier = toVisualTier(tier, star)
+  if (backpackSlot) {
+    backpackSystem.place(backpackSlot.col, backpackSlot.row, size, def.id, id)
+    void backpackView.addItem(id, def.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
+      backpackView!.setItemTier(id, visualTier)
+      drag?.refreshZone(backpackView!)
+    })
+  } else if (battleSlot) {
+    battleSystem.place(battleSlot.col, battleSlot.row, size, def.id, id)
+    void battleView.addItem(id, def.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
+      battleView!.setItemTier(id, visualTier)
+      drag?.refreshZone(battleView!)
+    })
+  }
+  instanceToDefId.set(id, def.id)
+  instanceToTier.set(id, tier)
+  instanceToTierStar.set(id, star)
+  instanceToPermanentDamageBonus.set(id, 0)
+  unlockItemToPool(def.id)
+  return true
+}
+
+function upgradePlacedItem(instanceId: string, zone: 'battle' | 'backpack'): boolean {
+  const system = zone === 'battle' ? battleSystem : backpackSystem
+  const view = zone === 'battle' ? battleView : backpackView
+  if (!system || !view) return false
+  const placed = system.getItem(instanceId)
+  if (!placed) return false
+  const tier = instanceToTier.get(instanceId) ?? 'Bronze'
+  const star = getInstanceTierStar(instanceId)
+  const next = nextTierLevel(tier, star)
+  if (!next) return false
+  const defId = instanceToDefId.get(instanceId)
+  if (!defId) return false
+
+  system.remove(instanceId)
+  if (!system.place(placed.col, placed.row, placed.size, defId, instanceId)) {
+    system.place(placed.col, placed.row, placed.size, placed.defId, instanceId)
+    return false
+  }
+  view.removeItem(instanceId)
+  void view.addItem(instanceId, defId, placed.size, placed.col, placed.row, toVisualTier(next.tier, next.star)).then(() => {
+    view.setItemTier(instanceId, toVisualTier(next.tier, next.star))
+    drag?.refreshZone(view)
+  })
+  instanceToTier.set(instanceId, next.tier)
+  instanceToTierStar.set(instanceId, next.star)
+  return true
+}
+
+function convertAndUpgradePlacedItem(instanceId: string, zone: 'battle' | 'backpack'): boolean {
+  const system = zone === 'battle' ? battleSystem : backpackSystem
+  const view = zone === 'battle' ? battleView : backpackView
+  if (!system || !view) return false
+  const placed = system.getItem(instanceId)
+  if (!placed) return false
+  const tier = instanceToTier.get(instanceId) ?? 'Bronze'
+  const star = getInstanceTierStar(instanceId)
+  const next = nextTierLevel(tier, star)
+  if (!next) return false
+  const sourceDef = getItemDefById(placed.defId)
+  if (!sourceDef) return false
+  const candidates = pickCrossIdEvolveCandidates(sourceDef, placed.size, next.tier, 'Bronze')
+  if (candidates.length <= 0) return false
+  const picked = candidates[Math.floor(Math.random() * candidates.length)]
+  if (!picked) return false
+
+  system.remove(instanceId)
+  if (!system.place(placed.col, placed.row, placed.size, picked.id, instanceId)) {
+    system.place(placed.col, placed.row, placed.size, placed.defId, instanceId)
+    return false
+  }
+  view.removeItem(instanceId)
+  void view.addItem(instanceId, picked.id, placed.size, placed.col, placed.row, toVisualTier(next.tier, next.star)).then(() => {
+    view.setItemTier(instanceId, toVisualTier(next.tier, next.star))
+    drag?.refreshZone(view)
+  })
+  instanceToDefId.set(instanceId, picked.id)
+  instanceToTier.set(instanceId, next.tier)
+  instanceToTierStar.set(instanceId, next.star)
+  unlockItemToPool(picked.id)
+  return true
+}
+
+function canUpgradePlacedItem(instanceId: string, zone: 'battle' | 'backpack'): boolean {
+  const system = zone === 'battle' ? battleSystem : backpackSystem
+  if (!system) return false
+  const placed = system.getItem(instanceId)
+  if (!placed) return false
+  const tier = instanceToTier.get(instanceId) ?? 'Bronze'
+  const star = getInstanceTierStar(instanceId)
+  return !!nextTierLevel(tier, star)
+}
+
+function canConvertAndUpgradePlacedItem(instanceId: string, zone: 'battle' | 'backpack'): boolean {
+  const system = zone === 'battle' ? battleSystem : backpackSystem
+  if (!system) return false
+  const placed = system.getItem(instanceId)
+  if (!placed) return false
+  const tier = instanceToTier.get(instanceId) ?? 'Bronze'
+  const star = getInstanceTierStar(instanceId)
+  const next = nextTierLevel(tier, star)
+  if (!next) return false
+  const sourceDef = getItemDefById(placed.defId)
+  if (!sourceDef) return false
+  const candidates = pickCrossIdEvolveCandidates(sourceDef, placed.size, next.tier, 'Bronze')
+  return candidates.length > 0
+}
+
+function randomArchetypeItemsByDay(archetype: EventArchetype, count: number): PoolCandidate[] {
+  const byLevel: Record<1 | 2 | 3 | 4 | 5 | 6 | 7, PoolCandidate[]> = {
+    1: collectPoolCandidatesByLevel(1),
+    2: collectPoolCandidatesByLevel(2),
+    3: collectPoolCandidatesByLevel(3),
+    4: collectPoolCandidatesByLevel(4),
+    5: collectPoolCandidatesByLevel(5),
+    6: collectPoolCandidatesByLevel(6),
+    7: collectPoolCandidatesByLevel(7),
+  }
+  const weights = getQuickBuyLevelWeightsByDay(currentDay)
+  const out: PoolCandidate[] = []
+  const levels: Array<1 | 2 | 3 | 4 | 5 | 6 | 7> = [1, 2, 3, 4, 5, 6, 7]
+  for (let i = 0; i < count; i++) {
+    const leveled: Array<{ level: 1 | 2 | 3 | 4 | 5 | 6 | 7; weight: number }> = []
+    for (const lv of levels) {
+      const pool = byLevel[lv].filter((c) => toSkillArchetype(getPrimaryArchetype(c.item.tags)) === archetype)
+      if (pool.length <= 0) continue
+      const w = Math.max(0, Number(weights[lv - 1] ?? 0))
+      if (w <= 0) continue
+      leveled.push({ level: lv, weight: w })
+    }
+    if (leveled.length <= 0) break
+    const total = leveled.reduce((sum, it) => sum + it.weight, 0)
+    let roll = Math.random() * total
+    let levelNum = leveled[leveled.length - 1]!.level
+    for (const one of leveled) {
+      roll -= one.weight
+      if (roll <= 0) {
+        levelNum = one.level
+        break
+      }
+    }
+    const pool = byLevel[levelNum].filter((c) => toSkillArchetype(getPrimaryArchetype(c.item.tags)) === archetype)
+    const picked = pool[Math.floor(Math.random() * pool.length)]
+    if (picked) out.push(picked)
+  }
+  return out
+}
+
+function applyEventEffect(event: EventChoice, fromTest = false): boolean {
+  if (!shopManager) return false
+  const day = currentDay
+  const toastPrefix = fromTest ? '[测试] ' : ''
+
+  if (event.id === 'event1') {
+    const targets = getAllOwnedPlacedItems().filter((it) => it.zone === 'battle')
+    const picked = pickRandomElements(targets, 1)
+    const ok = picked.some((it) => upgradePlacedItem(it.item.instanceId, it.zone))
+    if (ok) showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}`, 0x9be5ff)
+    return ok
+  }
+  if (event.id === 'event2') {
+    const targets = getAllOwnedPlacedItems()
+      .filter((it) => it.zone === 'backpack')
+      .filter((it) => canUpgradePlacedItem(it.item.instanceId, it.zone))
+    const picked = pickRandomElements(targets, 2)
+    let okCount = 0
+    for (const it of picked) {
+      if (upgradePlacedItem(it.item.instanceId, it.zone)) okCount += 1
+    }
+    if (okCount > 0) showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}（${okCount}/2）`, 0x9be5ff)
+    return okCount > 0
+  }
+  if (event.id === 'event3') {
+    const targets = getAllOwnedPlacedItems()
+      .filter((it) => it.zone === 'backpack')
+      .filter((it) => canConvertAndUpgradePlacedItem(it.item.instanceId, it.zone))
+    const picked = pickRandomElements(targets, 3)
+    let okCount = 0
+    for (const it of picked) {
+      if (convertAndUpgradePlacedItem(it.item.instanceId, it.zone)) okCount += 1
+    }
+    if (okCount > 0) showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}（${okCount}/3）`, 0x9be5ff)
+    return okCount > 0
+  }
+  if (event.id === 'event4' || event.id === 'event5' || event.id === 'event6') {
+    const archetype: EventArchetype = event.id === 'event4' ? 'warrior' : event.id === 'event5' ? 'archer' : 'assassin'
+    const items = randomArchetypeItemsByDay(archetype, 2)
+    let okCount = 0
+    for (const one of items) {
+      if (placeItemToInventoryOrBattle(one.item, one.tier, one.star)) okCount++
+    }
+    if (okCount > 0) showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}`, 0x9be5ff)
+    return okCount > 0
+  }
+  if (event.id === 'event7' || event.id === 'event8' || event.id === 'event9') {
+    dayEventState.forceBuyArchetype = event.id === 'event7' ? 'warrior' : event.id === 'event8' ? 'archer' : 'assassin'
+    dayEventState.forceBuyRemaining = 3
+    showHintToast('no_gold_buy', `${toastPrefix}前3次购买锁定${getEventArchetypeCn(dayEventState.forceBuyArchetype)}`, 0x8ff0b0)
+    return true
+  }
+  if (event.id === 'event10' || event.id === 'event12' || event.id === 'event13') {
+    dayEventState.forceSynthesisArchetype = event.id === 'event10' ? 'warrior' : event.id === 'event12' ? 'archer' : 'assassin'
+    dayEventState.forceSynthesisRemaining = 2
+    showHintToast('no_gold_buy', `${toastPrefix}前2次合成锁定${getEventArchetypeCn(dayEventState.forceSynthesisArchetype)}`, 0x8ff0b0)
+    return true
+  }
+  if (event.id === 'event14') {
+    dayEventState.extraUpgradeRemaining = 1
+    showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}`, 0x8ff0b0)
+    return true
+  }
+  if (event.id === 'event15' || event.id === 'event16' || event.id === 'event17') {
+    const targetArch: EventArchetype = event.id === 'event15' ? 'warrior' : event.id === 'event16' ? 'archer' : 'assassin'
+    const owned = getAllOwnedPlacedItems().filter((it) => {
+      const def = getItemDefById(it.item.defId)
+      return toSkillArchetype(getPrimaryArchetype(def?.tags ?? '')) === targetArch
+    })
+    const picked = owned[Math.floor(Math.random() * owned.length)]
+    if (!picked) return false
+    const def = getItemDefById(picked.item.defId)
+    if (!def) return false
+    const tier = instanceToTier.get(picked.item.instanceId) ?? 'Bronze'
+    const star = getInstanceTierStar(picked.item.instanceId)
+    const ok = placeItemToInventoryOrBattle(def, tier, star)
+    if (ok) showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}`, 0x9be5ff)
+    return ok
+  }
+  if (event.id === 'event18') {
+    if (!backpackSystem) return false
+    const picked = pickRandomElements(backpackSystem.getAllItems(), 2)
+    let ok = false
+    for (const one of picked) {
+      const def = getItemDefById(one.defId)
+      if (!def) continue
+      const tier = instanceToTier.get(one.instanceId) ?? 'Bronze'
+      const star = getInstanceTierStar(one.instanceId)
+      ok = placeItemToInventoryOrBattle(def, tier, star) || ok
+    }
+    if (ok) showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}`, 0x9be5ff)
+    return ok
+  }
+  if (event.id === 'event19') {
+    if (!backpackSystem) return false
+    const all = [...backpackSystem.getAllItems()]
+    let sold = 0
+    for (const one of all) {
+      const def = getItemDefById(one.defId)
+      if (!def) continue
+      const tier = instanceToTier.get(one.instanceId) ?? 'Bronze'
+      const star = getInstanceTierStar(one.instanceId)
+      shopManager.gold += shopManager.getTierStarPrice(def, tier, star) + 1
+      removePlacedItemById(one.instanceId, 'backpack')
+      sold++
+    }
+    if (sold > 0) showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}`, 0xa8f0b6)
+    return sold > 0
+  }
+  if (event.id === 'event20') {
+    const gain = day + 3
+    shopManager.gold += gain
+    showHintToast('no_gold_buy', `${toastPrefix}获得${gain}金币`, 0xa8f0b6)
+    return true
+  }
+  if (event.id === 'event21') {
+    if (!backpackSystem) return false
+    const all = [...backpackSystem.getAllItems()]
+    if (all.length <= 0) return false
+    for (const one of all) removePlacedItemById(one.instanceId, 'backpack')
+    const gain = (day + 3) * 3
+    shopManager.gold += gain
+    showHintToast('no_gold_buy', `${toastPrefix}清空背包并获得${gain}金币`, 0xa8f0b6)
+    return true
+  }
+  if (event.id === 'event22') {
+    const life = getLifeState()
+    const newMax = Math.max(life.max + 1, Math.round(life.max * 1.1))
+    setLifeState(life.current, newMax)
+    showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}`, 0xa8f0b6)
+    return true
+  }
+  if (event.id === 'event23') {
+    const life = getLifeState()
+    if (life.current >= life.max) return false
+    setLifeState(life.current + 1, life.max)
+    showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}`, 0xa8f0b6)
+    return true
+  }
+  if (event.id === 'event24') {
+    const all = getAllOwnedPlacedItems()
+    let changed = false
+    for (const one of all) {
+      changed = convertAndUpgradePlacedItem(one.item.instanceId, one.zone) || changed
+    }
+    if (changed) showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}`, 0x9be5ff)
+    return changed
+  }
+  return false
+}
+
 function getSkillDailyDraftPlanRows(): Array<Record<string, unknown>> {
   const skillCfg = getConfig().skillSystem as { dailyDraftPlan?: Array<Record<string, unknown>> } | undefined
   if (!skillCfg || !Array.isArray(skillCfg.dailyDraftPlan)) return []
   return skillCfg.dailyDraftPlan
+}
+
+function getDailyPlanRow(day: number): Record<string, unknown> | null {
+  return getSkillDailyDraftPlanRows().find((it) => Math.round(Number(it.day) || 0) === day) ?? null
+}
+
+function resetDayEventState(): void {
+  dayEventState = {
+    forceBuyArchetype: null,
+    forceBuyRemaining: 0,
+    forceSynthesisArchetype: null,
+    forceSynthesisRemaining: 0,
+    extraUpgradeRemaining: 0,
+  }
+}
+void resetDayEventState
+
+function getEventPoolRows(): EventChoice[] {
+  const rows = getConfig().eventSystem?.eventPool
+  if (!Array.isArray(rows)) return []
+  return rows
+}
+
+function getSelectedEventCount(eventId: string): number {
+  return Math.max(0, Math.round(selectedEventCountById.get(eventId) ?? 0))
+}
+
+function markEventSelected(eventId: string): void {
+  const next = getSelectedEventCount(eventId) + 1
+  selectedEventCountById.set(eventId, next)
+}
+
+function resetEventSelectionCounters(): void {
+  selectedEventCountById.clear()
+}
+
+function getOwnedArchetypeSet(): Set<EventArchetype> {
+  const out = new Set<EventArchetype>()
+  const collect = (system: GridSystem | null) => {
+    if (!system) return
+    for (const it of system.getAllItems()) {
+      const def = getItemDefById(it.defId)
+      const archetype = toSkillArchetype(getPrimaryArchetype(def?.tags ?? ''))
+      if (!archetype || archetype === 'utility') continue
+      out.add(archetype)
+    }
+  }
+  collect(battleSystem)
+  collect(backpackSystem)
+  return out
+}
+
+function getBattleArchetypeCounts(): Record<EventArchetype, number> {
+  const out: Record<EventArchetype, number> = { warrior: 0, archer: 0, assassin: 0 }
+  if (!battleSystem) return out
+  for (const it of battleSystem.getAllItems()) {
+    const def = getItemDefById(it.defId)
+    const archetype = toSkillArchetype(getPrimaryArchetype(def?.tags ?? ''))
+    if (archetype === 'warrior' || archetype === 'archer' || archetype === 'assassin') {
+      out[archetype] += 1
+    }
+  }
+  return out
+}
+
+function isBattleArchetypeTopTie(archetype: EventArchetype): boolean {
+  const counts = getBattleArchetypeCounts()
+  const self = counts[archetype]
+  const maxCount = Math.max(counts.warrior, counts.archer, counts.assassin)
+  return self > 0 && self === maxCount
+}
+
+function isEventChoiceAvailable(event: EventChoice, day: number): boolean {
+  if (day < event.dayStart || day > event.dayEnd) return false
+  const maxSelections = event.limits?.maxSelectionsPerRun
+  if (typeof maxSelections === 'number' && Number.isFinite(maxSelections) && maxSelections > 0) {
+    if (getSelectedEventCount(event.id) >= Math.round(maxSelections)) return false
+  }
+  const requiredArch = event.conditions?.requireArchetypeOwned
+  if (requiredArch) {
+    const owned = getOwnedArchetypeSet()
+    if (!owned.has(requiredArch)) return false
+  }
+  if (event.conditions?.requireHeartNotFull) {
+    const life = getLifeState()
+    if (life.current >= life.max) return false
+  }
+  if (event.conditions?.requireBackpackNotEmpty) {
+    const count = backpackSystem?.getAllItems().length ?? 0
+    if (count <= 0) return false
+  }
+  if (event.conditions?.requireBattleNotEmpty) {
+    const count = battleSystem?.getAllItems().length ?? 0
+    if (count <= 0) return false
+  }
+  const topTieArch = event.conditions?.requireBattleArchetypeTopTie
+  if (topTieArch && !isBattleArchetypeTopTie(topTieArch)) return false
+  return true
+}
+
+function pickRandomEventDraftChoices(day: number): EventChoice[] {
+  const pool = getEventPoolRows().filter((event) => isEventChoiceAvailable(event, day))
+  if (pool.length <= 0) return []
+  const left = pool.filter((it) => it.lane === 'left')
+  const right = pool.filter((it) => it.lane === 'right')
+  const picks: EventChoice[] = []
+  const pickOne = (list: EventChoice[]): EventChoice | null => list[Math.floor(Math.random() * list.length)] ?? null
+  const leftPicked = pickOne(left)
+  const rightPicked = pickOne(right)
+  if (leftPicked) picks.push(leftPicked)
+  if (rightPicked && rightPicked.id !== leftPicked?.id) picks.push(rightPicked)
+  if (picks.length >= 2) return picks
+  const leftovers = pool.filter((it) => !picks.some((p) => p.id === it.id))
+  while (picks.length < 2 && leftovers.length > 0) {
+    const idx = Math.floor(Math.random() * leftovers.length)
+    const picked = leftovers[idx]
+    if (picked) picks.push(picked)
+    leftovers.splice(idx, 1)
+  }
+  return picks
+}
+
+function pickRandomEventDraftChoicesNoOverlap(day: number, blockedIds: Set<string>): EventChoice[] {
+  for (let i = 0; i < 60; i++) {
+    const next = pickRandomEventDraftChoices(day).slice(0, 2)
+    if (next.length < 2) continue
+    const hasOverlap = next.some((it) => blockedIds.has(it.id))
+    if (!hasOverlap) return next
+  }
+  return []
+}
+
+function resolveEventDescText(event: EventChoice, detailed: boolean): string {
+  const raw = detailed ? event.detailDesc : event.shortDesc
+  if (event.id === 'event20') {
+    return raw.replace(/x/g, String(currentDay + 3))
+  }
+  if (event.id === 'event21') {
+    return raw.replace(/x/g, String((currentDay + 3) * 3))
+  }
+  return raw
 }
 
 function getSkillTierForDay(day: number): SkillTier | null {
@@ -3836,6 +5045,16 @@ function pickSkillChoices(baseTier: SkillTier, day: number): SkillPick[] {
   }
 
   return picks.slice(0, chooseCount)
+}
+
+function pickSkillChoicesNoOverlap(baseTier: SkillTier, day: number, blockedIds: Set<string>): SkillPick[] {
+  for (let i = 0; i < 80; i++) {
+    const next = pickSkillChoices(baseTier, day).slice(0, 2)
+    if (next.length < 2) continue
+    const hasOverlap = next.some((it) => blockedIds.has(it.id))
+    if (!hasOverlap) return next
+  }
+  return []
 }
 
 function layoutSkillIconBar(): void {
@@ -4039,6 +5258,1040 @@ function closeSkillDraftOverlay(): void {
   skillDraftOverlay = null
 }
 
+function ensureEventDraftSelection(stage: Container): void {
+  if (classSelectOverlay) return
+  if (starterGuideOverlay) return
+  if (skillDraftOverlay) return
+  if (eventDraftOverlay) return
+
+  const plan = getDailyPlanRow(currentDay)
+  const shouldEvent = (Number(plan?.shouldEvent) || 0) >= 0.5
+  if (!shouldEvent) {
+    pendingEventDraft = null
+    closeEventDraftOverlay()
+    return
+  }
+  if (draftedEventDays.includes(currentDay)) return
+
+  let draft = pendingEventDraft
+  if (!draft || draft.day !== currentDay) {
+    const choices = pickRandomEventDraftChoices(currentDay)
+    if (choices.length <= 0) {
+      draftedEventDays = Array.from(new Set([...draftedEventDays, currentDay])).sort((a, b) => a - b)
+      saveShopStateToStorage(captureShopState())
+      return
+    }
+    draft = { day: currentDay, choices: choices.slice(0, 2), rerolled: false }
+    pendingEventDraft = draft
+  }
+
+  setTransitionInputEnabled(false)
+  clearSelection()
+
+  const overlay = new Container()
+  overlay.zIndex = 3520
+  overlay.eventMode = 'static'
+  overlay.hitArea = new Rectangle(0, 0, CANVAS_W, CANVAS_H)
+
+  const bg = new Graphics()
+  bg.rect(0, 0, CANVAS_W, CANVAS_H)
+  bg.fill({ color: 0x070d1d, alpha: 0.92 })
+  overlay.addChild(bg)
+
+  const title = new Text({
+    text: `Day ${draft.day} 事件选择`,
+    style: { fontSize: 42, fill: 0xfff2cf, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  title.anchor.set(0.5)
+  title.x = CANVAS_W / 2
+  title.y = 228
+  overlay.addChild(title)
+
+  const shownChoices = draft.choices.slice(0, 2)
+  let selectedEventId: string | null = null
+  const selectedFrameById = new Map<string, Graphics>()
+  const descTextById = new Map<string, Text>()
+  const confirmAreaById = new Map<string, Container>()
+  const cardW = 238
+  const cardH = 470
+  const gapX = shownChoices.length === 2 ? 50 : 16
+  const totalW = cardW * shownChoices.length + gapX * Math.max(0, shownChoices.length - 1)
+  const cardX = (CANVAS_W - totalW) / 2
+  const cardY = 580
+
+  const commitEventPick = (event: EventChoice): void => {
+    markEventSelected(event.id)
+    draftedEventDays = Array.from(new Set([...draftedEventDays, draft!.day])).sort((a, b) => a - b)
+    pendingEventDraft = null
+    closeEventDraftOverlay()
+    setBaseShopPrimaryButtonsVisible(true)
+    applyEventEffect(event, false)
+    setTransitionInputEnabled(true)
+    applyPhaseInputLock()
+    refreshShopUI()
+    saveShopStateToStorage(captureShopState())
+  }
+
+  const applyEventSelection = (eventId: string): void => {
+    selectedEventId = eventId
+    for (const choice of shownChoices) {
+      const selected = choice.id === selectedEventId
+      const frame = selectedFrameById.get(choice.id)
+      if (frame) frame.visible = selected
+      const desc = descTextById.get(choice.id)
+      if (desc) desc.text = resolveEventDescText(choice, selected)
+      const confirm = confirmAreaById.get(choice.id)
+      if (confirm) confirm.visible = selected
+    }
+  }
+
+  shownChoices.forEach((choice, idx) => {
+    const con = new Container()
+    con.x = cardX + idx * (cardW + gapX)
+    con.y = cardY
+    con.eventMode = 'static'
+    con.cursor = 'pointer'
+    con.hitArea = new Rectangle(0, 0, cardW, cardH)
+
+    const border = new Graphics()
+    border.roundRect(0, 0, cardW, cardH, 24)
+    border.fill({ color: 0x18263e, alpha: 0.96 })
+    border.stroke({ color: 0x7cc6ff, width: 3, alpha: 1 })
+    con.addChild(border)
+
+    const selectedFrame = new Graphics()
+    selectedFrame.roundRect(3, 3, cardW - 6, cardH - 6, 22)
+    selectedFrame.stroke({ color: 0xffe28a, width: 5, alpha: 1 })
+    selectedFrame.visible = false
+    con.addChild(selectedFrame)
+    selectedFrameById.set(choice.id, selectedFrame)
+
+    const iconText = new Text({
+      text: choice.id.replace('event', 'E'),
+      style: { fontSize: 36, fill: 0xf5f8ff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    iconText.anchor.set(0.5)
+    iconText.x = cardW / 2
+    iconText.y = 108
+    con.addChild(iconText)
+    mountEventIconSprite(con, choice.id, choice.icon, cardW / 2, 108, 160, iconText)
+
+    const detail = new Text({
+      text: resolveEventDescText(choice, false),
+      style: {
+        fontSize: 24,
+        fill: 0xffefc8,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        wordWrap: true,
+        breakWords: true,
+        wordWrapWidth: cardW - 28,
+        lineHeight: 32,
+      },
+    })
+    detail.x = 14
+    detail.y = 216
+    con.addChild(detail)
+    descTextById.set(choice.id, detail)
+
+    const confirmArea = new Container()
+    confirmArea.visible = false
+    const pickBtnTxt = new Text({
+      text: '点击选择',
+      style: { fontSize: 28, fill: 0x8fe6b2, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    pickBtnTxt.anchor.set(0.5)
+    pickBtnTxt.x = cardW / 2
+    pickBtnTxt.y = cardH - 46
+    confirmArea.addChild(pickBtnTxt)
+    con.addChild(confirmArea)
+    confirmAreaById.set(choice.id, confirmArea)
+
+    con.on('pointerdown', (e: FederatedPointerEvent) => {
+      e.stopPropagation()
+      if (selectedEventId === choice.id) commitEventPick(choice)
+      else applyEventSelection(choice.id)
+    })
+
+    overlay.addChild(con)
+  })
+
+  const actionBtnW = 186
+  const actionBtnH = 96
+  const actionBtnGap = 18
+  const actionBtnFontSize = 22
+  const actionBtnStartX = Math.round((CANVAS_W - (actionBtnW * 3 + actionBtnGap * 2)) / 2)
+  const actionBtnY = CANVAS_H - 146
+
+  const rerollBtn = new Container()
+  rerollBtn.eventMode = 'static'
+  rerollBtn.cursor = 'pointer'
+  rerollBtn.x = actionBtnStartX + actionBtnW + actionBtnGap
+  rerollBtn.y = actionBtnY
+  const rerollBg = new Graphics()
+  const rerollText = new Text({
+    text: '',
+    style: { fontSize: actionBtnFontSize, fill: 0x10213a, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  rerollText.anchor.set(0.5)
+  rerollBtn.addChild(rerollBg, rerollText)
+  overlay.addChild(rerollBtn)
+
+  const holdBtn = new Container()
+  holdBtn.x = actionBtnStartX
+  holdBtn.y = actionBtnY
+  holdBtn.eventMode = 'static'
+  holdBtn.cursor = 'pointer'
+  const holdBg = new Graphics()
+  holdBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
+  holdBg.fill({ color: 0x29436e, alpha: 0.94 })
+  holdBg.stroke({ color: 0x84b7ff, width: 3, alpha: 0.95 })
+  const holdTxt = new Text({
+    text: '按住查看布局',
+    style: { fontSize: actionBtnFontSize, fill: 0xeaf4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  holdTxt.anchor.set(0.5)
+  holdTxt.x = actionBtnW / 2
+  holdTxt.y = actionBtnH / 2
+  holdBtn.addChild(holdBg, holdTxt)
+
+  const setHoldView = (holding: boolean): void => {
+    setBaseShopPrimaryButtonsVisible(false)
+    title.visible = !holding
+    bg.alpha = holding ? 0.16 : 0.92
+    for (const c of overlay.children) {
+      if (c === bg || c === holdBtn) continue
+      c.visible = !holding
+    }
+  }
+
+  holdBtn.on('pointerdown', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    setHoldView(true)
+  })
+  holdBtn.on('pointerup', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    setHoldView(false)
+  })
+  holdBtn.on('pointerupoutside', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    setHoldView(false)
+  })
+  overlay.addChild(holdBtn)
+
+  const forceLeaveBtn = new Container()
+  forceLeaveBtn.eventMode = 'static'
+  forceLeaveBtn.cursor = 'pointer'
+  forceLeaveBtn.x = actionBtnStartX + (actionBtnW + actionBtnGap) * 2
+  forceLeaveBtn.y = actionBtnY
+  const forceLeaveBg = new Graphics()
+  forceLeaveBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
+  forceLeaveBg.fill({ color: 0x4d6f99, alpha: 0.95 })
+  forceLeaveBg.stroke({ color: 0xa5cfff, width: 3, alpha: 0.95 })
+  const forceLeaveText = new Text({
+    text: '强行离开',
+    style: { fontSize: actionBtnFontSize, fill: 0xeaf4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  forceLeaveText.anchor.set(0.5)
+  forceLeaveText.x = actionBtnW / 2
+  forceLeaveText.y = actionBtnH / 2
+  forceLeaveBtn.addChild(forceLeaveBg, forceLeaveText)
+  overlay.addChild(forceLeaveBtn)
+
+  let forceLeaveConfirmLayer: Container | null = null
+  const closeForceLeaveConfirm = () => {
+    if (!forceLeaveConfirmLayer) return
+    if (forceLeaveConfirmLayer.parent) forceLeaveConfirmLayer.parent.removeChild(forceLeaveConfirmLayer)
+    forceLeaveConfirmLayer.destroy({ children: true })
+    forceLeaveConfirmLayer = null
+  }
+  const openForceLeaveConfirm = () => {
+    closeForceLeaveConfirm()
+    const layer = new Container()
+    layer.zIndex = 3530
+    layer.eventMode = 'static'
+    layer.hitArea = new Rectangle(0, 0, CANVAS_W, CANVAS_H)
+
+    const dim = new Graphics()
+    dim.rect(0, 0, CANVAS_W, CANVAS_H)
+    dim.fill({ color: 0x000000, alpha: 0.45 })
+    layer.addChild(dim)
+
+    const panel = new Container()
+    panel.x = CANVAS_W / 2
+    panel.y = CANVAS_H / 2
+    panel.eventMode = 'static'
+    panel.on('pointerdown', (e) => e.stopPropagation())
+    const pbg = new Graphics()
+    pbg.roundRect(-250, -130, 500, 260, 24)
+    pbg.fill({ color: 0x13213a, alpha: 0.98 })
+    pbg.stroke({ color: 0x9ec2ff, width: 3, alpha: 0.95 })
+    panel.addChild(pbg)
+
+    const msg = new Text({
+      text: '是否不进行任何选择就离开？',
+      style: { fontSize: 30, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    msg.anchor.set(0.5)
+    msg.y = -42
+    panel.addChild(msg)
+
+    const cancelBtn = new Container()
+    cancelBtn.x = -120
+    cancelBtn.y = 54
+    cancelBtn.eventMode = 'static'
+    cancelBtn.cursor = 'pointer'
+    const cancelBg = new Graphics()
+    cancelBg.roundRect(-100, -34, 200, 68, 16)
+    cancelBg.fill({ color: 0x4d6f99, alpha: 0.96 })
+    cancelBg.stroke({ color: 0xa5cfff, width: 3, alpha: 0.95 })
+    const cancelText = new Text({ text: '取消', style: { fontSize: 28, fill: 0xeaf4ff, fontFamily: 'Arial', fontWeight: 'bold' } })
+    cancelText.anchor.set(0.5)
+    cancelBtn.addChild(cancelBg, cancelText)
+    cancelBtn.on('pointerdown', (e) => {
+      e.stopPropagation()
+      closeForceLeaveConfirm()
+    })
+    panel.addChild(cancelBtn)
+
+    const okBtn = new Container()
+    okBtn.x = 120
+    okBtn.y = 54
+    okBtn.eventMode = 'static'
+    okBtn.cursor = 'pointer'
+    const okBg = new Graphics()
+    okBg.roundRect(-100, -34, 200, 68, 16)
+    okBg.fill({ color: 0xffd86b, alpha: 0.96 })
+    okBg.stroke({ color: 0xffefad, width: 3, alpha: 0.95 })
+    const okText = new Text({ text: '确认离开', style: { fontSize: 28, fill: 0x10213a, fontFamily: 'Arial', fontWeight: 'bold' } })
+    okText.anchor.set(0.5)
+    okBtn.addChild(okBg, okText)
+    okBtn.on('pointerdown', (e) => {
+      e.stopPropagation()
+      draftedEventDays = Array.from(new Set([...draftedEventDays, draft!.day])).sort((a, b) => a - b)
+      pendingEventDraft = null
+      closeForceLeaveConfirm()
+      closeEventDraftOverlay()
+      setBaseShopPrimaryButtonsVisible(true)
+      setTransitionInputEnabled(true)
+      applyPhaseInputLock()
+      refreshShopUI()
+      saveShopStateToStorage(captureShopState())
+    })
+    panel.addChild(okBtn)
+
+    layer.addChild(panel)
+    layer.on('pointerdown', () => closeForceLeaveConfirm())
+    overlay.addChild(layer)
+    forceLeaveConfirmLayer = layer
+  }
+  forceLeaveBtn.on('pointerdown', (e) => {
+    e.stopPropagation()
+    openForceLeaveConfirm()
+  })
+
+  const redrawRerollBtn = () => {
+    const cost = Math.max(1, currentDay)
+    const canReroll = !(draft?.rerolled === true)
+    const canAfford = (shopManager?.gold ?? 0) >= cost
+    const can = canReroll && canAfford
+    rerollBg.clear()
+    rerollBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
+    rerollBg.fill({ color: can ? 0xffd86b : 0x8a6e4b, alpha: 0.95 })
+    rerollBg.stroke({ color: can ? 0xffefad : 0xb89d78, width: 3, alpha: 0.95 })
+    rerollText.style.fill = can ? 0x10213a : 0xd7c4a8
+    rerollBtn.visible = canReroll
+    rerollText.text = `刷新  ${cost}G`
+    rerollText.x = actionBtnW / 2
+    rerollText.y = actionBtnH / 2
+  }
+  void redrawRerollBtn
+
+  rerollBtn.on('pointerdown', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    if (!shopManager) return
+    if (draft?.rerolled === true) return
+    const cost = Math.max(1, currentDay)
+    if (shopManager.gold < cost) {
+      showHintToast('no_gold_refresh', `金币不足，需${cost}G`, 0xff8f8f)
+      return
+    }
+    const blocked = new Set(shownChoices.map((it) => it.id))
+    const nextChoices = pickRandomEventDraftChoicesNoOverlap(currentDay, blocked)
+    if (nextChoices.length < 2) {
+      showHintToast('no_gold_refresh', '可刷新候选不足', 0xff8f8f)
+      return
+    }
+    shopManager.gold -= cost
+    pendingEventDraft = { day: currentDay, choices: nextChoices, rerolled: true }
+    closeEventDraftOverlay()
+    refreshShopUI()
+    saveShopStateToStorage(captureShopState())
+    ensureEventDraftSelection(stage)
+  })
+
+  redrawRerollBtn()
+
+  stage.addChild(overlay)
+  eventDraftOverlay = overlay
+}
+
+function findPoolCandidateBySpecialOffer(offer: SpecialShopOffer): PoolCandidate | null {
+  return findCandidateByOffer({ itemId: offer.itemId, tier: offer.tier, star: offer.star, price: offer.price })
+}
+
+function resolveTierSeriesTextByStar(item: ItemDef, tier: TierKey, star: 1 | 2, series: string): string {
+  const parts = series.split(/[\/|]/).map((v) => v.trim()).filter(Boolean)
+  if (parts.length <= 0) return series
+  const tiers = parseAvailableTiers(item.available_tiers)
+  const base = Math.max(0, tiers.indexOf(tier))
+  const idx = Math.max(0, Math.min(parts.length - 1, base + (star - 1)))
+  return parts[idx] ?? series
+}
+
+function resolveSkillLineByTierStar(item: ItemDef, tier: TierKey, star: 1 | 2, line: string): string {
+  return line.replace(/(\d+(?:\.\d+)?(?:[\/|]\d+(?:\.\d+)?)+)/g, (raw) => resolveTierSeriesTextByStar(item, tier, star, raw))
+}
+
+function getSpecialShopSimpleDesc(item: ItemDef, tier: TierKey, star: 1 | 2): string {
+  const fromSimple = String(item.simple_desc ?? '').trim()
+  if (fromSimple) return fromSimple
+  const fromTiered = String(item.simple_desc_tiered ?? '').trim()
+  if (fromTiered) {
+    const parts = fromTiered.split('|').map((v) => v.trim()).filter(Boolean)
+    if (parts.length > 0) {
+      const levelIdx = Math.max(0, Math.min(parts.length - 1, tierStarLevelIndex(tier, star)))
+      return parts[levelIdx] ?? parts[0]!
+    }
+  }
+  const first = (item.skills ?? []).map((s) => String(s.cn ?? '').trim()).find(Boolean)
+  if (!first) return '(暂无描述)'
+  return resolveSkillLineByTierStar(item, tier, star, first)
+}
+
+function getSpecialShopDetailDesc(item: ItemDef, tier: TierKey, star: 1 | 2): string {
+  const fromTiered = String(item.simple_desc_tiered ?? '').trim()
+  if (fromTiered) return resolveSkillLineByTierStar(item, tier, star, fromTiered)
+  const fromSimple = String(item.simple_desc ?? '').trim()
+  if (fromSimple) return fromSimple
+  return getSpecialShopSimpleDesc(item, tier, star)
+}
+
+function getSpecialShopSpeedTierText(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '无'
+  if (ms <= 600) return '极快'
+  if (ms <= 1000) return '很快'
+  if (ms <= 1500) return '快'
+  if (ms <= 2500) return '中等'
+  if (ms <= 4000) return '慢'
+  return '很慢'
+}
+
+function formatSpecialShopCooldownSec(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '0.0'
+  return (Math.round((ms / 1000) * 10) / 10).toFixed(1)
+}
+
+function tierCnFromTier(tier: TierKey): string {
+  if (tier === 'Bronze') return '青铜'
+  if (tier === 'Silver') return '白银'
+  if (tier === 'Gold') return '黄金'
+  return '钻石'
+}
+
+function tryBuySpecialShopOffer(offerIndex: number): boolean {
+  if (!shopManager || !battleSystem || !battleView || !backpackSystem || !backpackView) return false
+  const offer = specialShopOffers[offerIndex]
+  if (!offer || offer.purchased) return false
+  const candidate = findPoolCandidateBySpecialOffer(offer)
+  if (!candidate) {
+    showHintToast('no_gold_buy', '该商品当前不可购买', 0xff8f8f)
+    return false
+  }
+
+  if (!canBuyItemUnderFirstPurchaseRule(candidate.item)) {
+    showFirstPurchaseRuleHint()
+    return false
+  }
+
+  const priced = resolveBuyPriceWithSkills(candidate.price)
+  if (shopManager.gold < priced.finalPrice) {
+    showHintToast('no_gold_buy', `金币不足，需${priced.finalPrice}G`, 0xff8f8f)
+    return false
+  }
+
+  const size = normalizeSize(candidate.item.size)
+  const backpackSlot = findFirstBackpackPlace(size)
+  const battleSlot = backpackSlot ? null : findFirstBattlePlace(size)
+  if (!backpackSlot && !battleSlot) {
+    showHintToast('backpack_full_buy', '背包已满，无法购买', 0xff8f8f)
+    return false
+  }
+
+  shopManager.gold -= priced.finalPrice
+  if (consumeSkill15NextBuyDiscountAfterSuccess()) showHintToast('no_gold_buy', '砍价高手触发：本次-1G', 0x8ff0b0)
+  const skill30Ready = consumeSkill30BundleAfterSuccess(priced.freeBySkill30)
+  if (priced.freeBySkill30) showHintToast('no_gold_buy', '打包购买触发：本次0金币', 0x9be5ff)
+  else if (skill30Ready) showHintToast('no_gold_buy', '打包购买就绪：下次购买0金币', 0x9be5ff)
+
+  const id = nextId()
+  const visualTier = toVisualTier(candidate.tier, candidate.star)
+  if (backpackSlot) {
+    backpackSystem.place(backpackSlot.col, backpackSlot.row, size, candidate.item.id, id)
+    void backpackView.addItem(id, candidate.item.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
+      backpackView!.setItemTier(id, visualTier)
+      drag?.refreshZone(backpackView!)
+    })
+  } else if (battleSlot) {
+    battleSystem.place(battleSlot.col, battleSlot.row, size, candidate.item.id, id)
+    void battleView.addItem(id, candidate.item.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
+      battleView!.setItemTier(id, visualTier)
+      drag?.refreshZone(battleView!)
+    })
+    showHintToast('backpack_full_buy', '背包已满，已放入上阵区', 0xffd48f)
+  }
+
+  markShopPurchaseDone()
+  offer.purchased = true
+  instanceToDefId.set(id, candidate.item.id)
+  instanceToTier.set(id, candidate.tier)
+  instanceToTierStar.set(id, candidate.star)
+  instanceToPermanentDamageBonus.set(id, 0)
+  unlockItemToPool(candidate.item.id)
+  refreshShopUI()
+  return true
+}
+
+function openSpecialShopOverlay(stage: Container): void {
+  closeSpecialShopOverlay()
+  setTransitionInputEnabled(false)
+  setBaseShopPrimaryButtonsVisible(false)
+  clearSelection()
+  let selectedOfferIndex: number | null = null
+
+  const overlay = new Container()
+  overlay.zIndex = 3510
+  overlay.eventMode = 'static'
+  overlay.hitArea = new Rectangle(0, 0, CANVAS_W, CANVAS_H)
+
+  const bg = new Graphics()
+  bg.rect(0, 0, CANVAS_W, CANVAS_H)
+  bg.fill({ color: 0x070d1d, alpha: 0.92 })
+  overlay.addChild(bg)
+
+  const title = new Text({
+    text: `Day ${currentDay} 特殊商店`,
+    style: { fontSize: 42, fill: 0xfff2cf, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  title.anchor.set(0.5)
+  title.x = CANVAS_W / 2
+  title.y = 150
+  overlay.addChild(title)
+
+  const goldInfo = new Text({
+    text: '',
+    style: { fontSize: 30, fill: 0xffd86b, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  goldInfo.anchor.set(0.5)
+  goldInfo.x = CANVAS_W / 2
+  goldInfo.y = 390
+  overlay.addChild(goldInfo)
+
+  const cardsLayer = new Container()
+  cardsLayer.x = 0
+  cardsLayer.y = 0
+  overlay.addChild(cardsLayer)
+
+  const actionBtnW = 186
+  const actionBtnH = 96
+  const actionBtnGap = 18
+  const actionBtnFontSize = 22
+  const actionBtnStartX = Math.round((CANVAS_W - (actionBtnW * 3 + actionBtnGap * 2)) / 2)
+  const actionBtnY = CANVAS_H - 146
+
+  const rerollBtn = new Container()
+  rerollBtn.eventMode = 'static'
+  rerollBtn.cursor = 'pointer'
+  rerollBtn.x = actionBtnStartX + actionBtnW + actionBtnGap
+  rerollBtn.y = actionBtnY
+  const rerollBg = new Graphics()
+  const rerollText = new Text({
+    text: '',
+    style: { fontSize: actionBtnFontSize, fill: 0x10213a, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  rerollText.anchor.set(0.5)
+  rerollBtn.addChild(rerollBg, rerollText)
+  overlay.addChild(rerollBtn)
+
+  const closeBtn = new Container()
+  closeBtn.eventMode = 'static'
+  closeBtn.cursor = 'pointer'
+  closeBtn.x = actionBtnStartX + (actionBtnW + actionBtnGap) * 2
+  closeBtn.y = actionBtnY
+  const closeBg = new Graphics()
+  closeBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
+  closeBg.fill({ color: 0x4d6f99, alpha: 0.95 })
+  closeBg.stroke({ color: 0xa5cfff, width: 3, alpha: 0.95 })
+  const closeText = new Text({
+    text: '离开商店',
+    style: { fontSize: actionBtnFontSize, fill: 0xeaf4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  closeText.anchor.set(0.5)
+  closeText.x = actionBtnW / 2
+  closeText.y = actionBtnH / 2
+  closeBtn.addChild(closeBg, closeText)
+  overlay.addChild(closeBtn)
+
+  const holdBtn = new Container()
+  holdBtn.eventMode = 'static'
+  holdBtn.cursor = 'pointer'
+  holdBtn.x = actionBtnStartX
+  holdBtn.y = actionBtnY
+  const holdBg = new Graphics()
+  holdBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
+  holdBg.fill({ color: 0x29436e, alpha: 0.94 })
+  holdBg.stroke({ color: 0x84b7ff, width: 3, alpha: 0.95 })
+  const holdTxt = new Text({
+    text: '查看背包',
+    style: { fontSize: actionBtnFontSize, fill: 0xeaf4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  holdTxt.anchor.set(0.5)
+  holdTxt.x = actionBtnW / 2
+  holdTxt.y = actionBtnH / 2
+  holdBtn.addChild(holdBg, holdTxt)
+
+  const setSpecialShopOverlayVisible = (visible: boolean): void => {
+    title.visible = visible
+    goldInfo.visible = visible
+    cardsLayer.visible = visible
+    rerollBtn.visible = visible && specialShopRefreshCount < 1
+    closeBtn.visible = visible
+    bg.alpha = visible ? 0.92 : 0
+  }
+
+  const setBackpackViewMode = (active: boolean): void => {
+    const bindTapOnly = () => {
+      backpackView?.makeItemsInteractive((id, e) => {
+        e.stopPropagation()
+        handleSpecialShopBackpackItemTap(id, 'backpack')
+      })
+      battleView?.makeItemsInteractive((id, e) => {
+        e.stopPropagation()
+        handleSpecialShopBackpackItemTap(id, 'battle')
+      })
+    }
+    const restoreDragInteractive = () => {
+      if (!drag) return
+      if (backpackView) drag.refreshZone(backpackView)
+      if (battleView) drag.refreshZone(battleView)
+    }
+
+    setSpecialShopBackpackViewActive(active)
+    overlay.eventMode = 'static'
+    overlay.hitArea = active
+      ? new Rectangle(0, actionBtnY, CANVAS_W, Math.max(1, CANVAS_H - actionBtnY))
+      : new Rectangle(0, 0, CANVAS_W, CANVAS_H)
+    bg.eventMode = 'none'
+    holdTxt.text = active ? '回到特殊商店' : '查看背包'
+    holdBg.clear()
+    holdBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
+    if (active) {
+      holdBg.fill({ color: 0x3b5f96, alpha: 0.94 })
+      holdBg.stroke({ color: 0xb4d2ff, width: 3, alpha: 0.95 })
+      setSpecialShopOverlayVisible(false)
+      setBaseShopPrimaryButtonsVisible(false)
+      if (refreshBtnHandle) refreshBtnHandle.container.visible = true
+      drag?.setEnabled(false)
+      bindTapOnly()
+      showHintToast('backpack_full_buy', '已切换到背包查看模式', 0x9be5ff)
+    } else {
+      holdBg.fill({ color: 0x29436e, alpha: 0.94 })
+      holdBg.stroke({ color: 0x84b7ff, width: 3, alpha: 0.95 })
+      setSpecialShopOverlayVisible(true)
+      setBaseShopPrimaryButtonsVisible(false)
+      drag?.setEnabled(false)
+      restoreDragInteractive()
+    }
+    specialShopOverlayActionRefresh?.()
+    refreshShopUI()
+    saveShopStateToStorage(captureShopState())
+  }
+
+  holdBtn.on('pointerdown', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    setBackpackViewMode(!specialShopBackpackViewActive)
+  })
+  overlay.addChild(holdBtn)
+
+  const redrawRerollBtn = () => {
+    if (specialShopBackpackViewActive) {
+      rerollBtn.visible = true
+      closeBtn.visible = false
+      rerollBg.clear()
+      rerollBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
+      rerollBg.fill({ color: 0x9a3a3a, alpha: 0.95 })
+      rerollBg.stroke({ color: 0xffb1b1, width: 3, alpha: 0.95 })
+      rerollText.style.fill = 0xffe8e8
+      rerollText.text = specialShopCheckedInstanceIds.size > 0
+        ? `出售\n💰 ${getSpecialBulkSellTotalPrice()}`
+        : '点击物品出售'
+      rerollText.x = actionBtnW / 2
+      rerollText.y = actionBtnH / 2
+      return
+    }
+    const canReroll = specialShopRefreshCount < 1
+    const cost = getSpecialShopRefreshCost()
+    const canAfford = (shopManager?.gold ?? 0) >= cost
+    const can = canReroll && canAfford
+    rerollBtn.visible = canReroll
+    rerollBg.clear()
+    rerollBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
+    rerollBg.fill({ color: can ? 0xffd86b : 0x8a6e4b, alpha: 0.95 })
+    rerollBg.stroke({ color: can ? 0xffefad : 0xb89d78, width: 3, alpha: 0.95 })
+    rerollText.style.fill = can ? 0x10213a : 0xd7c4a8
+    rerollText.text = `刷新  ${cost}G`
+    rerollText.x = actionBtnW / 2
+    rerollText.y = actionBtnH / 2
+  }
+  specialShopOverlayActionRefresh = redrawRerollBtn
+
+  const redrawGoldInfo = () => {
+    goldInfo.text = `当前持有金币：${Math.max(0, Math.round(shopManager?.gold ?? 0))}`
+  }
+
+  const redrawCards = () => {
+    cardsLayer.removeChildren().forEach((c) => c.destroy({ children: true }))
+    const cardW = 188
+    const cardH = 580
+    const gapX = 14
+    const totalW = cardW * 3 + gapX * 2
+    const startX = (CANVAS_W - totalW) / 2
+    const y = 420
+
+    for (let i = 0; i < 3; i++) {
+      const offer = specialShopOffers[i]
+      if (!offer) continue
+      const candidate = findPoolCandidateBySpecialOffer(offer)
+      if (!candidate) continue
+
+      const card = new Container()
+      card.x = startX + i * (cardW + gapX)
+      card.y = y
+      card.eventMode = 'static'
+      card.cursor = offer.purchased ? 'default' : 'pointer'
+      card.hitArea = new Rectangle(0, 0, cardW, cardH)
+
+      const border = new Graphics()
+      border.roundRect(0, 0, cardW, cardH, 24)
+      border.fill({ color: 0x18263e, alpha: 0.96 })
+      const selected = selectedOfferIndex === i
+      border.stroke({ color: offer.purchased ? 0x6d7791 : (selected ? 0xffe28a : 0x7cc6ff), width: selected ? 4 : 3, alpha: 1 })
+      card.addChild(border)
+
+      const icon = new Sprite(Texture.WHITE)
+      icon.width = 132
+      icon.height = 132
+      icon.x = (cardW - icon.width) / 2
+      icon.y = 20
+      icon.alpha = 0
+      card.addChild(icon)
+      void Assets.load<Texture>(getItemIconUrl(candidate.item.id)).then((tex) => {
+        icon.texture = tex
+        icon.alpha = offer.purchased ? 0.35 : 1
+      }).catch(() => {
+        // ignore load error in runtime
+      })
+
+      const name = new Text({
+        text: candidate.item.name_cn,
+        style: { fontSize: 26, fill: 0xf5f8ff, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      name.anchor.set(0.5, 0)
+      name.x = cardW / 2
+      name.y = 168
+      card.addChild(name)
+
+      const baseTier = parseTierName(candidate.item.starting_tier) ?? 'Bronze'
+      const level = tierStarLevelIndex(candidate.tier, candidate.star) + 1
+
+      const tierPill = new Graphics()
+      const tierFill = baseTier === 'Bronze'
+        ? 0x7f6839
+        : baseTier === 'Silver'
+          ? 0x5c6678
+          : baseTier === 'Gold'
+            ? 0x8f6a2d
+            : 0x2f5f86
+      tierPill.roundRect(0, 0, 116, 38, 12)
+      tierPill.fill({ color: tierFill, alpha: 0.96 })
+      tierPill.stroke({ color: getTierColor(baseTier), width: 2, alpha: 0.95 })
+      tierPill.x = (cardW - 116) / 2
+      tierPill.y = 208
+      card.addChild(tierPill)
+
+      const tier = new Text({
+        text: `${tierCnFromTier(baseTier)}Lv${level}`,
+        style: { fontSize: 24, fill: 0xfff4d0, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      tier.anchor.set(0.5)
+      tier.x = cardW / 2
+      tier.y = tierPill.y + 19
+      card.addChild(tier)
+
+      const tierStats = resolveItemTierBaseStats(candidate.item, `${candidate.tier}#${candidate.star}`)
+      const damageValue = Math.max(0, Math.round(tierStats.damage))
+      const shieldValue = Math.max(0, Math.round(tierStats.shield))
+      const cooldownMs = Math.max(0, Math.round(tierStats.cooldownMs))
+      const mainStatText = damageValue > 0
+        ? `✦伤害${damageValue}`
+        : shieldValue > 0
+          ? `🛡护盾${shieldValue}`
+          : '◈被动'
+      const mainStatColor = damageValue > 0 ? 0xff7a82 : shieldValue > 0 ? 0xffd983 : 0x86b8ff
+      const speedText = cooldownMs > 0
+        ? (selected ? `⏱间隔${formatSpecialShopCooldownSec(cooldownMs)}秒` : `⏱速度${getSpecialShopSpeedTierText(cooldownMs)}`)
+        : '⏱被动'
+
+      const ammoLine = (candidate.item.skills ?? [])
+        .map((s) => String(s.cn ?? '').trim())
+        .find((s) => /弹药\s*[:：]\s*\d+/.test(s))
+      const ammo = ammoLine ? ammoValueFromLineByStar(candidate.item, candidate.tier, candidate.star, ammoLine) : 0
+
+      const statEntries: Array<{ text: string; color: number }> = [
+        { text: mainStatText, color: mainStatColor },
+        { text: speedText, color: 0x70b2ff },
+      ]
+      if (ammo > 0) {
+        statEntries.push({ text: `◉弹药${ammo}`, color: 0xffd36b })
+      }
+
+      const statStartY = 258
+      const statGapY = 34
+      for (let si = 0; si < statEntries.length; si++) {
+        const entry = statEntries[si]!
+        const line = new Text({
+          text: entry.text,
+          style: { fontSize: 24, fill: entry.color, fontFamily: 'Arial', fontWeight: 'bold' },
+        })
+        line.anchor.set(0.5, 0)
+        line.x = cardW / 2
+        line.y = statStartY + si * statGapY
+        card.addChild(line)
+      }
+
+      const divider = new Graphics()
+      const dividerY = statStartY + statEntries.length * statGapY + 2
+      divider.moveTo(12, dividerY)
+      divider.lineTo(cardW - 12, dividerY)
+      divider.stroke({ color: 0x4a5f88, width: 1.5, alpha: 0.95 })
+      card.addChild(divider)
+
+      const desc = new Text({
+        text: selected ? getSpecialShopDetailDesc(candidate.item, candidate.tier, candidate.star) : getSpecialShopSimpleDesc(candidate.item, candidate.tier, candidate.star),
+        style: {
+          fontSize: 20,
+          fill: selected ? 0xf2f7ff : 0xcad7f5,
+          fontFamily: 'Arial',
+          wordWrap: true,
+          breakWords: true,
+          wordWrapWidth: cardW - 24,
+          lineHeight: 28,
+        },
+      })
+      desc.x = 12
+      desc.y = dividerY + 14
+      card.addChild(desc)
+
+      const basePriceY = cardH - 96
+      if (selected && !offer.purchased) {
+        const buyHint = new Text({
+          text: '点击购买',
+          style: { fontSize: 22, fill: 0x9be5ff, fontFamily: 'Arial', fontWeight: 'bold' },
+        })
+        buyHint.anchor.set(0.5)
+        buyHint.x = cardW / 2
+        buyHint.y = cardH - 30
+        card.addChild(buyHint)
+      }
+
+      const price = resolveBuyPriceWithSkills(candidate.price).finalPrice
+      if (offer.purchased) {
+        const priceText = new Text({
+          text: '已购买',
+          style: {
+            fontSize: 32,
+            fill: 0x9ba8bf,
+            fontFamily: 'Arial',
+            fontWeight: 'bold',
+          },
+        })
+      priceText.anchor.set(0.5, 0)
+      priceText.x = cardW / 2
+      priceText.y = basePriceY
+      card.addChild(priceText)
+      } else if (offer.price < offer.basePrice) {
+        const oldPrice = new Text({
+          text: `💰 ${offer.basePrice}`,
+          style: {
+            fontSize: 22,
+            fill: 0x90a0bd,
+            fontFamily: 'Arial',
+            fontWeight: 'bold',
+          },
+        })
+        oldPrice.anchor.set(0.5, 0)
+        oldPrice.x = cardW / 2
+        oldPrice.y = basePriceY - 30
+        card.addChild(oldPrice)
+
+        const strike = new Graphics()
+        strike.moveTo(oldPrice.x - oldPrice.width / 2 + 2, oldPrice.y + oldPrice.height / 2)
+        strike.lineTo(oldPrice.x + oldPrice.width / 2 - 2, oldPrice.y + oldPrice.height / 2)
+        strike.stroke({ color: 0x90a0bd, width: 3, alpha: 0.95 })
+        card.addChild(strike)
+
+        const newPrice = new Text({
+          text: `💰 ${price}`,
+          style: {
+            fontSize: 32,
+            fill: (shopManager?.gold ?? 0) >= price ? 0xffd86b : 0xff7a7a,
+            fontFamily: 'Arial',
+            fontWeight: 'bold',
+          },
+        })
+        newPrice.anchor.set(0.5, 0)
+        newPrice.x = cardW / 2
+        newPrice.y = basePriceY
+        card.addChild(newPrice)
+      } else {
+        const priceText = new Text({
+          text: `💰 ${price}`,
+          style: {
+            fontSize: 32,
+            fill: (shopManager?.gold ?? 0) >= price ? 0xffd86b : 0xff7a7a,
+            fontFamily: 'Arial',
+            fontWeight: 'bold',
+          },
+        })
+        priceText.anchor.set(0.5, 0)
+        priceText.x = cardW / 2
+        priceText.y = basePriceY
+        card.addChild(priceText)
+      }
+
+      card.on('pointerdown', (e) => {
+        e.stopPropagation()
+        if (offer.purchased) return
+        if (selectedOfferIndex !== i) {
+          selectedOfferIndex = i
+          redrawCards()
+          return
+        }
+        if (!tryBuySpecialShopOffer(i)) {
+          redrawCards()
+          redrawGoldInfo()
+          redrawRerollBtn()
+          return
+        }
+        selectedOfferIndex = null
+        redrawCards()
+        redrawGoldInfo()
+        redrawRerollBtn()
+        saveShopStateToStorage(captureShopState())
+      })
+
+      cardsLayer.addChild(card)
+    }
+  }
+
+  rerollBtn.on('pointerdown', (e) => {
+    e.stopPropagation()
+    if (!shopManager) return
+    if (specialShopBackpackViewActive) {
+      executeSpecialShopBulkSell()
+      return
+    }
+    if (specialShopRefreshCount >= 1) return
+    const cost = getSpecialShopRefreshCost()
+    if (shopManager.gold < cost) {
+      showHintToast('no_gold_refresh', `金币不足，需${cost}G`, 0xff8f8f)
+      return
+    }
+    const next = rollSpecialShopOffers(specialShopOffers)
+    if (next.length < 3) {
+      showHintToast('no_gold_refresh', '无可用刷新池', 0xff8f8f)
+      return
+    }
+    shopManager.gold -= cost
+    specialShopRefreshCount += 1
+    specialShopOffers = next
+    selectedOfferIndex = null
+    redrawCards()
+    redrawGoldInfo()
+    redrawRerollBtn()
+    refreshShopUI()
+    saveShopStateToStorage(captureShopState())
+  })
+
+  closeBtn.on('pointerdown', (e) => {
+    e.stopPropagation()
+    draftedSpecialShopDays = Array.from(new Set([...draftedSpecialShopDays, currentDay])).sort((a, b) => a - b)
+    closeSpecialShopOverlay()
+    setBaseShopPrimaryButtonsVisible(true)
+    setTransitionInputEnabled(true)
+    applyPhaseInputLock()
+    refreshShopUI()
+    saveShopStateToStorage(captureShopState())
+  })
+
+  redrawCards()
+  redrawGoldInfo()
+  redrawRerollBtn()
+  stage.addChild(overlay)
+  specialShopOverlay = overlay
+}
+
+function ensureSpecialShopSelection(stage: Container): void {
+  if (classSelectOverlay) return
+  if (starterGuideOverlay) return
+  if (skillDraftOverlay || eventDraftOverlay || specialShopOverlay) return
+  if (!isSpecialShopPlannedForDay(currentDay)) {
+    specialShopRefreshCount = 0
+    specialShopOffers = []
+    return
+  }
+  if (draftedSpecialShopDays.includes(currentDay)) return
+  if (specialShopOffers.length !== 3) {
+    specialShopRefreshCount = 0
+    specialShopOffers = rollSpecialShopOffers()
+  }
+  if (specialShopOffers.length !== 3) {
+    draftedSpecialShopDays = Array.from(new Set([...draftedSpecialShopDays, currentDay])).sort((a, b) => a - b)
+    return
+  }
+  normalizeSpecialShopOfferPrices()
+  openSpecialShopOverlay(stage)
+}
+
+function ensureDailyChoiceSelection(stage: Container): void {
+  if (classSelectOverlay) return
+  if (starterGuideOverlay) return
+  if (skillDraftOverlay || eventDraftOverlay || specialShopOverlay) return
+  const plan = getDailyPlanRow(currentDay)
+  const shouldDraft = (Number(plan?.shouldDraft) || 0) >= 0.5
+  if (shouldDraft) {
+    ensureSkillDraftSelection(stage)
+    return
+  }
+  const shouldEvent = (Number(plan?.shouldEvent) || 0) >= 0.5
+  if (shouldEvent) {
+    ensureEventDraftSelection(stage)
+    return
+  }
+  ensureSpecialShopSelection(stage)
+}
+void ensureDailyChoiceSelection
+
 function ensureSkillDraftSelection(stage: Container): void {
   if (!SKILL_DRAFT_ENABLED) {
     pendingSkillDraft = null
@@ -4058,13 +6311,15 @@ function ensureSkillDraftSelection(stage: Container): void {
     if (draftedSkillDays.includes(currentDay)) return
     const choices = pickSkillChoices(tier, currentDay)
     if (choices.length <= 0) return
-    draft = { day: currentDay, tier, choices }
+    draft = { day: currentDay, tier, choices, rerolled: false }
     pendingSkillDraft = draft
   }
 
   if (draft.choices.length <= 0) return
 
   setTransitionInputEnabled(false)
+  setBaseShopPrimaryButtonsVisible(false)
+  clearSelection()
 
   const overlay = new Container()
   overlay.zIndex = 3500
@@ -4103,6 +6358,7 @@ function ensureSkillDraftSelection(stage: Container): void {
     pendingSkillDraft = null
     closeSkillDraftOverlay()
     refreshSkillIconBar()
+    setBaseShopPrimaryButtonsVisible(true)
     setTransitionInputEnabled(true)
     applyPhaseInputLock()
     refreshShopUI()
@@ -4240,6 +6496,226 @@ function ensureSkillDraftSelection(stage: Container): void {
     overlay.addChild(con)
   })
 
+  const actionBtnW = 186
+  const actionBtnH = 96
+  const actionBtnGap = 18
+  const actionBtnFontSize = 22
+  const actionBtnStartX = Math.round((CANVAS_W - (actionBtnW * 3 + actionBtnGap * 2)) / 2)
+  const actionBtnY = CANVAS_H - 146
+
+  const rerollBtn = new Container()
+  rerollBtn.eventMode = 'static'
+  rerollBtn.cursor = 'pointer'
+  rerollBtn.x = actionBtnStartX + actionBtnW + actionBtnGap
+  rerollBtn.y = actionBtnY
+  const rerollBg = new Graphics()
+  const rerollText = new Text({
+    text: '',
+    style: { fontSize: actionBtnFontSize, fill: 0x10213a, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  rerollText.anchor.set(0.5)
+  rerollBtn.addChild(rerollBg, rerollText)
+  overlay.addChild(rerollBtn)
+
+  const holdBtn = new Container()
+  holdBtn.eventMode = 'static'
+  holdBtn.cursor = 'pointer'
+  holdBtn.x = actionBtnStartX
+  holdBtn.y = actionBtnY
+  const holdBg = new Graphics()
+  holdBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
+  holdBg.fill({ color: 0x29436e, alpha: 0.94 })
+  holdBg.stroke({ color: 0x84b7ff, width: 3, alpha: 0.95 })
+  const holdTxt = new Text({
+    text: '按住查看布局',
+    style: { fontSize: actionBtnFontSize, fill: 0xeaf4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  holdTxt.anchor.set(0.5)
+  holdTxt.x = actionBtnW / 2
+  holdTxt.y = actionBtnH / 2
+  holdBtn.addChild(holdBg, holdTxt)
+
+  const setHoldView = (holding: boolean): void => {
+    setBaseShopPrimaryButtonsVisible(false)
+    title.visible = !holding
+    bg.alpha = holding ? 0.16 : 0.92
+    for (const child of overlay.children) {
+      if (child === bg || child === holdBtn) continue
+      child.visible = !holding
+    }
+  }
+
+  holdBtn.on('pointerdown', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    setHoldView(true)
+  })
+  holdBtn.on('pointerup', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    setHoldView(false)
+  })
+  holdBtn.on('pointerupoutside', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    setHoldView(false)
+  })
+  overlay.addChild(holdBtn)
+
+  const forceLeaveBtn = new Container()
+  forceLeaveBtn.eventMode = 'static'
+  forceLeaveBtn.cursor = 'pointer'
+  forceLeaveBtn.x = actionBtnStartX + (actionBtnW + actionBtnGap) * 2
+  forceLeaveBtn.y = actionBtnY
+  const forceLeaveBg = new Graphics()
+  forceLeaveBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
+  forceLeaveBg.fill({ color: 0x4d6f99, alpha: 0.95 })
+  forceLeaveBg.stroke({ color: 0xa5cfff, width: 3, alpha: 0.95 })
+  const forceLeaveText = new Text({
+    text: '强行离开',
+    style: { fontSize: actionBtnFontSize, fill: 0xeaf4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  forceLeaveText.anchor.set(0.5)
+  forceLeaveText.x = actionBtnW / 2
+  forceLeaveText.y = actionBtnH / 2
+  forceLeaveBtn.addChild(forceLeaveBg, forceLeaveText)
+  overlay.addChild(forceLeaveBtn)
+
+  let forceLeaveConfirmLayer: Container | null = null
+  const closeForceLeaveConfirm = () => {
+    if (!forceLeaveConfirmLayer) return
+    if (forceLeaveConfirmLayer.parent) forceLeaveConfirmLayer.parent.removeChild(forceLeaveConfirmLayer)
+    forceLeaveConfirmLayer.destroy({ children: true })
+    forceLeaveConfirmLayer = null
+  }
+  const openForceLeaveConfirm = () => {
+    closeForceLeaveConfirm()
+    const layer = new Container()
+    layer.zIndex = 3510
+    layer.eventMode = 'static'
+    layer.hitArea = new Rectangle(0, 0, CANVAS_W, CANVAS_H)
+
+    const dim = new Graphics()
+    dim.rect(0, 0, CANVAS_W, CANVAS_H)
+    dim.fill({ color: 0x000000, alpha: 0.45 })
+    layer.addChild(dim)
+
+    const panel = new Container()
+    panel.x = CANVAS_W / 2
+    panel.y = CANVAS_H / 2
+    panel.eventMode = 'static'
+    panel.on('pointerdown', (e) => e.stopPropagation())
+    const pbg = new Graphics()
+    pbg.roundRect(-250, -130, 500, 260, 24)
+    pbg.fill({ color: 0x13213a, alpha: 0.98 })
+    pbg.stroke({ color: 0x9ec2ff, width: 3, alpha: 0.95 })
+    panel.addChild(pbg)
+
+    const msg = new Text({
+      text: '是否不进行任何选择就离开？',
+      style: { fontSize: 30, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    msg.anchor.set(0.5)
+    msg.y = -42
+    panel.addChild(msg)
+
+    const cancelBtn = new Container()
+    cancelBtn.x = -120
+    cancelBtn.y = 54
+    cancelBtn.eventMode = 'static'
+    cancelBtn.cursor = 'pointer'
+    const cancelBg = new Graphics()
+    cancelBg.roundRect(-100, -34, 200, 68, 16)
+    cancelBg.fill({ color: 0x4d6f99, alpha: 0.96 })
+    cancelBg.stroke({ color: 0xa5cfff, width: 3, alpha: 0.95 })
+    const cancelText = new Text({ text: '取消', style: { fontSize: 28, fill: 0xeaf4ff, fontFamily: 'Arial', fontWeight: 'bold' } })
+    cancelText.anchor.set(0.5)
+    cancelBtn.addChild(cancelBg, cancelText)
+    cancelBtn.on('pointerdown', (e) => {
+      e.stopPropagation()
+      closeForceLeaveConfirm()
+    })
+    panel.addChild(cancelBtn)
+
+    const okBtn = new Container()
+    okBtn.x = 120
+    okBtn.y = 54
+    okBtn.eventMode = 'static'
+    okBtn.cursor = 'pointer'
+    const okBg = new Graphics()
+    okBg.roundRect(-100, -34, 200, 68, 16)
+    okBg.fill({ color: 0xffd86b, alpha: 0.96 })
+    okBg.stroke({ color: 0xffefad, width: 3, alpha: 0.95 })
+    const okText = new Text({ text: '确认离开', style: { fontSize: 28, fill: 0x10213a, fontFamily: 'Arial', fontWeight: 'bold' } })
+    okText.anchor.set(0.5)
+    okBtn.addChild(okBg, okText)
+    okBtn.on('pointerdown', (e) => {
+      e.stopPropagation()
+      draftedSkillDays = Array.from(new Set([...draftedSkillDays, draft!.day])).sort((a, b) => a - b)
+      pendingSkillDraft = null
+      closeForceLeaveConfirm()
+      closeSkillDraftOverlay()
+      setBaseShopPrimaryButtonsVisible(true)
+      setTransitionInputEnabled(true)
+      applyPhaseInputLock()
+      refreshShopUI()
+      saveShopStateToStorage(captureShopState())
+    })
+    panel.addChild(okBtn)
+
+    layer.addChild(panel)
+    layer.on('pointerdown', () => closeForceLeaveConfirm())
+    overlay.addChild(layer)
+    forceLeaveConfirmLayer = layer
+  }
+  forceLeaveBtn.on('pointerdown', (e) => {
+    e.stopPropagation()
+    openForceLeaveConfirm()
+  })
+
+  const redrawRerollBtn = () => {
+    const cost = Math.max(1, currentDay)
+    const canReroll = !(draft?.rerolled === true)
+    const canAfford = (shopManager?.gold ?? 0) >= cost
+    const can = canReroll && canAfford
+    rerollBg.clear()
+    rerollBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
+    rerollBg.fill({ color: can ? 0xffd86b : 0x8a6e4b, alpha: 0.95 })
+    rerollBg.stroke({ color: can ? 0xffefad : 0xb89d78, width: 3, alpha: 0.95 })
+    rerollText.style.fill = can ? 0x10213a : 0xd7c4a8
+    rerollBtn.visible = canReroll
+    rerollText.text = `刷新  ${cost}G`
+    rerollText.x = actionBtnW / 2
+    rerollText.y = actionBtnH / 2
+  }
+
+  rerollBtn.on('pointerdown', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    if (!shopManager) return
+    if (draft?.rerolled === true) return
+    const cost = Math.max(1, currentDay)
+    if (shopManager.gold < cost) {
+      showHintToast('no_gold_refresh', `金币不足，需${cost}G`, 0xff8f8f)
+      return
+    }
+    const blocked = new Set(shownChoices.map((it) => it.id))
+    const nextChoices = pickSkillChoicesNoOverlap(draft!.tier, currentDay, blocked)
+    if (nextChoices.length < 2) {
+      showHintToast('no_gold_refresh', '可刷新候选不足', 0xff8f8f)
+      return
+    }
+    shopManager.gold -= cost
+    pendingSkillDraft = {
+      day: currentDay,
+      tier: draft!.tier,
+      choices: nextChoices,
+      rerolled: true,
+    }
+    closeSkillDraftOverlay()
+    refreshShopUI()
+    saveShopStateToStorage(captureShopState())
+    ensureSkillDraftSelection(stage)
+  })
+
+  redrawRerollBtn()
+
   skillDraftOverlay = overlay
   stage.addChild(overlay)
 }
@@ -4301,9 +6777,18 @@ function refreshShopUI(): void {
     refreshCostText.style.fill = shopManager.gold >= getQuickBuyMinPrice() ? 0xffd700 : 0xff4444
   }
   if (refreshBtnHandle) {
+    refreshBtnHandle.setLabel('购买')
     refreshBtnHandle.setSubLabel(`💰 ${shopManager.gold}/${getQuickBuyPricePreviewLabel()}`)
     const sub = refreshBtnHandle.container.getChildByName('sell-price') as Text | null
     if (sub) sub.style.fill = shopManager.gold >= getQuickBuyMinPrice() ? 0xffd700 : 0xff6666
+  }
+  if (specialShopBackpackViewActive) {
+    setBaseShopPrimaryButtonsVisible(false)
+    drag?.setEnabled(false)
+    renderSpecialShopCheckMarks()
+  }
+  if ((skillDraftOverlay || eventDraftOverlay || specialShopOverlay) && !specialShopBackpackViewActive) {
+    setBaseShopPrimaryButtonsVisible(false)
   }
   updateMiniMap()
   refreshUpgradeHints()
@@ -4311,6 +6796,7 @@ function refreshShopUI(): void {
   layoutSkillIconBar()
   saveShopStateToStorage(captureShopState())
 }
+void executeSpecialShopBulkSell
 
 type PoolCandidate = {
   item: ItemDef
@@ -4346,8 +6832,8 @@ function getUnlockPoolBuyPriceByTier(tier: TierKey): number {
   }
   if (tier === 'Bronze') return 3
   if (tier === 'Silver') return 12
-  if (tier === 'Gold') return 48
-  return 192
+  if (tier === 'Gold') return 40
+  return 80
 }
 
 function collectPoolCandidatesByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): PoolCandidate[] {
@@ -4372,6 +6858,182 @@ function collectPoolCandidatesByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): PoolCan
     })
   }
   return out
+}
+
+function getSpecialShopRefreshCost(): number {
+  return Math.max(1, currentDay)
+}
+
+function getSpecialShopPriceByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): number {
+  const byLevel: [number, number, number, number, number, number, number] = [3, 6, 12, 24, 40, 60, 80]
+  return byLevel[Math.max(1, Math.min(7, level)) - 1] ?? 3
+}
+
+function applyRandomSpecialOfferDiscount(offers: SpecialShopOffer[]): SpecialShopOffer[] {
+  if (offers.length <= 0) return offers
+  const out = offers.map((it) => ({
+    ...it,
+    price: it.basePrice,
+  }))
+  const idx = Math.floor(Math.random() * out.length)
+  const picked = out[idx]
+  if (picked) picked.price = Math.max(1, Math.floor(picked.basePrice * 2 / 3))
+  return out
+}
+
+function normalizeSpecialShopOfferPrices(): void {
+  let next = specialShopOffers.map((one) => {
+    const level = Math.max(1, Math.min(7, tierStarLevelIndex(one.tier, one.star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+    const basePrice = getSpecialShopPriceByLevel(level)
+    return {
+      ...one,
+      basePrice,
+      price: one.price > 0 && one.price < basePrice ? Math.max(1, Math.floor(basePrice * 2 / 3)) : basePrice,
+    }
+  })
+  const discountCount = next.filter((it) => it.price < it.basePrice).length
+  if (next.length > 0 && discountCount !== 1) next = applyRandomSpecialOfferDiscount(next)
+  specialShopOffers = next
+}
+
+function isSpecialShopPlannedForDay(day: number): boolean {
+  const plan = getDailyPlanRow(day)
+  return (Number(plan?.shouldShop) || 0) >= 0.5
+}
+
+function getCurrentMaxOwnedLevel(): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+  let maxLevel = 1
+  const collect = (items: Array<{ instanceId: string }>) => {
+    for (const it of items) {
+      const tier = instanceToTier.get(it.instanceId) ?? 'Bronze'
+      const star = getInstanceTierStar(it.instanceId)
+      const lv = tierStarLevelIndex(tier, star) + 1
+      if (lv > maxLevel) maxLevel = lv
+    }
+  }
+  collect(battleSystem?.getAllItems() ?? [])
+  collect(backpackSystem?.getAllItems() ?? [])
+  return Math.max(1, Math.min(7, maxLevel)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+}
+
+function getDominantBattleArchetypeForSpecialShop(): SkillArchetype | null {
+  if (!battleSystem) return null
+  type Stat = { count: number; levelSum: number }
+  const stats = new Map<SkillArchetype, Stat>()
+  for (const one of battleSystem.getAllItems()) {
+    const def = getItemDefById(one.defId)
+    const arch = toSkillArchetype(getPrimaryArchetype(def?.tags ?? ''))
+    if (!arch || arch === 'utility') continue
+    const tier = instanceToTier.get(one.instanceId) ?? 'Bronze'
+    const star = getInstanceTierStar(one.instanceId)
+    const level = tierStarLevelIndex(tier, star) + 1
+    const prev = stats.get(arch) ?? { count: 0, levelSum: 0 }
+    prev.count += 1
+    prev.levelSum += level
+    stats.set(arch, prev)
+  }
+  if (stats.size <= 0) return null
+  let top = Array.from(stats.keys())
+  let maxCount = Math.max(...top.map((k) => stats.get(k)?.count ?? 0))
+  top = top.filter((k) => (stats.get(k)?.count ?? 0) === maxCount)
+  if (top.length === 1) return top[0] ?? null
+
+  let maxLevelSum = Math.max(...top.map((k) => stats.get(k)?.levelSum ?? 0))
+  top = top.filter((k) => (stats.get(k)?.levelSum ?? 0) === maxLevelSum)
+  if (top.length === 1) return top[0] ?? null
+
+  const skillCount = new Map<SkillArchetype, number>()
+  for (const skill of pickedSkills) {
+    if (!top.includes(skill.archetype)) continue
+    skillCount.set(skill.archetype, (skillCount.get(skill.archetype) ?? 0) + 1)
+  }
+  let maxSkill = Math.max(...top.map((k) => skillCount.get(k) ?? 0))
+  top = top.filter((k) => (skillCount.get(k) ?? 0) === maxSkill)
+  if (top.length === 1) return top[0] ?? null
+  return top[Math.floor(Math.random() * top.length)] ?? null
+}
+
+function pickSpecialShopCandidateWeighted(candidates: PoolCandidate[]): PoolCandidate | null {
+  if (candidates.length <= 0) return null
+  let total = 0
+  const ws = candidates.map((c) => {
+    const w = getMinTierDropWeight(c.item, c.tier, c.star)
+    total += w
+    return w
+  })
+  if (total <= 0) return candidates[Math.floor(Math.random() * candidates.length)] ?? null
+  let roll = Math.random() * total
+  for (let i = 0; i < candidates.length; i++) {
+    roll -= ws[i] ?? 0
+    if (roll <= 0) return candidates[i] ?? null
+  }
+  return candidates[candidates.length - 1] ?? null
+}
+
+function countSameOfferDefIds(a: SpecialShopOffer[], b: SpecialShopOffer[]): number {
+  const set = new Set(a.map((it) => it.itemId))
+  let same = 0
+  for (const one of b) {
+    if (set.has(one.itemId)) same += 1
+  }
+  return same
+}
+
+function rollSpecialShopOffers(prevOffers?: SpecialShopOffer[]): SpecialShopOffer[] {
+  const actualMaxLevel = getCurrentMaxOwnedLevel()
+  const maxLevel = Math.max(3, actualMaxLevel) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const minLevel = (actualMaxLevel < 3 ? 2 : Math.max(1, maxLevel - 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const levels: Array<1 | 2 | 3 | 4 | 5 | 6 | 7> = []
+  for (let lv = minLevel; lv <= maxLevel; lv++) levels.push(lv as 1 | 2 | 3 | 4 | 5 | 6 | 7)
+  let pool = levels.flatMap((lv) => collectPoolCandidatesByLevel(lv))
+  if (pool.length <= 0) return []
+
+  const dominant = getDominantBattleArchetypeForSpecialShop()
+  let best: SpecialShopOffer[] = []
+  let bestSame = Number.POSITIVE_INFINITY
+
+  for (let attempt = 0; attempt < 120; attempt++) {
+    const offers: SpecialShopOffer[] = []
+    const usedDef = new Set<string>()
+    const workingPool = [...pool]
+
+    const takeOne = (source: PoolCandidate[]): PoolCandidate | null => {
+      const picked = pickSpecialShopCandidateWeighted(source.filter((c) => !usedDef.has(c.item.id)))
+      if (!picked) return null
+      usedDef.add(picked.item.id)
+      const basePrice = getSpecialShopPriceByLevel(picked.level)
+      offers.push({
+        itemId: picked.item.id,
+        tier: picked.tier,
+        star: picked.star,
+        basePrice,
+        price: basePrice,
+        purchased: false,
+      })
+      return picked
+    }
+
+    if (dominant) {
+      const forcedPool = workingPool.filter((c) => toSkillArchetype(getPrimaryArchetype(c.item.tags)) === dominant)
+      if (forcedPool.length > 0) takeOne(forcedPool)
+    }
+
+    while (offers.length < 3) {
+      const picked = takeOne(workingPool)
+      if (!picked) break
+    }
+    if (offers.length < 3) continue
+
+    const pricedOffers = applyRandomSpecialOfferDiscount(offers)
+    const same = prevOffers && prevOffers.length > 0 ? countSameOfferDefIds(prevOffers, pricedOffers) : 0
+    if (same < bestSame) {
+      best = pricedOffers
+      bestSame = same
+    }
+    if (!prevOffers || prevOffers.length <= 0 || same <= 1) return pricedOffers
+  }
+
+  return best
 }
 
 function findCandidateByOffer(offer: { itemId: string; tier: TierKey; star: 1 | 2; price: number } | null): PoolCandidate | null {
@@ -4412,14 +7074,13 @@ function canOfferImmediateSynthesis(candidate: PoolCandidate): boolean {
 
 function applyQuickBuySynthesisRewrite(picked: PoolCandidate, levelCandidates: PoolCandidate[]): PoolCandidate {
   if (!battleSystem || !backpackSystem) return picked
-  const sameDefCount = new Map<string, number>()
+  const backpackSameDefCount = new Map<string, number>()
   const sameArchetypeDefs = new Map<string, Set<string>>()
   const collect = (items: ReturnType<GridSystem['getAllItems']>) => {
     for (const it of items) {
       const itTier = instanceToTier.get(it.instanceId) ?? 'Bronze'
       const itStar = getInstanceTierStar(it.instanceId)
       if (itTier !== picked.tier || itStar !== picked.star) continue
-      sameDefCount.set(it.defId, (sameDefCount.get(it.defId) ?? 0) + 1)
       const def = getItemDefById(it.defId)
       const arch = getPrimaryArchetype(def?.tags ?? '')
       if (!arch) continue
@@ -4430,12 +7091,15 @@ function applyQuickBuySynthesisRewrite(picked: PoolCandidate, levelCandidates: P
   }
   collect(battleSystem.getAllItems())
   collect(backpackSystem.getAllItems())
+  for (const it of backpackSystem.getAllItems()) {
+    backpackSameDefCount.set(it.defId, (backpackSameDefCount.get(it.defId) ?? 0) + 1)
+  }
 
   const pickedArch = getPrimaryArchetype(picked.item.tags)
   if (!pickedArch) return picked
 
-  const sameDefOwnedCount = sameDefCount.get(picked.item.id) ?? 0
-  if (sameDefOwnedCount >= 3) {
+  const backpackSameDefOwnedCount = backpackSameDefCount.get(picked.item.id) ?? 0
+  if (backpackSameDefOwnedCount >= 3) {
     const sameArchetypeOther = levelCandidates.filter((c) =>
       c.item.id !== picked.item.id
       && c.tier === picked.tier
@@ -4598,19 +7262,32 @@ function buyRandomBronzeToBoardOrBackpack(): void {
     }
   }
 
-  const item = picked.item
   const tier = picked.tier
   const star = picked.star
+  if (dayEventState.forceBuyArchetype && dayEventState.forceBuyRemaining > 0) {
+    const level = tierStarLevelIndex(tier, star) + 1
+    const levelKey = Math.max(1, Math.min(7, level)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+    const forcePool = collectPoolCandidatesByLevel(levelKey).filter((one) =>
+      toSkillArchetype(getPrimaryArchetype(one.item.tags)) === dayEventState.forceBuyArchetype,
+    )
+    const forced = forcePool[Math.floor(Math.random() * forcePool.length)]
+    if (forced) {
+      picked = forced
+    }
+  }
+  const itemForced = picked.item
+  const tierForced = picked.tier
+  const starForced = picked.star
   const buyPrice = picked.price
   const priced = resolveBuyPriceWithSkills(buyPrice)
 
-  if (!canBuyItemUnderFirstPurchaseRule(item)) {
+  if (!canBuyItemUnderFirstPurchaseRule(itemForced)) {
     showFirstPurchaseRuleHint()
     refreshShopUI()
     return
   }
 
-  const size = normalizeSize(item.size)
+  const size = normalizeSize(itemForced.size)
   const backpackSlot = findFirstBackpackPlace(size)
   const battleSlot = backpackSlot ? null : findFirstBattlePlace(size)
   if (!backpackSlot && !battleSlot) {
@@ -4630,30 +7307,34 @@ function buyRandomBronzeToBoardOrBackpack(): void {
   const skill30Ready = consumeSkill30BundleAfterSuccess(priced.freeBySkill30)
   if (priced.freeBySkill30) showHintToast('no_gold_buy', '打包购买触发：本次0金币', 0x9be5ff)
   else if (skill30Ready) showHintToast('no_gold_buy', '打包购买就绪：下次购买0金币', 0x9be5ff)
+  if (dayEventState.forceBuyRemaining > 0) {
+    dayEventState.forceBuyRemaining = Math.max(0, dayEventState.forceBuyRemaining - 1)
+    if (dayEventState.forceBuyRemaining <= 0) dayEventState.forceBuyArchetype = null
+  }
   markShopPurchaseDone()
   const id = nextId()
-  const visualTier = toVisualTier(tier, star)
+  const visualTier = toVisualTier(tierForced, starForced)
   if (backpackSlot) {
-    backpackSystem.place(backpackSlot.col, backpackSlot.row, size, item.id, id)
-    void backpackView.addItem(id, item.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
+    backpackSystem.place(backpackSlot.col, backpackSlot.row, size, itemForced.id, id)
+    void backpackView.addItem(id, itemForced.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
       backpackView!.setItemTier(id, visualTier)
       drag?.refreshZone(backpackView!)
     })
-    console.log(`[ShopScene] 购买(${tier}#${star})→背包 ${item.name_cn} -${priced.finalPrice}G，金币: ${manager.gold}`)
+    console.log(`[ShopScene] 购买(${tierForced}#${starForced})→背包 ${itemForced.name_cn} -${priced.finalPrice}G，金币: ${manager.gold}`)
   } else if (battleSlot && battleSystem && battleView) {
-    battleSystem.place(battleSlot.col, battleSlot.row, size, item.id, id)
-    void battleView.addItem(id, item.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
+    battleSystem.place(battleSlot.col, battleSlot.row, size, itemForced.id, id)
+    void battleView.addItem(id, itemForced.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
       battleView!.setItemTier(id, visualTier)
       drag?.refreshZone(battleView!)
     })
     showHintToast('backpack_full_buy', '背包已满，已放入上阵区', 0xffd48f)
-    console.log(`[ShopScene] 购买(${tier}#${star})→上阵区 ${item.name_cn} -${priced.finalPrice}G，金币: ${manager.gold}`)
+    console.log(`[ShopScene] 购买(${tierForced}#${starForced})→上阵区 ${itemForced.name_cn} -${priced.finalPrice}G，金币: ${manager.gold}`)
   }
-  instanceToDefId.set(id, item.id)
-  instanceToTier.set(id, tier)
-  instanceToTierStar.set(id, star)
+  instanceToDefId.set(id, itemForced.id)
+  instanceToTier.set(id, tierForced)
+  instanceToTierStar.set(id, starForced)
   instanceToPermanentDamageBonus.set(id, 0)
-  unlockItemToPool(item.id)
+  unlockItemToPool(itemForced.id)
   rollNextQuickBuyOffer(true)
   refreshShopUI()
 }
@@ -4748,6 +7429,14 @@ function grantSilverDailyGoldBonusesOnNewDay(): void {
 function setDay(day: number): void {
   const prevDay = currentDay
   currentDay = Math.max(1, Math.min(20, day))
+  if (currentDay !== prevDay) {
+    resetDayEventState()
+    pendingEventDraft = null
+    closeEventDraftOverlay()
+    closeSpecialShopOverlay()
+    specialShopRefreshCount = 0
+    specialShopOffers = []
+  }
   const newCols = getDayActiveCols(currentDay)
 
   // 1. 更新 GridZone 格子背景（立即重绘）
@@ -4795,7 +7484,7 @@ function setDay(day: number): void {
     dayDebugText.text = `Day ${currentDay}`
     layoutDayDebugControls()
   }
-  ensureSkillDraftSelection(getApp().stage)
+  ensureDailyChoiceSelection(getApp().stage)
 }
 
 function layoutDayDebugControls(): void {
@@ -5023,6 +7712,16 @@ function ensureBottomHudVisibleAndOnTop(stage: Container): void {
 }
 
 function applySellButtonState(): void {
+  if (specialShopBackpackViewActive) {
+    if (sellBtnHandle) {
+      sellBtnHandle.container.visible = false
+      sellBtnHandle.setSubLabel('')
+    }
+    if (refreshBtnHandle) refreshBtnHandle.container.visible = false
+    if (refreshCostText) refreshCostText.visible = false
+    return
+  }
+
   if (!isShopInputEnabled()) {
     if (sellBtnHandle) {
       sellBtnHandle.container.visible = false
@@ -5033,11 +7732,10 @@ function applySellButtonState(): void {
     return
   }
 
-  const showSell = currentSelection.kind === 'battle' || currentSelection.kind === 'backpack'
   if (sellBtnHandle) {
     sellBtnHandle.container.visible = true
-    sellBtnHandle.redraw(showSell)
-    if (!showSell) sellBtnHandle.setSubLabel('')
+    sellBtnHandle.redraw(true)
+    sellBtnHandle.setSubLabel('')
   }
 
   if (refreshBtnHandle) refreshBtnHandle.container.visible = true
@@ -5113,7 +7811,8 @@ function clearSelection(): void {
 
 function setSellButtonPrice(price: number): void {
   if (!sellBtnHandle) return
-  sellBtnHandle.setSubLabel(`💰 ${price}G`)
+  void price
+  sellBtnHandle.setSubLabel('')
 }
 
 // ============================================================
@@ -5501,6 +8200,68 @@ function applyBackpackPlanWithTransferred(plan: PackPlacement[], transferredIds:
   playBackpackTransferMiniAnim(transferAnimSeeds)
 }
 
+function getArchetypeSortOrder(defId: string): number {
+  const def = getItemDefById(defId)
+  const arch = toSkillArchetype(getPrimaryArchetype(def?.tags ?? ''))
+  if (arch === 'warrior') return 0
+  if (arch === 'archer') return 1
+  if (arch === 'assassin') return 2
+  if (arch === 'utility') return 3
+  return 4
+}
+
+function sortBackpackItemsByRule(): void {
+  if (!backpackSystem || !backpackView) return
+  const items = backpackSystem.getAllItems()
+  if (items.length <= 1) {
+    showHintToast('backpack_full_buy', '背包已整理', 0x9be5ff)
+    return
+  }
+
+  const sorted = [...items].sort((a, b) => {
+    const archCmp = getArchetypeSortOrder(a.defId) - getArchetypeSortOrder(b.defId)
+    if (archCmp !== 0) return archCmp
+    const aTier = instanceToTier.get(a.instanceId) ?? 'Bronze'
+    const bTier = instanceToTier.get(b.instanceId) ?? 'Bronze'
+    const aStar = getInstanceTierStar(a.instanceId)
+    const bStar = getInstanceTierStar(b.instanceId)
+    const aLevel = tierStarLevelIndex(aTier, aStar) + 1
+    const bLevel = tierStarLevelIndex(bTier, bStar) + 1
+    if (aLevel !== bLevel) return bLevel - aLevel
+    const idCmp = a.defId.localeCompare(b.defId)
+    if (idCmp !== 0) return idCmp
+    return a.instanceId.localeCompare(b.instanceId)
+  })
+
+  const slots: Array<{ col: number; row: number }> = []
+  for (let row = 0; row < backpackSystem.rows; row++) {
+    for (let col = 0; col < backpackView.activeColCount; col++) {
+      slots.push({ col, row })
+    }
+  }
+
+  const packItems: PackItem[] = sorted.map((it, idx) => {
+    const preferred = slots[Math.min(idx, Math.max(0, slots.length - 1))] ?? { col: 0, row: 0 }
+    return {
+      instanceId: it.instanceId,
+      defId: it.defId,
+      size: it.size,
+      preferredCol: preferred.col,
+      preferredRow: preferred.row,
+    }
+  })
+
+  const plan = planAutoPack(packItems, backpackView.activeColCount, backpackSystem.rows)
+  if (!plan) {
+    showHintToast('backpack_full_buy', '整理失败：背包空间异常', 0xff8f8f)
+    return
+  }
+
+  applyBackpackAutoPackExisting(plan)
+  refreshShopUI()
+  showHintToast('backpack_full_buy', '背包已按规则整理', 0x9be5ff)
+}
+
 function getGridDragSellAreaTopLocalY(): number {
   const yTop = Math.min(
     getDebugCfg('sellBtnY'),
@@ -5541,7 +8302,7 @@ function startGridDragButtonFlash(stage: Container, canSell: boolean, canToBackp
   stopGridDragButtonFlash()
   gridDragCanSell = canSell
   gridDragCanToBackpack = canToBackpack
-  gridDragSellPrice = sellPrice
+  void sellPrice
   gridDragSellHot = false
   if (!gridDragCanSell && !gridDragCanToBackpack) return
 
@@ -5613,7 +8374,7 @@ function startGridDragButtonFlash(stage: Container, canSell: boolean, canToBackp
 
       gridDragSellZoneText.style.fill = hot ? 0xfff0f0 : 0xffb3b3
       gridDragSellZoneText.style.fontSize = getDebugCfg('shopButtonLabelFontSize')
-      gridDragSellZoneText.text = `拖动到此处出售\n💰 ${gridDragSellPrice}G`
+      gridDragSellZoneText.text = '拖动到此处丢弃'
       gridDragSellZoneText.x = CANVAS_W / 2
       gridDragSellZoneText.y = top + h / 2
     }
@@ -5629,7 +8390,6 @@ function stopGridDragButtonFlash(): void {
   gridDragSellZoneText = null
   gridDragCanSell = false
   gridDragCanToBackpack = false
-  gridDragSellPrice = 0
   gridDragSellHot = false
 
   const inShop = isShopInputEnabled()
@@ -6231,13 +8991,13 @@ export const ShopScene: Scene = {
       if (!item) return
       const tier = getInstanceTier(instanceId)
       const star = getInstanceTierStar(instanceId)
-      const sellPrice = shopManager.getSellPrice(item, tier, star)
+      const sellPrice = 0
       refreshBackpackSynthesisGuideArrows(defId, tier ?? null, star, instanceId)
       // 拖拽中视为选中：显示物品详情（不设置区域高亮，因物品已脱离格子）
       const inBattle = !!battleView?.hasItem(instanceId)
       currentSelection = { kind: inBattle ? 'battle' : 'backpack', instanceId }
       selectedSellAction = null  // 拖拽中暂不执行出售
-      sellPopup.show(item, sellPrice, 'sell', toVisualTier(tier, star), undefined, 'simple')
+      sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, 'simple')
       setSellButtonPrice(sellPrice)
       applySellButtonState()
 
@@ -6245,21 +9005,18 @@ export const ShopScene: Scene = {
       const canSell = true
       const canToBackpack = inBattle && !showingBackpack
         && canBackpackAcceptByAutoPack(item.id, normalizeSize(item.size))
-      startGridDragButtonFlash(stage, canSell, canToBackpack, sellPrice)
+      startGridDragButtonFlash(stage, canSell, canToBackpack, 0)
     }
     drag.onSpecialDrop = ({ instanceId, anchorGx, anchorGy, size, originCol, originRow, homeSystem, homeView, defId }) => {
       if (!shopManager) return false
       const item = getAllItems().find(i => i.id === defId)
       if (!item) return false
 
-      // 1) 拖到下方出售区域：直接出售（若命中任意格子候选，优先走落位/换位）
+      // 1) 拖到下方丢弃区域：直接丢弃（若命中任意格子候选，优先走落位/换位）
       if (isOverGridDragSellArea(anchorGx, anchorGy) && !isOverAnyGridDropTarget(anchorGx, anchorGy, size)) {
         homeSystem.remove(instanceId)
-        const tier = getInstanceTier(instanceId)
-        const star = getInstanceTierStar(instanceId)
         removeInstanceMeta(instanceId)
-        const gained = shopManager.sellItem(item, tier, star)
-        console.log(`[ShopScene] 拖拽出售 ${item.name_cn} +${gained}G，金币: ${shopManager.gold}`)
+        console.log(`[ShopScene] 拖拽丢弃 ${item.name_cn}`)
         refreshShopUI()
         return true
       }
@@ -6397,15 +9154,15 @@ export const ShopScene: Scene = {
       refreshBackpackSynthesisGuideArrows(defId ?? null, tier ?? null, star, instanceId)
 
       const item = defId ? getItemDefById(defId) : null
-      const sellPrice = (item && tier && shopManager) ? shopManager.getSellPrice(item, tier, star) : 0
+      const sellPrice = 0
       const overSell = gridDragCanSell && gridDragSellHot
       if (item && sellPopup && tier && overSell) {
         const customDisplay: ItemInfoCustomDisplay = {
-          overrideName: `${item.name_cn}（拖拽出售）`,
-          lines: [`以 ${sellPrice}G 价格出售`],
+          overrideName: `${item.name_cn}（拖拽丢弃）`,
+          lines: ['丢弃后不会获得金币'],
           suppressStats: true,
         }
-        sellPopup.show(item, sellPrice, 'sell', toVisualTier(tier, star), undefined, 'detailed', undefined, customDisplay)
+        sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, 'detailed', undefined, customDisplay)
         drag?.setSqueezeSuppressed(false)
         hideSynthesisHoverInfo()
         return
@@ -6415,7 +9172,7 @@ export const ShopScene: Scene = {
         drag?.setSqueezeSuppressed(false)
         clearBackpackSynthesisGuideArrows()
         if (item && sellPopup) {
-          sellPopup.show(item, sellPrice, 'sell', toVisualTier(tier, star), undefined, 'simple')
+          sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, 'simple')
         }
         return
       }
@@ -6429,7 +9186,7 @@ export const ShopScene: Scene = {
         drag?.setSqueezeSuppressed(false)
         hideSynthesisHoverInfo()
         if (item && sellPopup) {
-          sellPopup.show(item, sellPrice, 'sell', toVisualTier(tier, star), undefined, 'simple')
+          sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, 'simple')
         }
       }
     }
@@ -6618,14 +9375,18 @@ export const ShopScene: Scene = {
 
     goldText = null
 
-    // 出售按钮（右）
-    const sellBtn = makeCircleBtn(getDebugCfg('sellBtnX'), getDebugCfg('sellBtnY'), '出售', 0xcc3333, 0xcc3333)
+    // 整理按钮（右）
+    const sellBtn = makeCircleBtn(getDebugCfg('sellBtnX'), getDebugCfg('sellBtnY'), '整理', 0x3b74ff, 0x3b74ff)
     sellBtn.container.on('pointerdown', () => {
       if (!isShopInputEnabled()) return
-      if (!selectedSellAction) return
-      selectedSellAction()
+      if (selectedSellAction) {
+        selectedSellAction()
+        clearSelection()
+        refreshShopUI()
+        return
+      }
       clearSelection()
-      refreshShopUI()
+      sortBackpackItemsByRule()
     })
     sellBtnHandle = sellBtn
     btnRow.addChild(sellBtn.container)
@@ -6672,7 +9433,7 @@ export const ShopScene: Scene = {
     stage.addChild(btnRow)
     ensureBottomHudVisibleAndOnTop(stage)
 
-    // 出售弹窗
+    // 丢弃弹窗
     const selectGridItem = (
       instanceId: string,
       system: GridSystem,
@@ -6692,22 +9453,20 @@ export const ShopScene: Scene = {
         ? { kind: 'battle', instanceId }
         : { kind: 'backpack', instanceId }
 
-      const manager = shopManager
       hideSkillDetailPopup()
       if (kind === 'battle') refreshBattlePassiveStatBadges(false)
       const tier = getInstanceTier(instanceId)
       const star = getInstanceTierStar(instanceId)
-      const sellPrice = manager.getSellPrice(item, tier, star)
+      const sellPrice = 0
       const infoMode = resolveInfoMode(`${kind}:${instanceId}:${tier}:${star}`)
-      sellPopup.show(item, sellPrice, 'sell', toVisualTier(tier, star), undefined, infoMode)
+      sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, infoMode)
 
       selectedSellAction = () => {
         system.remove(instanceId)
         view.removeItem(instanceId)
         removeInstanceMeta(instanceId)
-        manager.sellItem(item, tier, star)
         drag?.refreshZone(view)
-        console.log(`[ShopScene] 出售 ${item.name_cn} +${sellPrice}G，金币: ${manager.gold}`)
+        console.log(`[ShopScene] 丢弃 ${item.name_cn}`)
       }
 
       setSellButtonPrice(sellPrice)
@@ -6734,10 +9493,18 @@ export const ShopScene: Scene = {
 
     backpackView.onTap = (id) => {
       if (!isShopInputEnabled()) return
+      if (specialShopBackpackViewActive) {
+        handleSpecialShopBackpackItemTap(id, 'backpack')
+        return
+      }
       selectGridItem(id, backpackSystem!, backpackView!, 'backpack')
     }
     battleView.onTap   = (id) => {
       if (!isShopInputEnabled()) return
+      if (specialShopBackpackViewActive) {
+        handleSpecialShopBackpackItemTap(id, 'battle')
+        return
+      }
       selectGridItem(id, battleSystem!, battleView!, 'battle')
     }
     shopPanel.onTap    = (slotIndex) => handleShopSlotTap(slotIndex)
@@ -6896,6 +9663,13 @@ export const ShopScene: Scene = {
       pickedSkills = []
       draftedSkillDays = []
       pendingSkillDraft = null
+      draftedEventDays = []
+      pendingEventDraft = null
+      draftedSpecialShopDays = []
+      specialShopRefreshCount = 0
+      specialShopOffers = []
+      resetEventSelectionCounters()
+      resetDayEventState()
       skillDetailMode = 'simple'
       skill20GrantedDays.clear()
       unlockedItemIds.clear()
@@ -6910,7 +9684,7 @@ export const ShopScene: Scene = {
     refreshShopUI()
     applyPhaseInputLock()
     ensureStarterClassSelection(stage)
-    ensureSkillDraftSelection(stage)
+    ensureDailyChoiceSelection(stage)
   },
 
   onExit() {
@@ -6958,6 +9732,12 @@ export const ShopScene: Scene = {
     if (skillDraftOverlay?.parent) skillDraftOverlay.parent.removeChild(skillDraftOverlay)
     skillDraftOverlay?.destroy({ children: true })
     skillDraftOverlay = null
+    if (eventDraftOverlay?.parent) eventDraftOverlay.parent.removeChild(eventDraftOverlay)
+    eventDraftOverlay?.destroy({ children: true })
+    eventDraftOverlay = null
+    if (specialShopOverlay?.parent) specialShopOverlay.parent.removeChild(specialShopOverlay)
+    specialShopOverlay?.destroy({ children: true })
+    specialShopOverlay = null
     if (skillIconBarCon?.parent) skillIconBarCon.parent.removeChild(skillIconBarCon)
     skillIconBarCon?.destroy({ children: true })
     skillIconBarCon = null
@@ -7060,6 +9840,13 @@ export const ShopScene: Scene = {
     pickedSkills    = []
     draftedSkillDays = []
     pendingSkillDraft = null
+    draftedEventDays = []
+    pendingEventDraft = null
+    draftedSpecialShopDays = []
+    specialShopRefreshCount = 0
+    specialShopOffers = []
+    resetEventSelectionCounters()
+    resetDayEventState()
     skillDetailMode = 'simple'
     skill20GrantedDays.clear()
     showingBackpack = false

@@ -1,6 +1,7 @@
 import { EventBus } from '@/core/EventBus'
 import type { BattleSnapshotBundle, BattleSnapshotEntity } from '@/combat/BattleSnapshotStore'
 import { getAllItems, getConfig } from '@/core/DataLoader'
+import { getLifeState, getPlayerWinStreakState } from '@/core/RunState'
 import type { ItemDef, ItemSizeNorm, SkillArchetype } from '@/items/ItemDef'
 import { normalizeSize } from '@/items/ItemDef'
 import { resolveItemTierBaseStats } from '@/items/itemTierStats'
@@ -92,12 +93,20 @@ interface PendingHit {
   baseDamage: number
   damage: number
   attackerDamageAtQueue?: number
+  lockAttackerDelta?: boolean
   crit: number
 }
 
 interface PendingItemFire {
   dueTick: number
   sourceItemId: string
+}
+
+interface PendingChargePulse {
+  dueTick: number
+  sourceItemId: string
+  targetItemId: string
+  gainMs: number
 }
 
 const DEBUG_SHIELD_CHARGE = false
@@ -427,6 +436,7 @@ export class CombatEngine {
   private items: CombatItemRunner[] = []
   private pendingHits: PendingHit[] = []
   private pendingItemFires: PendingItemFire[] = []
+  private pendingChargePulses: PendingChargePulse[] = []
   private lastQueuedFireTickByItem: Map<string, number> = new Map()
   private playerSkillIds = new Set<string>()
   private enemySkillIds = new Set<string>()
@@ -671,6 +681,7 @@ export class CombatEngine {
     this.items = []
     this.pendingHits = []
     this.pendingItemFires = []
+    this.pendingChargePulses = []
     this.lastQueuedFireTickByItem.clear()
     this.playerSkillIds.clear()
     this.enemySkillIds.clear()
@@ -1318,7 +1329,20 @@ export class CombatEngine {
       snapshot.activeColCount,
       Math.round(dailyCurveValue(labCfg?.dailyItemCount, this.day, 5)),
     ))
-    const targetAvgQuality = Math.max(1, Math.min(7, dailyCurveValue(labCfg?.dailyAvgQuality, this.day, 3)))
+    const baseTargetAvgQuality = Math.max(1, Math.min(7, dailyCurveValue(labCfg?.dailyAvgQuality, this.day, 3)))
+    const playerWinStreak = Math.max(0, Math.round(getPlayerWinStreakState().count))
+    const playerHp = Math.max(1, Math.round(getLifeState().current))
+    const streakIdx = Math.min(9, playerWinStreak)
+    const streakBonusByHp: Record<1 | 2 | 3 | 4 | 5, number[]> = {
+      5: [0, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5],
+      4: [0, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5],
+      3: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5],
+      2: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5],
+      1: [-0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4],
+    }
+    const hpKey: 1 | 2 | 3 | 4 | 5 = playerHp >= 5 ? 5 : playerHp >= 4 ? 4 : playerHp >= 3 ? 3 : playerHp >= 2 ? 2 : 1
+    const streakQualityBonus = streakBonusByHp[hpKey][streakIdx] ?? 0
+    const targetAvgQuality = Math.max(1, Math.min(7, baseTargetAvgQuality + streakQualityBonus))
     const qualityScores = buildQualityScores(targetCount, targetAvgQuality)
 
     const byArchetype = new Map<string, ItemDef[]>()
@@ -1494,13 +1518,7 @@ export class CombatEngine {
   }
 
   private tierIndex(def: ItemDef | null, tier: string): number {
-    if (!def) return 0
-    const tiers = parseAvailableTiers(def.available_tiers)
-    const tierName = parseTierName(tier)
-    const idx = tiers.indexOf(tierName)
-    const baseIdx = idx >= 0 ? idx : 0
-    const star = parseTierStar(tier)
-    return baseIdx + (star - 1)
+    return tierIndexFromRaw(def, tier)
   }
 
   private tierValueFromLine(line: string, tierIndex: number): number {
@@ -1736,6 +1754,26 @@ export class CombatEngine {
     }
   }
 
+  private scheduleRepeatedChargePulses(
+    source: CombatItemRunner,
+    target: CombatItemRunner,
+    times: number,
+    gainMs: number,
+    intervalTick: number,
+  ): void {
+    const count = Math.max(1, Math.round(times))
+    const step = Math.max(1, Math.round(intervalTick))
+    const gain = Math.max(1, Math.round(gainMs))
+    for (let i = 0; i < count; i++) {
+      this.pendingChargePulses.push({
+        dueTick: this.tickIndex + i * step,
+        sourceItemId: source.id,
+        targetItemId: target.id,
+        gainMs: gain,
+      })
+    }
+  }
+
   private applyOnShieldGainCharge(side: 'player' | 'enemy'): void {
     for (const owner of this.items) {
       if (owner.side !== side) continue
@@ -1838,9 +1876,10 @@ export class CombatEngine {
         this.enqueueOneAttackFrom(owner)
       }
 
-      const ammoTriggerLine = lines.find((s) => /使用弹药物品时攻击次数\+1/.test(s))
+      const ammoTriggerLine = lines.find((s) => /使用(?:其他)?弹药物品时攻击次数\+\d+(?:[\/|]\d+)*/.test(s))
       if (ammoTriggerLine && attacker.runtime.ammoMax > 0) {
-        owner.runtime.bonusMulticast += 1
+        const v = Math.max(1, Math.round(this.tierValueFromLine(ammoTriggerLine, tIdx)))
+        owner.runtime.bonusMulticast += v
       }
     }
   }
@@ -1937,6 +1976,7 @@ export class CombatEngine {
   private stepOneTick(tickMs: number): void {
     this.tickIndex += 1
     this.resolveQueuedItemFiresForCurrentTick()
+    this.resolveQueuedChargePulsesForCurrentTick()
     const queue: CombatItemRunner[] = []
     for (const item of this.items) {
       if (item.baseStats.cooldownMs <= 0) continue
@@ -2012,6 +2052,17 @@ export class CombatEngine {
     this.resolvePendingHitsForCurrentTick()
   }
 
+  private resolveQueuedChargePulsesForCurrentTick(): void {
+    if (!this.pendingChargePulses.length) return
+    const due = this.pendingChargePulses.filter((p) => p.dueTick <= this.tickIndex)
+    this.pendingChargePulses = this.pendingChargePulses.filter((p) => p.dueTick > this.tickIndex)
+    for (const one of due) {
+      const target = this.items.find((it) => it.id === one.targetItemId)
+      if (!target) continue
+      this.chargeItemByMs(target, one.gainMs)
+    }
+  }
+
   private resolveQueuedItemFiresForCurrentTick(): void {
     if (!this.pendingItemFires.length) return
     const due = this.pendingItemFires.filter((f) => f.dueTick <= this.tickIndex)
@@ -2059,6 +2110,7 @@ export class CombatEngine {
     const isAllAmmoShot = lines.some((s) => /(?:一次)?打出所有弹药/.test(s))
     const useDamageLine = lines.find((s) => /使用时伤害\+\d+(?:[\/|]\d+)*/.test(s))
     const useDamageBonus = useDamageLine ? Math.round(this.tierValueFromLine(useDamageLine, tIdx)) : 0
+    const canGrowDamageOnUse = useDamageBonus > 0 && this.isDamageBonusEligible(item)
     const skill88Multicast = item.side === 'player' && this.hasPlayerSkill('skill88') && this.elapsedMs <= 5000 ? 1 : 0
     let fireCount = Math.max(1, item.baseStats.multicast + item.runtime.bonusMulticast + skill88Multicast)
     const ammoBeforeUse = item.runtime.ammoCurrent
@@ -2068,17 +2120,25 @@ export class CombatEngine {
         ? Math.max(1, item.runtime.ammoCurrent)
         : fireCount
     }
-    this.applyAdjacentUseHasteTriggers(item)
-    this.applyAdjacentUseBurnTriggers(item)
-    this.applyBurnUseSlowTriggers(item)
+    const useRepeatCount = Math.max(1, fireCount)
+    const tickMsCfg = Math.max(1, getConfig().combatRuntime.tickMs)
+    const shotIntervalMs = Math.max(tickMsCfg, this.effectiveCooldownMs(item) / Math.max(1, useRepeatCount))
+    const shotIntervalTick = Math.max(1, Math.round(shotIntervalMs / tickMsCfg))
+
+    for (let i = 0; i < useRepeatCount; i++) {
+      this.applyAdjacentUseHasteTriggers(item)
+      this.applyAdjacentUseBurnTriggers(item)
+      this.applyBurnUseSlowTriggers(item)
+    }
 
     if (item.side === 'player' && this.hasPlayerSkill('skill86') && this.skill86UseCount < 8) {
-      this.skill86UseCount += 1
+      const triggerCount = Math.min(useRepeatCount, 8 - this.skill86UseCount)
+      this.skill86UseCount += triggerCount
       const ammoCandidates = this.items
         .filter((it) => it.side === 'player' && this.isAmmoItem(it))
         .sort((a, b) => (a.col - b.col) || a.id.localeCompare(b.id))
       const target = ammoCandidates.find((it) => it.runtime.currentChargeMs < this.effectiveCooldownMs(it)) ?? ammoCandidates[0]
-      if (target) this.chargeItemByMs(target, 1000)
+      if (target) this.scheduleRepeatedChargePulses(item, target, triggerCount, 1000, shotIntervalTick)
     }
 
     if (item.side === 'player' && this.hasPlayerSkill('skill87')) {
@@ -2088,7 +2148,7 @@ export class CombatEngine {
       const leftmost = ordered[0]
       const rightmost = ordered[ordered.length - 1]
       if (leftmost && rightmost && leftmost.id === item.id) {
-        this.chargeItemByMs(rightmost, 1000)
+        this.scheduleRepeatedChargePulses(item, rightmost, useRepeatCount, 1000, shotIntervalTick)
       }
     }
 
@@ -2097,11 +2157,11 @@ export class CombatEngine {
         if (ally.side !== item.side || ally.id === item.id) continue
         if (!this.isAdjacentByFootprint(ally, item)) continue
         if (!this.isDamageBonusEligible(ally)) continue
-        ally.baseStats.damage += 3
+        ally.baseStats.damage += 3 * useRepeatCount
       }
     }
     if (item.side === 'player' && this.hasPlayerSkill('skill5') && this.isShieldItem(item)) {
-      item.baseStats.shield += 5
+      item.baseStats.shield += 5 * useRepeatCount
     }
     if (item.side === 'player' && this.hasPlayerSkill('skill11') && this.isAmmoItem(item)) {
       for (const ally of this.items) {
@@ -2109,7 +2169,7 @@ export class CombatEngine {
         if (!this.isAdjacentByFootprint(ally, item)) continue
         if (!this.isAmmoItem(ally)) continue
         if (!this.isDamageBonusEligible(ally)) continue
-        ally.baseStats.damage += 5
+        ally.baseStats.damage += 5 * useRepeatCount
       }
     }
 
@@ -2193,7 +2253,7 @@ export class CombatEngine {
 
     const adjacentShieldUseLine = lines.find((s) => /使用时相邻(?:的)?(?:护盾物品)?护盾\+\d+(?:[\/|]\d+)*/.test(s))
     if (adjacentShieldUseLine) {
-      const v = Math.round(this.tierValueFromLine(adjacentShieldUseLine, tIdx))
+      const v = Math.round(this.tierValueFromLine(adjacentShieldUseLine, tIdx)) * useRepeatCount
       if (v > 0) {
         for (const ally of this.items) {
           if (ally.side !== item.side || ally.id === item.id) continue
@@ -2206,7 +2266,7 @@ export class CombatEngine {
 
     const adjacentDamageUseLine = lines.find((s) => /使用时相邻物品伤害\+\d+(?:[\/|]\d+)*/.test(s))
     if (adjacentDamageUseLine) {
-      const v = Math.round(this.tierValueFromLine(adjacentDamageUseLine, tIdx))
+      const v = Math.round(this.tierValueFromLine(adjacentDamageUseLine, tIdx)) * useRepeatCount
       if (v > 0) {
         for (const ally of this.items) {
           if (ally.side !== item.side || ally.id === item.id) continue
@@ -2219,7 +2279,7 @@ export class CombatEngine {
 
     const allShieldUseLine = lines.find((s) => /使用后所有护盾物品\+\d+(?:[\/|]\d+)*护盾/.test(s))
     if (allShieldUseLine) {
-      const v = Math.round(this.tierValueFromLine(allShieldUseLine, tIdx))
+      const v = Math.round(this.tierValueFromLine(allShieldUseLine, tIdx)) * useRepeatCount
       if (v > 0) {
         for (const ally of this.items) {
           if (ally.side !== item.side) continue
@@ -2374,7 +2434,7 @@ export class CombatEngine {
     const baseDamageRaw = Math.max(0, item.baseStats.damage + this.runtimeGlobalDamageBonus(item))
     const skillMul = this.skillDamageMultiplier(item)
     const baseDamage = Math.max(0, Math.round(baseDamageRaw * skillMul))
-    let damageAfterBonus = Math.max(0, baseDamage + item.runtime.tempDamageBonus + useDamageBonus)
+    let damageAfterBonus = Math.max(0, baseDamage + item.runtime.tempDamageBonus)
 
     const adjacentBoomerangDouble = lines.some((s) => /相邻回旋镖时伤害翻倍/.test(s))
     if (adjacentBoomerangDouble) {
@@ -2423,21 +2483,27 @@ export class CombatEngine {
         const attackers = this.items.filter((it) => it.side === item.side && it.baseStats.damage > 0)
         if (attackers.length === 1) fireCount = Math.max(fireCount, 2)
       }
+      let progressiveUseBonus = 0
       for (let i = 0; i < fireCount; i++) {
-        let shotDamage = Math.max(0, damageAfterBonus + useDamageBonus * i)
+        let shotDamage = Math.max(0, damageAfterBonus + progressiveUseBonus)
         if (isLastShotDoubleTriggered && i === fireCount - 1) {
           shotDamage = Math.max(0, shotDamage * 2)
         }
-        this.pendingHits.push({
-          dueTick: this.tickIndex + i,
+          this.pendingHits.push({
+          dueTick: this.tickIndex + i * shotIntervalTick,
           side: item.side,
           sourceItemId: item.id,
           defId: item.defId,
           baseDamage,
           damage: shotDamage,
           attackerDamageAtQueue: Math.max(0, item.baseStats.damage + item.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(item)),
+          lockAttackerDelta: true,
           crit: item.baseStats.crit,
         })
+        if (canGrowDamageOnUse) {
+          item.baseStats.damage += useDamageBonus
+          progressiveUseBonus += useDamageBonus
+        }
       }
     }
 
@@ -2487,7 +2553,7 @@ export class CombatEngine {
       const gain = (() => {
         const m = refillAmmoLine.match(/补充\s*(\d+(?:[\/|]\d+)*)\s*(?:发)?弹药/)
         if (!m?.[1]) return 0
-        return Math.max(0, Math.round(pickTierSeriesValue(m[1], tIdx)))
+        return Math.max(0, Math.round(pickTierSeriesValue(m[1], tIdx))) * useRepeatCount
       })()
       if (gain > 0) {
         for (const ally of this.items) {
@@ -2501,19 +2567,19 @@ export class CombatEngine {
 
     const postAttackDamageLine = lines.find((s) => /每次攻击后伤害\+\d+(?:\/\d+)*/.test(s))
     if (postAttackDamageLine) {
-      const v = Math.round(this.tierValueFromLine(postAttackDamageLine, tIdx))
+      const v = Math.round(this.tierValueFromLine(postAttackDamageLine, tIdx)) * useRepeatCount
       if (v > 0 && this.isDamageBonusEligible(item)) item.baseStats.damage += v
     }
 
     const postUseShieldLine = lines.find((s) => /每次使用后护盾\+\d+(?:\/\d+)*/.test(s))
     if (postUseShieldLine) {
-      const v = Math.round(this.tierValueFromLine(postUseShieldLine, tIdx))
+      const v = Math.round(this.tierValueFromLine(postUseShieldLine, tIdx)) * useRepeatCount
       if (v > 0) item.baseStats.shield += v
     }
 
     const adjacentShieldGrowLine = lines.find((s) => /每次使用后相邻护盾物品\+\d+(?:\/\d+)*护盾/.test(s))
     if (adjacentShieldGrowLine) {
-      const v = Math.round(this.tierValueFromLine(adjacentShieldGrowLine, tIdx))
+      const v = Math.round(this.tierValueFromLine(adjacentShieldGrowLine, tIdx)) * useRepeatCount
       if (v > 0) {
         for (const ally of this.items) {
           if (ally.side !== item.side || ally.id === item.id) continue
@@ -2525,12 +2591,12 @@ export class CombatEngine {
     }
 
     if (lines.some((s) => /每次使用后伤害翻倍/.test(s)) && this.isDamageBonusEligible(item)) {
-      item.baseStats.damage = Math.max(0, item.baseStats.damage * 2)
+      for (let i = 0; i < useRepeatCount; i++) item.baseStats.damage = Math.max(0, item.baseStats.damage * 2)
     }
 
     // 每次使用后自身 CD 减少 1 秒（本场战斗内）
     if (lines.some((s) => /每次使用后自身CD减少1秒/.test(s))) {
-      item.baseStats.cooldownMs = Math.max(this.minReducedCdMsFor(item), item.baseStats.cooldownMs - 1000)
+      item.baseStats.cooldownMs = Math.max(this.minReducedCdMsFor(item), item.baseStats.cooldownMs - 1000 * useRepeatCount)
     }
     const postUseCooldownLine = lines.find((s) => /攻击后间隔/.test(s))
     if (postUseCooldownLine) {
@@ -2543,12 +2609,12 @@ export class CombatEngine {
         if (Number.isFinite(parsedReduce) && parsedReduce > 0) reduceMs = parsedReduce
         if (Number.isFinite(parsedMin) && parsedMin > 0) minMs = parsedMin
       }
-      item.baseStats.cooldownMs = Math.max(Math.max(minMs, this.minReducedCdMsFor(item)), item.baseStats.cooldownMs - reduceMs)
+      item.baseStats.cooldownMs = Math.max(Math.max(minMs, this.minReducedCdMsFor(item)), item.baseStats.cooldownMs - reduceMs * useRepeatCount)
     }
 
     const postUseDamageReduceLine = lines.find((s) => /使用后伤害-\d+/.test(s))
     if (postUseDamageReduceLine) {
-      const v = Math.round(this.tierValueFromLine(postUseDamageReduceLine, tIdx))
+      const v = Math.round(this.tierValueFromLine(postUseDamageReduceLine, tIdx)) * useRepeatCount
       if (v > 0) item.baseStats.damage = Math.max(1, item.baseStats.damage - v)
     }
 
@@ -2558,7 +2624,7 @@ export class CombatEngine {
       const sec = this.tierValueFromLine(flyHasteLine, tIdx)
       if (sec > 0) {
         const targets = this.items.filter((it) => it.side === item.side && it.id !== item.id && this.isAdjacentByFootprint(it, item))
-        this.applyHasteToTargetItems(item, targets, Math.round(sec * 1000))
+        this.applyHasteToTargetItems(item, targets, Math.round(sec * 1000 * useRepeatCount))
       }
     }
   }
@@ -2752,7 +2818,7 @@ export class CombatEngine {
 
       let resolvedBaseDamage = hit.baseDamage
       let resolvedDamage = hit.damage
-      if (attacker && typeof hit.attackerDamageAtQueue === 'number') {
+      if (attacker && !hit.lockAttackerDelta && typeof hit.attackerDamageAtQueue === 'number') {
         const currentAttackerDamage = Math.max(0, attacker.baseStats.damage + attacker.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(attacker))
         const delta = currentAttackerDamage - hit.attackerDamageAtQueue
         if (delta !== 0) {

@@ -135,6 +135,8 @@ export interface GameConfig {
       silverProb: number
       goldProb: number
       onlyStarterArchetype: number
+      shouldEvent?: number
+      shouldShop?: number
     }>
     triggerDaysByTier: {
       bronze: number[]
@@ -168,6 +170,28 @@ export interface GameConfig {
         desc: string
       }>
     }
+  }
+  eventSystem?: {
+    eventPool?: Array<{
+      id: string
+      dayStart: number
+      dayEnd: number
+      icon: string
+      lane: 'left' | 'right'
+      shortDesc: string
+      detailDesc: string
+      note?: string
+      limits?: {
+        maxSelectionsPerRun?: number
+      }
+      conditions?: {
+        requireArchetypeOwned?: 'warrior' | 'archer' | 'assassin'
+        requireHeartNotFull?: boolean
+        requireBackpackNotEmpty?: boolean
+        requireBattleNotEmpty?: boolean
+        requireBattleArchetypeTopTie?: 'warrior' | 'archer' | 'assassin'
+      }
+    }>
   }
   shopRules?: {
     ammoSupportRequiresAmmoOwned?: boolean

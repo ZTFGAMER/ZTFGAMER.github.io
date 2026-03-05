@@ -47,7 +47,7 @@
       "icon": "skill3",
       "tier": "bronze",
       "archetype": "warrior",
-      "summary": "所有护盾小幅增加。",
+      "summary": "所有护盾增加。",
       "effect": {
         "scope": "battle",
         "trigger": "on_battle_start",
@@ -63,7 +63,7 @@
       "icon": "skill4",
       "tier": "bronze",
       "archetype": "warrior",
-      "summary": "使用护盾物品时，相邻物品伤害增加。",
+      "summary": "获得护盾时提升伤害。",
       "effect": {
         "scope": "battle",
         "trigger": "on_use_shield_item",
@@ -79,7 +79,7 @@
       "icon": "skill5",
       "tier": "bronze",
       "archetype": "warrior",
-      "summary": "使用护盾物品时，增加护盾。",
+      "summary": "获得护盾时提升护盾。",
       "effect": {
         "scope": "battle",
         "trigger": "on_use_shield_item",
@@ -95,7 +95,7 @@
       "icon": "skill6",
       "tier": "bronze",
       "archetype": "utility",
-      "summary": "物品的间隔时间缩短。",
+      "summary": "间隔时间缩短。",
       "effect": {
         "scope": "battle",
         "trigger": "passive_always",
@@ -127,7 +127,7 @@
       "icon": "skill8",
       "tier": "bronze",
       "archetype": "archer",
-      "summary": "最左侧弹药量增加。",
+      "summary": "最左侧弹药增加。",
       "effect": {
         "scope": "battle",
         "trigger": "on_battle_start",
@@ -143,7 +143,7 @@
       "icon": "skill9",
       "tier": "bronze",
       "archetype": "archer",
-      "summary": "弹药耗尽时装填弹药。",
+      "summary": "弹药耗尽时装填。",
       "effect": {
         "scope": "battle",
         "trigger": "on_first_ammo_empty",
@@ -159,7 +159,7 @@
       "icon": "skill10",
       "tier": "bronze",
       "archetype": "archer",
-      "summary": "战斗开始时，拥有弹药的物品伤害增加。",
+      "summary": "弹药物品伤害增加。",
       "effect": {
         "scope": "battle",
         "trigger": "on_battle_start",
@@ -175,7 +175,7 @@
       "icon": "skill11",
       "tier": "bronze",
       "archetype": "archer",
-      "summary": "使用弹药物品时，相邻的弹药物品伤害增加。",
+      "summary": "相邻弹药物品伤害增加。",
       "effect": {
         "scope": "battle",
         "trigger": "on_use_ammo_item",
@@ -191,7 +191,7 @@
       "icon": "skill12",
       "tier": "bronze",
       "archetype": "archer",
-      "summary": "弹药物品的间隔时间缩短。",
+      "summary": "弹药物品间隔缩短。",
       "effect": {
         "scope": "battle",
         "trigger": "passive_always",
@@ -207,7 +207,7 @@
       "icon": "skill13",
       "tier": "bronze",
       "archetype": "assassin",
-      "summary": "开场一段时间内，物品伤害增加。",
+      "summary": "开战时物品伤害增加。",
       "effect": {
         "scope": "battle",
         "trigger": "time_window",
@@ -224,7 +224,7 @@
       "icon": "skill14",
       "tier": "bronze",
       "archetype": "assassin",
-      "summary": "开场一段时间内，物品间隔缩短。",
+      "summary": "开战时物品间隔缩短。",
       "effect": {
         "scope": "battle",
         "trigger": "time_window",
@@ -241,7 +241,7 @@
       "icon": "skill15",
       "tier": "bronze",
       "archetype": "utility",
-      "summary": "购买物品价格有几率减少1。",
+      "summary": "购买物品价格减少。",
       "effect": {
         "scope": "shop",
         "trigger": "on_buy_before_pay",
@@ -258,7 +258,7 @@
       "icon": "skill16",
       "tier": "bronze",
       "archetype": "assassin",
-      "summary": "战斗开始时，物品伤害增加。",
+      "summary": "伤害增加。",
       "effect": {
         "scope": "battle",
         "trigger": "on_battle_start",
@@ -274,7 +274,7 @@
       "icon": "skill18",
       "tier": "bronze",
       "archetype": "assassin",
-      "summary": "敌人生命降低时，物品伤害增加。",
+      "summary": "敌人受伤时伤害增加。",
       "effect": {
         "scope": "battle",
         "trigger": "on_enemy_hp_first_below_pct",
@@ -307,7 +307,7 @@
       "icon": "skill20",
       "tier": "bronze",
       "archetype": "utility",
-      "summary": "每天随机获得物品。",
+      "summary": "每天获得物品。",
       "effect": {
         "scope": "run",
         "trigger": "on_new_day_enter_shop",
@@ -324,7 +324,7 @@
       "icon": "skill21",
       "tier": "bronze",
       "archetype": "utility",
-      "summary": "每场战斗己方生命值首次降至一半时，回复生命。",
+      "summary": "受伤时回复生命。",
       "effect": {
         "scope": "battle",
         "trigger": "on_ally_hp_first_below_pct",

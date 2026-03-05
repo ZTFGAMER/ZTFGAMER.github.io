@@ -238,6 +238,26 @@ describe('CombatEngine gold skills', () => {
     expect(rightExec).toBeGreaterThan(0)
   })
 
+  it('skill87: 连发会按多次使用触发多次充能', () => {
+    const single = new CombatEngine()
+    single.start(mkSnapshot([
+      mkEntity('g87-single-left', 0, { cooldownMs: 1000, damage: 0, multicast: 1 }),
+      mkEntity('g87-single-right', 1, { cooldownMs: 5000, damage: 10 }),
+    ]), { playerSkillIds: ['skill87'], enemyDisabled: true })
+    tick(single, 360)
+    const singleExec = runtimeByInstance(single, 'g87-single-right')?.executeCount ?? 0
+
+    const multi = new CombatEngine()
+    multi.start(mkSnapshot([
+      mkEntity('g87-multi-left', 0, { cooldownMs: 1000, damage: 0, multicast: 10 }),
+      mkEntity('g87-multi-right', 1, { cooldownMs: 5000, damage: 10 }),
+    ]), { playerSkillIds: ['skill87'], enemyDisabled: true })
+    tick(multi, 360)
+    const multiExec = runtimeByInstance(multi, 'g87-multi-right')?.executeCount ?? 0
+
+    expect(multiExec).toBeGreaterThan(singleExec)
+  })
+
   it('skill47: 濒死时复活并恢复50%最大生命（每场一次）', () => {
     const engine = new CombatEngine()
     let skill47Healed = 0

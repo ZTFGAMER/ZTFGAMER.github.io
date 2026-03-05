@@ -6,6 +6,8 @@ const DEFAULT_MAX_LIVES = 5
 const TROPHY_STATE_STORAGE_KEY = 'bigbazzar_trophy_state_v1'
 const TROPHY_STATE_STORAGE_VERSION = 1
 const DEFAULT_WIN_TARGET = 10
+const WIN_STREAK_STORAGE_KEY = 'bigbazzar_win_streak_v1'
+const WIN_STREAK_STORAGE_VERSION = 1
 
 export type LifeState = {
   current: number
@@ -15,6 +17,10 @@ export type LifeState = {
 export type TrophyState = {
   wins: number
   target: number
+}
+
+export type WinStreakState = {
+  count: number
 }
 
 function clampLives(current: number, max: number): LifeState {
@@ -51,6 +57,24 @@ function saveTrophyState(state: TrophyState): TrophyState {
   try {
     localStorage.setItem(TROPHY_STATE_STORAGE_KEY, JSON.stringify({
       version: TROPHY_STATE_STORAGE_VERSION,
+      state: normalized,
+    }))
+  } catch {
+    // ignore
+  }
+  return normalized
+}
+
+function clampWinStreak(count: number): WinStreakState {
+  const safeCount = Number.isFinite(count) ? Math.max(0, Math.round(count)) : 0
+  return { count: safeCount }
+}
+
+function saveWinStreakState(state: WinStreakState): WinStreakState {
+  const normalized = clampWinStreak(state.count)
+  try {
+    localStorage.setItem(WIN_STREAK_STORAGE_KEY, JSON.stringify({
+      version: WIN_STREAK_STORAGE_VERSION,
       state: normalized,
     }))
   } catch {
@@ -96,6 +120,7 @@ export function clearCurrentRunState(): void {
     localStorage.removeItem(SHOP_STATE_STORAGE_KEY)
     localStorage.removeItem(LIFE_STATE_STORAGE_KEY)
     localStorage.removeItem(TROPHY_STATE_STORAGE_KEY)
+    localStorage.removeItem(WIN_STREAK_STORAGE_KEY)
   } catch {
     // ignore
   }
@@ -131,4 +156,29 @@ export function addWinTrophy(defaultTarget = DEFAULT_WIN_TARGET): TrophyState {
 
 export function resetWinTrophyState(target = DEFAULT_WIN_TARGET): TrophyState {
   return saveTrophyState({ wins: 0, target })
+}
+
+export function getPlayerWinStreakState(): WinStreakState {
+  try {
+    const raw = localStorage.getItem(WIN_STREAK_STORAGE_KEY)
+    if (!raw) return saveWinStreakState({ count: 0 })
+    const parsed = JSON.parse(raw) as {
+      version?: unknown
+      state?: { count?: unknown }
+    } | null
+    if (!parsed || parsed.version !== WIN_STREAK_STORAGE_VERSION || !parsed.state) {
+      return saveWinStreakState({ count: 0 })
+    }
+    return saveWinStreakState(clampWinStreak(Number(parsed.state.count)))
+  } catch {
+    return saveWinStreakState({ count: 0 })
+  }
+}
+
+export function setPlayerWinStreak(count: number): WinStreakState {
+  return saveWinStreakState({ count })
+}
+
+export function resetPlayerWinStreak(): WinStreakState {
+  return saveWinStreakState({ count: 0 })
 }

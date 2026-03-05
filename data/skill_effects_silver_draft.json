@@ -15,7 +15,7 @@
       "icon": "skill22",
       "tier": "silver",
       "archetype": "warrior",
-      "summary": "每次获得护盾，都会让最左侧物品伤害增加。",
+      "summary": "获得护盾时伤害增加。",
       "detail": "每次获得护盾，都会让最左侧物品伤害+10。",
       "effect": {
         "scope": "battle",
@@ -33,7 +33,7 @@
       "icon": "skill23",
       "tier": "silver",
       "archetype": "warrior",
-      "summary": "每次获得护盾，都会对敌人造成伤害。",
+      "summary": "获得护盾时造成伤害。",
       "detail": "每次获得护盾，都会对敌人造成30伤害。",
       "effect": {
         "scope": "battle",
@@ -50,7 +50,7 @@
       "icon": "skill24",
       "tier": "silver",
       "archetype": "warrior",
-      "summary": "每次获得护盾，相邻的护盾物品增加护盾。",
+      "summary": "获得护盾时护盾增加。",
       "detail": "每次获得护盾，相邻的护盾物品护盾+15。",
       "effect": {
         "scope": "battle",
@@ -67,7 +67,7 @@
       "icon": "skill25",
       "tier": "silver",
       "archetype": "warrior",
-      "summary": "生命值首次降至一半时，获得护盾。",
+      "summary": "受伤时获得护盾。",
       "detail": "每场战斗己方生命值首次降至一半时，获得最大生命值20%的护盾。",
       "effect": {
         "scope": "battle",
@@ -85,7 +85,7 @@
       "icon": "skill26",
       "tier": "silver",
       "archetype": "warrior",
-      "summary": "生命值首次降至一半时，护盾物品间隔缩短。",
+      "summary": "受伤时护盾物品间隔缩短。",
       "detail": "每场战斗己方生命值首次降至一半时，护盾物品间隔缩短15%。",
       "effect": {
         "scope": "battle",
@@ -103,7 +103,7 @@
       "icon": "skill51",
       "tier": "silver",
       "archetype": "archer",
-      "summary": "弹药物品的最大弹药量增加。",
+      "summary": "最大弹药量增加。",
       "detail": "弹药物品的最大弹药量+2。",
       "effect": {
         "scope": "battle",
@@ -121,7 +121,7 @@
       "tier": "silver",
       "archetype": "archer",
       "summary": "弹药物品的最后1发子弹伤害翻倍。",
-      "detail": "弹药物品的最后1发子弹伤害翻倍（判定点为耗尽前的最后一次伤害）。",
+      "detail": "弹药物品的最后1发子弹伤害翻倍。",
       "effect": {
         "scope": "battle",
         "trigger": "on_ammo_last_shot_before_empty",
@@ -137,7 +137,7 @@
       "icon": "skill52",
       "tier": "silver",
       "archetype": "archer",
-      "summary": "弹药耗尽时，有概率自动补满。",
+      "summary": "弹药耗尽自动补满。",
       "detail": "弹药耗尽时，有30%概率自动补满。",
       "effect": {
         "scope": "battle",
@@ -154,8 +154,8 @@
       "icon": "skill53",
       "tier": "silver",
       "archetype": "archer",
-      "summary": "根据所有物品的弹药总量，物品伤害增加。",
-      "detail": "物品每拥有1发弹药，所有物品伤害+3（实时计算）。",
+      "summary": "根据弹药量增加伤害。",
+      "detail": "物品每拥有1发弹药，所有物品伤害+3。",
       "effect": {
         "scope": "battle",
         "trigger": "passive_realtime",
@@ -206,7 +206,7 @@
       "icon": "skill58",
       "tier": "silver",
       "archetype": "assassin",
-      "summary": "造成伤害后物品伤害增加。",
+      "summary": "物品伤害不断增加。",
       "detail": "造成伤害后物品伤害+2。",
       "effect": {
         "scope": "battle",
@@ -223,7 +223,7 @@
       "icon": "skill57",
       "tier": "silver",
       "archetype": "assassin",
-      "summary": "造成伤害后物品间隔缩短。",
+      "summary": "物品间隔不断缩减。",
       "detail": "造成伤害后物品间隔缩短1%。",
       "effect": {
         "scope": "battle",
@@ -240,7 +240,7 @@
       "icon": "skill59",
       "tier": "silver",
       "archetype": "assassin",
-      "summary": "开场时所有相同的物品伤害增加。",
+      "summary": "相同的物品伤害增加。",
       "detail": "开场时所有相同的物品伤害+25。",
       "effect": {
         "scope": "battle",
@@ -257,7 +257,7 @@
       "icon": "skill60",
       "tier": "silver",
       "archetype": "assassin",
-      "summary": "如果没有护盾物品，所有物品间隔缩短。",
+      "summary": "没有护盾物品时间隔缩短。",
       "detail": "如果没有护盾物品，所有物品间隔缩短10%。",
       "effect": {
         "scope": "battle",
@@ -294,8 +294,8 @@
       "icon": "skill30",
       "tier": "silver",
       "archetype": "utility",
-      "summary": "购买一定数量后，下次购买免费。",
-      "detail": "购买4个物品后，下次购买免费（真实0金币）。",
+      "summary": "有机会免费购买。",
+      "detail": "购买4个物品后，下次购买免费。",
       "effect": {
         "scope": "shop",
         "trigger": "on_buy_success_counter",
@@ -312,8 +312,8 @@
       "icon": "skill33",
       "tier": "silver",
       "archetype": "utility",
-      "summary": "战斗开始时，获得自动生命回复。",
-      "detail": "战斗开始时，获得自动生命回复，等于最大生命值的3%（每秒恢复一次）。",
+      "summary": "自动生命回复。",
+      "detail": "战斗开始时，获得自动生命回复，等于最大生命值的3%。",
       "effect": {
         "scope": "battle",
         "trigger": "on_battle_start",
@@ -330,7 +330,7 @@
       "icon": "skill34",
       "tier": "silver",
       "archetype": "utility",
-      "summary": "每天开始根据拥有金币获得利息。",
+      "summary": "获得利息。",
       "detail": "每天开始每拥有5金币，获得1金币；最多获得10金币。",
       "effect": {
         "scope": "run",
@@ -349,7 +349,7 @@
       "icon": "skill35",
       "tier": "silver",
       "archetype": "utility",
-      "summary": "根据背包中的物品数量提升最大生命。",
+      "summary": "背包内物品越多，生命值越高。",
       "detail": "背包中每有1个物品最大生命值+2%。",
       "effect": {
         "scope": "battle",

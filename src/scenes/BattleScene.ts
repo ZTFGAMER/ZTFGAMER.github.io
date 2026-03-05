@@ -9,8 +9,10 @@ import {
   clearCurrentRunState,
   deductLife,
   getLifeState,
+  getPlayerWinStreakState,
   getWinTrophyState,
   resetLifeState,
+  setPlayerWinStreak,
   resetWinTrophyState,
   SHOP_STATE_STORAGE_KEY,
 } from '@/core/RunState'
@@ -1839,8 +1841,11 @@ function resolveBattleSettlement(): void {
   const before = getLifeState()
   const trophyTarget = getGameCfg().runRules?.trophyWinsToFinalVictory ?? 10
   const trophyBefore = getWinTrophyState(trophyTarget)
+  const winStreakBefore = getPlayerWinStreakState().count
   const after = winner === 'enemy' ? deductLife() : before
   const trophyAfter = winner === 'player' ? addWinTrophy(trophyTarget) : trophyBefore
+  if (winner === 'player') setPlayerWinStreak(winStreakBefore + 1)
+  else setPlayerWinStreak(0)
   const delta = after.current - before.current
   settlementResolved = true
   settlementGameOver = winner === 'enemy' && after.current <= 0

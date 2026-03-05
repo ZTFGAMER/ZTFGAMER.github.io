@@ -39,3 +39,11 @@ export function getSceneImageUrl(fileName: string): string {
 export function getSkillIconUrl(fileStem: string): string {
   return `${getResourceBasePath()}/skills/${fileStem}.png`
 }
+
+export function getUiImageUrl(fileName: string): string {
+  return `${getResourceBasePath()}/ui/${fileName}`
+}
+
+export function getEventIconUrl(fileStem: string): string {
+  return `${getResourceBasePath()}/events/${fileStem}.png`
+}

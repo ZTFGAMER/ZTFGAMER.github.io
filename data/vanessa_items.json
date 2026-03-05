@@ -27,7 +27,7 @@
       "item1"
     ],
     "attack_style": "旋转飞行",
-    "simple_desc": "使用时相邻护盾物品护盾提升",
+    "simple_desc": "使用后相邻护盾物品护盾提升",
     "simple_desc_tiered": "使用时相邻护盾物品护盾+5|10|15|20|25|30|35"
   },
   {
@@ -75,7 +75,7 @@
     ],
     "icon": "item3",
     "attack_style": "不飞行",
-    "simple_desc": "使用时相邻物品伤害提升，并补充弹药",
+    "simple_desc": "相邻物品伤害提升，并补充弹药",
     "simple_desc_tiered": "使用时相邻物品伤害+2|4|6|8|10|12|14，并补充1|1|2|2|3|3|4弹药"
   },
   {
@@ -99,6 +99,10 @@
       {
         "en": "",
         "cn": "使用时伤害+30/60/90/120/150/180/210。"
+      },
+      {
+        "en": "",
+        "cn": "弹药:2。"
       }
     ],
     "icon": "item4",
@@ -106,7 +110,7 @@
     "attack_variants": [
       "item4_a"
     ],
-    "simple_desc": "每次使用伤害提升",
+    "simple_desc": "使用后伤害提升",
     "simple_desc_tiered": "使用时伤害+30|60|90|120|150|180|210"
   },
   {
@@ -134,7 +138,7 @@
     ],
     "icon": "item5",
     "attack_style": "旋转飞行",
-    "simple_desc": "战斗开始时，所有物品伤害提升",
+    "simple_desc": "所有物品伤害提升",
     "simple_desc_tiered": "战斗开始时，所有物品伤害+5|10|15|20|25|30|35"
   },
   {
@@ -193,7 +197,7 @@
     ],
     "icon": "item7",
     "attack_style": "旋转飞行",
-    "simple_desc": "每次使用后护盾提升",
+    "simple_desc": "使用后护盾提升",
     "simple_desc_tiered": "每次使用后护盾+20|40|60|80|100"
   },
   {
@@ -224,7 +228,7 @@
     "attack_variants": [
       "item9_a"
     ],
-    "simple_desc": "使用时伤害提升，并打出所有弹药",
+    "simple_desc": "使用后伤害提升，打出所有弹药",
     "simple_desc_tiered": "使用时伤害+10，并打出所有弹药"
   },
   {
@@ -280,7 +284,7 @@
     ],
     "icon": "item13",
     "attack_style": "旋转飞行",
-    "simple_desc": "使用时所有护盾物品护盾提升",
+    "simple_desc": "使用后所有护盾物品护盾提升",
     "simple_desc_tiered": "使用后所有护盾物品+100护盾"
   },
   {
@@ -336,7 +340,7 @@
     ],
     "icon": "item15",
     "attack_style": "旋转飞行",
-    "simple_desc": "使用时伤害翻倍",
+    "simple_desc": "使用后伤害翻倍",
     "simple_desc_tiered": "使用后伤害翻倍"
   },
   {
@@ -359,7 +363,7 @@
       },
       {
         "en": "",
-        "cn": "使用弹药物品时攻击次数+1，弹药:2。"
+        "cn": "使用其他弹药物品时攻击次数+1，弹药:2。"
       }
     ],
     "icon": "item16",
@@ -367,7 +371,7 @@
     "attack_variants": [
       "item16_a"
     ],
-    "simple_desc": "使用其他弹药物品时,连发次数+1",
+    "simple_desc": "使用其他弹药物品时,连发次数增加",
     "simple_desc_tiered": "使用其他弹药物品时,连发次数+1"
   },
   {
@@ -426,7 +430,7 @@
     ],
     "icon": "item18",
     "attack_style": "旋转飞行",
-    "simple_desc": "造成目标最大生命值百分比的伤害",
+    "simple_desc": "造成百分比伤害",
     "simple_desc_tiered": "造成目标最大生命值40%的伤害"
   }
 ]

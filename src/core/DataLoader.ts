@@ -49,6 +49,7 @@ function extractConfig(entries: ConfigEntry[]): GameConfig {
     gameplayModeValues: getOptional<GameConfig['gameplayModeValues']>('gameplay_mode_values'),
     runRules:           getOptional<GameConfig['runRules']>('run_rules'),
     skillSystem:        getOptional<GameConfig['skillSystem']>('skill_system'),
+    eventSystem:        getOptional<GameConfig['eventSystem']>('event_system'),
     shopRules:          getOptional<GameConfig['shopRules']>('shop_rules'),
     textSizes:          get<GameConfig['textSizes']>('text_sizes'),
     combatRuntime:      get<GameConfig['combatRuntime']>('combat_runtime'),

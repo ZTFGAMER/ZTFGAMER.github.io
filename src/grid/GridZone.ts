@@ -17,7 +17,7 @@ import {
 } from 'pixi.js'
 import type { ItemSizeNorm, PlacedItem } from './GridSystem'
 import { getAllItems, getConfig as getGameConfig } from '@/core/DataLoader'
-import { getItemIconUrl } from '@/core/assetPath'
+import { getItemIconUrl, getUiImageUrl } from '@/core/assetPath'
 import { getTierColor } from '@/config/colorPalette'
 import {
   createItemStatBadges,
@@ -47,11 +47,50 @@ const SIZE_PX: Record<ItemSizeNorm, { pw: number; ph: number }> = {
 }
 
 const MULTI_ROW_PICKUP_BOTTOM_TRIM = Math.round(CELL_SIZE * 0.32)
-const UPGRADE_ARROW_SCALE = 1
+const UPGRADE_ARROW_SCALE = 1.5
 const UPGRADE_ARROW_BASE_W = 40
 const UPGRADE_ARROW_BASE_H = 48
-const UPGRADE_ARROW_HALF_W = (UPGRADE_ARROW_BASE_W * UPGRADE_ARROW_SCALE) / 2
-const UPGRADE_ARROW_HALF_H = (UPGRADE_ARROW_BASE_H * UPGRADE_ARROW_SCALE) / 2
+const UPGRADE_ARROW_FILL_COLOR = 0xffd25a
+const SAME_ARROW_FILE = 'arrow2.png'
+const CROSS_ARROW_FILE = 'arrow1.png'
+
+let guideArrowTexturesPromise: Promise<{ same: Texture; cross: Texture }> | null = null
+
+function ensureGuideArrowTextures(): Promise<{ same: Texture; cross: Texture }> {
+  if (guideArrowTexturesPromise) return guideArrowTexturesPromise
+  guideArrowTexturesPromise = Promise.all([
+    Assets.load<Texture>(getUiImageUrl(SAME_ARROW_FILE)),
+    Assets.load<Texture>(getUiImageUrl(CROSS_ARROW_FILE)),
+  ]).then(([same, cross]) => ({ same, cross }))
+  return guideArrowTexturesPromise
+}
+
+interface ArrowNodeView extends Container {
+  _fill: Sprite
+}
+
+function createArrowNode(): ArrowNodeView {
+  const con = new Container() as ArrowNodeView
+  con.eventMode = 'none'
+  con.visible = false
+
+  const fill = new Sprite(Texture.EMPTY)
+  fill.anchor.set(0.5)
+  fill.tint = UPGRADE_ARROW_FILL_COLOR
+  fill.alpha = 0.98
+  fill.visible = false
+  con.addChild(fill)
+
+  con._fill = fill
+  return con
+}
+
+function applyArrowTexture(node: ArrowNodeView, texture: Texture): void {
+  node._fill.texture = texture
+  node._fill.visible = true
+  node._fill.width = UPGRADE_ARROW_BASE_W
+  node._fill.height = UPGRADE_ARROW_BASE_H
+}
 
 /** 每种尺寸占用的格子数 [cols, rows] */
 const SIZE_DIMS: Record<ItemSizeNorm, [number, number]> = {
@@ -116,7 +155,8 @@ interface ItemNode {
   ammoText: Text
   starBadgeBg: Graphics
   starText: Text
-  upgradeArrow: Graphics
+  upgradeArrow: ArrowNodeView
+  crossUpgradeArrow: ArrowNodeView
   upgradeBaseY: number
   sprite:     Sprite | null
   defId:      string
@@ -225,6 +265,7 @@ export class GridZone extends Container {
   private tierStarOffsetY = 0
   private ammoBadgeOffsetY = 0
   private upgradeHintIds = new Set<string>()
+  private crossUpgradeHintIds = new Set<string>()
   private upgradeHintTick: (() => void) | null = null
 
   // 当前被拖拽的节点（状态追踪；位置由 DragController/dragLayer 管理）
@@ -467,24 +508,18 @@ export class GridZone extends Container {
     starText.eventMode = 'none'
     this.badgeLayer.addChild(starText)
 
-    const upgradeArrow = new Graphics()
-    upgradeArrow.visible = false
-    upgradeArrow.moveTo(0, 24)
-    upgradeArrow.lineTo(20, 0)
-    upgradeArrow.lineTo(40, 24)
-    upgradeArrow.lineTo(28, 24)
-    upgradeArrow.lineTo(28, 48)
-    upgradeArrow.lineTo(12, 48)
-    upgradeArrow.lineTo(12, 24)
-    upgradeArrow.fill({ color: 0xffd25a, alpha: 0.98 })
-    upgradeArrow.stroke({ color: 0x1a1a2a, width: 3, alpha: 0.85 })
+    const upgradeArrow = createArrowNode()
     upgradeArrow.scale.set(UPGRADE_ARROW_SCALE)
+
+    const crossUpgradeArrow = createArrowNode()
+    crossUpgradeArrow.scale.set(UPGRADE_ARROW_SCALE)
 
     // 占位 Sprite（异步替换为真实图片）
     const sprite = new Sprite(Texture.WHITE)
     sprite.alpha  = 0
     visual.addChild(sprite)
     visual.addChild(upgradeArrow)
+    visual.addChild(crossUpgradeArrow)
 
     this.itemLayer.addChild(container)
 
@@ -501,6 +536,7 @@ export class GridZone extends Container {
       starBadgeBg,
       starText,
       upgradeArrow,
+      crossUpgradeArrow,
       upgradeBaseY: 0,
       sprite,
       defId,
@@ -518,6 +554,18 @@ export class GridZone extends Container {
     this.nodes.set(instanceId, node)
 
     this.loadIcon(instanceId, defId, node)
+    this.loadGuideArrows(instanceId, node)
+  }
+
+  private async loadGuideArrows(instanceId: string, node: ItemNode): Promise<void> {
+    try {
+      const textures = await ensureGuideArrowTextures()
+      if (!this.nodes.has(instanceId)) return
+      applyArrowTexture(node.upgradeArrow, textures.same)
+      applyArrowTexture(node.crossUpgradeArrow, textures.cross)
+    } catch (err) {
+      console.warn('[GridZone] 提示箭头加载失败', err)
+    }
   }
 
   private async loadIcon(
@@ -560,6 +608,7 @@ export class GridZone extends Container {
     if (this.dragNode === node) this.dragNode = null
     if (this.selectedId === instanceId) this.selectedId = null
     this.upgradeHintIds.delete(instanceId)
+    this.crossUpgradeHintIds.delete(instanceId)
     this.nodes.delete(instanceId)
   }
 
@@ -588,6 +637,7 @@ export class GridZone extends Container {
     node.starBadgeBg.visible = false
     node.starText.visible = false
     node.upgradeArrow.visible = false
+    node.crossUpgradeArrow.visible = false
 
     // 拖拽视觉：固定 100% 大小 + 半透明
     node.container.scale.set(1)
@@ -624,6 +674,7 @@ export class GridZone extends Container {
     node.starBadgeBg.visible = this.statBadgeMode !== 'archetype'
     node.starText.visible = this.statBadgeMode !== 'archetype'
     node.upgradeArrow.visible = this.upgradeHintIds.has(instanceId)
+    node.crossUpgradeArrow.visible = this.crossUpgradeHintIds.has(instanceId)
     this.updateNodeAmmoBadge(node)
     this.updateStatBadgePosition(node)
 
@@ -650,6 +701,7 @@ export class GridZone extends Container {
     node.starBadgeBg.visible = this.statBadgeMode !== 'archetype'
     node.starText.visible = this.statBadgeMode !== 'archetype'
     node.upgradeArrow.visible = this.upgradeHintIds.has(instanceId)
+    node.crossUpgradeArrow.visible = this.crossUpgradeHintIds.has(instanceId)
     this.updateNodeAmmoBadge(node)
 
     node.origX     = x
@@ -675,6 +727,8 @@ export class GridZone extends Container {
     node?.starBadgeBg.destroy()
     if (node?.starText.parent) node.starText.parent.removeChild(node.starText)
     node?.starText.destroy()
+    this.upgradeHintIds.delete(instanceId)
+    this.crossUpgradeHintIds.delete(instanceId)
     this.nodes.delete(instanceId)
   }
 
@@ -869,24 +923,34 @@ export class GridZone extends Container {
     void instanceIds
     // 用户要求：关闭可升级箭头显示
     this.upgradeHintIds = new Set()
+    this.crossUpgradeHintIds = new Set()
     for (const [id, node] of this.nodes) {
       node.upgradeArrow.visible = this.upgradeHintIds.has(id)
+      node.crossUpgradeArrow.visible = this.crossUpgradeHintIds.has(id)
     }
     if (this.upgradeHintTick) this.stopUpgradeHintAnim()
   }
 
-  setDragGuideArrows(instanceIds: string[]): void {
-    const next = new Set(instanceIds.filter((id) => this.nodes.has(id)))
+  setDragGuideArrows(instanceIds: string[], crossInstanceIds: string[] = []): void {
+    const cross = new Set(crossInstanceIds.filter((id) => this.nodes.has(id)))
+    const next = new Set(instanceIds.filter((id) => this.nodes.has(id) && !cross.has(id)))
     this.upgradeHintIds = next
+    this.crossUpgradeHintIds = cross
     for (const [id, node] of this.nodes) {
-      const show = next.has(id)
-      node.upgradeArrow.visible = show
-      if (!show) {
+      const showDefault = next.has(id)
+      const showCross = cross.has(id)
+      node.upgradeArrow.visible = showDefault
+      node.crossUpgradeArrow.visible = showCross
+      if (!showDefault && !showCross) {
         node.upgradeArrow.y = node.upgradeBaseY
         node.upgradeArrow.alpha = 1
+        node.upgradeArrow.scale.set(UPGRADE_ARROW_SCALE)
+        node.crossUpgradeArrow.y = node.upgradeBaseY
+        node.crossUpgradeArrow.alpha = 1
+        node.crossUpgradeArrow.scale.set(UPGRADE_ARROW_SCALE)
       }
     }
-    if (next.size > 0) this.startUpgradeHintAnim()
+    if (next.size > 0 || cross.size > 0) this.startUpgradeHintAnim()
     else this.stopUpgradeHintAnim()
   }
 
@@ -961,9 +1025,11 @@ export class GridZone extends Container {
     node.starText.visible = this.statBadgeMode !== 'archetype'
 
     // 箭头位于物品可视区域中心
-    node.upgradeArrow.x = frameInset + frameW / 2 - UPGRADE_ARROW_HALF_W
-    node.upgradeBaseY = frameInset + frameH / 2 - UPGRADE_ARROW_HALF_H
+    node.upgradeArrow.x = frameInset + frameW / 2
+    node.crossUpgradeArrow.x = frameInset + frameW / 2
+    node.upgradeBaseY = frameInset + frameH / 2
     node.upgradeArrow.y = node.upgradeBaseY
+    node.crossUpgradeArrow.y = node.upgradeBaseY
 
     if (node.selectedG.visible) this.redrawSelection(node)
   }
@@ -1047,20 +1113,34 @@ export class GridZone extends Container {
     for (const node of this.nodes.values()) {
       node.upgradeArrow.y = node.upgradeBaseY
       node.upgradeArrow.alpha = 1
+      node.upgradeArrow.scale.set(UPGRADE_ARROW_SCALE)
+      node.crossUpgradeArrow.y = node.upgradeBaseY
+      node.crossUpgradeArrow.alpha = 1
+      node.crossUpgradeArrow.scale.set(UPGRADE_ARROW_SCALE)
     }
   }
 
   private startUpgradeHintAnim(): void {
     if (this.upgradeHintTick) return
     this.upgradeHintTick = () => {
-      const p = (Date.now() % 700) / 700
-      const wave = Math.sin(p * Math.PI)
-      const offsetY = -10 * wave
-      const alpha = 0.72 + 0.28 * wave
+      const p = (Date.now() % 640) / 640
+      const bob = Math.sin(p * Math.PI * 2)
+      const offsetY = -8 * bob
+      const scale = UPGRADE_ARROW_SCALE * (1 + 0.12 * bob)
       for (const [id, node] of this.nodes) {
-        if (!this.upgradeHintIds.has(id) || !node.upgradeArrow.visible) continue
-        node.upgradeArrow.y = node.upgradeBaseY + offsetY
-        node.upgradeArrow.alpha = alpha
+        const showDefault = this.upgradeHintIds.has(id) && node.upgradeArrow.visible
+        const showCross = this.crossUpgradeHintIds.has(id) && node.crossUpgradeArrow.visible
+        if (!showDefault && !showCross) continue
+        if (showDefault) {
+          node.upgradeArrow.y = node.upgradeBaseY + offsetY
+          node.upgradeArrow.alpha = 1
+          node.upgradeArrow.scale.set(scale)
+        }
+        if (showCross) {
+          node.crossUpgradeArrow.y = node.upgradeBaseY + offsetY
+          node.crossUpgradeArrow.alpha = 1
+          node.crossUpgradeArrow.scale.set(scale)
+        }
       }
     }
     Ticker.shared.add(this.upgradeHintTick)

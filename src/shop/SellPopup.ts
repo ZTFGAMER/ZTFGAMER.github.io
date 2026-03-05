@@ -50,6 +50,7 @@ export interface ItemInfoCustomDisplay {
   hideTierBadge?: boolean
   useQuestionIcon?: boolean
   hideName?: boolean
+  centerRichLineInFrame?: boolean
 }
 
 function parseTierName(raw: string): string {
@@ -764,7 +765,7 @@ export class SellPopup extends Container {
     if (richLineSegments && richLineSegments.length > 0) {
       const row = new Container()
       row.x = 0
-      row.y = cursorY
+      let rowY = cursorY
       this.descCon.addChild(row)
 
       const baseFontSize = isSimple ? this.textSize.simpleDesc : this.textSize.desc
@@ -793,7 +794,12 @@ export class SellPopup extends Container {
         this.descTexts.push(t)
         x += t.width
       }
-      cursorY += rowH
+      if (customDisplay?.centerRichLineInFrame) {
+        const centeredY = Math.round(frameY + (frameH - rowH) / 2 - this.descCon.y)
+        rowY = Math.max(cursorY, centeredY)
+      }
+      row.y = rowY
+      cursorY = rowY + rowH
     } else {
       for (let i = 0; i < descLines.length; i++) {
         const lineStyle = customDisplay?.lineStyles?.[i]

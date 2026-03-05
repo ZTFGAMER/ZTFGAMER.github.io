@@ -8,3 +8,4 @@ ios/build/
 ios/*.xcodeproj/
 ios/.derivedData/
 .vercel
+agent-sessions/*/screenshots/

@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "release:tf": "python3 ios/scripts/release_testflight.py",
-    "perf:p1-check": "python3 scripts/perf_p1_check.py"
+    "perf:p1-check": "python3 scripts/perf_p1_check.py",
+    "agent:new": "python3 scripts/create_agent_session.py"
   },
   "devDependencies": {
     "typescript": "~5.8.3",
