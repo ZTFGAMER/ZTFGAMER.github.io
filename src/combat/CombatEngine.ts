@@ -856,7 +856,7 @@ export class CombatEngine {
     const side = item.side
     let bonus = side === 'player' ? this.skillExecuteDamageBonus : this.skillEnemyExecuteDamageBonus
     if (this.hasSkill(side, 'skill13') && this.elapsedMs <= 5000) bonus += 12
-    if (this.hasSkill(side, 'skill53')) bonus += this.totalAmmoCurrent(side) * 3
+    if (this.hasSkill(side, 'skill53')) bonus += this.totalAmmoCurrent(side) * 4
     if (this.hasSkill(side, 'skill27') && this.effectiveCooldownMs(item) < 2500) bonus += 20
     if (this.hasSkill(side, 'skill37')) bonus += Math.floor(Math.max(0, this.heroOf(side).shield) / 10)
     return bonus
@@ -881,10 +881,33 @@ export class CombatEngine {
   private skillDamageMultiplier(item: CombatItemRunner): number {
     const side = item.side
     let mul = 1
-    if (this.hasSkill(side, 'skill43') && this.uniqueDamageItem(side)?.id === item.id) mul *= 2
+    if (this.hasSkill(side, 'skill43') && this.uniqueDamageItem(side)?.id === item.id) mul *= 1.5
     if (this.hasSkill(side, 'skill44') && this.uniqueAmmoItem(side)?.id === item.id) mul *= 1.5
     if (this.hasSkill(side, 'skill84') && this.allItemsAreAmmo(side)) mul *= 1.5
     return Math.max(0, mul)
+  }
+
+  private applyOnDealDamageLifesteal(attacker: CombatItemRunner, dealtHpDamage: number): void {
+    const dealt = Math.max(0, Math.round(dealtHpDamage))
+    if (dealt <= 0) return
+    const hasSkill43Lifesteal = this.hasSkill(attacker.side, 'skill43') && this.uniqueDamageItem(attacker.side)?.id === attacker.id
+    if (!hasSkill43Lifesteal) return
+    const hero = this.heroOf(attacker.side)
+    if (hero.hp <= 0) return
+    const healAmount = Math.max(1, Math.round(dealt))
+    const healed = Math.max(0, Math.min(hero.maxHp - hero.hp, healAmount))
+    if (healed <= 0) return
+    hero.hp += healed
+    EventBus.emit('battle:heal', {
+      targetId: hero.id,
+      sourceItemId: attacker.id,
+      amount: healed,
+      isRegen: false,
+      targetType: 'hero',
+      targetSide: hero.side,
+      sourceType: 'item',
+      sourceSide: attacker.side,
+    })
   }
 
   private hasAnyShieldItems(side: 'player' | 'enemy'): boolean {
@@ -1008,7 +1031,7 @@ export class CombatEngine {
         if (one.side !== 'player') continue
         if (one.baseStats.damage <= 0) continue
         if ((countByDef.get(one.defId) ?? 0) < 2) continue
-        one.baseStats.damage += 25
+        one.baseStats.damage += 20
       }
     }
 
@@ -1192,7 +1215,7 @@ export class CombatEngine {
 
     if (this.hasPlayerSkill('skill22')) {
       const leftmostDamage = this.leftmostPlayerDamageItem()
-      if (leftmostDamage) leftmostDamage.baseStats.damage += 10
+      if (leftmostDamage) leftmostDamage.baseStats.damage += 15
     }
 
     if (this.hasPlayerSkill('skill23')) {
@@ -1252,7 +1275,7 @@ export class CombatEngine {
     if (this.hasPlayerSkill('skill57')) {
       attacker.baseStats.cooldownMs = Math.max(
         this.minReducedCdMsFor(attacker),
-        Math.round(attacker.baseStats.cooldownMs * 0.99),
+        Math.round(attacker.baseStats.cooldownMs * 0.98),
       )
     }
   }
@@ -1611,7 +1634,7 @@ export class CombatEngine {
       if (!this.isAdjacentByFootprint(owner, fired)) continue
       const def = this.findItemDef(owner.defId)
       if (!def) continue
-      if (!this.skillLines(def).some((s) => /使用相邻物品时额外使用此物品/.test(s))) continue
+      if (!this.skillLines(def).some((s) => /使用相邻物品时(?:额外|立即)使用此物品/.test(s))) continue
       this.enqueueExtraTriggeredUse(owner)
     }
   }
@@ -2198,6 +2221,15 @@ export class CombatEngine {
       : Math.max(tickMsCfg, this.effectiveCooldownMs(item) / Math.max(1, useRepeatCount))
     const shotIntervalTick = Math.max(1, Math.round(shotIntervalMs / tickMsCfg))
 
+    EventBus.emit('battle:item_trigger', {
+      itemId: item.defId,
+      sourceItemId: item.id,
+      side: item.side,
+      triggerCount: 1,
+      multicast: useRepeatCount,
+      extraTriggered: fromExtraTrigger,
+    })
+
     for (let i = 0; i < useRepeatCount; i++) {
       this.applyAdjacentUseHasteTriggers(item)
       if (!fromExtraTrigger) this.applyAdjacentUseExtraFireTriggers(item)
@@ -2222,26 +2254,25 @@ export class CombatEngine {
       const leftmost = ordered[0]
       const rightmost = ordered[ordered.length - 1]
       if (leftmost && rightmost && leftmost.id === item.id) {
-        this.scheduleRepeatedChargePulses(item, rightmost, useRepeatCount, 1000, shotIntervalTick)
+          this.scheduleRepeatedChargePulses(item, rightmost, useRepeatCount, 500, shotIntervalTick)
+        }
       }
-    }
 
     if (item.side === 'player' && this.hasPlayerSkill('skill4') && this.isShieldItem(item)) {
       for (const ally of this.items) {
         if (ally.side !== item.side || ally.id === item.id) continue
         if (!this.isAdjacentByFootprint(ally, item)) continue
         if (!this.isDamageBonusEligible(ally)) continue
-        ally.baseStats.damage += 3 * useRepeatCount
+        ally.baseStats.damage += 4 * useRepeatCount
       }
     }
     if (item.side === 'player' && this.hasPlayerSkill('skill5') && this.isShieldItem(item)) {
-      item.baseStats.shield += 5 * useRepeatCount
+      item.baseStats.shield += 7 * useRepeatCount
     }
     if (item.side === 'player' && this.hasPlayerSkill('skill11') && this.isAmmoItem(item)) {
       for (const ally of this.items) {
         if (ally.side !== item.side || ally.id === item.id) continue
         if (!this.isAdjacentByFootprint(ally, item)) continue
-        if (!this.isAmmoItem(ally)) continue
         if (!this.isDamageBonusEligible(ally)) continue
         ally.baseStats.damage += 5 * useRepeatCount
       }
@@ -2597,10 +2628,10 @@ export class CombatEngine {
         && becameEmpty
       ) {
         this.skillFirstAmmoEmptyTriggered = true
-        this.refillAmmoAndTriggerGrowth(item, 2)
+        this.refillAmmoAndTriggerGrowth(item, 3)
       }
       if (item.side === 'player' && this.hasPlayerSkill('skill52') && becameEmpty) {
-        if (Math.random() < 0.3) {
+        if (Math.random() < 0.5) {
           this.refillAmmoAndTriggerGrowth(item, item.runtime.ammoMax)
         }
       }
@@ -2936,9 +2967,13 @@ export class CombatEngine {
         finalDamage: remaining,
       })
 
-      if (remaining > 0) {
+      if (panel > 0) {
         this.applyOnHeroDamagedReactions(targetHero.side)
+      }
+
+      if (remaining > 0) {
         if (attacker) {
+          this.applyOnDealDamageLifesteal(attacker, remaining)
           this.applyPlayerOnDealDamageSkillTriggers(attacker)
           this.applyAdjacentAttackDamageGrowth(attacker)
         }
@@ -2989,7 +3024,7 @@ export class CombatEngine {
         if (gainMs > 0) this.chargeItemByMs(item, gainMs)
       }
 
-      if (lines.some((s) => /受到攻击时额外使用此物品/.test(s))) {
+      if (lines.some((s) => /受到攻击时(?:额外|立即)使用此物品/.test(s))) {
         this.enqueueExtraTriggeredUse(item)
       }
     }

@@ -5060,6 +5060,10 @@ function resolveEventDescText(event: EventChoice, detailed: boolean): string {
   if (event.id === 'event21') {
     return raw.replace(/x/g, String((currentDay + 3) * 3))
   }
+  if (event.id === 'event28') {
+    const gain = (currentDay + 3) * 5
+    return `3天后获得${gain}金币`
+  }
   return raw
 }
 
@@ -5612,9 +5616,11 @@ function ensureEventDraftSelection(stage: Container): void {
         breakWords: true,
         wordWrapWidth: cardW - 28,
         lineHeight: 32,
+        align: 'center',
       },
     })
-    detail.x = 14
+    detail.anchor.set(0.5, 0)
+    detail.x = cardW / 2
     detail.y = 216
     con.addChild(detail)
     descTextById.set(choice.id, detail)

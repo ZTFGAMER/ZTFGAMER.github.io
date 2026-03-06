@@ -66,6 +66,7 @@ let playerCdOverlay: Graphics | null = null
 let engine: CombatEngine | null = null
 let fxLayer: Container | null = null
 let offFireEvent: (() => void) | null = null
+let offTriggerEvent: (() => void) | null = null
 let offDamageEvent: (() => void) | null = null
 let offShieldEvent: (() => void) | null = null
 let offHealEvent: (() => void) | null = null
@@ -221,11 +222,40 @@ type ItemBattleStat = {
   baseTier: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
   tierRaw: string
   level: number
+  triggerCount: number
   damage: number
   shield: number
 }
 
 const battleStatsByItemId = new Map<string, ItemBattleStat>()
+const battleStatLastTriggerTickByItemId = new Map<string, number>()
+
+function currentBattleTickIndex(): number {
+  const tick = engine?.getDebugState().tickIndex
+  if (typeof tick !== 'number' || !Number.isFinite(tick)) return -1
+  return Math.max(0, Math.round(tick))
+}
+
+function addBattleItemTriggerCount(
+  sourceItemId: string,
+  side: 'player' | 'enemy',
+  amount: number,
+  dedupeWithinTick = false,
+): void {
+  if (!sourceItemId) return
+  const add = Math.max(1, Math.round(Number(amount) || 1))
+  if (dedupeWithinTick) {
+    const tick = currentBattleTickIndex()
+    if (tick >= 0) {
+      const last = battleStatLastTriggerTickByItemId.get(sourceItemId)
+      if (last === tick) return
+      battleStatLastTriggerTickByItemId.set(sourceItemId, tick)
+    }
+  }
+  const stat = ensureBattleStatEntry(sourceItemId, side)
+  stat.triggerCount += add
+  damageStatsDirty = true
+}
 
 function parseTierLevel(tierRaw: string): number {
   const tier = `${tierRaw}`
@@ -650,6 +680,7 @@ function ensureBattleStatEntry(sourceItemId: string, side: 'player' | 'enemy', d
     baseTier: parseBaseTier(itemDef?.starting_tier),
     tierRaw,
     level: parseTierLevel(tierRaw),
+    triggerCount: 0,
     damage: 0,
     shield: 0,
   }
@@ -670,7 +701,7 @@ function refreshDamageStatsPanel(force = false): void {
   if (!force && !damageStatsDirty && battlePresentationMs - damageStatsLastRenderAtMs < 180) return
   const rows = Array.from(battleStatsByItemId.values())
     .filter((it) => it.side === damageStatsTab)
-    .sort((a, b) => (b.damage + b.shield) - (a.damage + a.shield) || b.damage - a.damage)
+    .sort((a, b) => b.triggerCount - a.triggerCount || (b.damage + b.shield) - (a.damage + a.shield) || b.damage - a.damage)
   const maxStatValue = Math.max(1, ...rows.map((r) => Math.max(r.damage, r.shield)))
 
   damageStatsTitleText.text = engine?.isFinished() ? '战斗统计（已结束）' : '战斗统计（进行中）'
@@ -728,6 +759,14 @@ function refreshDamageStatsPanel(force = false): void {
       const barW = 228
       const barH = 13
       const barX = -rowW / 2 + 64
+
+      const triggerText = new Text({
+        text: `触发 ${Math.max(0, Math.round(stat.triggerCount))}次`,
+        style: { fontSize: 18, fill: 0xfff0bf, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      triggerText.x = barX + barW + 10
+      triggerText.y = y + 10
+      row.addChild(triggerText)
 
       const dmgBg = new Graphics()
       dmgBg.roundRect(barX, y + 42, barW, barH, 6)
@@ -2290,6 +2329,7 @@ export const BattleScene: Scene = {
     droppedProjectileCount = 0
     droppedFloatingNumberCount = 0
     battleStatsByItemId.clear()
+    battleStatLastTriggerTickByItemId.clear()
     damageStatsPanelVisible = false
     damageStatsDirty = false
     damageStatsLastRenderAtMs = 0
@@ -2536,6 +2576,10 @@ export const BattleScene: Scene = {
     }
     stage.on('pointerdown', onStageTapHidePopup)
 
+    offTriggerEvent = EventBus.on('battle:item_trigger', (e) => {
+      addBattleItemTriggerCount(e.sourceItemId, e.side, Math.max(1, Math.round(e.triggerCount || 1)))
+    })
+
     offFireEvent = EventBus.on('battle:item_fire', (e) => {
       tryPulseItem(e.sourceItemId, e.side)
       pushBattleLog(`开火 ${e.side === 'player' ? '我方' : '敌方'} ${e.itemId} x${e.multicast}`)
@@ -2549,7 +2593,7 @@ export const BattleScene: Scene = {
       const fromSide = e.sourceSide === 'player' || e.sourceSide === 'enemy'
         ? e.sourceSide
         : (side === 'enemy' ? 'player' : 'enemy')
-      if (e.sourceItemId && !e.sourceItemId.startsWith('status_') && e.sourceItemId !== 'fatigue') {
+      if (e.sourceItemId && e.sourceType !== 'system' && !e.sourceItemId.startsWith('status_') && e.sourceItemId !== 'fatigue') {
         const stat = ensureBattleStatEntry(e.sourceItemId, fromSide)
         stat.damage += Math.max(0, e.amount)
         damageStatsDirty = true
@@ -2740,6 +2784,7 @@ export const BattleScene: Scene = {
     battlePickedSkills = []
     enemyPickedSkills = []
     fxLayer = null
+    offTriggerEvent?.(); offTriggerEvent = null
     offFireEvent?.(); offFireEvent = null
     offDamageEvent?.(); offDamageEvent = null
     offShieldEvent?.(); offShieldEvent = null
@@ -2811,6 +2856,7 @@ export const BattleScene: Scene = {
     enemySkillIconBarKey = ''
     lastHudTickIndex = -1
     battleStatsByItemId.clear()
+    battleStatLastTriggerTickByItemId.clear()
     damageStatsPanelVisible = false
     damageStatsDirty = false
     damageStatsLastRenderAtMs = 0

@@ -106,10 +106,10 @@ describe('CombatEngine gold skills', () => {
     expect(dmg).toBe(30)
   })
 
-  it('skill43: 唯一伤害物品伤害翻倍', () => {
+  it('skill43: 唯一伤害物品伤害+50%', () => {
     const engine = new CombatEngine()
     engine.start(mkSnapshot([mkEntity('g43', 0, { damage: 10 })]), { playerSkillIds: ['skill43'], enemyDisabled: true })
-    expect(runtimeByInstance(engine, 'g43')?.damage).toBe(20)
+    expect(runtimeByInstance(engine, 'g43')?.damage).toBe(15)
   })
 
   it('skill44: 唯一弹药物品伤害+50%且弹药上限+10', () => {
@@ -218,7 +218,7 @@ describe('CombatEngine gold skills', () => {
     expect(late?.multicast).toBe(1)
   })
 
-  it('skill87: 左侧物品使用时为最右侧充能1秒', () => {
+  it('skill87: 左侧物品使用时为最右侧充能0.5秒', () => {
     const baseline = new CombatEngine()
     baseline.start(mkSnapshot([
       mkEntity('g87-left-base', 0, { cooldownMs: 100, damage: 0 }),

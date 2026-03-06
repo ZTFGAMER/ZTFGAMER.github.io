@@ -1,5 +1,180 @@
 # 大巴扎 — 开发进度记录
 
+### 本次对话追加（2026-03-06，修复战斗统计触发次数口径：英雄铠甲少计、短剑多计）
+
+- 用户反馈：
+  - 敌人同时攻击时，`英雄铠甲` 实际触发多次，但统计只显示 1 次；
+  - `短剑` 统计触发次数出现每次 +2。
+- 根因定位：`BattleScene` 的触发次数同时从多个事件叠加（`battle:item_fire` + `battle:take_damage/gain_shield/heal/status_apply`），导致：
+  - 伤害物品（如短剑）被重复计数；
+  - 同 tick 的防抖去重又压掉了部分“真实多次触发”（如英雄铠甲）。
+- 已完成：
+  - `src/core/EventBus.ts`
+    - 新增事件 `battle:item_trigger`（专用于“每次使用/触发”计数）。
+  - `src/combat/CombatEngine.ts`
+    - 在 `resolveFire()` 中每次真实使用时统一发出 `battle:item_trigger`。
+  - `src/scenes/BattleScene.ts`
+    - 统计触发次数改为仅消费 `battle:item_trigger`；
+    - 保留 `battle:item_fire` 仅用于脉冲动画与日志，不再用于计数；
+    - 移除在伤害/护盾/治疗/状态事件中的触发次数叠加，避免重复计数和同 tick 漏计。
+- 结果：
+  - 英雄铠甲在同一时段的多次真实触发会被正确累计；
+  - 短剑触发次数回到每次触发 +1 的口径。
+- 验证：`npm run build` 通过。
+- 当前阶段：该统计口径修复进入验收阶段，等待用户复测“英雄铠甲多次受击触发”和“短剑触发次数”显示是否符合预期。
+
+### 本次对话追加（2026-03-06，skill43 吸血比例修正为100%）
+
+- 用户反馈：`skill43` 吸血效果应为按造成伤害的 `100%` 吸血。
+- 已完成：
+  - `src/combat/CombatEngine.ts`
+    - `applyOnDealDamageLifesteal()` 从 `50%` 吸血调整为 `100%` 吸血（等额回复，仍受最大生命上限限制）。
+  - `data/skill_effects_gold_draft.json`
+    - `skill43` 详细描述同步为“并附带100%吸血”。
+- 验证：`npm run build` 通过。
+- 当前阶段：该修正进入验收阶段，等待用户确认战斗内吸血体感与显示。
+
+### 本次对话追加（2026-03-06，黄金技能对齐：skill43/87/48）
+
+- 用户确认：按最新黄金技能口径继续修改。
+- 已完成：
+  - `src/combat/CombatEngine.ts`
+    - `skill43` 伤害倍率从 `x2` 调整为 `+50%`（`x1.5`）；
+    - 新增 `skill43` 吸血：唯一伤害物品造成生命伤害时，按造成生命伤害的 `50%` 回复己方英雄生命（不超过最大生命）；
+    - `skill87` 充能从 `1秒` 调整为 `0.5秒`（500ms）。
+  - `src/skills/goldSkillRules.ts`
+    - `skill48` 额外升级触发率从 `20%` 调整为 `25%`。
+  - `data/skill_effects_gold_draft.json`
+    - 同步更新文案：`skill43`（+50%并附带吸血）、`skill87`（0.5秒）、`skill48`（25%）。
+  - 测试同步：
+    - `src/combat/CombatEngine.goldSkills.test.ts`（skill43/87断言更新）；
+    - `src/skills/goldSkillRules.test.ts`（skill48 25%断言更新）。
+- 验证：
+  - `npx vitest run src/combat/CombatEngine.goldSkills.test.ts` 通过（19/19）；
+  - `npx vitest run src/skills/goldSkillRules.test.ts` 通过（2/2）；
+  - `npm run build` 通过。
+- 当前阶段：该黄金技能修正进入验收阶段，等待用户实战确认（skill43吸血、skill87充能节奏、skill48触发体感）。
+
+### 本次对话追加（2026-03-06，白银技能5项数值与描述同步）
+
+- 用户需求：仅修改白银技能的数值与相关描述，不改触发机制。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按最小改动落地。
+- 已完成：
+  - `data/skill_effects_silver_draft.json`
+    - `skill22`：`+10 -> +15`（detail + effect.value）；
+    - `skill52`：`30% -> 50%`（detail + effect.chance）；
+    - `skill53`：`每弹药+3 -> +4`（detail + effect.value）；
+    - `skill57`：`间隔缩短1% -> 2%`（detail + effect.value）；
+    - `skill59`：`开场同名+25 -> +20`（detail + effect.value）。
+  - `src/combat/CombatEngine.ts`
+    - 同步运行时数值口径：`skill22/52/53/57/59` 按上述新值更新。
+- 验证：`npm run build` 通过。
+- 当前阶段：该批白银技能数值修正进入验收阶段，等待用户实战确认。
+
+### 本次对话追加（2026-03-06，青铜技能按确认口径更新：数值+逻辑）
+
+- 用户确认：`skill19` 仅改描述；`skill11` 为逻辑变更；其余为数值变更。
+- 已完成：
+  - `src/combat/CombatEngine.ts`
+    - `skill4`：相邻伤害增益 `+3 -> +4`；
+    - `skill5`：自身护盾增益 `+5 -> +7`；
+    - `skill9`：首次空弹装填 `2 -> 3`；
+    - `skill11`：由“仅相邻弹药物品”改为“相邻任意伤害物品”加伤害（逻辑变更）。
+  - `src/skills/bronzeSkillConfig.ts`
+    - 同步更新 `skill4/5/9/11` 详细描述；
+    - `skill19` 文案从“武器”改为“物品”（仅描述变更，逻辑不改）。
+  - `data/skill_effects_bronze_draft.json`
+    - 同步更新草案配置中的对应数值、`skill11` target/type、`skill19` summary 文案，保持配置与代码口径一致。
+- 验证：`npm run build` 通过。
+- 当前阶段：该批青铜技能修正进入验收阶段，等待用户实战确认触发表现。
+
+### 本次对话追加（2026-03-06，每日玩家/敌人血量曲线更新）
+
+- 用户需求：按新表更新 Day1~Day20 的玩家血量与敌人血量（两者一致）。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按最小配置改动落地。
+- 已完成：`data/game_config.json`
+  - `daily_player_health` 更新为：
+    - `[500,1000,1500,2000,2500,3000,4000,5000,6000,8000,10000,12000,14000,18000,22000,26000,30000,34000,38000,42000]`
+  - `daily_enemy_health` 同步更新为同一曲线；
+  - 兼容字段 `daily_health` 同步更新为同一曲线。
+- 验证：`npm run build` 通过。
+- 当前阶段：该血量曲线调整进入验收阶段，等待用户确认 Day1~Day20 实机体感。
+
+### 本次对话追加（2026-03-06，6个物品数值与描述同步更新）
+
+- 用户需求：更新 `头盔 / 弹弓 / 飞刃 / 英雄铠甲 / 攻城重炮 / 暗影斗篷` 的数值与描述口径，并确认需要修改的文件。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按最小代码路径落地。
+- 已完成：
+  - `data/vanessa_items.json`
+  - `data/vanessa_items_compact.json`
+  - 实际调整：
+    - `弹弓` 伤害：`30/60/100/180/270 -> 40/80/135/240/360`；
+    - `飞刃` 描述：`使用相邻物品时额外使用此物品 -> 使用相邻物品时立即使用此物品`（技能行 + 简版）；
+    - `英雄铠甲` 护盾：`200/400/600 -> 100/200/300`；描述改为“受到攻击时立即使用此物品”（技能行 + 简版）；
+    - `攻城重炮` 伤害：`500/1000/1500 -> 600/1200/1800`；补弹增伤：`+500/1000/1500 -> +600/1200/1800`（含 `simple_desc_tiered`）；
+    - `头盔`、`暗影斗篷` 本轮核对后与目标一致，无需改动。
+  - 为兼容新文案触发词，同步更新：
+    - `src/combat/CombatEngine.ts`：受“相邻物品触发使用/受击触发使用”正则兼容 `额外|立即`；
+    - `src/combat/CombatEngine.test.ts`：技能文案契约正则同步兼容 `额外|立即`。
+- 验证：`npm run build` 通过。
+- 当前阶段：该物品参数与文案修正进入验收阶段，等待用户确认实机表现与文本显示。
+
+### 本次对话追加（2026-03-06，触发次数统计补齐额外触发/护盾物品）
+
+- 用户反馈：触发次数统计不准确（如英雄铠甲受击额外使用未体现、护盾物品统计缺失）。
+- 已完成：`src/scenes/BattleScene.ts`
+  - 保留 `battle:item_fire` 的主统计口径（按 `multicast` 累计触发次数）；
+  - 新增回退补偿：在 `battle:take_damage / battle:gain_shield / battle:heal / battle:status_apply` 中，对 `sourceType==='item'` 的来源进行“同 tick 去重”补计 1 次，覆盖额外触发链与非直伤路径；
+  - 新增 `battleStatLastTriggerTickByItemId` 去重映射，避免同 tick 多事件重复累加；
+  - 统计排序改为优先 `triggerCount`，再按伤害/护盾，提升高触发物品可见性。
+- 结果：额外触发与护盾类物品更稳定计入触发次数统计。
+- 验证：`npm run build` 通过。
+- 当前阶段：该统计修正进入验收阶段，等待用户对“英雄铠甲/护盾物品/连发物品”实测确认。
+
+### 本次对话追加（2026-03-06，战斗统计新增“触发次数”并按连发累计）
+
+- 用户需求：战斗统计里增加每个物品触发次数统计；连发按发射次数累计（例如一次 `x6` 记 6 次）。
+- 已完成：`src/scenes/BattleScene.ts`
+  - 统计结构 `ItemBattleStat` 新增 `triggerCount` 字段；
+  - 监听 `battle:item_fire` 时累计触发次数：`triggerCount += multicast`（最小按 1 计）；
+  - 统计面板行新增展示文案：`触发 N次`。
+- 与上一条统计口径一致：系统来源技能伤害仍不计入物品伤害统计。
+- 验证：`npm run build` 通过。
+- 当前阶段：该统计增强进入验收阶段，等待用户确认触发次数口径与显示效果。
+
+### 本次对话追加（2026-03-06，受击触发口径修正为“受到攻击即可”）
+
+- 用户需求：`头盔`等“受到攻击时触发”效果，不应要求实际掉血；被护盾完全吸收时也应触发（含受击触发类）。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按最小代码路径落地。
+- 已完成：`src/combat/CombatEngine.ts`
+  - 命中结算中将“受击反应”触发条件从 `remaining > 0`（必须掉血）改为 `panel > 0`（只要本次被攻击命中）；
+  - 仍保持“造成伤害后触发”的攻击方逻辑不变（`applyPlayerOnDealDamageSkillTriggers` / `applyAdjacentAttackDamageGrowth` 继续要求 `remaining > 0`）。
+- 结果：护盾全额吸收时，受击类被动（如头盔受击充能、受击额外使用）也会生效。
+- 验证：`npm run build` 通过；`npx vitest run src/combat/CombatEngine.test.ts` 当前存在既有失败用例（与本次改动无直接对应新增失败定位）。
+- 当前阶段：该触发口径修正进入验收阶段，等待用户实机确认“护盾挡伤也能触发受击效果”。
+
+### 本次对话追加（2026-03-06，战斗统计暂不计入技能造成伤害）
+
+- 用户需求：战斗统计中的伤害先不要统计技能造成的伤害。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），先按最小风险方案落地。
+- 已完成：`src/scenes/BattleScene.ts`
+  - 统计聚合时新增过滤：`e.sourceType !== 'system'`；
+  - 这样 `skillXX` 等系统来源伤害不再累计到物品伤害统计中。
+- 影响范围：仅战斗统计面板累计逻辑；战斗表现与真实扣血不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：该统计口径修正进入验收阶段，等待用户确认统计面板表现。
+
+### 本次对话追加（2026-03-06，修正 event28 展示文案并将事件卡文本居中）
+
+- 用户需求：修正 `event28` 表现，并将事件界面文本改为居中显示。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小方案，本轮再次超时（`MCP error -32001: Request timed out`），先按最小一致性实现。
+- 已完成：`src/scenes/ShopScene.ts`
+  - `resolveEventDescText()` 新增 `event28` 动态文案：按当天天数计算并显示 `3天后获得${(day+3)*5}金币`；
+  - 事件选择卡描述文本改为居中：`align: 'center'` + `anchor(0.5, 0)` + 居中 `x`。
+- 说明：`event28` 的延迟到账逻辑（`schedulePendingGold(day + 3, gain)`）保持不变，修正重点为“按具体 x 展示”。
+- 验证：`npm run build` 通过。
+- 当前阶段：该修正进入验收阶段，等待用户确认 `event28` 显示与事件界面文本居中效果。
+
 ### 本次对话追加（2026-03-06，飞刃/英雄铠甲数值调整 + TestFlight 上传 + Vercel 发布）
 
 - 用户调整：

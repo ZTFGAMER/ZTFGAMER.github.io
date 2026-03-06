@@ -7,6 +7,7 @@
 /** 全局事件类型表 —— 在此处扩展新事件 */
 export type GameEvents = {
   // 战斗事件
+  'battle:item_trigger': { itemId: string; sourceItemId: string; side: 'player' | 'enemy'; triggerCount: number; multicast?: number; extraTriggered?: boolean };
   'battle:item_fire':    { itemId: string; sourceItemId: string; side: 'player' | 'enemy'; multicast: number };
   'battle:take_damage':  {
     targetId: string;

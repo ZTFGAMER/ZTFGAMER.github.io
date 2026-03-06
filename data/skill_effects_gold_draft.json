@@ -54,8 +54,8 @@
       "icon": "skill43",
       "tier": "gold",
       "archetype": "archer",
-      "summary": "唯一攻击物品伤害翻倍。",
-      "detail": "如果只有1个伤害物品，伤害翻倍。"
+      "summary": "唯一攻击物品大幅强化。",
+      "detail": "如果只有1个伤害物品，伤害+50%，并附带100%吸血。"
     },
     {
       "id": "skill44",
@@ -136,7 +136,7 @@
       "tier": "gold",
       "archetype": "assassin",
       "summary": "最左物品为最右物品充能。",
-      "detail": "使用最左侧物品时为最右侧物品充能1秒。"
+      "detail": "使用最左侧物品时为最右侧物品充能0.5秒。"
     },
     {
       "id": "skill94",
@@ -163,7 +163,7 @@
       "tier": "gold",
       "archetype": "utility",
       "summary": "合成时额外升级",
-      "detail": "合成时有20%几率额外提升1级。"
+      "detail": "合成时有25%几率额外提升1级。"
     },
     {
       "id": "skill49",

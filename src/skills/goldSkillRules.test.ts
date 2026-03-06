@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { calcSkill94DailyGoldBonus, shouldTriggerSkill48ExtraUpgrade } from '@/skills/goldSkillRules'
 
 describe('gold skill shop rules', () => {
-  it('skill48 仅在拥有技能且存在额外等级时按20%触发', () => {
+  it('skill48 仅在拥有技能且存在额外等级时按25%触发', () => {
     expect(shouldTriggerSkill48ExtraUpgrade(false, true, 0.01)).toBe(false)
     expect(shouldTriggerSkill48ExtraUpgrade(true, false, 0.01)).toBe(false)
-    expect(shouldTriggerSkill48ExtraUpgrade(true, true, 0.19)).toBe(true)
-    expect(shouldTriggerSkill48ExtraUpgrade(true, true, 0.2)).toBe(false)
+    expect(shouldTriggerSkill48ExtraUpgrade(true, true, 0.24)).toBe(true)
+    expect(shouldTriggerSkill48ExtraUpgrade(true, true, 0.25)).toBe(false)
   })
 
   it('skill94 每日金币+15%并向下取整', () => {

@@ -16,13 +16,13 @@
       "tier": "silver",
       "archetype": "warrior",
       "summary": "获得护盾时伤害增加。",
-      "detail": "每次获得护盾，都会让最左侧物品伤害+10。",
+      "detail": "每次获得护盾，都会让最左侧物品伤害+15。",
       "effect": {
         "scope": "battle",
         "trigger": "on_gain_shield",
         "type": "damage_add",
         "target": "leftmost_damage_item",
-        "value": 10,
+        "value": 15,
         "require_target_exists": true,
         "max_triggers_per_battle": -1
       }
@@ -138,13 +138,13 @@
       "tier": "silver",
       "archetype": "archer",
       "summary": "弹药耗尽自动补满。",
-      "detail": "弹药耗尽时，有30%概率自动补满。",
+      "detail": "弹药耗尽时，有50%概率自动补满。",
       "effect": {
         "scope": "battle",
         "trigger": "on_ammo_empty",
         "type": "ammo_refill_full_chance",
         "target": "source_ammo_item",
-        "chance": 0.3,
+        "chance": 0.5,
         "max_triggers_per_battle": -1
       }
     },
@@ -155,13 +155,13 @@
       "tier": "silver",
       "archetype": "archer",
       "summary": "根据弹药量增加伤害。",
-      "detail": "物品每拥有1发弹药，所有物品伤害+3。",
+      "detail": "物品每拥有1发弹药，所有物品伤害+4。",
       "effect": {
         "scope": "battle",
         "trigger": "passive_realtime",
         "type": "damage_add_per_total_ammo",
         "target": "all_items",
-        "value": 3,
+        "value": 4,
         "max_triggers_per_battle": -1
       }
     },
@@ -224,13 +224,13 @@
       "tier": "silver",
       "archetype": "assassin",
       "summary": "物品间隔不断缩减。",
-      "detail": "造成伤害后物品间隔缩短1%。",
+      "detail": "造成伤害后物品间隔缩短2%。",
       "effect": {
         "scope": "battle",
         "trigger": "on_deal_damage",
         "type": "self_cooldown_reduce_pct",
         "target": "source_item",
-        "value": 0.01,
+        "value": 0.02,
         "max_triggers_per_battle": -1
       }
     },
@@ -241,13 +241,13 @@
       "tier": "silver",
       "archetype": "assassin",
       "summary": "相同的物品伤害增加。",
-      "detail": "开场时所有相同的物品伤害+25。",
+      "detail": "开场时所有相同的物品伤害+20。",
       "effect": {
         "scope": "battle",
         "trigger": "on_battle_start",
         "type": "damage_add_for_duplicates",
         "target": "all_duplicate_items",
-        "value": 25,
+        "value": 20,
         "max_triggers_per_battle": 1
       }
     },

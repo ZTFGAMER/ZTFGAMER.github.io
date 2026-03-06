@@ -69,7 +69,7 @@
         "trigger": "on_use_shield_item",
         "type": "adjacent_damage_add",
         "target": "adjacent_items",
-        "value": 3,
+        "value": 4,
         "max_triggers_per_battle": -1
       }
     },
@@ -85,7 +85,7 @@
         "trigger": "on_use_shield_item",
         "type": "self_shield_add",
         "target": "source_item",
-        "value": 5,
+        "value": 7,
         "max_triggers_per_battle": -1
       }
     },
@@ -133,7 +133,7 @@
         "trigger": "on_battle_start",
         "type": "ammo_capacity_add",
         "target": "leftmost_ammo_item",
-        "value": 2,
+        "value": 3,
         "max_triggers_per_battle": 1
       }
     },
@@ -175,12 +175,12 @@
       "icon": "skill11",
       "tier": "bronze",
       "archetype": "archer",
-      "summary": "相邻弹药物品伤害增加。",
+      "summary": "相邻物品伤害增加。",
       "effect": {
         "scope": "battle",
         "trigger": "on_use_ammo_item",
-        "type": "adjacent_ammo_damage_add",
-        "target": "adjacent_ammo_items",
+        "type": "adjacent_damage_add",
+        "target": "adjacent_items",
         "value": 5,
         "max_triggers_per_battle": -1
       }
@@ -291,7 +291,7 @@
       "icon": "skill19",
       "tier": "bronze",
       "archetype": "assassin",
-      "summary": "战斗开始时，最左侧和最右侧的武器伤害增加。",
+      "summary": "战斗开始时，最左侧和最右侧的物品伤害增加。",
       "effect": {
         "scope": "battle",
         "trigger": "on_battle_start",
