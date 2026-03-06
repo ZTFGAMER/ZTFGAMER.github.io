@@ -1,5 +1,17 @@
 # 大巴扎 — 开发进度记录
 
+### 本次对话追加（2026-03-06，GHE 推送 + Vercel 生产发布）
+
+- 用户指令：`上传ghe，更新vercel`。
+- 已完成：
+  - GHE 更新：推送提交 `e3f7e95` 到 `origin/main`；
+  - Vercel 生产发布：`vercel --prod --yes` 成功。
+- 发布结果：
+  - Production：`https://bigbazzar-d0k8kwlb9-zhengtengfeis-projects.vercel.app`
+  - Alias：`https://bigbazzar.vercel.app`
+- 构建状态：Vercel 云端构建通过（保留既有 chunk size warning，不影响发布）。
+- 当前阶段：发布完成，等待用户线上验收。
+
 ### 本次对话追加（2026-03-06，三界面金币文案下移到刷新按钮上方红框区域）
 
 - 用户反馈：三个界面的“当前持有金币”需移动到截图红框位置（刷新按钮上方）。
