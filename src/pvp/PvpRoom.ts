@@ -114,6 +114,16 @@ export class PvpRoom {
         return
       }
 
+      // 断线重连：同名玩家已在房间但断线，复用原有槽位避免重复显示
+      const disconnected = this._players.find((p) => !p.isAi && !p.connected && p.nickname === msg.nickname)
+      if (disconnected) {
+        disconnected.peerId = peerId
+        disconnected.connected = true
+        this.broadcastRoomState()
+        this.onRoomStateChange?.(this._players)
+        return
+      }
+
       // 分配 index
       const usedIndices = new Set(this._players.map((p) => p.index))
       let idx = 1
@@ -203,6 +213,9 @@ export class PvpRoom {
       }
     }
     this._totalPlayers = this._maxPlayers
+
+    // 先广播含 AI 的完整玩家列表，确保客户端 session.players 包含所有对手
+    this.broadcastRoomState()
 
     // 分配 index 并通知每个客户端
     this._players.forEach((player) => {

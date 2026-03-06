@@ -10,14 +10,9 @@ const PEERJS_CONFIG = {
   debug: 0,
 }
 
-/** 生成 6 位大写字母数字房间码 */
+/** 生成 4 位数字房间码 */
 export function generateRoomCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let code = ''
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)]
-  }
-  return code
+  return String(Math.floor(1000 + Math.random() * 9000))
 }
 
 export class PeerConnection {

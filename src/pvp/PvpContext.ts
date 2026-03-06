@@ -72,8 +72,11 @@ export const PvpContext = {
     backupAndClearPveSave()
 
     // 注册房间回调
-    pvpRoom.onDayReady = (day, countdownMs) => {
-      if (session) session.currentDay = day
+    pvpRoom.onDayReady = (_day, countdownMs) => {
+      // 注意：不在此处更新 session.currentDay！
+      // currentDay 由 session 初始值(1) 和 onBattleComplete 负责推进。
+      // 若在此处更新，当 day_ready 在战斗途中到达时会提前覆盖 currentDay，
+      // 导致 onBattleComplete 计算出错误的 nextDay，使玩家跳过整天甚至误判游戏结束。
       countdownRemainMs = countdownMs
       showOverlay()
       updateOverlayTitle('布置好后点「战斗」准备')
@@ -85,6 +88,11 @@ export const PvpContext = {
     }
 
     pvpRoom.onOpponentSnapshot = (day, opponentSnap) => {
+      // 校验 day：只处理与当前天匹配的快照，防止乱序/残留消息导致误入战斗
+      if (session && day !== session.currentDay) {
+        console.warn('[PvpContext] 忽略不匹配的 opponent_snapshot day=' + day + ' (expected ' + session.currentDay + ')')
+        return
+      }
       hideOverlay()
       stopCountdown()
       applyOpponentSnapshot(day, opponentSnap)
