@@ -27,7 +27,7 @@
       "item1"
     ],
     "attack_style": "旋转飞行",
-    "simple_desc": "使用后相邻护盾物品护盾提升",
+    "simple_desc": "每次使用后相邻护盾物品护盾提升",
     "simple_desc_tiered": "使用时相邻护盾物品护盾+5|10|17|30|50|90|120"
   },
   {
@@ -70,13 +70,13 @@
     "skills": [
       {
         "en": "",
-        "cn": "使用时相邻物品伤害+2/4/7/12/20/28/48，并补充1/2/3/4/5/6/7发弹药。"
+        "cn": "使用时相邻物品伤害+5/10/17/30/50/90/120，并补充2发弹药。"
       }
     ],
     "icon": "item3",
     "attack_style": "不飞行",
     "simple_desc": "相邻物品伤害提升，并补充弹药",
-    "simple_desc_tiered": "使用时相邻物品伤害+2|4|7|12|20|28|48，并补充1|2|3|4|5|6|7弹药"
+    "simple_desc_tiered": "使用时相邻物品伤害+5|10|17|30|50|90|120，并补充2发弹药"
   },
   {
     "id": "16e55d6c-d856-4820-a337-5f73332b8fe4",
@@ -110,7 +110,7 @@
     "attack_variants": [
       "item4_a"
     ],
-    "simple_desc": "使用后伤害提升",
+    "simple_desc": "每次使用后伤害提升",
     "simple_desc_tiered": "使用时伤害+45|90|150|270|450|810|1080"
   },
   {
@@ -197,7 +197,7 @@
     ],
     "icon": "item7",
     "attack_style": "旋转飞行",
-    "simple_desc": "使用后护盾提升",
+    "simple_desc": "每次使用后护盾提升",
     "simple_desc_tiered": "每次使用后护盾+30|60|100|180|270"
   },
   {
@@ -220,7 +220,7 @@
       },
       {
         "en": "",
-        "cn": "使用时伤害+25，并打出所有弹药，弹药:4/5/6/7/8。"
+        "cn": "使用时伤害+15，并打出所有弹药，弹药:4/5/6/7/8。"
       }
     ],
     "icon": "item9",
@@ -228,8 +228,8 @@
     "attack_variants": [
       "item9_a"
     ],
-    "simple_desc": "使用后伤害提升，打出所有弹药",
-    "simple_desc_tiered": "使用时伤害+25，并打出所有弹药"
+    "simple_desc": "每次使用后伤害提升，并打出所有弹药",
+    "simple_desc_tiered": "使用时伤害+15，并打出所有弹药"
   },
   {
     "id": "2d974fec-6038-417d-8831-1e7ea8d2fcde",
@@ -284,8 +284,8 @@
     ],
     "icon": "item13",
     "attack_style": "旋转飞行",
-    "simple_desc": "使用后所有护盾物品护盾提升",
-    "simple_desc_tiered": "使用后所有护盾物品+100护盾"
+    "simple_desc": "每次使用后所有护盾物品护盾提升",
+    "simple_desc_tiered": "每次使用后所有护盾物品+100护盾"
   },
   {
     "id": "ea7d8f3c-b0c8-4570-90de-4a706657f3f2",
@@ -307,13 +307,13 @@
       },
       {
         "en": "",
-        "cn": "使用后根据当前护盾值对对方造成伤害。"
+        "cn": "每次使用后根据当前护盾值对对方造成伤害。"
       }
     ],
     "icon": "item14",
     "attack_style": "旋转飞行",
-    "simple_desc": "使用后根据当前护盾值对对方造成伤害",
-    "simple_desc_tiered": "使用后根据当前护盾值对对方造成伤害"
+    "simple_desc": "每次使用后根据当前护盾值对对方造成伤害",
+    "simple_desc_tiered": "每次使用后根据当前护盾值对对方造成伤害"
   },
   {
     "id": "7587058e-0db0-4d26-afa7-8cc19777c68c",
@@ -340,8 +340,8 @@
     ],
     "icon": "item15",
     "attack_style": "旋转飞行",
-    "simple_desc": "使用后伤害翻倍",
-    "simple_desc_tiered": "使用后伤害翻倍"
+    "simple_desc": "每次使用后伤害翻倍",
+    "simple_desc_tiered": "每次使用后伤害翻倍"
   },
   {
     "id": "37ad7738-9773-4c30-8987-fc4ba70f5577",
@@ -363,7 +363,7 @@
       },
       {
         "en": "",
-        "cn": "使用其他弹药物品时攻击次数+1，弹药:2。"
+        "cn": "使用其他弹药物品时连发次数+1，弹药:2。"
       }
     ],
     "icon": "item16",
@@ -371,8 +371,8 @@
     "attack_variants": [
       "item16_a"
     ],
-    "simple_desc": "使用其他弹药物品时,连发次数增加",
-    "simple_desc_tiered": "使用其他弹药物品时,连发次数+1"
+    "simple_desc": "使用其他弹药物品时，连发次数增加",
+    "simple_desc_tiered": "使用其他弹药物品时，连发次数+1"
   },
   {
     "id": "aa88379b-caf0-48e4-8427-54aff2bcc0e3",
@@ -390,11 +390,11 @@
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成350/550/750伤害。"
+        "cn": "攻击造成350/500/650伤害。"
       },
       {
         "en": "",
-        "cn": "使用后伤害-20。"
+        "cn": "每次使用后伤害-20。"
       }
     ],
     "icon": "item17",
@@ -402,8 +402,8 @@
     "attack_variants": [
       "item17_a"
     ],
-    "simple_desc": "使用后伤害降低",
-    "simple_desc_tiered": "使用后伤害-20"
+    "simple_desc": "每次使用后伤害降低",
+    "simple_desc_tiered": "每次使用后伤害-20"
   },
   {
     "id": "35a85821-5a72-4b42-8f8e-129e6504cbd0",
@@ -432,5 +432,187 @@
     "attack_style": "旋转飞行",
     "simple_desc": "造成百分比伤害",
     "simple_desc_tiered": "造成目标最大生命值40%的伤害"
+  },
+  {
+    "id": "5a1d3f01-744e-4a2b-bf93-0f8dcf6bf0e5",
+    "name_en": "",
+    "name_cn": "头盔",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver/Gold/Diamond",
+    "heroes": "",
+    "tags": "战士",
+    "position": "",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "获得45/90/150/270/432护盾。"
+      },
+      {
+        "en": "",
+        "cn": "受到攻击时为此物品充能1秒。"
+      }
+    ],
+    "icon": "item19",
+    "attack_style": "旋转飞行",
+    "simple_desc": "受到攻击时为此物品充能",
+    "simple_desc_tiered": "受到攻击时为此物品充能1秒"
+  },
+  {
+    "id": "9b85d1fd-b6a2-4ba8-afbf-1ef5467c73db",
+    "name_en": "",
+    "name_cn": "弹弓",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver/Gold/Diamond",
+    "heroes": "",
+    "tags": "弓手",
+    "position": "",
+    "cooldown": 600,
+    "cooldown_tiers": "600",
+    "skills": [
+      {
+        "en": "",
+        "cn": "攻击造成30/60/100/180/270伤害。"
+      },
+      {
+        "en": "",
+        "cn": "弹药耗尽时造成5倍伤害。"
+      },
+      {
+        "en": "",
+        "cn": "弹药:3。"
+      }
+    ],
+    "icon": "item20",
+    "attack_style": "直线飞行",
+    "attack_variants": [
+      "item20_a"
+    ],
+    "simple_desc": "弹药耗尽时造成5倍伤害",
+    "simple_desc_tiered": "弹药耗尽时造成5倍伤害"
+  },
+  {
+    "id": "5fb79fd6-54f9-49cc-bf87-c20ecb57fcae",
+    "name_en": "",
+    "name_cn": "飞刃",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver/Gold/Diamond",
+    "heroes": "",
+    "tags": "刺客",
+    "position": "",
+    "cooldown": 6000,
+    "cooldown_tiers": "6000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "攻击造成10/20/35/60/100/180/240伤害。"
+      },
+      {
+        "en": "",
+        "cn": "使用相邻物品时额外使用此物品。"
+      }
+    ],
+    "icon": "item21",
+    "attack_style": "旋转飞行",
+    "simple_desc": "使用相邻物品时额外使用此物品",
+    "simple_desc_tiered": "使用相邻物品时额外使用此物品"
+  },
+  {
+    "id": "52e47c77-6c5f-4065-a104-fd22a6f1dc5e",
+    "name_en": "",
+    "name_cn": "英雄铠甲",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold/Diamond",
+    "heroes": "",
+    "tags": "战士",
+    "position": "",
+    "cooldown": 6000,
+    "cooldown_tiers": "6000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "获得100/200/300护盾。"
+      },
+      {
+        "en": "",
+        "cn": "受到攻击时额外使用此物品。"
+      }
+    ],
+    "icon": "item22",
+    "attack_style": "旋转飞行",
+    "simple_desc": "受到攻击时额外使用此物品",
+    "simple_desc_tiered": "受到攻击时额外使用此物品"
+  },
+  {
+    "id": "be451ac8-89ad-4f56-8d74-166176f8a7cc",
+    "name_en": "",
+    "name_cn": "攻城重炮",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold/Diamond",
+    "heroes": "",
+    "tags": "弓手",
+    "position": "",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "攻击造成500/1000/1500伤害。"
+      },
+      {
+        "en": "",
+        "cn": "补充弹药时伤害+500/1000/1500。"
+      },
+      {
+        "en": "",
+        "cn": "弹药:1。"
+      }
+    ],
+    "icon": "item23",
+    "attack_style": "直线飞行",
+    "attack_variants": [
+      "item23_a"
+    ],
+    "simple_desc": "补充弹药时伤害增加",
+    "simple_desc_tiered": "补充弹药时伤害+500|1000|1500"
+  },
+  {
+    "id": "fd21e723-cacf-40a0-b7fb-4078d6697a37",
+    "name_en": "",
+    "name_cn": "暗影斗篷",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold/Diamond",
+    "heroes": "",
+    "tags": "刺客",
+    "position": "",
+    "cooldown": 2500,
+    "cooldown_tiers": "2500",
+    "skills": [
+      {
+        "en": "",
+        "cn": "获得100/200/300护盾。"
+      },
+      {
+        "en": "",
+        "cn": "右侧的攻击物品连发次数+1。"
+      }
+    ],
+    "icon": "item24",
+    "attack_style": "旋转飞行",
+    "simple_desc": "右侧的攻击物品连发次数+1",
+    "simple_desc_tiered": "右侧的攻击物品连发次数+1"
   }
 ]

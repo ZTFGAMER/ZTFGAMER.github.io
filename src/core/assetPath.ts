@@ -1,3 +1,5 @@
+import { getAllItems } from '@/core/DataLoader'
+
 function getItemIconBasePath(): string {
   const protocol = typeof window !== 'undefined' ? window.location.protocol : ''
   let base = '/resource'
@@ -24,8 +26,22 @@ function getResourceBasePath(): string {
   return base
 }
 
+let itemIconStemByDefId: Map<string, string> | null = null
+
+function getItemIconStem(defId: string): string {
+  if (!itemIconStemByDefId) {
+    itemIconStemByDefId = new Map()
+    for (const item of getAllItems()) {
+      const stem = String(item.icon || '').trim()
+      if (!stem) continue
+      itemIconStemByDefId.set(item.id, stem)
+    }
+  }
+  return itemIconStemByDefId.get(defId) || defId
+}
+
 export function getItemIconUrl(defId: string): string {
-  return `${getItemIconBasePath()}/${defId}.png`
+  return `${getItemIconBasePath()}/${getItemIconStem(defId)}.png`
 }
 
 export function getItemIconUrlByName(fileStem: string): string {

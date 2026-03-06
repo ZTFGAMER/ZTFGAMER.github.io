@@ -100,6 +100,7 @@ interface PendingHit {
 interface PendingItemFire {
   dueTick: number
   sourceItemId: string
+  extraTriggered?: boolean
 }
 
 interface PendingChargePulse {
@@ -659,7 +660,7 @@ export class CombatEngine {
             const boosted = Math.max(1, base + Math.max(0, Math.round(it.runtime.bonusMulticast)) + goldMulticast)
             const localDef = this.findItemDef(it.defId)
             if (!localDef) return boosted
-            const allAmmoShot = this.skillLines(localDef).some((s) => /一次打出所有弹药/.test(s))
+            const allAmmoShot = this.skillLines(localDef).some((s) => /(?:一次)?打出所有弹药/.test(s))
             if (!allAmmoShot || it.runtime.ammoMax <= 0) return boosted
             return Math.max(boosted, Math.max(1, it.runtime.ammoCurrent))
           })(),
@@ -1604,6 +1605,17 @@ export class CombatEngine {
     }
   }
 
+  private applyAdjacentUseExtraFireTriggers(fired: CombatItemRunner): void {
+    for (const owner of this.items) {
+      if (owner.side !== fired.side || owner.id === fired.id) continue
+      if (!this.isAdjacentByFootprint(owner, fired)) continue
+      const def = this.findItemDef(owner.defId)
+      if (!def) continue
+      if (!this.skillLines(def).some((s) => /使用相邻物品时额外使用此物品/.test(s))) continue
+      this.enqueueExtraTriggeredUse(owner)
+    }
+  }
+
   private applyBurnUseSlowTriggers(fired: CombatItemRunner): void {
     if (fired.baseStats.burn <= 0) return
     for (const owner of this.items) {
@@ -1718,9 +1730,27 @@ export class CombatEngine {
             if (ally.side !== owner.side || ally.id === owner.id) continue
             if (!this.isAdjacentByFootprint(ally, owner)) continue
             if (ally.runtime.ammoMax <= 0) continue
+            const beforeCurrent = ally.runtime.ammoCurrent
+            const beforeMax = ally.runtime.ammoMax
             ally.runtime.ammoMax += v
-            ally.runtime.ammoCurrent = Math.min(ally.runtime.ammoMax, ally.runtime.ammoCurrent + v)
+            if (beforeCurrent < beforeMax) {
+              ally.runtime.ammoCurrent = Math.min(ally.runtime.ammoMax, beforeCurrent + v)
+              const gained = Math.max(0, ally.runtime.ammoCurrent - beforeCurrent)
+              if (gained > 0) this.applyOnAmmoRefilledDamageGrowth(ally, gained)
+            }
           }
+        }
+      }
+
+      const rightMulticastLine = lines.find((s) => /右侧的攻击物品连发次数\+\d+(?:[\/|]\d+)*/.test(s))
+      if (rightMulticastLine) {
+        const v = Math.max(0, Math.round(this.tierValueFromLine(rightMulticastLine, tIdx)))
+        if (v > 0) {
+          const ownerRightEdge = owner.col + this.itemWidth(owner.size) - 1
+          const rightTarget = this.items
+            .filter((ally) => ally.side === owner.side && ally.id !== owner.id)
+            .find((ally) => ally.col === ownerRightEdge + 1 && this.isDamageBonusEligible(ally))
+          if (rightTarget) rightTarget.baseStats.multicast += v
         }
       }
     }
@@ -1772,6 +1802,41 @@ export class CombatEngine {
         gainMs: gain,
       })
     }
+  }
+
+  private enqueueExtraTriggeredUse(source: CombatItemRunner): void {
+    const nextTick = this.tickIndex + 1
+    this.pendingItemFires.push({
+      dueTick: nextTick,
+      sourceItemId: source.id,
+      extraTriggered: true,
+    })
+  }
+
+  private applyOnAmmoRefilledDamageGrowth(target: CombatItemRunner, gainedAmmo: number): void {
+    const gained = Math.max(0, Math.round(gainedAmmo))
+    if (gained <= 0) return
+    const def = this.findItemDef(target.defId)
+    if (!def) return
+    if (!this.isDamageBonusEligible(target)) return
+    const line = this.skillLines(def).find((s) => /补充弹药时伤害\+\d+(?:[\/|]\d+)*/.test(s))
+    if (!line) return
+    const perAmmo = Math.max(0, Math.round(this.tierValueFromLine(line, this.tierIndex(def, target.tier))))
+    if (perAmmo <= 0) return
+    target.baseStats.damage += perAmmo * gained
+  }
+
+  private refillAmmoAndTriggerGrowth(target: CombatItemRunner, gainAmmo: number): number {
+    const gain = Math.max(0, Math.round(gainAmmo))
+    if (gain <= 0) return 0
+    if (target.runtime.ammoMax <= 0) return 0
+    const beforeCurrent = target.runtime.ammoCurrent
+    const beforeMax = target.runtime.ammoMax
+    if (beforeCurrent >= beforeMax) return 0
+    target.runtime.ammoCurrent = Math.min(beforeMax, beforeCurrent + gain)
+    const actualGained = Math.max(0, target.runtime.ammoCurrent - beforeCurrent)
+    if (actualGained > 0) this.applyOnAmmoRefilledDamageGrowth(target, actualGained)
+    return actualGained
   }
 
   private applyOnShieldGainCharge(side: 'player' | 'enemy'): void {
@@ -1876,7 +1941,7 @@ export class CombatEngine {
         this.enqueueOneAttackFrom(owner)
       }
 
-      const ammoTriggerLine = lines.find((s) => /使用(?:其他)?弹药物品时攻击次数\+\d+(?:[\/|]\d+)*/.test(s))
+      const ammoTriggerLine = lines.find((s) => /使用(?:其他)?弹药物品时(?:攻击|连发)次数\+\d+(?:[\/|]\d+)*/.test(s))
       if (ammoTriggerLine && attacker.runtime.ammoMax > 0) {
         const v = Math.max(1, Math.round(this.tierValueFromLine(ammoTriggerLine, tIdx)))
         owner.runtime.bonusMulticast += v
@@ -2097,17 +2162,21 @@ export class CombatEngine {
         itemId: owner.id,
         executeCount: owner.runtime.executeCount,
       })
-      this.resolveFire(owner)
+      this.resolveFire(owner, one.extraTriggered === true)
     }
   }
 
-  private resolveFire(item: CombatItemRunner): void {
+  private resolveFire(item: CombatItemRunner, fromExtraTrigger = false): void {
     const sourceHero = item.side === 'player' ? this.playerHero : this.enemyHero
     const targetHero = item.side === 'player' ? this.enemyHero : this.playerHero
     const def = this.findItemDef(item.defId)
     const lines = this.skillLines(def)
     const tIdx = this.tierIndex(def, item.tier)
     const isAllAmmoShot = lines.some((s) => /(?:一次)?打出所有弹药/.test(s))
+    const emptyAmmoBurstLine = lines.find((s) => /弹药耗尽时造成\d+(?:[\/|]\d+)*倍伤害/.test(s))
+    const emptyAmmoBurstMul = emptyAmmoBurstLine
+      ? Math.max(1, this.tierValueFromLine(emptyAmmoBurstLine, tIdx))
+      : 1
     const useDamageLine = lines.find((s) => /使用时伤害\+\d+(?:[\/|]\d+)*/.test(s))
     const useDamageBonus = useDamageLine ? Math.round(this.tierValueFromLine(useDamageLine, tIdx)) : 0
     const canGrowDamageOnUse = useDamageBonus > 0 && this.isDamageBonusEligible(item)
@@ -2120,6 +2189,8 @@ export class CombatEngine {
         ? Math.max(1, item.runtime.ammoCurrent)
         : fireCount
     }
+    const willEmptyAmmoThisUse = item.runtime.ammoMax > 0
+      && ((isAllAmmoShot && ammoBeforeUse > 0 && ammoBeforeUse <= fireCount) || (!isAllAmmoShot && ammoBeforeUse === 1))
     const useRepeatCount = Math.max(1, fireCount)
     const tickMsCfg = Math.max(1, getConfig().combatRuntime.tickMs)
     const shotIntervalMs = useRepeatCount > 1
@@ -2129,6 +2200,7 @@ export class CombatEngine {
 
     for (let i = 0; i < useRepeatCount; i++) {
       this.applyAdjacentUseHasteTriggers(item)
+      if (!fromExtraTrigger) this.applyAdjacentUseExtraFireTriggers(item)
       this.applyAdjacentUseBurnTriggers(item)
       this.applyBurnUseSlowTriggers(item)
     }
@@ -2491,6 +2563,9 @@ export class CombatEngine {
         if (isLastShotDoubleTriggered && i === fireCount - 1) {
           shotDamage = Math.max(0, shotDamage * 2)
         }
+        if (willEmptyAmmoThisUse && emptyAmmoBurstMul > 1) {
+          shotDamage = Math.max(0, Math.round(shotDamage * emptyAmmoBurstMul))
+        }
           this.pendingHits.push({
           dueTick: this.tickIndex + i * shotIntervalTick,
           side: item.side,
@@ -2522,11 +2597,11 @@ export class CombatEngine {
         && becameEmpty
       ) {
         this.skillFirstAmmoEmptyTriggered = true
-        item.runtime.ammoCurrent = Math.min(item.runtime.ammoMax, item.runtime.ammoCurrent + 2)
+        this.refillAmmoAndTriggerGrowth(item, 2)
       }
       if (item.side === 'player' && this.hasPlayerSkill('skill52') && becameEmpty) {
         if (Math.random() < 0.3) {
-          item.runtime.ammoCurrent = item.runtime.ammoMax
+          this.refillAmmoAndTriggerGrowth(item, item.runtime.ammoMax)
         }
       }
       if (item.side === 'player' && this.hasPlayerSkill('skill54') && ammoSpent > 0) {
@@ -2562,7 +2637,7 @@ export class CombatEngine {
           if (ally.side !== item.side || ally.id === item.id) continue
           if (!this.isAdjacentByFootprint(ally, item)) continue
           if (ally.runtime.ammoMax <= 0) continue
-          ally.runtime.ammoCurrent = Math.min(ally.runtime.ammoMax, ally.runtime.ammoCurrent + gain)
+          this.refillAmmoAndTriggerGrowth(ally, gain)
         }
       }
     }
@@ -2885,23 +2960,38 @@ export class CombatEngine {
       if (item.side !== side) continue
       const def = this.findItemDef(item.defId)
       if (!def) continue
-      const line = this.skillLines(def).find((s) => /受到攻击伤害时获得\d+(?:\/\d+)*护盾/.test(s))
-      if (!line) continue
-      const rawAmount = Math.round(this.tierValueFromLine(line, this.tierIndex(def, item.tier)))
-      const amount = this.scaleShieldGain(side, rawAmount)
-      if (amount <= 0) continue
-      hero.shield += amount
-      EventBus.emit('battle:gain_shield', {
-        targetId: hero.id,
-        sourceItemId: item.id,
-        amount,
-        targetType: 'hero',
-        targetSide: hero.side,
-        sourceType: 'item',
-        sourceSide: item.side,
-      })
-      this.applyOnShieldGainCharge(side)
-      if (side === 'player') this.applyPlayerShieldGainSkillTriggers(item.id, amount, false)
+      const lines = this.skillLines(def)
+      const tIdx = this.tierIndex(def, item.tier)
+
+      const gainShieldLine = lines.find((s) => /受到攻击伤害时获得\d+(?:\/\d+)*护盾/.test(s))
+      if (gainShieldLine) {
+        const rawAmount = Math.round(this.tierValueFromLine(gainShieldLine, tIdx))
+        const amount = this.scaleShieldGain(side, rawAmount)
+        if (amount > 0) {
+          hero.shield += amount
+          EventBus.emit('battle:gain_shield', {
+            targetId: hero.id,
+            sourceItemId: item.id,
+            amount,
+            targetType: 'hero',
+            targetSide: hero.side,
+            sourceType: 'item',
+            sourceSide: item.side,
+          })
+          this.applyOnShieldGainCharge(side)
+          if (side === 'player') this.applyPlayerShieldGainSkillTriggers(item.id, amount, false)
+        }
+      }
+
+      const selfChargeLine = lines.find((s) => /受到攻击时为此物品充能\d+(?:[\/|]\d+)*秒/.test(s))
+      if (selfChargeLine) {
+        const gainMs = Math.max(0, Math.round(this.tierValueFromLine(selfChargeLine, tIdx) * 1000))
+        if (gainMs > 0) this.chargeItemByMs(item, gainMs)
+      }
+
+      if (lines.some((s) => /受到攻击时额外使用此物品/.test(s))) {
+        this.enqueueExtraTriggeredUse(item)
+      }
     }
   }
 
