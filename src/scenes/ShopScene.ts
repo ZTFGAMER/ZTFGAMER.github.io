@@ -5523,6 +5523,15 @@ function ensureEventDraftSelection(stage: Container): void {
   title.y = 228
   overlay.addChild(title)
 
+  const goldInfo = new Text({
+    text: '',
+    style: { fontSize: 30, fill: 0xffd86b, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  goldInfo.anchor.set(0.5)
+  goldInfo.x = CANVAS_W / 2
+  goldInfo.y = 390
+  overlay.addChild(goldInfo)
+
   const shownChoices = draft.choices.slice(0, 2)
   let selectedEventId: string | null = null
   const selectedFrameById = new Map<string, Graphics>()
@@ -5638,6 +5647,7 @@ function ensureEventDraftSelection(stage: Container): void {
   const actionBtnFontSize = 22
   const actionBtnStartX = Math.round((CANVAS_W - (actionBtnW * 3 + actionBtnGap * 2)) / 2)
   const actionBtnY = CANVAS_H - 146
+  goldInfo.y = actionBtnY - 140
 
   const rerollBtn = new Container()
   rerollBtn.eventMode = 'static'
@@ -5821,6 +5831,15 @@ function ensureEventDraftSelection(stage: Container): void {
     rerollText.x = actionBtnW / 2
     rerollText.y = actionBtnH / 2
   }
+
+  const redrawGoldInfo = () => {
+    goldInfo.text = `当前持有金币：${Math.max(0, Math.round(shopManager?.gold ?? 0))}`
+  }
+
+  const redrawOverlayStatus = () => {
+    redrawGoldInfo()
+    redrawRerollBtn()
+  }
   void redrawRerollBtn
 
   rerollBtn.on('pointerdown', (e: FederatedPointerEvent) => {
@@ -5846,7 +5865,7 @@ function ensureEventDraftSelection(stage: Container): void {
     ensureEventDraftSelection(stage)
   })
 
-  redrawRerollBtn()
+  redrawOverlayStatus()
 
   stage.addChild(overlay)
   eventDraftOverlay = overlay
@@ -6024,6 +6043,7 @@ function openSpecialShopOverlay(stage: Container): void {
   const actionBtnFontSize = 22
   const actionBtnStartX = Math.round((CANVAS_W - (actionBtnW * 3 + actionBtnGap * 2)) / 2)
   const actionBtnY = CANVAS_H - 146
+  goldInfo.y = actionBtnY - 140
 
   const rerollBtn = new Container()
   rerollBtn.eventMode = 'static'
@@ -6169,7 +6189,12 @@ function openSpecialShopOverlay(stage: Container): void {
     rerollText.x = actionBtnW / 2
     rerollText.y = actionBtnH / 2
   }
-  specialShopOverlayActionRefresh = redrawRerollBtn
+  const redrawSpecialShopOverlay = () => {
+    redrawGoldInfo()
+    redrawCards()
+    redrawRerollBtn()
+  }
+  specialShopOverlayActionRefresh = redrawSpecialShopOverlay
 
   const redrawGoldInfo = () => {
     goldInfo.text = `当前持有金币：${Math.max(0, Math.round(shopManager?.gold ?? 0))}`
@@ -6404,15 +6429,11 @@ function openSpecialShopOverlay(stage: Container): void {
           return
         }
         if (!tryBuySpecialShopOffer(i)) {
-          redrawCards()
-          redrawGoldInfo()
-          redrawRerollBtn()
+          redrawSpecialShopOverlay()
           return
         }
         selectedOfferIndex = null
-        redrawCards()
-        redrawGoldInfo()
-        redrawRerollBtn()
+        redrawSpecialShopOverlay()
         saveShopStateToStorage(captureShopState())
       })
 
@@ -6442,9 +6463,7 @@ function openSpecialShopOverlay(stage: Container): void {
     specialShopRefreshCount += 1
     specialShopOffers = next
     selectedOfferIndex = null
-    redrawCards()
-    redrawGoldInfo()
-    redrawRerollBtn()
+    redrawSpecialShopOverlay()
     refreshShopUI()
     saveShopStateToStorage(captureShopState())
   })
@@ -6460,9 +6479,7 @@ function openSpecialShopOverlay(stage: Container): void {
     saveShopStateToStorage(captureShopState())
   })
 
-  redrawCards()
-  redrawGoldInfo()
-  redrawRerollBtn()
+  redrawSpecialShopOverlay()
   stage.addChild(overlay)
   specialShopOverlay = overlay
 }
@@ -6555,6 +6572,15 @@ function ensureSkillDraftSelection(stage: Container): void {
   title.x = CANVAS_W / 2
   title.y = 228
   overlay.addChild(title)
+
+  const goldInfo = new Text({
+    text: '',
+    style: { fontSize: 30, fill: 0xffd86b, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  goldInfo.anchor.set(0.5)
+  goldInfo.x = CANVAS_W / 2
+  goldInfo.y = 390
+  overlay.addChild(goldInfo)
 
   const shownChoices = draft.choices.slice(0, 2)
   let selectedSkillId: string | null = null
@@ -6718,6 +6744,7 @@ function ensureSkillDraftSelection(stage: Container): void {
   const actionBtnFontSize = 22
   const actionBtnStartX = Math.round((CANVAS_W - (actionBtnW * 3 + actionBtnGap * 2)) / 2)
   const actionBtnY = CANVAS_H - 146
+  goldInfo.y = actionBtnY - 140
 
   const rerollBtn = new Container()
   rerollBtn.eventMode = 'static'
@@ -6902,6 +6929,15 @@ function ensureSkillDraftSelection(stage: Container): void {
     rerollText.y = actionBtnH / 2
   }
 
+  const redrawGoldInfo = () => {
+    goldInfo.text = `当前持有金币：${Math.max(0, Math.round(shopManager?.gold ?? 0))}`
+  }
+
+  const redrawOverlayStatus = () => {
+    redrawGoldInfo()
+    redrawRerollBtn()
+  }
+
   rerollBtn.on('pointerdown', (e: FederatedPointerEvent) => {
     e.stopPropagation()
     if (!shopManager) return
@@ -6930,7 +6966,7 @@ function ensureSkillDraftSelection(stage: Container): void {
     ensureSkillDraftSelection(stage)
   })
 
-  redrawRerollBtn()
+  redrawOverlayStatus()
 
   skillDraftOverlay = overlay
   stage.addChild(overlay)
@@ -7040,16 +7076,15 @@ function getAllowedLevelsByStartingTier(tier: TierKey): Array<1 | 2 | 3 | 4 | 5 
   return [7]
 }
 
-function getUnlockPoolBuyPriceByTier(tier: TierKey): number {
-  const key = `${tier}#1`
+function getUnlockPoolBuyPriceByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): number {
+  const tierStar = levelToTierStar(level)
+  const key = `${tierStar?.tier ?? 'Bronze'}#${tierStar?.star ?? 1}`
   const raw = getConfig().shopRules?.quickBuyFixedPrice?.[key]
   if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
     return Math.max(1, Math.round(raw))
   }
-  if (tier === 'Bronze') return 3
-  if (tier === 'Silver') return 12
-  if (tier === 'Gold') return 40
-  return 80
+  const byLevel: [number, number, number, number, number, number, number] = [3, 6, 10, 20, 35, 50, 70]
+  return byLevel[level - 1] ?? 3
 }
 
 function collectPoolCandidatesByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): PoolCandidate[] {
@@ -7070,7 +7105,7 @@ function collectPoolCandidatesByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): PoolCan
       level,
       tier: tierStar.tier,
       star: tierStar.star,
-      price: getUnlockPoolBuyPriceByTier(tierStar.tier),
+      price: getUnlockPoolBuyPriceByLevel(level),
     })
   }
   return out

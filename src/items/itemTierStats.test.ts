@@ -21,4 +21,20 @@ describe('itemTierStats', () => {
 
     expect(resolveItemTierBaseStats(shuriken, 'Bronze').multicast).toBe(3)
   })
+
+  it('maps Bronze starter lv3 to the 3rd tier value', () => {
+    const bow = getAllItems().find((it) => it.name_cn === '木弓')
+    expect(bow).toBeTruthy()
+    if (!bow) return
+
+    expect(resolveItemTierBaseStats(bow, 'Silver#1').damage).toBe(150)
+  })
+
+  it('maps Silver starter lv5 to the 3rd tier value', () => {
+    const boomerang = getAllItems().find((it) => it.name_cn === '回旋镖')
+    expect(boomerang).toBeTruthy()
+    if (!boomerang) return
+
+    expect(resolveItemTierBaseStats(boomerang, 'Gold#1').damage).toBe(65)
+  })
 })

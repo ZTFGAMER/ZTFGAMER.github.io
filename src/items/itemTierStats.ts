@@ -14,8 +14,6 @@ export interface ItemTierBaseStats {
   multicast: number
 }
 
-const TIER_ORDER: TierName[] = ['Bronze', 'Silver', 'Gold', 'Diamond']
-
 export function parseTierName(raw?: string): TierName {
   const text = raw ?? ''
   if (text.includes('Silver')) return 'Silver'
@@ -24,21 +22,26 @@ export function parseTierName(raw?: string): TierName {
   return 'Bronze'
 }
 
-function parseAvailableTiers(raw: string): TierName[] {
-  const s = (raw || '').trim()
-  if (!s) return [...TIER_ORDER]
-  const out = s
-    .split('/')
-    .map((v) => parseTierName(v.trim()))
-    .filter((v, idx, arr) => arr.indexOf(v) === idx)
-  return out.length > 0 ? out : [...TIER_ORDER]
-}
-
 function parseTierStar(raw?: string): 1 | 2 {
   const m = (raw ?? '').match(/#(\d+)/)
   const n = Number(m?.[1] ?? '1')
   if (!Number.isFinite(n) || n <= 1) return 1
   return 2
+}
+
+function tierScore(tier: TierName, star: 1 | 2): number {
+  if (tier === 'Bronze') return star === 2 ? 2 : 1
+  if (tier === 'Silver') return star === 2 ? 4 : 3
+  if (tier === 'Gold') return star === 2 ? 6 : 5
+  return 7
+}
+
+function startTierScore(item: ItemDef): number {
+  const start = parseTierName(item.starting_tier)
+  if (start === 'Silver') return 3
+  if (start === 'Gold') return 5
+  if (start === 'Diamond') return 7
+  return 1
 }
 
 function pickTierSeriesValue(series: string, tierIndex: number): number {
@@ -70,10 +73,7 @@ function parseCooldownMsByTier(item: ItemDef, tierIndex: number): number {
 export function resolveItemTierBaseStats(item: ItemDef, tierRaw?: string): ItemTierBaseStats {
   const tier = parseTierName(tierRaw)
   const star = parseTierStar(tierRaw)
-  const available = parseAvailableTiers(item.available_tiers)
-  const idxRaw = available.indexOf(tier)
-  const tierIndexBase = idxRaw >= 0 ? idxRaw : 0
-  const tierIndex = tierIndexBase + (star - 1)
+  const tierIndex = Math.max(0, tierScore(tier, star) - startTierScore(item))
   const skillText = (item.skills ?? []).map((s) => s.cn ?? '').join('\n')
 
   const damage = extractTierSeriesValue(skillText, /造成\s*([0-9]+(?:[\/|][0-9]+)*)\s*伤害/, tierIndex)

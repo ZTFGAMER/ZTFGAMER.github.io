@@ -1,5 +1,72 @@
 # 大巴扎 — 开发进度记录
 
+### 本次对话追加（2026-03-06，三界面金币文案下移到刷新按钮上方红框区域）
+
+- 用户反馈：三个界面的“当前持有金币”需移动到截图红框位置（刷新按钮上方）。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 特殊商店、事件选择、技能选择三处金币文案统一改为相对底部按钮定位：`goldInfo.y = actionBtnY - 140`；
+  - 保持三界面样式与文案一致，仅调整位置。
+- 验证：`npm run build` 通过。
+- 当前阶段：该位置微调进入验收阶段，等待用户确认红框区域对齐是否符合预期。
+
+### 本次对话追加（2026-03-06，基础购买概率与等级买卖价格同步）
+
+- 用户需求：按新表修正 Day1~20 基础购买 `lv1~lv7` 概率；购买价改为 `3/6/10/20/35/50/70`；出售价改为 `3/5/8/16/25/35/50`。
+- 主程沟通：已向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按最小代码路径落地。
+- 已完成：
+  - `data/game_config.json`
+    - `shopRules.quickBuyLevelChancesByDay` 全量替换为用户给定 Day1~20 概率表；
+    - `shopRules.quickBuyFixedPrice` 更新为：`Bronze#1=3`、`Bronze#2=6`、`Silver#1=10`、`Silver#2=20`、`Gold#1=35`、`Gold#2=50`、`Diamond#1=70`；
+    - `shopRules.sellFixedPriceBySize` 的 `small/medium/large` 统一更新为 `[3,5,8,16,25,35,50]`（对应 `lv1~lv7`）。
+  - `src/scenes/ShopScene.ts`
+    - 将基础购买候选价格计算从“按品质 tier”改为“按等级 level”读取 `quickBuyFixedPrice`，确保 `lv2/lv4/lv6` 不再落到 `#1` 价格。
+- 验证：`npm run build` 通过。
+- 当前阶段：该数值改动进入验收阶段，等待用户确认“关卡概率分布 + 基础购买/出售价格”体感是否符合预期。
+
+### 本次对话追加（2026-03-06，技能/事件选择弹窗新增当前金币显示）
+
+- 用户需求：参考特殊商店，在技能选择与事件选择界面也显示“当前持有金币”，且显示效果一致。
+- 设计/主程沟通：
+  - 已向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`）；
+  - 已向设计师 Notebook（`98dc4c7c-dcf5-4391-a65e-1529a4a6b6e5`）问询视觉确认，本轮超时（`MCP error -32001: Request timed out`）；
+  - 按“参考特殊商店一致样式”的最小改动直接落地。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 在 `ensureEventDraftSelection()` 增加金币文案 `当前持有金币：X`，样式/颜色/位置与特殊商店一致（居中、`fontSize 30`、`fill 0xffd86b`、`y=390`）；
+  - 在 `ensureSkillDraftSelection()` 同步增加同款金币文案；
+  - 两个弹窗均补充 `redrawGoldInfo()` 并纳入统一状态刷新入口，确保展示值来源于实时 `shopManager.gold`。
+- 验证：`npm run build` 通过。
+- 当前阶段：该 UI 一致性改动进入验收阶段，等待用户确认“技能/事件选择”金币显示样式与位置是否符合预期。
+
+### 本次对话追加（2026-03-06，修复 lv3 数值显示与实战不一致：回旋镖/木弓）
+
+- 用户反馈：`lv3 回旋镖` 详情伤害与游戏中显示/实战生效不一致；并补充 `lv3 木弓` 也存在同类问题。
+- 根因定位：`src/items/itemTierStats.ts` 的分档索引使用了 `available_tiers` 顺序推导（如 compact 模式下 `Bronze/Silver/Gold/Diamond`），导致 `lv3/lv5/lv6/lv7` 等档位索引偏低，实战基础数值被错误读取。
+- 已完成：
+  - `src/items/itemTierStats.ts`
+    - 将分档索引改为“等级分差”统一口径：`tierScore(tier, star) - startTierScore(item)`；
+    - 不再依赖 `available_tiers` 顺序，确保与详情展示/全局 Lv 映射一致。
+  - `src/items/itemTierStats.test.ts`
+    - 新增回归用例：
+      - `木弓 Silver#1(lv3) -> damage=150`；
+      - `回旋镖 Gold#1(lv5) -> damage=65`。
+- 验证：`npx vitest run src/items/itemTierStats.test.ts` 通过（4/4）。
+- 当前阶段：该数值分档修复进入验收阶段，等待用户复测 `lv3 木弓/回旋镖` 的详情、战斗内显示与实际伤害是否一致。
+
+### 本次对话追加（2026-03-06，修复特殊商店卖出返回后金币与可购买颜色不刷新）
+
+- 用户需求：特殊商店在背包出售后，回到特殊商店时金币要刷新；所有购买项需按当前真实金币实时显示可购买颜色（钱的颜色）。
+- 主程沟通：已两次向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮均超时（`MCP error -32001: Request timed out`），按最小代码路径修复。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 将 `specialShopOverlayActionRefresh` 从“仅刷新刷新按钮”升级为统一刷新入口 `redrawSpecialShopOverlay()`；
+  - 统一在该入口内同时刷新：
+    - `当前持有金币` 文案；
+    - 3 张特殊商店卡片（含价格颜色是否可购买）；
+    - 刷新/出售按钮状态；
+  - 购买成功、购买失败后重绘、商店刷新后重绘、弹窗首次打开渲染均改为复用统一刷新入口，避免遗漏。
+- 结果：在特殊商店背包模式卖出后，切回特殊商店时金币会按最新值显示；所有购买项价格颜色会基于实时金币重新计算。
+- 验证：`npm run build` 通过。
+- 当前阶段：该修复进入验收阶段，等待用户复测“卖出->回到特殊商店”的金币与可购买颜色表现。
+
 ### 本次对话追加（2026-03-05，Vercel 生产发布 + GHE 更新 + TestFlight 上传）
 
 - 用户指令：`上传vercel，更新ghe。打tf包`。
