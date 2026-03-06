@@ -1,5 +1,16 @@
 # 大巴扎 — 开发进度记录
 
+### 本次对话追加（2026-03-06，GHE 推送 + Vercel 生产更新）
+
+- 用户指令：`上传ghe，更新vercel`。
+- 已完成：
+  - GHE：提交 `5224fc1` 已推送到 `origin/main`；
+  - Vercel：`vercel --prod --yes` 执行成功。
+- 发布结果：
+  - Production：`https://bigbazzar-infj696jy-zhengtengfeis-projects.vercel.app`
+  - Alias：`https://bigbazzar.vercel.app`
+- 当前阶段：等待用户线上验收（整理按钮误丢弃修复 + 数值调整）。
+
 ### 本次对话追加（2026-03-06，整理按钮不再触发选中物品丢弃）
 
 - 用户反馈：选中物品后点击“整理”按钮会把物品丢弃。
