@@ -1,5 +1,20 @@
 # 大巴扎 — 开发进度记录
 
+### 本次对话追加（2026-03-06，飞刃/英雄铠甲数值调整 + TestFlight 上传 + Vercel 发布）
+
+- 用户调整：
+  - 飞刃伤害改为 `20|40|65|120|180`；
+  - 英雄铠甲护盾改为 `200|400|600`。
+- 已完成：
+  - `data/vanessa_items.json`、`data/vanessa_items_compact.json` 同步更新两项数值；
+  - iOS 打包并上传 TestFlight：`npm run release:tf` 成功；
+  - Vercel 生产发布：`vercel --prod --yes` 成功。
+- 发布结果：
+  - Vercel Production：`https://bigbazzar-i37xlzt7f-zhengtengfeis-projects.vercel.app`
+  - Vercel Alias：`https://bigbazzar.vercel.app`
+  - TestFlight：上传成功，`CURRENT_PROJECT_VERSION=15`。
+- 当前阶段：等待用户在线验收“飞刃/英雄铠甲数值表现 + iOS TestFlight 包”。
+
 ### 本次对话追加（2026-03-06，图标命名统一回 item 并用 newitem 覆盖旧 item 文件）
 
 - 用户需求：游戏内统一使用 `item` 命名；删除原有 `item*.png`，将 `newitem*.png` 重命名为 `item*.png`。
