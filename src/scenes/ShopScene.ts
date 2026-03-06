@@ -7230,6 +7230,22 @@ function countSameOfferDefIds(a: SpecialShopOffer[], b: SpecialShopOffer[]): num
   return same
 }
 
+function areAllSpecialOffersSameArchetype(offers: SpecialShopOffer[]): boolean {
+  if (offers.length < 3) return false
+  let first: string | null = null
+  for (const one of offers) {
+    const def = getItemDefById(one.itemId)
+    const arch = getPrimaryArchetype(def?.tags ?? '')
+    if (!arch) return false
+    if (first == null) {
+      first = arch
+      continue
+    }
+    if (arch !== first) return false
+  }
+  return true
+}
+
 function rollSpecialShopOffers(prevOffers?: SpecialShopOffer[]): SpecialShopOffer[] {
   const actualMaxLevel = getCurrentMaxOwnedLevel()
   const maxLevel = Math.max(3, actualMaxLevel) as 1 | 2 | 3 | 4 | 5 | 6 | 7
@@ -7242,6 +7258,8 @@ function rollSpecialShopOffers(prevOffers?: SpecialShopOffer[]): SpecialShopOffe
   const dominant = getDominantBattleArchetypeForSpecialShop()
   let best: SpecialShopOffer[] = []
   let bestSame = Number.POSITIVE_INFINITY
+  let bestAny: SpecialShopOffer[] = []
+  let bestAnySame = Number.POSITIVE_INFINITY
 
   for (let attempt = 0; attempt < 120; attempt++) {
     const offers: SpecialShopOffer[] = []
@@ -7277,6 +7295,13 @@ function rollSpecialShopOffers(prevOffers?: SpecialShopOffer[]): SpecialShopOffe
 
     const pricedOffers = applyRandomSpecialOfferDiscount(offers)
     const same = prevOffers && prevOffers.length > 0 ? countSameOfferDefIds(prevOffers, pricedOffers) : 0
+    if (same < bestAnySame) {
+      bestAny = pricedOffers
+      bestAnySame = same
+    }
+
+    if (areAllSpecialOffersSameArchetype(pricedOffers)) continue
+
     if (same < bestSame) {
       best = pricedOffers
       bestSame = same
@@ -7284,7 +7309,7 @@ function rollSpecialShopOffers(prevOffers?: SpecialShopOffer[]): SpecialShopOffe
     if (!prevOffers || prevOffers.length <= 0 || same <= 1) return pricedOffers
   }
 
-  return best
+  return best.length > 0 ? best : bestAny
 }
 
 function findCandidateByOffer(offer: { itemId: string; tier: TierKey; star: 1 | 2; price: number } | null): PoolCandidate | null {
