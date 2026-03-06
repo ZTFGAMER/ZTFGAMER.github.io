@@ -9667,12 +9667,8 @@ export const ShopScene: Scene = {
     const sellBtn = makeCircleBtn(getDebugCfg('sellBtnX'), getDebugCfg('sellBtnY'), '整理', 0x3b74ff, 0x3b74ff)
     sellBtn.container.on('pointerdown', () => {
       if (!isShopInputEnabled()) return
-      if (selectedSellAction) {
-        selectedSellAction()
-        clearSelection()
-        refreshShopUI()
-        return
-      }
+      // 选中点击“整理”只执行整理，不再触发丢弃。
+      if (selectedSellAction) selectedSellAction = null
       clearSelection()
       sortBackpackItemsByRule()
     })
