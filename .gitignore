@@ -4,6 +4,8 @@ dist-ios/
 *.tsbuildinfo
 .DS_Store
 .claude/
+android/
+dist-android/
 ios/build/
 ios/*.xcodeproj/
 ios/.derivedData/

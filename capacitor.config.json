@@ -1,0 +1,8 @@
+{
+  "appId": "com.bigbazzar.game",
+  "appName": "BigBazzar",
+  "webDir": "dist-android",
+  "server": {
+    "androidScheme": "https"
+  }
+}
