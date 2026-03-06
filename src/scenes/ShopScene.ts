@@ -28,6 +28,7 @@ import { getTierColor } from '@/config/colorPalette'
 import { createItemStatBadges } from '@/ui/itemStatBadges'
 import { PhaseManager } from '@/core/PhaseManager'
 import { clearBattleSnapshot, setBattleSnapshot, type BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
+import { PvpContext } from '@/pvp/PvpContext'
 import { clearBattleOutcome, consumeBattleOutcome } from '@/combat/BattleOutcomeStore'
 import { BRONZE_SKILL_PICKS, getBronzeSkillById } from '@/skills/bronzeSkillConfig'
 import { SILVER_SKILL_PICKS, getSilverSkillById } from '@/skills/silverSkillConfig'
@@ -736,7 +737,9 @@ function stopUnlockRevealPlayback(): void {
 function updatePhaseToggleButton(): void {
   if (!phaseBtnHandle) return
   const inShop = isShopInputEnabled()
-  phaseBtnHandle.setLabel(inShop ? '战斗' : '商店')
+  // PVP 模式下用「准备」替代「战斗」，语义更清晰
+  const battleLabel = PvpContext.isActive() ? '准备' : '战斗'
+  phaseBtnHandle.setLabel(inShop ? battleLabel : '商店')
   phaseBtnHandle.redraw(true)
 }
 
@@ -2203,18 +2206,6 @@ function canSynthesizePair(
 }
 
 const TIER_ORDER: TierKey[] = ['Bronze', 'Silver', 'Gold', 'Diamond']
-const TIER_LABEL_CN: Record<TierKey, string> = {
-  Bronze: '青铜',
-  Silver: '白银',
-  Gold: '黄金',
-  Diamond: '钻石',
-}
-
-function tierStarLabelCn(tier: TierKey, star: 1 | 2): string {
-  const actualStar = tier === 'Diamond' ? 1 : star
-  return `${TIER_LABEL_CN[tier]}${actualStar}星`
-}
-
 function maxStarForTier(tier: TierKey): 1 | 2 {
   return tier === 'Diamond' ? 1 : 2
 }
@@ -8906,7 +8897,6 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
           return
         }
         playSynthesisFlashEffect(stage, synth)
-        console.log(`[ShopScene] 合成升级 ${slot.item.name_cn} ${tierStarLabelCn(slot.tier, 1)} -> ${tierStarLabelCn(synth.toTier, synth.toStar)}`)
         refreshShopUI()
       }
       if (isCrossIdSynthesisConfirmEnabled()) {
@@ -8937,7 +8927,6 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
       _resetDrag(); return
     }
     playSynthesisFlashEffect(stage, synth)
-    console.log(`[ShopScene] 合成升级 ${slot.item.name_cn} ${tierStarLabelCn(slot.tier, 1)} -> ${tierStarLabelCn(synth.toTier, synth.toStar)}`)
     refreshShopUI()
     _resetDrag(); return
   }
@@ -9025,7 +9014,6 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
       instanceToTierStar.set(id, 1)
       instanceToPermanentDamageBonus.set(id, 0)
       unlockItemToPool(slot.item.id)
-      console.log(`[ShopScene] 购买→战斗区 ${slot.item.name_cn}，金币: ${shopManager.gold}`)
       refreshShopUI()
     } else {
       showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
@@ -9046,13 +9034,11 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
     const buttonCell = onBpBtn ? findFirstBackpackPlace(size) : null
     const targetCell = directCell ?? buttonCell
     if (!targetCell) {
-      console.log('[ShopScene] 背包已满')
       showHintToast('backpack_full_buy', '背包已满，无法购买', 0xff8f8f)
       _resetDrag(); return
     }
 
     if (!tryBuyShopSlotWithSkill(slot).ok) {
-      console.log('[ShopScene] 金币不足')
       showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
       _resetDrag(); return
     }
@@ -9070,8 +9056,6 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
     instanceToTierStar.set(id, 1)
     instanceToPermanentDamageBonus.set(id, 0)
     unlockItemToPool(slot.item.id)
-    console.log(`[ShopScene] 购买→背包 ${slot.item.name_cn}，金币: ${shopManager.gold}`)
-
     refreshShopUI()
   }
 
@@ -9129,6 +9113,24 @@ export const ShopScene: Scene = {
     const items  = getAllItems()
     const stage  = app.stage
     const canvas = app.canvas as HTMLCanvasElement
+
+    // PVP 模式：注册自动提交回调（倒计时结束时若未手动提交则自动触发）
+    if (PvpContext.isActive()) {
+      PvpContext.registerAutoSubmit(() => {
+        const boardItemCount = battleSystem?.getAllItems().length ?? 0
+        const backpackItemCount = backpackSystem?.getAllItems().length ?? 0
+        if (boardItemCount <= 0 && boardItemCount === 0 && backpackItemCount === 0) return
+        clearBattleOutcome()
+        pendingSkillBarMoveStartAtMs = Date.now()
+        const snapshot = buildBattleSnapshot(pendingSkillBarMoveStartAtMs)
+        if (snapshot) {
+          setBattleSnapshot(snapshot)
+          pendingBattleTransition = true
+          pendingAdvanceToNextDay = true
+          PvpContext.onPlayerReady()
+        }
+      })
+    }
 
     battlePassivePrevStats.clear()
     battlePassiveResolvedStats.clear()
@@ -9304,7 +9306,6 @@ export const ShopScene: Scene = {
       if (isOverGridDragSellArea(anchorGx, anchorGy) && !isOverAnyGridDropTarget(anchorGx, anchorGy, size)) {
         homeSystem.remove(instanceId)
         removeInstanceMeta(instanceId)
-        console.log(`[ShopScene] 拖拽丢弃 ${item.name_cn}`)
         refreshShopUI()
         return true
       }
@@ -9355,7 +9356,6 @@ export const ShopScene: Scene = {
                 return
               }
               removeInstanceMeta(instanceId)
-              console.log(`[ShopScene] 拖拽合成 ${item.name_cn} ${tierStarLabelCn(fromTier, fromStar)} -> ${tierStarLabelCn(synth.toTier, synth.toStar)}`)
               playSynthesisFlashEffect(stage, synth)
               refreshShopUI()
             }
@@ -9391,7 +9391,6 @@ export const ShopScene: Scene = {
           const synth = synthesizeTarget(defId, fromTier, fromStar, synthTarget.instanceId, synthTarget.zone)
           if (synth) {
             removeInstanceMeta(instanceId)
-            console.log(`[ShopScene] 拖拽合成 ${item.name_cn} ${tierStarLabelCn(fromTier, fromStar)} -> ${tierStarLabelCn(synth.toTier, synth.toStar)}`)
             playSynthesisFlashEffect(stage, synth)
             refreshShopUI()
             return true
@@ -9421,7 +9420,6 @@ export const ShopScene: Scene = {
           backpackView!.setItemTier(instanceId, toVisualTier(tier, star))
           drag?.refreshZone(backpackView!)
         })
-        console.log(`[ShopScene] 拖拽转移→背包 ${item.name_cn}`)
         refreshShopUI()
         return true
       }
@@ -9693,9 +9691,12 @@ export const ShopScene: Scene = {
       const boardItemCount = battleSystem?.getAllItems().length ?? 0
       const backpackItemCount = backpackSystem?.getAllItems().length ?? 0
       if (boardItemCount <= 0 && backpackItemCount > 0) {
-        showHintToast('no_gold_buy', '请将物品拖入上阵区', 0xffd48f)
-        showMoveToBattleGuideHand()
-        return
+        // PVP 模式：允许直接提交（背包物品不参与战斗，但快照交换正常工作）
+        if (!PvpContext.isActive()) {
+          showHintToast('no_gold_buy', '请将物品拖入上阵区', 0xffd48f)
+          showMoveToBattleGuideHand()
+          return
+        }
       }
       clearBattleOutcome()
       pendingSkillBarMoveStartAtMs = Date.now()
@@ -9706,6 +9707,11 @@ export const ShopScene: Scene = {
       }
       pendingBattleTransition = true
       pendingAdvanceToNextDay = true
+      // PVP 模式：提交快照给对手，等待对方快照，不走本地过渡动画
+      if (PvpContext.isActive()) {
+        PvpContext.onPlayerReady()
+        return
+      }
       beginBattleStartTransition()
     })
     phaseBtnHandle = phaseBtn
@@ -9750,7 +9756,6 @@ export const ShopScene: Scene = {
         view.removeItem(instanceId)
         removeInstanceMeta(instanceId)
         drag?.refreshZone(view)
-        console.log(`[ShopScene] 丢弃 ${item.name_cn}`)
       }
 
       setSellButtonPrice(sellPrice)
@@ -9929,7 +9934,7 @@ export const ShopScene: Scene = {
     if (restoredState) {
       applySavedShopState(restoredState)
       savedShopState = null
-      if (pendingAdvanceToNextDay) {
+      if (pendingAdvanceToNextDay || PvpContext.isActive()) {
         setDay(currentDay + 1)
         applyPostBattleEffects(battleOutcome?.snapshot ?? null)
         pendingAdvanceToNextDay = false
@@ -10056,7 +10061,7 @@ export const ShopScene: Scene = {
     offDebugCfg = null
     offPhaseChange?.()
     offPhaseChange = null
-    if (pendingBattleTransition) {
+    if (pendingBattleTransition || PvpContext.isActive()) {
       savedShopState = captureShopState()
       saveShopStateToStorage(savedShopState)
       pendingBattleTransition = false

@@ -7,6 +7,9 @@ import { Application, Assets, Sprite, Texture } from 'pixi.js'
 import { SceneManager } from '@/scenes/SceneManager'
 import { ShopScene }    from '@/scenes/ShopScene'
 import { BattleScene, getBattleFxPerfStats }  from '@/scenes/BattleScene'
+import { MenuScene }    from '@/scenes/MenuScene'
+import { PvpLobbyScene } from '@/scenes/PvpLobbyScene'
+import { PvpResultScene } from '@/scenes/PvpResultScene'
 import { validateData, getAllItems, getConfig } from '@/core/DataLoader'
 import { setApp, setStageLayout } from '@/core/AppContext'
 import { clearStoredConfig } from '@/config/debugConfig'
@@ -247,7 +250,6 @@ async function bootstrap(): Promise<void> {
 
   // 1. 验证数据完整性
   const { ok, report } = validateData()
-  console.log('\n=== 数据验证 ===\n' + report)
   if (!ok) {
     console.error('数据验证失败，游戏无法启动')
     showFatalError(report)
@@ -265,7 +267,6 @@ async function bootstrap(): Promise<void> {
     autoDensity:     true,
     antialias:       true,
   })
-  console.log(`   渲染后端: ${app.renderer.type === 2 ? 'WebGPU' : 'WebGL'}`)
   setApp(app)
 
   // 3. 挂载 Canvas
@@ -331,9 +332,12 @@ async function bootstrap(): Promise<void> {
   }
 
   // 5. 注册场景 & 启动
+  SceneManager.register(MenuScene)
   SceneManager.register(ShopScene)
   SceneManager.register(BattleScene)
-  SceneManager.goto('shop')
+  SceneManager.register(PvpLobbyScene)
+  SceneManager.register(PvpResultScene)
+  SceneManager.goto('menu')
 
   if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
     ;(window as Window & {
@@ -396,8 +400,6 @@ async function bootstrap(): Promise<void> {
     SceneManager.update(dt)
   })
 
-  console.log(`\n✅ 游戏启动成功 (${BASE_W}×${BASE_H}, 分辨率x${window.devicePixelRatio})`)
-  console.log('   当前场景:', SceneManager.currentName())
 }
 
 bootstrap().catch((err) => {

@@ -27,6 +27,7 @@
   "dependencies": {
     "@capacitor/android": "^8.1.0",
     "@capacitor/core": "^8.1.0",
-    "pixi.js": "^8.9.2"
+    "pixi.js": "^8.9.2",
+    "peerjs": "^1.5.4"
   }
 }

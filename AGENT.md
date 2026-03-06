@@ -19,7 +19,7 @@ agent-sessions/
     ├── bugs.md                    本次发现或修复的 Bug（无 Bug 则省略）。
     ├── coverage.md                本次验证的功能行（无更新则省略）。
     ├── balance.md                 本次平衡性观察（无观察则省略）。
-    └── screenshots/               本次截图目录（按需创建，建议不提交大图）。
+    └── screenshots/               本次截图存放目录（按需创建）。截图分析完后可删除，其余文件永久保留作历史记录。
 ```
 
 每个 session 目录完全独立，运行中只读写自己的目录。
@@ -31,8 +31,8 @@ agent-sessions/
 **Session 目录名**：`年月日时分-主题`，主题控制在 10 字以内。
 
 ```
-202603051430-破釜沉舟验证/
-202603052000-overlay全链路/
+202603051430-破釜沉舟逻辑验证/
+202603052000-overlay架构全链路验证/
 ```
 
 ---
@@ -65,55 +65,40 @@ agent-sessions/
 
 ## 操作约束
 
-- **修复范围**：只修复当前验证假设涉及的问题，不做无关改动，不重构周边代码。
-- **控制台采集**：优先 `window.__consoleLogs || []`；若为空，使用 `document.querySelectorAll('[data-error]')` 或直接界面观察。
-- **设计权威来源**：`design/` 是设计意图权威来源。代码与设计不符即为 Bug；若设计与配置冲突，优先设计并在 `bugs.md` 注记。
+- **修复范围**：只修复当前验证假设涉及的问题，不做无关改动，不重构周边代码
+- **控制台采集**：`window.__consoleLogs || []` 依赖 app 注入捕获逻辑，若返回空数组，改用 `playwright-cli --headed evaluate "document.querySelectorAll('[data-error]')"` 或直接观察界面异常
+- **设计权威来源**：设计文档是设计意图的唯一权威，代码行为与设计文档不符即为 Bug；若发现配置实现与设计文档存在冲突，**不得自行裁决**，在 bugs.md 中记录冲突详情（配置值 vs 文档描述），本次调试结束后向用户确认以哪方为准
 
 ---
 
 ## 异常处理
 
-| 情况 | 处理方式 |
-|------|----------|
-| HMR 热重载导致游戏重置 | 重新导航到目标状态，不视为 Bug，在 report.md 注记 |
-| playwright-cli 操作无响应 | 执行 `playwright-cli --headed close` 后重新 `open`，最多重试 2 次 |
-| 同一 Bug 修复后仍复现 | 第 3 次失败时停止修复，在 bugs.md 标 `观察中` 并记录尝试方案，本轮结束 |
-| 目标功能无法触达 | 重新读取源码确认前置条件；若仍无法触达，在 report.md 记录原因，换下一个验证假设 |
+| 情况                      | 处理方式                                                                                |
+| ------------------------- | --------------------------------------------------------------------------------------- |
+| HMR 热重载导致游戏重置    | 重新导航到目标状态，不视为 Bug，在 report.md 注记                                       |
+| playwright-cli 操作无响应 | 执行 `playwright-cli --headed close` 后重新 `open`，最多重试 2 次                       |
+| 同一 Bug 修复后仍复现     | 第 3 次失败时停止修复，在 bugs.md 标 `观察中` 并记录尝试过的方案，本轮结束              |
+| 目标功能无法触达          | 重新读取源码确认前置条件；若仍无法触达，在 report.md 记录原因，换下一个验证假设         |
+| 配置实现与设计文档冲突    | 在 bugs.md 记录冲突详情（配置值 vs 文档描述），**不自行修改**，本次调试结束后向用户确认 |
 
 ### 停止条件
 
 满足以下任一条件时停止循环，等待用户介入：
 
-- 要求验证的所有已实现功能均已验证，无新的设计点可推导。
-- 连续 3 轮均因前置条件无法满足而无法触达目标。
-- playwright-cli 重试 2 次后仍无法连接。
+- 要求验证的所有已实现功能均已验证，无新的设计点可推导
+- 连续 3 轮均因前置条件无法满足而无法触达目标
+- playwright-cli 重试 2 次后仍无法连接
 
 ---
 
 ## 状态标记
 
-| 标记 | 含义 |
-|------|------|
-| `未修复` | 已确认的问题，尚未处理 |
-| `观察中` | 偶发或无法稳定复现，持续观察 |
+| 标记       | 含义                                 |
+| ---------- | ------------------------------------ |
+| `未修复`   | 已确认的问题，尚未处理               |
+| `观察中`   | 偶发或无法稳定复现，持续观察         |
 | `已知限制` | 非 Bug，开发环境或设计约束，无需修复 |
-| `已修复` | 已修复并验证 |
-
----
-
-## 快速使用
-
-先创建本轮 session 目录：
-
-```bash
-npm run agent:new -- --topic="合成规则验证" --hypothesis="设计说同物品合成应产出本职业其他物品"
-```
-
-如需一并创建 `bugs.md` / `coverage.md` / `balance.md`：
-
-```bash
-npm run agent:new -- --topic="战斗结算复测" --with-bugs --with-coverage --with-balance
-```
+| `已修复`   | 已修复并验证                         |
 
 ---
 
@@ -121,26 +106,107 @@ npm run agent:new -- --topic="战斗结算复测" --with-bugs --with-coverage --
 
 开发服务器：`http://localhost:5173/`
 
-> 注意：所有 `playwright-cli` 命令必须在 `playwright-cli` 后紧跟 `--headed` 参数。
+> **注意**：所有 `playwright-cli` 命令必须在 `playwright-cli` 后紧跟 `--headed` 参数，否则命令无法正常执行。
 
 ```bash
 # 启动 / 关闭
 playwright-cli --headed open http://localhost:5173/
 playwright-cli --headed close
 
-# 截图
+# 截图（存入当前 session 目录，路径：agent-sessions/年月日时分-主题/screenshots/描述.png）
 playwright-cli --headed screenshot --filename=agent-sessions/年月日时分-主题/screenshots/描述.png
 
 # 点击 / 等待
 playwright-cli --headed click "button:has-text('文字')"
 playwright-cli --headed wait-for-selector ".selector"
 
-# 读取当前界面文字
+# 读取当前界面文字（快速确认游戏状态）
 playwright-cli --headed evaluate "document.body.innerText.slice(0,300)"
 
-# 读取控制台
+# 读取控制台（三个检查点：事件触发后 / 战斗结束后 / 游戏结束前）
 playwright-cli --headed evaluate "window.__consoleLogs || []"
 
 # 拖拽
 playwright-cli --headed drag-and-drop ".source" ".target"
+```
+
+---
+
+## 文件模板
+
+### report.md
+
+```markdown
+# 年月日时分 · 主题
+
+**验证假设**：设计说 X 应该发生，本轮确认游戏实际是否如此
+
+---
+
+## 过程记录
+
+（按时间顺序记录关键操作与观察）
+
+---
+
+## 控制台检查
+
+| 检查时机   | ERROR | WARN |
+| ---------- | ----- | ---- |
+| 事件触发后 |       |      |
+| 战斗结束后 |       |      |
+| 游戏结束前 |       |      |
+
+---
+
+## 平衡观察
+
+（无则填"暂无"）
+
+---
+
+## 下次测试重点
+
+（基于本轮观察，指出下一个值得验证的设计点）
+```
+
+### bugs.md
+
+```markdown
+# Bugs · 年月日时分-主题
+
+## 严重度说明
+
+- 阻断性：崩溃/卡死/跳相错误，影响流程继续
+- 显示性：UI 渲染错误但逻辑正常
+- 体验性：不影响功能的小问题
+
+## 记录
+
+| 严重度 | 描述 | 复现路径 | 状态 |
+| ------ | ---- | -------- | ---- |
+
+## 修复详情
+
+（每条修复的具体方式）
+```
+
+### coverage.md
+
+```markdown
+# 功能覆盖 · 年月日时分-主题
+
+> 只记录本次实际验证过的功能。已验证 / 发现异常
+
+| 模块 | 组件/ID | 结果 | 备注 |
+| ---- | ------- | ---- | ---- |
+```
+
+### balance.md
+
+```markdown
+# 平衡观察 · 年月日时分-主题
+
+| 类型 | 描述 | 建议处理方向 |
+| ---- | ---- | ------------ |
 ```

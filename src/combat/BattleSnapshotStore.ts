@@ -28,6 +28,8 @@ export interface BattleSnapshotBundle {
   playerTrophyWins?: number
   showBasicSynthesisGuide?: boolean
   entities: BattleSnapshotEntity[]
+  /** PVP 专用：对手的 entities，替代 CombatEngine 内部的 makeEnemyRunners */
+  pvpEnemyEntities?: BattleSnapshotEntity[]
 }
 
 let currentSnapshot: BattleSnapshotBundle | null = null
@@ -43,7 +45,9 @@ export function setBattleSnapshot(snapshot: BattleSnapshotBundle): void {
     playerTrophyWins: typeof snapshot.playerTrophyWins === 'number' ? Math.max(0, Math.round(snapshot.playerTrophyWins)) : undefined,
     showBasicSynthesisGuide: snapshot.showBasicSynthesisGuide === true,
     entities: snapshot.entities.map((it) => ({ ...it })),
+    pvpEnemyEntities: snapshot.pvpEnemyEntities?.map((it) => ({ ...it })),
   }
+  console.log('[Snapshot] setBattleSnapshot day=' + snapshot.day + ' entities=' + snapshot.entities.length + ' pvpEnemyEntities=' + (snapshot.pvpEnemyEntities?.length ?? 'none'))
 }
 
 export function getBattleSnapshot(): BattleSnapshotBundle | null {
@@ -58,6 +62,7 @@ export function getBattleSnapshot(): BattleSnapshotBundle | null {
     playerTrophyWins: typeof currentSnapshot.playerTrophyWins === 'number' ? Math.max(0, Math.round(currentSnapshot.playerTrophyWins)) : undefined,
     showBasicSynthesisGuide: currentSnapshot.showBasicSynthesisGuide === true,
     entities: currentSnapshot.entities.map((it) => ({ ...it })),
+    pvpEnemyEntities: currentSnapshot.pvpEnemyEntities?.map((it) => ({ ...it })),
   }
 }
 

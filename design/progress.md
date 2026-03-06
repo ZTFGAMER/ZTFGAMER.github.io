@@ -398,6 +398,61 @@
 - 验证：`npm run build` 通过。
 - 当前阶段：该批配置与解析口径修正进入验收阶段，等待用户确认实际战斗表现与文案是否符合目标。
 
+### 本次对话追加（2026-03-06，PVP 联机对战模式初版实现）
+
+- 用户需求：新增独立 PVP 游戏模式，基于 PeerJS P2P，4人房间，9天胜场制。
+- 设计确认：
+  - 连接方式：PeerJS（房间码邀请）
+  - 玩家数：2-4人，AI 补位
+  - 每局：独立新游戏（Day1 全新开始，不带 PVE 存档）
+  - 商店规则：与 PVE 完全一致
+  - 对战编排：固定循环，3 对手各打 3 次（共9天）
+  - 商店阶段：90s 倒计时软同步
+  - 结算：纯胜场制，9场结束按胜场排名 1-4
+  - 断线：AI 快照替代
+- 新增文件：
+  - `docs/pvp-design.md` — 完整设计文档
+  - `src/pvp/PvpTypes.ts` — 共享类型 & 编排算法
+  - `src/pvp/PeerConnection.ts` — PeerJS 底层封装
+  - `src/pvp/PvpRoom.ts` — 房间协议（Hub-and-spoke，快照交换）
+  - `src/pvp/AiSnapshot.ts` — AI 对手快照生成
+  - `src/pvp/PvpContext.ts` — 全局协调器（覆盖层UI、存档隔离、路由）
+  - `src/scenes/MenuScene.ts` — 启动菜单（PVE/PVP 模式选择）
+  - `src/scenes/PvpLobbyScene.ts` — PVP 大厅（创建/加入房间）
+  - `src/scenes/PvpResultScene.ts` — 最终排名展示
+- 修改文件（最小化，不破坏现有逻辑）：
+  - `package.json` — 添加 `peerjs ^1.5.4`
+  - `src/core/EventBus.ts` — SceneName 新增 menu / pvp-lobby / pvp-result
+  - `src/combat/BattleSnapshotStore.ts` — 新增 `pvpEnemyEntities?` 字段
+  - `src/combat/CombatEngine.ts` — start() 检查 pvpEnemyEntities 替代 makeEnemyRunners
+  - `src/main.ts` — 注册新场景，入口改为 menu 场景
+  - `src/scenes/ShopScene.ts` — phaseBtn 增加 PVP hook（8行）
+  - `src/scenes/BattleScene.ts` — 结算跳过 PVE 生命/奖杯，退出路由到 PvpContext
+- 验证：`npm run build` 通过（789 modules）。
+- 当前阶段：PVP 初版实现完成，进入功能联调阶段。
+- Playwright 全流程验证结果（2026-03-06）：
+  - [x] PeerJS P2P 连接、房间码匹配
+  - [x] 快照交换：对手 entities 作为 enemy 正确传递到 CombatEngine
+  - [x] PVP 覆盖层（顶部显示，不遮挡商店 UI）
+  - [x] 天数推进 Day 1→2→...→9
+  - [x] 金币/道具持久化（Day 9 金币 188G、白银技能）
+  - [x] 生命/奖杯不受 PVP 影响（5/5 不变）
+  - [x] PvpResultScene 排名展示（对战结束）
+  - [x] PVE 存档隔离（bigbazzar_pve_backup_v1 正确备份）
+- 修复的 Bug（调试中）：
+  - 颜色 0xffd86b88 含 alpha → 改为 0xffd86b
+  - ShopScene.onExit 清空快照（pendingBattleTransition=false）→ 加 PvpContext.isActive() 保护
+  - 超时触发战斗后天数不推进 → onEnter 天数判断加 PvpContext.isActive()
+  - PVP 覆盖层遮挡商店 UI → eventMode='none'，仅覆盖顶部区域
+- 继续测试追加修复（2026-03-06）：
+  - [x] 胜场计数验证：pvp-result 正确显示 wins=4 ✅
+  - [x] "再来一局" → pvp-lobby ✅
+  - [x] "返回主菜单" → menu，pvpActive=false ✅
+  - [x] PVE 存档恢复：backup 清除，shop_state 恢复 ✅
+  - [x] PVE 模式正常进入商店 ✅
+  - [x] 修复 Bug：昵称 input 定位错误（scale 计算用 width/640=1.875，正确应用 min(w/640, h/1384)=0.685）
+- 已知待优化：战斗结算面板仍用 PVE 样式（"返回商店"按钮），后续可改 PVP 专属样式
+
 ### 本次对话追加（2026-03-06，特殊商店避免三张同职业）
 
 - 用户需求：特殊商店每次刷新出的 3 张物品，不要出现“3 张同一职业”。

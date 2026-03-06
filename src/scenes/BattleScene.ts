@@ -1,4 +1,5 @@
 import type { Scene } from './SceneManager'
+import { PvpContext } from '@/pvp/PvpContext'
 import { clearBattleSnapshot, getBattleSnapshot } from '@/combat/BattleSnapshotStore'
 import { clearBattleOutcome, setBattleOutcome } from '@/combat/BattleOutcomeStore'
 import { CombatEngine, setCombatRuntimeOverride, type CombatBoardItem } from '@/combat/CombatEngine'
@@ -1045,7 +1046,11 @@ function tickBattleExitTransition(dtMs: number): boolean {
   if (p >= 1) {
     battleExitTransitionElapsedMs = 0
     battleExitTransitionDurationMs = 0
-    SceneManager.goto('shop')
+    if (PvpContext.isActive()) {
+      PvpContext.onBattleComplete()
+    } else {
+      SceneManager.goto('shop')
+    }
     return true
   }
   return true
@@ -1881,10 +1886,16 @@ function resolveBattleSettlement(): void {
   const trophyTarget = getGameCfg().runRules?.trophyWinsToFinalVictory ?? 10
   const trophyBefore = getWinTrophyState(trophyTarget)
   const winStreakBefore = getPlayerWinStreakState().count
-  const after = winner === 'enemy' ? deductLife() : before
-  const trophyAfter = winner === 'player' ? addWinTrophy(trophyTarget) : trophyBefore
-  if (winner === 'player') setPlayerWinStreak(winStreakBefore + 1)
-  else setPlayerWinStreak(0)
+  // PVP 模式：记录胜负，不修改 PVE 生命/奖杯
+  if (PvpContext.isActive()) {
+    PvpContext.recordBattleResult(winner)
+  }
+  const after = (!PvpContext.isActive() && winner === 'enemy') ? deductLife() : before
+  const trophyAfter = (!PvpContext.isActive() && winner === 'player') ? addWinTrophy(trophyTarget) : trophyBefore
+  if (!PvpContext.isActive()) {
+    if (winner === 'player') setPlayerWinStreak(winStreakBefore + 1)
+    else setPlayerWinStreak(0)
+  }
   const delta = after.current - before.current
   settlementResolved = true
   settlementGameOver = winner === 'enemy' && after.current <= 0
@@ -2354,6 +2365,34 @@ export const BattleScene: Scene = {
     heroHudG = new Graphics()
     heroHudG.zIndex = 40
     root.addChild(heroHudG)
+
+    // PVP 模式：在双方 HP 条左侧显示昵称
+    if (PvpContext.isActive()) {
+      const yEnemy = getDebugCfg('enemyHpBarY')
+      const yPlayer = getDebugCfg('playerHpBarY')
+      const barH = getDebugCfg('battleHpBarH')
+      const baseBarW = getDebugCfg('battleHpBarWidth')
+
+      const opponentName = PvpContext.getOpponentNickname() ?? '对手'
+      const myName = PvpContext.getMyNickname() ?? '我'
+
+      const makeNameTag = (name: string, barY: number, areaScale: number): Text => {
+        const t = new Text({
+          text: name,
+          style: { fill: 0xffd86b, fontSize: 20, fontWeight: 'bold',
+            stroke: { color: 0x000000, width: 3 } },
+        })
+        t.anchor.set(0, 0.5)
+        t.x = (CANVAS_W - baseBarW * areaScale) / 2
+        t.y = barY + (barH * areaScale) / 2
+        t.zIndex = 41
+        t.eventMode = 'none'
+        return t
+      }
+
+      root.addChild(makeNameTag(opponentName, yEnemy, getEnemyHpBarScale()))
+      root.addChild(makeNameTag(myName, yPlayer, 1))
+    }
 
     enemyBossSprite = new Sprite(Texture.WHITE)
     enemyBossSprite.anchor.set(0.5, 1)

@@ -480,9 +480,13 @@ export class CombatEngine {
     this.playerHero = { id: 'hero_player', side: 'player', maxHp: playerHp, hp: playerHp, shield: 0, burn: 0, poison: 0, regen: 0 }
     this.enemyHero = { id: 'hero_enemy', side: 'enemy', maxHp: enemyHp, hp: enemyHp, shield: 0, burn: 0, poison: 0, regen: 0 }
 
+    const enemyRunners = options?.enemyDisabled ? [] :
+      (snapshot.pvpEnemyEntities
+        ? snapshot.pvpEnemyEntities.map((it, idx) => ({ ...this.toRunner(it, `E-${idx}`), side: 'enemy' as const }))
+        : this.makeEnemyRunners(snapshot))
     this.items = [
       ...snapshot.entities.map((it, idx) => this.toRunner(it, `P-${idx}`)),
-      ...(options?.enemyDisabled ? [] : this.makeEnemyRunners(snapshot)),
+      ...enemyRunners,
     ]
 
     this.playerSkillIds = new Set((options?.playerSkillIds ?? []).map((id) => `${id}`.trim()).filter(Boolean))

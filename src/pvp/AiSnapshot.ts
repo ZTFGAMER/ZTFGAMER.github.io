@@ -1,0 +1,61 @@
+// ============================================================
+// AiSnapshot — 为断线/AI 玩家生成适合当天的战斗快照
+// ============================================================
+
+import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
+import { getAllItems } from '@/core/DataLoader'
+import { normalizeSize } from '@/items/ItemDef'
+
+/** 生成一个 AI 战斗快照（作为对手使用，side 将在 PvpContext 中设为 enemy） */
+export function generateAiSnapshot(day: number): BattleSnapshotBundle {
+  const items = getAllItems()
+  const activeColCount = Math.min(6, 3 + Math.floor(day / 3))
+
+  const sizeW = (size: '1x1' | '2x1' | '3x1'): number =>
+    size === '1x1' ? 1 : size === '2x1' ? 2 : 3
+
+  // 根据天数选择合适等级的道具
+  const tierPool = day >= 7 ? ['Gold', 'Silver', 'Bronze'] :
+                   day >= 4 ? ['Silver', 'Bronze'] :
+                              ['Bronze']
+
+  const candidates = items
+    .filter((it) => {
+      const stats = it.damage + it.heal + it.shield + it.burn + it.poison + it.regen
+      if (stats <= 0) return false
+      const avail = (it.available_tiers || '').toLowerCase()
+      return tierPool.some((t) => avail.includes(t.toLowerCase()) || !it.available_tiers)
+    })
+    .sort(() => Math.random() - 0.5) // shuffle
+
+  const entities: BattleSnapshotBundle['entities'] = []
+  let col = 0
+  const seed = (day * 31 + 7) % Math.max(1, candidates.length)
+
+  for (let i = 0; i < candidates.length && col < activeColCount; i++) {
+    const def = candidates[(seed + i) % candidates.length]
+    const size = normalizeSize(def.size)
+    const w = sizeW(size)
+    if (col + w > activeColCount) continue
+
+    const tier = tierPool[Math.floor(Math.random() * tierPool.length)] as 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
+
+    entities.push({
+      instanceId: `ai-day${day}-${i}`,
+      defId: def.id,
+      size,
+      col,
+      row: 0,
+      tier,
+      tierStar: 1,
+    })
+    col += w
+  }
+
+  return {
+    day,
+    activeColCount,
+    createdAtMs: Date.now(),
+    entities,
+  }
+}
