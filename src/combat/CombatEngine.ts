@@ -1358,11 +1358,11 @@ export class CombatEngine {
     const playerHp = Math.max(1, Math.round(getLifeState().current))
     const streakIdx = Math.min(9, playerWinStreak)
     const streakBonusByHp: Record<1 | 2 | 3 | 4 | 5, number[]> = {
-      5: [0, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5],
-      4: [0, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5],
-      3: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5],
-      2: [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5],
-      1: [-0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4],
+      5: [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25],
+      4: [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25],
+      3: [0, 0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
+      2: [0, 0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
+      1: [-0.25, 0, 0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75],
     }
     const hpKey: 1 | 2 | 3 | 4 | 5 = playerHp >= 5 ? 5 : playerHp >= 4 ? 4 : playerHp >= 3 ? 3 : playerHp >= 2 ? 2 : 1
     const streakQualityBonus = streakBonusByHp[hpKey][streakIdx] ?? 0

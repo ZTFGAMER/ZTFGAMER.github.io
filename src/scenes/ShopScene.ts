@@ -4860,7 +4860,7 @@ function applyEventEffect(event: EventChoice, fromTest = false): boolean {
       if (!def) continue
       const tier = instanceToTier.get(one.instanceId) ?? 'Bronze'
       const star = getInstanceTierStar(one.instanceId)
-      shopManager.gold += shopManager.getTierStarPrice(def, tier, star) * 2
+      shopManager.gold += shopManager.getSellPrice(def, tier, star) * 2
       removePlacedItemById(one.instanceId, 'battle')
       sold++
     }
@@ -7089,7 +7089,7 @@ function getUnlockPoolBuyPriceByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): number 
   if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
     return Math.max(1, Math.round(raw))
   }
-  const byLevel: [number, number, number, number, number, number, number] = [3, 6, 10, 20, 35, 50, 70]
+  const byLevel: [number, number, number, number, number, number, number] = [3, 5, 9, 16, 27, 42, 60]
   return byLevel[level - 1] ?? 3
 }
 
@@ -7122,7 +7122,7 @@ function getSpecialShopRefreshCost(): number {
 }
 
 function getSpecialShopPriceByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): number {
-  const byLevel: [number, number, number, number, number, number, number] = [3, 6, 12, 24, 40, 60, 80]
+  const byLevel: [number, number, number, number, number, number, number] = [3, 5, 9, 16, 27, 42, 60]
   return byLevel[Math.max(1, Math.min(7, level)) - 1] ?? 3
 }
 

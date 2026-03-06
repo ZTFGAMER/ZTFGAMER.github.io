@@ -1,5 +1,74 @@
 # 大巴扎 — 开发进度记录
 
+### 本次对话追加（2026-03-06，event26 出售口径修正为“双倍出售价”）
+
+- 用户反馈：`event26`（以双倍价格出售上阵区）在 4 个 Lv1 物品场景只给了 16G，期望按出售价双倍结算得到 24G。
+- 根因定位：`event26` 结算使用了购买价函数 `getTierStarPrice * 2`，而非出售价口径。
+- 已完成：`src/scenes/ShopScene.ts`
+  - `event26` 金币结算改为：`shopManager.getSellPrice(def, tier, star) * 2`。
+- 结果：事件结算与“出售价格表”口径一致（例如小型 Lv1：`3 * 2`）。
+- 验证：`npm run build` 通过。
+- 当前阶段：该口径修正进入验收阶段，等待用户复测 `event26` 出售收益。
+
+### 本次对话追加（2026-03-06，敌人物品平均基础品质二次调整）
+
+- 用户需求：按新表再次调整 Day1~20 敌人物品平均基础品质；数量保持不变。
+- 已完成：`data/game_config.json`
+  - `gameplay_mode_values.enemyDraftLab.dailyAvgQuality` 更新为：
+    - `[1,1.5,2,2.5,3,3.5,4,4.5,5,5.33,5.67,6,6.25,6.5,6.75,7,7,7,7,7]`
+  - `gameplay_mode_values.enemyDraftLab.dailyItemCount` 维持：
+    - `[2,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5]`
+- 验证：`npm run build` 通过。
+- 当前阶段：该敌人曲线调整进入验收阶段，等待用户确认实机难度体感。
+
+### 本次对话追加（2026-03-06，Vercel 生产环境更新）
+
+- 用户指令：`更新vercel`。
+- 已完成：执行 `vercel --prod --yes`，生产部署成功。
+- 发布结果：
+  - Production：`https://bigbazzar-4e2hbizmt-zhengtengfeis-projects.vercel.app`
+  - Alias：`https://bigbazzar.vercel.app`
+- 构建状态：Vercel 云端构建通过（保留 chunk size warning，不影响上线）。
+- 当前阶段：等待用户线上验收。
+
+### 本次对话追加（2026-03-06，敌人基础平均品质曲线更新）
+
+- 用户需求：修正 Day1~20 敌人装备基础平均品质与数量曲线。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按最小配置改动落地。
+- 已完成：`data/game_config.json`
+  - `gameplay_mode_values.enemyDraftLab.dailyAvgQuality` 更新为：
+    - `[1,1.5,2,2.5,3.25,4,4.5,5,5.5,6,6.25,6.5,6.75,7,7,7,7,7,7,7]`
+  - `gameplay_mode_values.enemyDraftLab.dailyItemCount` 已与目标一致（`[2,4,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5]`），本轮未改。
+- 验证：`npm run build` 通过。
+- 当前阶段：该敌人曲线调整进入验收阶段，等待用户确认实机难度体感。
+
+### 本次对话追加（2026-03-06，按新表修正购买概率/买卖价并同步特殊商店）
+
+- 用户需求：按给定 Day1~20 表修正“每日购买等级概率”、购买价格与出售价格，并要求包含特殊商店。
+- 已完成：
+  - `data/game_config.json`
+    - `shopRules.quickBuyLevelChancesByDay` 全量替换为用户给定 Day1~20 概率；
+    - `shopRules.quickBuyFixedPrice` 更新为：`lv1~lv7 = 3/5/9/16/27/42/60`（映射 `Bronze#1` 到 `Diamond#1`）；
+    - `shopRules.sellFixedPriceBySize` 的 `small/medium/large` 统一更新为：`lv1~lv7 = 3/4/7/13/21/33/40`。
+  - `src/scenes/ShopScene.ts`
+    - 基础购买兜底价数组 `getUnlockPoolBuyPriceByLevel()` 同步为：`3/5/9/16/27/42/60`；
+    - 特殊商店价表 `getSpecialShopPriceByLevel()` 同步为：`3/5/9/16/27/42/60`。
+- 验证：`npm run build` 通过。
+- 当前阶段：该经济参数修正进入验收阶段，等待用户实机确认“基础购买/特殊商店购买/出售回收”三类价格与概率体感。
+
+### 本次对话追加（2026-03-06，敌人强度连胜修正：平均装备等级增量表）
+
+- 用户需求：按新表修正“敌人强度随玩家连胜变化的平均装备等级增量”。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按最小改动直接替换增量表。
+- 已完成：`src/combat/CombatEngine.ts`
+  - `makeEnemyRunners()` 中 `streakBonusByHp` 调整为：
+    - HP 5/4：`[0,0.25,0.5,0.75,1,1.25,1.5,1.75,2,2.25]`
+    - HP 3/2：`[0,0,0.25,0.5,0.75,1,1.25,1.5,1.75,2]`
+    - HP 1：`[-0.25,0,0,0.25,0.5,0.75,1,1.25,1.5,1.75]`
+- 影响：仅调整敌人目标平均品质计算的连胜加成；其余敌人生成逻辑保持不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：该强度曲线修正进入验收阶段，等待用户实机确认不同血量/连胜下敌人强度体感。
+
 ### 本次对话追加（2026-03-06，Vercel 更新 + TestFlight 上传 + GHE 推送）
 
 - 用户指令：`改完更新vercel，打tf包，上传ghe`。
