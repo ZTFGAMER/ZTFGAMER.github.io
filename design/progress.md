@@ -1,5 +1,21 @@
 # 大巴扎 — 开发进度记录
 
+### 本次对话追加（2026-03-06，Vercel 更新 + TestFlight 上传 + GHE 推送）
+
+- 用户指令：`改完更新vercel，打tf包，上传ghe`。
+- 已完成：
+  - Vercel 生产发布：
+    - Production: `https://bigbazzar-beoj3gynf-zhengtengfeis-projects.vercel.app`
+    - Alias: `https://bigbazzar.vercel.app`
+  - TestFlight 打包上传：
+    - `npm run release:tf` 执行成功；
+    - 上传结果：`UPLOAD SUCCEEDED with no errors`；
+    - Delivery UUID：`cee52cb7-ffe0-4e0f-b594-236e5b28f495`；
+    - iOS Build Number：`15 -> 16`（`ios/project.yml`）。
+  - GHE 推送：
+    - 已提交并推送 `76d1fb6` 到 `origin/main`。
+- 当前阶段：发布与分发完成，等待用户在 Vercel 线上与 TestFlight 构建处理页验收。
+
 ### 本次对话追加（2026-03-06，修复战斗统计触发次数口径：英雄铠甲少计、短剑多计）
 
 - 用户反馈：
