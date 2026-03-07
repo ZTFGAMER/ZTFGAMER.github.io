@@ -9101,6 +9101,16 @@ function isPointInZoneArea(view: GridZone | null, gx: number, gy: number): boole
 }
 
 // ============================================================
+// PVP 结束后清理残留的 in-memory 状态，防止 PVP 存档污染 PVE 商店
+// 由 PvpContext.endSession() 调用
+// ============================================================
+export function clearPvpShopState(): void {
+  savedShopState = null
+  pendingBattleTransition = false
+  pendingAdvanceToNextDay = false
+}
+
+// ============================================================
 // 主场景
 // ============================================================
 export const ShopScene: Scene = {
@@ -9117,9 +9127,6 @@ export const ShopScene: Scene = {
     // PVP 模式：注册自动提交回调（倒计时结束时若未手动提交则自动触发）
     if (PvpContext.isActive()) {
       PvpContext.registerAutoSubmit(() => {
-        const boardItemCount = battleSystem?.getAllItems().length ?? 0
-        const backpackItemCount = backpackSystem?.getAllItems().length ?? 0
-        if (boardItemCount <= 0 && boardItemCount === 0 && backpackItemCount === 0) return
         clearBattleOutcome()
         pendingSkillBarMoveStartAtMs = Date.now()
         const snapshot = buildBattleSnapshot(pendingSkillBarMoveStartAtMs)

@@ -9,6 +9,7 @@ import { SceneManager } from '@/scenes/SceneManager'
 import { getBattleSnapshot, setBattleSnapshot } from '@/combat/BattleSnapshotStore'
 import { consumeBattleOutcome } from '@/combat/BattleOutcomeStore'
 import { SHOP_STATE_STORAGE_KEY } from '@/core/RunState'
+import { clearPvpShopState } from '@/scenes/ShopScene'
 import type { PvpSession, PvpPlayer } from '@/pvp/PvpTypes'
 import { getOpponentIndex } from '@/pvp/PvpTypes'
 import type { PvpRoom } from '@/pvp/PvpRoom'
@@ -32,6 +33,8 @@ let countdownRemainMs = 0
 let active = false
 let session: PvpSession | null = null
 let room: PvpRoom | null = null
+// day_ready 在战斗途中到达时延迟显示覆盖层
+let pendingDayReadyAt = 0   // 非 0 表示有待展示的 day_ready，值为到达时间戳 ms
 
 
 // ----------------------------------------------------------------
@@ -78,9 +81,15 @@ export const PvpContext = {
       // 若在此处更新，当 day_ready 在战斗途中到达时会提前覆盖 currentDay，
       // 导致 onBattleComplete 计算出错误的 nextDay，使玩家跳过整天甚至误判游戏结束。
       countdownRemainMs = countdownMs
-      showOverlay()
-      updateOverlayTitle('布置好后点「战斗」准备')
-      startCountdown()
+      // 战斗场景中收到下一天 day_ready 时（宿主先完成战斗触发下一天）
+      // 不立即弹出覆盖层，等进入商店场景后再显示，避免干扰战斗界面
+      if (SceneManager.currentName() === 'battle') {
+        pendingDayReadyAt = Date.now()
+      } else {
+        showOverlay()
+        updateOverlayTitle('布置好后点「战斗」准备')
+        startCountdown()
+      }
     }
 
     pvpRoom.onPlayerStatusUpdate = (_day, readyIndices) => {
@@ -91,6 +100,11 @@ export const PvpContext = {
       // 校验 day：只处理与当前天匹配的快照，防止乱序/残留消息导致误入战斗
       if (session && day !== session.currentDay) {
         console.warn('[PvpContext] 忽略不匹配的 opponent_snapshot day=' + day + ' (expected ' + session.currentDay + ')')
+        return
+      }
+      // 已在战斗中：忽略重复快照（如双击准备按钮触发二次补发）
+      if (SceneManager.currentName() === 'battle') {
+        console.warn('[PvpContext] 已在战斗中，忽略重复的 opponent_snapshot day=' + day)
         return
       }
       hideOverlay()
@@ -138,6 +152,9 @@ export const PvpContext = {
 
     const nextDay = session.currentDay + 1
 
+    // 进入战斗/结算前清除 autoSubmitCallback，防止下一天倒计时到时调用旧 ShopScene 的闭包
+    autoSubmitCallback = null
+
     if (nextDay > session.totalDays) {
       // 上报胜场给房主；房主收齐后广播含真实排名的 game_over
       // pvp-result 场景会在 update() 中检测 session.rankings 后刷新
@@ -146,23 +163,37 @@ export const PvpContext = {
       SceneManager.goto('pvp-result')
     } else {
       session.currentDay = nextDay
-  
+
       // 房主负责触发下一天的倒计时
       if (room?.isHost) {
         room.advanceToDay(nextDay)
       }
 
       SceneManager.goto('shop')
+
+      // 若 day_ready 在战斗途中已到达（延迟了覆盖层），现在补充显示
+      // 并扣除战斗期间已流逝的时间，保持倒计时对齐
+      if (pendingDayReadyAt > 0) {
+        const elapsed = Date.now() - pendingDayReadyAt
+        countdownRemainMs = Math.max(0, countdownRemainMs - elapsed)
+        pendingDayReadyAt = 0
+        showOverlay()
+        updateOverlayTitle('布置好后点「战斗」准备')
+        startCountdown()
+      }
     }
   },
 
   /** PvpResultScene 离开时调用 */
   endSession(): void {
     restorePveSave()
+    // 清理 ShopScene 的 in-memory 状态，防止 PVP 残留存档污染 PVE 商店
+    clearPvpShopState()
     room?.destroy()
     room = null
     session = null
     active = false
+    pendingDayReadyAt = 0
     hideOverlay()
     stopCountdown()
   },
@@ -201,10 +232,16 @@ function restorePveSave(): void {
 function applyOpponentSnapshot(day: number, opponentSnap: BattleSnapshotBundle): void {
   const mySnap = getBattleSnapshot()
   if (!mySnap) {
-    console.warn('[PvpContext] 无法获取我方快照，使用对手快照对称战斗')
+    console.warn('[PvpContext] 无法获取我方快照，以空阵容参战')
   }
   console.log('[PvpContext] applyOpponentSnapshot day=' + day + ' myEntities=' + (mySnap?.entities.length ?? 0) + ' opponentEntities=' + opponentSnap.entities.length)
-  const base = mySnap ?? opponentSnap
+  // mySnap 为 null 时（未提交快照）构造空阵容快照，避免使用对手快照导致镜像战斗
+  const base: BattleSnapshotBundle = mySnap ?? {
+    day,
+    activeColCount: opponentSnap.activeColCount,
+    createdAtMs: Date.now(),
+    entities: [],
+  }
   const pvpSnap: BattleSnapshotBundle = {
     ...base,
     day,
@@ -330,9 +367,12 @@ function startCountdown(): void {
     }
     if (remain <= 0) {
       stopCountdown()
-      // 倒计时结束：若玩家还未手动提交，自动提交当前快照（防止宿主用 AI 替代）
+      // 倒计时结束：若玩家还未提交本轮快照，自动提交（防止宿主用 AI 替代）
+      // 注意：不能用 !getBattleSnapshot() 判断，因为第 2 轮起 store 里会残留上一轮的合并快照
+      // 改为比较快照的 day 与当前轮次：只有快照 day 与 currentDay 一致才说明本轮已手动提交
       const currentSnap = getBattleSnapshot()
-      if (!currentSnap && autoSubmitCallback) {
+      const alreadySubmitted = currentSnap && currentSnap.day === session?.currentDay
+      if (!alreadySubmitted && autoSubmitCallback) {
         console.log('[PvpContext] 倒计时结束，自动触发快照提交')
         autoSubmitCallback()
       }

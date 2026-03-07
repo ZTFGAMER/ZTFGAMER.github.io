@@ -65,6 +65,7 @@ export default defineConfig({
   server: {
     host: '0.0.0.0', // 局域网手机调试
     port: 5173,
+    allowedHosts: 'all',
     hmr: {
       host: 'localhost', // 桌面浏览器 HMR 走 localhost，手机调试不受影响
       port: 5173,

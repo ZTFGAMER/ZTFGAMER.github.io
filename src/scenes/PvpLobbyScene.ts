@@ -650,7 +650,7 @@ async function handleCreateRoom(): Promise<void> {
     const sess: PvpSession = {
       myIndex, totalPlayers, players: pvpRoom!.players,
       totalDays: calcTotalDays(totalPlayers),
-      currentDay: 1, wins: 0, dayResults: {}, countdownMs: 90_000,
+      currentDay: 1, wins: 0, dayResults: {},
     }
     PvpContext.startSession(pvpRoom!, sess)
     SceneManager.goto('shop')
@@ -661,6 +661,8 @@ async function handleCreateRoom(): Promise<void> {
     drawHostWaitingView()
   } catch (e) {
     setStatus(`创建房间失败：${e instanceof Error ? e.message : String(e)}`)
+    pvpRoom.destroy()
+    pvpRoom = null
   }
 }
 
@@ -674,7 +676,7 @@ async function handleJoinRoom(code: string): Promise<void> {
     const sess: PvpSession = {
       myIndex, totalPlayers, players: pvpRoom!.players,
       totalDays: calcTotalDays(totalPlayers),
-      currentDay: 1, wins: 0, dayResults: {}, countdownMs: 90_000,
+      currentDay: 1, wins: 0, dayResults: {},
     }
     PvpContext.startSession(pvpRoom!, sess)
     SceneManager.goto('shop')

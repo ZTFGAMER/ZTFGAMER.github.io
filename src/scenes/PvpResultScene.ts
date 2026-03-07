@@ -127,7 +127,7 @@ function buildContent(): void {
     }
   }
 
-  const totalDays = session ? Object.keys(session.dayResults).length : 9
+  const totalDays = session ? session.totalDays : 9
   const listStartY = 210
 
   entries.forEach((entry, i) => {
@@ -171,9 +171,12 @@ function buildContent(): void {
     rowCon.addChild(nameT)
 
     const winsLabel = entry.winsKnown ? `${entry.wins}胜` : '结算中...'
+    // 颜色阈值按总天数等比缩放：绿色 ≥ 67%，黄色 ≥ 33%
+    const greenThreshold = Math.round(totalDays * 2 / 3)
+    const yellowThreshold = Math.round(totalDays / 3)
     const winsColor = !entry.winsKnown
       ? 0x778899
-      : (entry.wins >= 6 ? 0x7fff7f : (entry.wins >= 3 ? 0xffd86b : 0xaabbcc))
+      : (entry.wins >= greenThreshold ? 0x7fff7f : (entry.wins >= yellowThreshold ? 0xffd86b : 0xaabbcc))
     const winsT = new Text({
       text: winsLabel,
       style: { fill: winsColor, fontSize: i === 0 ? 36 : 28, fontWeight: 'bold' },
@@ -195,7 +198,8 @@ function buildContent(): void {
   // ── 总结 ──────────────────────────────────────────────
   if (session) {
     const myWins = session.wins
-    const totalD = Object.keys(session.dayResults).length
+    const myDraws = Object.values(session.dayResults).filter((r) => r === 'draw').length
+    const myLosses = Object.values(session.dayResults).filter((r) => r === 'enemy').length
     const myRank = entries.findIndex((e) => e.isMe) + 1
 
     const summaryY = listStartY + 155 + (entries.length - 1) * 128 + 80
@@ -204,8 +208,9 @@ function buildContent(): void {
     summaryBg.roundRect(CANVAS_W / 2 - 240, summaryY - 36, 480, 72, 14).fill({ color: 0x1a2035 })
     root.addChild(summaryBg)
 
+    const drawPart = myDraws > 0 ? ` ${myDraws} 平` : ''
     const summaryT = new Text({
-      text: `本局  ${myWins} 胜 ${totalD - myWins} 败  ·  第 ${myRank} 名`,
+      text: `本局  ${myWins} 胜${drawPart} ${myLosses} 败  ·  第 ${myRank} 名`,
       style: { fill: 0x99bbdd, fontSize: 24, align: 'center' },
     })
     summaryT.anchor.set(0.5, 0.5)

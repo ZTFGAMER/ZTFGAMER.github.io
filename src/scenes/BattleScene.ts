@@ -1898,8 +1898,9 @@ function resolveBattleSettlement(): void {
   }
   const delta = after.current - before.current
   settlementResolved = true
-  settlementGameOver = winner === 'enemy' && after.current <= 0
-  settlementFinalVictory = winner === 'player' && trophyAfter.wins >= trophyAfter.target
+  // PVP 模式不触发 PVE 的游戏结束/最终胜利逻辑，防止意外调用 window.location.reload()
+  settlementGameOver = !PvpContext.isActive() && winner === 'enemy' && after.current <= 0
+  settlementFinalVictory = !PvpContext.isActive() && winner === 'player' && trophyAfter.wins >= trophyAfter.target
 
   if (!settlementTitleText || !settlementLifeText || !settlementTrophyText || !settlementDescText || !settlementActionLabel) return
 
@@ -1917,14 +1918,24 @@ function resolveBattleSettlement(): void {
     settlementTitleText.style.fill = 0xb9d5ff
   }
 
-  settlementLifeText.text = delta < 0
-    ? `❤️ ${before.current}/${before.max} -> ${after.current}/${after.max} (-1)`
-    : `❤️ ${after.current}/${after.max}`
-  settlementLifeText.style.fill = after.current <= 1 ? 0xff6a6a : 0xffd4d4
-  settlementTrophyText.text = winner === 'player'
-    ? `🏆 ${trophyBefore.wins}/${trophyBefore.target} -> ${trophyAfter.wins}/${trophyAfter.target} (+1)`
-    : `🏆 ${trophyAfter.wins}/${trophyAfter.target}`
-  settlementTrophyText.style.fill = trophyAfter.wins >= trophyAfter.target ? 0xffde79 : 0xffe8b4
+  if (PvpContext.isActive()) {
+    const pvpSession = PvpContext.getSession()
+    settlementLifeText.text = '⚔️ PVP 对战'
+    settlementLifeText.style.fill = 0x99bbdd
+    const pvpWins = pvpSession?.wins ?? 0
+    const pvpTotal = pvpSession?.totalDays ?? 0
+    settlementTrophyText.text = `🏆 胜场：${pvpWins} / ${pvpTotal}`
+    settlementTrophyText.style.fill = 0xffe8b4
+  } else {
+    settlementLifeText.text = delta < 0
+      ? `❤️ ${before.current}/${before.max} -> ${after.current}/${after.max} (-1)`
+      : `❤️ ${after.current}/${after.max}`
+    settlementLifeText.style.fill = after.current <= 1 ? 0xff6a6a : 0xffd4d4
+    settlementTrophyText.text = winner === 'player'
+      ? `🏆 ${trophyBefore.wins}/${trophyBefore.target} -> ${trophyAfter.wins}/${trophyAfter.target} (+1)`
+      : `🏆 ${trophyAfter.wins}/${trophyAfter.target}`
+    settlementTrophyText.style.fill = trophyAfter.wins >= trophyAfter.target ? 0xffde79 : 0xffe8b4
+  }
 
   if (settlementFinalVictory) {
     settlementDescText.text = `🏆 已达成${trophyAfter.target}场胜利，点击重新开始`
