@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-ios/
+dist-android/
+.git/
+.claude/
+agent-sessions/
+.playwright-cli/
+ios/build/
+*.ipa

@@ -1,5 +1,82 @@
 # 大巴扎 — 开发进度记录
 
+### 本次对话追加（2026-03-08，Vercel 上传卡住排查与修复）
+
+- 用户反馈：`vercel --prod --yes` 长时间卡在 `Uploading`，怀疑免费版限制或历史数据过多。
+- 已完成：
+  - 通过 `vercel --debug` 排查确认并非配额报错，而是上传集中包含了 iOS 产物 `ios/build/export-testflight/BigBazzar.ipa`（约 42MB）；
+  - 新增 `.vercelignore`，显式排除：`ios/build/`、`*.ipa`（并补充常见本地目录忽略项）；
+  - 追加 `.gitignore` 规则 `*.ipa`，降低大产物误入仓库/上传集的风险；
+  - 重新执行 `vercel --prod --yes`，上传体积从 `42.5MB` 降到 `670.2KB`，部署成功。
+- 发布结果：
+  - Production：`https://bigbazzar-20vf24zau-zhengtengfeis-projects.vercel.app`
+  - Alias：`https://bigbazzar.vercel.app`
+- 当前阶段：本轮线上发布完成，等待用户线上验收。
+- 重要技术决定：Vercel 部署明确排除 iOS 打包产物，避免无关二进制进入 Web 部署上传集导致卡上传。
+
+### 本次对话追加（2026-03-08，Vercel 生产更新 + TestFlight 打包上传）
+
+- 用户指令：`更新vercel，打tf包上传` / `打tf包上传`。
+- 已完成：
+  - Vercel 生产发布：`vercel --prod --yes` 执行成功并完成别名切换；
+  - TestFlight 打包上传：`npm run release:tf` 执行成功。
+- 发布结果：
+  - Vercel Production：`https://bigbazzar-cjl7opk0s-zhengtengfeis-projects.vercel.app`
+  - Vercel Alias：`https://bigbazzar.vercel.app`
+  - TestFlight：`UPLOAD SUCCEEDED with no errors`
+  - Delivery UUID：`ec011d73-d987-47a9-8ade-efc8839b1d92`
+  - iOS Build Number：`CURRENT_PROJECT_VERSION=18`
+- 当前阶段：发布与分发完成，等待用户在 Vercel 线上与 App Store Connect/TestFlight 构建处理页验收。
+
+### 本次对话追加（2026-03-06，TestFlight 打包上传）
+
+- 用户指令：`打个包 tf上传`。
+- 已完成：执行 `npm run release:tf`，iOS 打包与上传成功。
+- 上传结果：
+  - `UPLOAD SUCCEEDED with no errors`
+  - Delivery UUID：`ec139b1d-129b-413e-b3f0-6dc5383d98b1`
+  - Build Number：`CURRENT_PROJECT_VERSION=17`
+- 相关变更：`ios/project.yml` 已自动递增版本号。
+- 当前阶段：等待用户在 App Store Connect/TestFlight 构建处理页验收。
+
+### 本次对话追加（2026-03-06，Vercel 生产环境发布）
+
+- 用户指令：`发布vercel`。
+- 已完成：执行 `vercel --prod --yes`，生产部署成功并完成别名切换。
+- 发布结果：
+  - Production：`https://bigbazzar-dd5in0dph-zhengtengfeis-projects.vercel.app`
+  - Alias：`https://bigbazzar.vercel.app`
+- 构建状态：Vercel 云端构建通过（保留 chunk size warning，不影响上线）。
+- 当前阶段：等待用户线上验收。
+
+### 本次对话追加（2026-03-06，Vercel 配置文件补齐）
+
+- 用户指令：`配置vercel`。
+- 已完成：
+  - 新增 `vercel.json`，固定 Vercel 构建配置（`framework=vite`、`buildCommand=npm run build`、`outputDirectory=dist`、`installCommand=npm install`）；
+  - 执行 `npm run build` 验证通过。
+- 结果：项目在 Vercel 上的构建入口与产物目录已显式配置，部署行为更稳定、可复现。
+- 当前阶段：等待用户决定是否立即执行一次生产发布（`vercel --prod --yes`）做线上验收。
+
+### 本次对话追加（2026-03-06，Vercel 生产环境更新）
+
+- 用户指令：`更新到vercel`。
+- 已完成：执行 `vercel --prod --yes`，生产部署成功。
+- 发布结果：
+  - Production：`https://bigbazzar-qcvl7bqiw-zhengtengfeis-projects.vercel.app`
+  - Alias：`https://bigbazzar.vercel.app`
+- 构建状态：Vercel 云端构建通过（保留 chunk size warning，不影响上线）。
+- 当前阶段：等待用户线上验收。
+
+### 本次对话追加（2026-03-06，本地缺失依赖补全并恢复构建）
+
+- 用户反馈：本地工程报错，`peerjs` import 无法解析。
+- 已完成：
+  - 执行 `npm install` 补全缺失依赖（含 `peerjs`）；
+  - 执行 `npm run build` 验证通过。
+- 结果：本地项目已恢复可构建状态。
+- 当前阶段：等待用户本地运行验收（dev 启动与 PVP 页面加载）。
+
 ### 本次对话追加（2026-03-06，GHE 推送 + Vercel 生产更新）
 
 - 用户指令：`上传ghe，更新vercel`。
