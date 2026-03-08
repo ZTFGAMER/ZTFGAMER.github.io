@@ -195,12 +195,12 @@ export const MenuScene: Scene = {
 
     // ── 底部 ──────────────────────────────────────────────
     const ver = new Text({
-      text: 'v0.1',
-      style: { fill: 0x445566, fontSize: 18 },
+      text: 'v0.1.1',
+      style: { fill: 0x6688aa, fontSize: 18 },
     })
-    ver.anchor.set(0.5, 1)
-    ver.x = CANVAS_W / 2
-    ver.y = CANVAS_H - 36
+    ver.anchor.set(1, 1)
+    ver.x = CANVAS_W - 24
+    ver.y = CANVAS_H - 24
     root.addChild(ver)
 
     // 入场动画初始透明
