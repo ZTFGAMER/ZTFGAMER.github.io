@@ -6,7 +6,10 @@
 import Peer, { type DataConnection } from 'peerjs'
 
 const PEERJS_CONFIG = {
-  // 使用 PeerJS 公共信令服务器；正式上线建议自托管
+  host: 'peer.kkopttarr.com',
+  port: 443,
+  path: '/',
+  secure: true,
   debug: 0,
 }
 
