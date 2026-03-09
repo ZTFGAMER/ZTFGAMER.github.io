@@ -34,8 +34,6 @@ let pendingDayReadyAt = 0   // 非 0 表示有待展示的 day_ready，值为到
 // Mode A: sync-start pending
 let syncStartCallbacks = new Map<number, (() => void)>() // day → callback
 
-// bye 轮实际对手：day → playerIndex（host 分发时确定）
-let byeOpponentIndexByDay = new Map<number, number>()
 
 // HP system state
 let pendingSurvivingDamage = 0
@@ -58,8 +56,12 @@ export const PvpContext = {
   /** 获取当天的对手昵称（BattleScene 使用） */
   getOpponentNickname(): string | null {
     if (!session || !room) return null
-    const opponentIdx = getOpponentIndex(session.myIndex, session.totalPlayers, session.currentDay - 1)
-    if (opponentIdx < 0) return 'AI 对手'
+    let opponentIdx = getOpponentIndex(session.myIndex, session.totalPlayers, session.currentDay - 1)
+    // bye 轮：用 host 分发时确定的真实快照来源玩家 index
+    if (opponentIdx < 0) {
+      opponentIdx = session.currentOpponentPlayerIndex ?? -1
+    }
+    if (opponentIdx < 0) return null
     const opponent = session.players.find((p) => p.index === opponentIdx)
     return opponent?.nickname ?? null
   },
@@ -106,9 +108,9 @@ export const PvpContext = {
         console.warn('[PvpContext] 已在战斗中，忽略重复的 opponent_snapshot day=' + day)
         return
       }
-      // 记录 bye 轮实际对手 index（host 已解析出真实快照来源）
-      if (opponentPlayerIndex !== undefined) {
-        byeOpponentIndexByDay.set(day, opponentPlayerIndex)
+      // 记录 bye 轮实际对手 index 到 session（host 已解析出真实快照来源）
+      if (session && opponentPlayerIndex !== undefined) {
+        session.currentOpponentPlayerIndex = opponentPlayerIndex
       }
       stopCountdown()
       applyOpponentSnapshot(day, opponentSnap)
@@ -215,6 +217,8 @@ export const PvpContext = {
 
     // 进入战斗/结算前清除 autoSubmitCallback，防止下一天倒计时到时调用旧 ShopScene 的闭包
     autoSubmitCallback = null
+    // 重置 bye 轮对手缓存，防止跨天串用
+    session.currentOpponentPlayerIndex = undefined
 
     // 上报本轮结果（HP 系统：每轮都上报，由 round_summary 决定淘汰与否）
     // 注意：host 侧 onRoundSummary 可能在此同步触发并调用 goto('pvp-result')

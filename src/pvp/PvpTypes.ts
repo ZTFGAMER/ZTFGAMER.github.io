@@ -26,6 +26,7 @@ export interface PvpSession {
   rankings?: { nickname: string; wins: number | null; index: number }[]  // filled after game_over
   playerHps: Record<number, number>       // playerIndex → current HP
   eliminatedPlayers: number[]             // playerIndices eliminated (HP ≤ 0)
+  currentOpponentPlayerIndex?: number    // 当天实际对手的 playerIndex（bye 轮由 host 解析后下发）
 }
 
 /**
