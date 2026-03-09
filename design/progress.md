@@ -1,5 +1,23 @@
 # 大巴扎 — 开发进度记录
 
+### 本次对话追加（2026-03-10，更新 GHE + Vercel 生产部署 + TestFlight 上传）
+
+- 用户指令：`更新ghe，上传vercel，打tf包`。
+- 已完成（GHE）：
+  - 提交并推送到企业仓库 `origin`（`main` 分支）。
+  - Commit：`d7431b2`（`feat: 同步玩法战斗修复并恢复匕首攻击描述`）。
+- 已完成（Vercel）：
+  - 执行 `vercel --prod --yes` 成功。
+  - Production：`https://bigbazzar-1nilw5eao-zhengtengfeis-projects.vercel.app`
+  - Alias：`https://bigbazzar.vercel.app`
+- 已完成（TestFlight）：
+  - 执行 `npm run release:tf` 成功。
+  - 关键结果：`Upload succeeded.`、`UPLOAD SUCCEEDED with no errors`。
+  - Delivery UUID：`5929242d-01ff-471c-8c89-c9fa3bfcae91`
+  - Build Number：`CURRENT_PROJECT_VERSION=23`
+- 备注：工作区仍存在未跟踪本地文件 `ios/packaging.config.local.json`（未纳入提交）。
+- 当前阶段：发布与分发完成，等待用户在 Vercel 线上和 App Store Connect/TestFlight 处理页验收。
+
 ### 本次对话追加（2026-03-10，匕首补回攻击描述并恢复直伤）
 
 - 用户需求：给匕首增加攻击力描述，伤害为 `8|12|18|27|41|62|93`。
