@@ -53,15 +53,17 @@ const UPGRADE_ARROW_BASE_H = 48
 const UPGRADE_ARROW_FILL_COLOR = 0xffd25a
 const SAME_ARROW_FILE = 'arrow2.png'
 const CROSS_ARROW_FILE = 'arrow1.png'
+const CONVERT_ARROW_FILE = 'arrow3.png'
 
-let guideArrowTexturesPromise: Promise<{ same: Texture; cross: Texture }> | null = null
+let guideArrowTexturesPromise: Promise<{ same: Texture; cross: Texture; convert: Texture }> | null = null
 
-function ensureGuideArrowTextures(): Promise<{ same: Texture; cross: Texture }> {
+function ensureGuideArrowTextures(): Promise<{ same: Texture; cross: Texture; convert: Texture }> {
   if (guideArrowTexturesPromise) return guideArrowTexturesPromise
   guideArrowTexturesPromise = Promise.all([
     Assets.load<Texture>(getUiImageUrl(SAME_ARROW_FILE)),
     Assets.load<Texture>(getUiImageUrl(CROSS_ARROW_FILE)),
-  ]).then(([same, cross]) => ({ same, cross }))
+    Assets.load<Texture>(getUiImageUrl(CONVERT_ARROW_FILE)),
+  ]).then(([same, cross, convert]) => ({ same, cross, convert }))
   return guideArrowTexturesPromise
 }
 
@@ -172,13 +174,14 @@ interface ItemNode {
   origY:      number
 }
 
-function getArchetypeBadgeByDefId(defId: string): { label: string; color: number } {
+function getArchetypeBadgeByDefId(defId: string): { label: string; color: number; showLevel: boolean } {
   const item = getAllItems().find((it) => it.id === defId)
   const tags = `${item?.tags ?? ''}`
-  if (tags.includes('战士')) return { label: '战', color: 0xcc4b4b }
-  if (tags.includes('弓手')) return { label: '弓', color: 0x34a853 }
-  if (tags.includes('刺客')) return { label: '刺', color: 0x4b7bcc }
-  return { label: '?', color: 0x7b6ad2 }
+  if (tags.includes('战士')) return { label: '战', color: 0xcc4b4b, showLevel: true }
+  if (tags.includes('弓手')) return { label: '弓', color: 0x34a853, showLevel: true }
+  if (tags.includes('刺客')) return { label: '刺', color: 0x4b7bcc, showLevel: true }
+  if (tags.includes('中立')) return { label: '中立', color: 0xb07a27, showLevel: false }
+  return { label: '?', color: 0x7b6ad2, showLevel: true }
 }
 
 function parseTierName(raw: string): string {
@@ -266,6 +269,7 @@ export class GridZone extends Container {
   private ammoBadgeOffsetY = 0
   private upgradeHintIds = new Set<string>()
   private crossUpgradeHintIds = new Set<string>()
+  private crossGuideArrowMode: 'cross' | 'convert' = 'cross'
   private upgradeHintTick: (() => void) | null = null
 
   // 当前被拖拽的节点（状态追踪；位置由 DragController/dragLayer 管理）
@@ -275,6 +279,7 @@ export class GridZone extends Container {
   private squeezeTicks = new Map<string, () => void>()
   // 活跃的预览动画 tick 函数（仅视觉，不更新逻辑坐标）
   private previewTicks = new Map<string, () => void>()
+  private itemFxTicks = new Set<() => void>()
 
   /** Tap 回调，外部设置 */
   onTap: (instanceId: string) => void = () => {}
@@ -427,6 +432,7 @@ export class GridZone extends Container {
     col:        number,
     row:        number,
     tier?:      string,
+    options?:   { playAcquireFx?: boolean },
   ): Promise<void> {
     if (this.nodes.has(instanceId)) return
 
@@ -552,9 +558,116 @@ export class GridZone extends Container {
     this.redrawItemBorder(node)
     this.updateStatBadgePosition(node)
     this.nodes.set(instanceId, node)
+    if (options?.playAcquireFx !== false) this.playItemAcquireFx(node)
 
     this.loadIcon(instanceId, defId, node)
     this.loadGuideArrows(instanceId, node)
+  }
+
+  private rootContainer(): Container | null {
+    let cur: Container | null = this
+    while (cur?.parent) cur = cur.parent as Container
+    return cur
+  }
+
+  private playItemAcquireFx(node: ItemNode): void {
+    const stage = this.rootContainer()
+    if (!stage) return
+    const [cols] = SIZE_DIMS[node.size]
+    const w = cols * CELL_SIZE
+    const h = CELL_HEIGHT
+    const g0 = this.toGlobal({ x: node.col * CELL_SIZE, y: node.row * CELL_HEIGHT })
+    const g1 = this.toGlobal({ x: node.col * CELL_SIZE + w, y: node.row * CELL_HEIGHT + h })
+    const p0 = stage.toLocal(g0)
+    const p1 = stage.toLocal(g1)
+    const x = Math.min(p0.x, p1.x)
+    const y = Math.min(p0.y, p1.y)
+    const rw = Math.abs(p1.x - p0.x)
+    const rh = Math.abs(p1.y - p0.y)
+    if (rw <= 0 || rh <= 0) return
+
+    const fx = new Graphics()
+    fx.eventMode = 'none'
+    stage.addChild(fx)
+    node.container.alpha = 0
+    node.container.scale.set(0.9)
+
+    const durationMs = 240
+    const start = Date.now()
+    const tick = () => {
+      const t = Math.min(1, (Date.now() - start) / durationMs)
+      const ease = 1 - Math.pow(1 - t, 3)
+      node.container.alpha = Math.min(1, 0.18 + ease * 0.82)
+      const scale = 0.9 + ease * 0.1
+      node.container.scale.set(scale)
+      const pulse = Math.sin(Math.PI * t)
+      const corner = Math.max(6, Math.round(this.cornerRadius * (this.scale.x || 1)))
+      fx.clear()
+      fx.roundRect(x + 2, y + 2, Math.max(4, rw - 4), Math.max(4, rh - 4), corner)
+      fx.fill({ color: 0x9fe8ff, alpha: pulse * 0.22 })
+      fx.roundRect(x + 1, y + 1, Math.max(2, rw - 2), Math.max(2, rh - 2), corner)
+      fx.stroke({ color: 0xbbeeff, width: 2, alpha: pulse * 0.95 })
+      if (t >= 1) {
+        node.container.alpha = 1
+        node.container.scale.set(1)
+        Ticker.shared.remove(tick)
+        this.itemFxTicks.delete(tick)
+        fx.parent?.removeChild(fx)
+        fx.destroy()
+      }
+    }
+    this.itemFxTicks.add(tick)
+    Ticker.shared.add(tick)
+  }
+
+  private playItemDisappearFx(node: ItemNode): void {
+    const stage = this.rootContainer()
+    if (!stage) return
+    const [cols] = SIZE_DIMS[node.size]
+    const w = cols * CELL_SIZE
+    const h = CELL_HEIGHT
+    const g0 = this.toGlobal({ x: node.col * CELL_SIZE, y: node.row * CELL_HEIGHT })
+    const g1 = this.toGlobal({ x: node.col * CELL_SIZE + w, y: node.row * CELL_HEIGHT + h })
+    const p0 = stage.toLocal(g0)
+    const p1 = stage.toLocal(g1)
+    const x = Math.min(p0.x, p1.x)
+    const y = Math.min(p0.y, p1.y)
+    const rw = Math.abs(p1.x - p0.x)
+    const rh = Math.abs(p1.y - p0.y)
+    if (rw <= 0 || rh <= 0) return
+
+    const fx = new Graphics()
+    fx.eventMode = 'none'
+    stage.addChild(fx)
+
+    const durationMs = 200
+    const start = Date.now()
+    const tick = () => {
+      const t = Math.min(1, (Date.now() - start) / durationMs)
+      const fade = 1 - t
+      const corner = Math.max(6, Math.round(this.cornerRadius * (this.scale.x || 1)))
+      fx.clear()
+      fx.roundRect(x + 2, y + 2, Math.max(4, rw - 4), Math.max(4, rh - 4), corner)
+      fx.fill({ color: 0xff9f9f, alpha: fade * 0.24 })
+      fx.roundRect(x + 1, y + 1, Math.max(2, rw - 2), Math.max(2, rh - 2), corner)
+      fx.stroke({ color: 0xffc0c0, width: 2, alpha: fade * 0.95 })
+      const cx = x + rw / 2
+      const cy = y + rh / 2
+      const len = Math.max(10, Math.min(rw, rh) * 0.24) * (0.8 + 0.2 * fade)
+      fx.moveTo(cx - len, cy - len)
+      fx.lineTo(cx + len, cy + len)
+      fx.moveTo(cx + len, cy - len)
+      fx.lineTo(cx - len, cy + len)
+      fx.stroke({ color: 0xffdede, width: 3, alpha: fade * 0.9 })
+      if (t >= 1) {
+        Ticker.shared.remove(tick)
+        this.itemFxTicks.delete(tick)
+        fx.parent?.removeChild(fx)
+        fx.destroy()
+      }
+    }
+    this.itemFxTicks.add(tick)
+    Ticker.shared.add(tick)
   }
 
   private async loadGuideArrows(instanceId: string, node: ItemNode): Promise<void> {
@@ -562,9 +675,20 @@ export class GridZone extends Container {
       const textures = await ensureGuideArrowTextures()
       if (!this.nodes.has(instanceId)) return
       applyArrowTexture(node.upgradeArrow, textures.same)
-      applyArrowTexture(node.crossUpgradeArrow, textures.cross)
+      applyArrowTexture(node.crossUpgradeArrow, this.crossGuideArrowMode === 'convert' ? textures.convert : textures.cross)
     } catch (err) {
       console.warn('[GridZone] 提示箭头加载失败', err)
+    }
+  }
+
+  private async setCrossGuideArrowMode(mode: 'cross' | 'convert'): Promise<void> {
+    this.crossGuideArrowMode = mode
+    try {
+      const textures = await ensureGuideArrowTextures()
+      const tex = mode === 'convert' ? textures.convert : textures.cross
+      for (const node of this.nodes.values()) applyArrowTexture(node.crossUpgradeArrow, tex)
+    } catch {
+      // noop
     }
   }
 
@@ -590,6 +714,7 @@ export class GridZone extends Container {
   removeItem(instanceId: string): void {
     const node = this.nodes.get(instanceId)
     if (!node) return
+    this.playItemDisappearFx(node)
     // container 可能在 itemLayer 或已被 DragController 摘出，安全移除
     if (node.container.parent === this.itemLayer) {
       this.itemLayer.removeChild(node.container)
@@ -931,7 +1056,8 @@ export class GridZone extends Container {
     if (this.upgradeHintTick) this.stopUpgradeHintAnim()
   }
 
-  setDragGuideArrows(instanceIds: string[], crossInstanceIds: string[] = []): void {
+  setDragGuideArrows(instanceIds: string[], crossInstanceIds: string[] = [], crossMode: 'cross' | 'convert' = 'cross'): void {
+    if (this.crossGuideArrowMode !== crossMode) void this.setCrossGuideArrowMode(crossMode)
     const cross = new Set(crossInstanceIds.filter((id) => this.nodes.has(id)))
     const next = new Set(instanceIds.filter((id) => this.nodes.has(id) && !cross.has(id)))
     this.upgradeHintIds = next
@@ -1008,7 +1134,7 @@ export class GridZone extends Container {
 
     const levelText = tierToLevelLabel(node.tier)
     const arch = getArchetypeBadgeByDefId(node.defId)
-    node.starText.text = `${arch.label}${levelText}`
+    node.starText.text = arch.showLevel ? `${arch.label}${levelText}` : arch.label
     node.starText.style.fill = 0xffffff
     node.starText.style.stroke = { color: 0x000000, width: 2 }
     node.starText.style.fontSize = this.statBadgeFontSize

@@ -213,6 +213,9 @@ export interface GameConfig {
       ownedWeightMultiplier?: number
     }>
     quickBuyLevelChancesByDay?: number[][]
+    quickBuyNeutralChance?: number
+    quickBuyNeutralStartDay?: number
+    quickBuyNeutralPseudoRandomChances?: number[]
     quickBuyPriceMultiplier?: {
       [tierStar: string]: number
     }

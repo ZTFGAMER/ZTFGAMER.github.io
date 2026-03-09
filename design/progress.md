@@ -1,5 +1,729 @@
 # 大巴扎 — 开发进度记录
 
+### 本次对话追加（2026-03-09，中立按天上限表更新为最新版本）
+
+- 用户需求：按提供的 Day1~20 表更新“单日中立上限 + 9类中立物品累计上限”。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按最小配置常量更新落地。
+- 已完成：`src/scenes/ShopScene.ts`
+  - `NEUTRAL_RANDOM_CAP_BY_DAY` 按新表同步；本轮有变更的行：
+    - `class_shift_stone`：Day14~20 从平顶 6 调整为 `7/7/8/8/9/9/10`；
+    - `class_morph_stone`：同上调整为 `7/7/8/8/9/9/10`；
+    - `skill_scroll`：Day12~20 调整为固定上限 `5`；
+    - `shop_scroll`：Day14~20 调整为 `7/7/8/8/9/9/10`；
+    - `event_scroll`：Day14~20 调整为 `7/7/8/8/9/9/10`。
+  - 其余上限（升级石/原石/勋章/空白卷轴）与“单日中立上限”列本轮核对后与目标一致，保持不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：该上限表更新进入验收阶段，等待用户复测 Day12+（技能卷轴）与 Day14+（转职/变化/购物/冒险卷轴）掉落节奏。
+
+### 本次对话追加（2026-03-09，升级石规则改为“非中立物品>=5”）
+
+- 用户需求：升级石改为“若非中立物品不低于5个则随机升级1个，否则丢弃失败”，并同步修改数值与描述。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小方案，本轮超时，按最小改动落地。
+- 已完成：
+  - `src/scenes/ShopScene.ts`
+    - 升级石丢弃判定由“总物品数门槛”改为“非中立物品数量门槛”；
+    - 规则为：`nonNeutralCount < 5` 时丢弃失败，不消耗升级石；
+    - 失败提示改为：`升级石：非中立物品不足5个，丢弃失败`。
+  - `data/vanessa_items.json`
+  - `data/vanessa_items_compact.json`
+    - 升级石技能描述改为：`丢弃时，若非中立物品不少于5个，随机升级1个物品；否则丢弃失败。`
+    - 简版/分级简版描述改为：`丢弃时非中立物品>=5则随机升级1个，否则丢弃失败`。
+- 验证：`npm run build` 通过。
+- 当前阶段：该规则修正进入验收阶段，等待用户确认“非中立4/5件边界 + 描述一致性 + 失败不消耗”。
+
+### 本次对话追加（2026-03-09，升级石门槛口径改为“物品数>7”并同步描述）
+
+- 用户反馈：升级石门槛应为“物品数 `<=7` 失败”（即 `>7` 才可成功），并要求文案同步。
+- 已完成：
+  - `src/scenes/ShopScene.ts`
+    - 升级石丢弃失败条件从 `<=8` 调整为 `<=7`；
+    - 失败提示同步为：`升级石：物品不足8个，丢弃失败`。
+  - `data/vanessa_items.json`
+  - `data/vanessa_items_compact.json`
+    - 升级石技能描述改为：`丢弃时，若拥有物品数大于7，升级一个随机物品；否则丢弃失败。`
+    - 简版/分级简版描述同步为：`丢弃时物品数>7则随机升级1个，否则丢弃失败`。
+- 验证：`npm run build` 通过。
+- 当前阶段：该门槛与文案同步修正进入验收阶段，等待用户确认“7/8 件物品边界 + 描述显示一致性”。
+
+### 本次对话追加（2026-03-09，升级石丢弃门槛改为“物品数>8”）
+
+- 用户需求（仅升级石）：丢弃时随机升级 1 个物品；但只有拥有物品数超过 8 才允许丢弃，否则丢弃失败。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小方案，本轮超时（`MCP error -32001: Request timed out`），按最小改动落地。
+- 已完成：`src/scenes/ShopScene.ts`
+  - `applyNeutralDiscardEffect()` 中 `upgrade_stone` 分支新增门槛：`getAllOwnedPlacedItems().length <= 8` 时直接失败，并提示 `升级石：物品不足9个，丢弃失败`；
+  - 丢弃区处理改为“先执行中立丢弃效果判定，再移除物品实例”：
+    - 若升级石判定失败，则不删除升级石（丢弃失败）；
+    - 判定通过时才执行移除并触发原有效果（随机升级 1 个）。
+- 结果：升级石现在满足“>8 才可丢弃触发升级，不足则失败且不消耗”。
+- 验证：`npm run build` 通过。
+- 当前阶段：该规则改动进入验收阶段，等待用户确认“8/9 件物品边界 + 丢弃失败不消耗”表现。
+
+### 本次对话追加（2026-03-09，敌方随机战斗物品排除中立）
+
+- 用户需求：敌人携带的战斗物品不要随机到中立物品。
+- 已完成：`src/combat/CombatEngine.ts`
+  - 敌方随机选池入口 `makeEnemyRunners()` 增加中立过滤：先构造 `nonNeutralAll`，后续随机只在非中立池中进行；
+  - `pickEnemyDefsByDay()` 追加防线：即使配置里写到中立，也不加入敌方随机候选；
+  - 教学模板路径改为使用过滤后的 `nonNeutralAll` 查表，避免模板随机兜底带入中立；
+  - 新增 `isNeutralItemDef(def)` 辅助判断（按主标签 `中立/neutral`）。
+- 结果：PVE 敌方随机出装不再出现中立物品。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实机验收敌方出装是否彻底排除中立。
+
+### 本次对话追加（2026-03-09，平局结算增加奖杯且不减红心）
+
+- 用户需求：平局时不减红心（现状已满足），并且要增加奖杯数。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小方案，本轮超时（`MCP error -32001: Request timed out`），按最小改动落地。
+- 已完成：`src/scenes/BattleScene.ts`
+  - `resolveBattleSettlement()` 中奖杯结算条件从“仅玩家胜利加杯”改为“玩家胜利或平局都加杯”；
+  - 结算面板奖杯文案同步：平局时显示 `(+1)` 的奖杯增长。
+- 结果：平局将保持红心不变，同时奖杯 +1；PVP 分支保持不改。
+- 验证：`npm run build` 通过。
+- 当前阶段：该结算规则调整进入验收阶段，等待用户确认“平局红心不变 + 奖杯+1 + 结算文案一致”。
+
+### 本次对话追加（2026-03-09，修复物品信息卡品质文案与边框不一致）
+
+- 用户反馈：信息卡中边框与品质框为白银，但标题角标显示为“黄金Lv6”，应为“白银Lv6”。
+- 根因定位：`SellPopup` 角标文案按运行等级层级（raw tier）直接映射品质，未按“物品基础品质固定（starting_tier）”生成品质前缀。
+- 已完成：`src/shop/SellPopup.ts`
+  - 将角标格式函数改为 `formatTierLabel(baseTierRaw, rawTier)`：
+    - 品质前缀固定取 `item.starting_tier`；
+    - `Lv` 仍取当前运行等级（1~7）。
+  - 同步修正升级预览文本，避免前后箭头两侧出现错误品质前缀。
+- 结果：同一物品在任意等级下，角标品质文案与边框品质保持一致（示例：回旋镖显示“白银Lv6”）。
+- 验证：`npm run build` 通过。
+- 当前阶段：该显示修正进入验收阶段，等待用户确认信息卡文案正确。
+
+### 本次对话追加（2026-03-09，中立上限表二次更新）
+
+- 用户提供新版表格，要求同步更新各中立物品“最大数量”曲线。
+- 已完成：`src/scenes/ShopScene.ts`
+  - `NEUTRAL_RANDOM_CAP_BY_DAY` 已按新表更新；
+  - 本次重点变化：
+    - `raw_stone`：Day8 及后续增长节奏放缓（Day20=6）；
+    - `blank_scroll`：Day8 及后续增长节奏放缓（Day20=6）；
+  - 其余列与用户新表对齐。
+- 单日中立上限 `NEUTRAL_DAILY_ROLL_CAP_BY_DAY` 维持用户给定值不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户按 Day8+ 实机验收“原石/空白卷轴产出节奏”。
+
+### 本次对话追加（2026-03-09，原石/空白卷轴描述字体改为白色）
+
+- 用户需求：原石与空白卷轴的物品描述文字使用白色。
+- 已完成：`src/shop/SellPopup.ts`
+  - 在详情弹窗渲染中对 `item.name_cn === '原石' || '空白卷轴'` 增加 `forceWhiteDesc` 分支；
+  - 普通描述行与富文本描述段在未显式指定 `fill` 时，默认改为 `0xffffff`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收两类中立物品在详情界面的描述颜色是否符合预期。
+
+### 本次对话追加（2026-03-09，隐藏事件选择与技能选择中的金币文案）
+
+- 用户需求：事件选择与技能选择界面不再显示“当前持有金币”。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 事件选择弹层 `goldInfo.visible` 调整为 `false`；
+  - 技能选择弹层 `goldInfo.visible` 调整为 `false`。
+- 结果：两类三选一界面不再显示金币文本；折扣商店金币显示不受影响。
+- 验证：`npm run build` 通过。
+- 当前阶段：该 UI 精简进入验收阶段，等待用户确认展示符合预期。
+
+### 本次对话追加（2026-03-09，修复折扣商店金币文案不显示）
+
+- 用户反馈：折扣商店中“当前持有金币”文本不再显示。
+- 根因定位：`openSpecialShopOverlay()` 中 `goldInfo` 初始化被设置为 `visible = false`，而首次打开折扣商店时未调用切换函数将其恢复，导致始终隐藏。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 将折扣商店金币文本初始化改为可见（`goldInfo.visible = true`）。
+- 结果：首次进入折扣商店即可显示当前金币；切换到出售模式时仍会按既有逻辑隐藏/恢复。
+- 验证：`npm run build` 通过。
+- 当前阶段：该修正进入验收阶段，等待用户确认折扣商店金币显示恢复正常。
+
+### 本次对话追加（2026-03-09，新增“单日中立上限”）
+
+- 用户需求：按天限制“单日中立出现上限”：
+  - Day1~20 = `[0,2,3,3,4,4,5,5,6,6,6,6,6,6,6,6,6,6,6,6]`
+- 已完成：`src/scenes/ShopScene.ts`
+  - 新增表 `NEUTRAL_DAILY_ROLL_CAP_BY_DAY` 与读取函数 `getNeutralDailyRollCap(day)`；
+  - 在 `rollNextQuickBuyOffer()` 的中立分支前增加“当日已中立次数 < 当日上限”判定，超限则本次不再尝试中立；
+  - 中立成功命中时记录当日计数 `neutralDailyRollCountByDay[currentDay] += 1`；
+  - 存档新增 `neutralDailyRollCounts`，并接入保存/读取；
+  - 新开局/重置流程中清空当日计数。
+- 结果：可避免出现“单日连续大量中立”超出预期的体验。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收各天单日中立次数是否被正确封顶。
+
+### 本次对话追加（2026-03-09，三类选择界面“按住查看布局”按钮样式对齐技能选择）
+
+- 用户反馈：石头/卷轴/勋章选择界面虽已加按钮，但字体大小等未完全复刻技能选择界面。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 将两处新增按钮参数改为与技能选择界面一致：
+    - `actionBtnW=186`
+    - `actionBtnH=96`
+    - `actionBtnGap=18`
+    - `actionBtnFontSize=22`
+    - `actionBtnStartX` 使用同一 `Math.round(...)` 计算方式。
+  - 保持“按住查看布局”交互逻辑不变（按下隐藏内容、松开恢复）。
+- 验证：`npm run build` 通过。
+- 当前阶段：该样式对齐修正进入验收阶段，等待用户确认按钮视觉与技能选择界面一致。
+
+### 本次对话追加（2026-03-09，特殊商店更名“折扣商店”+ 固定9/8/7折）
+
+- 用户需求：
+  - “特殊商店”统一改名为“折扣商店”；
+  - 购物卷轴相关文案同步改名；
+  - 折扣商店 3 个物品折扣固定为 `9折 / 8折 / 7折`。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按最小侵入路径落地。
+- 已完成：
+  - `src/scenes/ShopScene.ts`
+    - 折扣商店标题：`特殊商店 -> 折扣商店`；
+    - 背包模式返回文案：`回到特殊商店 -> 回到折扣商店`；
+    - 购物卷轴失败提示：`当前无法打开特殊商店 -> 当前无法打开折扣商店`；
+    - 折扣逻辑由“随机1个2/3折”改为“3个商品固定折扣”：
+      - 第1个：`floor(basePrice * 0.9)`
+      - 第2个：`floor(basePrice * 0.8)`
+      - 第3个：`floor(basePrice * 0.7)`
+    - 存档价格规范化同步改为按上述 3 档固定折扣重算，保证旧存档打开后口径一致。
+  - `data/vanessa_items.json`
+    - 购物卷轴描述改为 `丢弃时打开折扣商店`（技能行 + 简版 + 分级简版）。
+  - `data/vanessa_items_compact.json`
+    - 同步购物卷轴描述改为 `丢弃时打开折扣商店`。
+- 验证：`npm run build` 通过。
+- 当前阶段：该命名与折扣规则改动进入验收阶段，等待用户确认“文案一致性 + 折扣价格显示/结算”。
+
+### 本次对话追加（2026-03-09，石头/卷轴/勋章选择界面接入“按住查看布局”）
+
+- 用户需求：石头选择、卷轴选择、勋章选择界面增加“按住查看布局”按钮，位置与大小完全复刻技能选择界面。
+- 设计沟通：向设计师 Notebook（`98dc4c7c-dcf5-4391-a65e-1529a4a6b6e5`）问询最小方案，本轮超时（`MCP error -32001: Request timed out`），按技能界面参数直接复刻。
+- 已完成：`src/scenes/ShopScene.ts`
+  - `showNeutralChoiceOverlay()` 与 `showMedalArchetypeChoiceOverlay()` 均新增同款按钮：
+    - 尺寸/位置：`188x80`，`y=CANVAS_H-146`，`x` 采用技能界面同一公式（3按钮栅格左位）；
+    - 样式：同色值、圆角、描边、字号与文案 `按住查看布局`；
+    - 交互：按下进入布局查看（隐藏卡片与文案，仅留淡背景 + 按钮），抬起恢复。
+- 验证：`npm run build` 通过。
+- 当前阶段：该 UI 复刻进入验收阶段，等待用户确认三类选择界面按钮一致性。
+
+### 本次对话追加（2026-03-09，中立上限表按最新版本纠正）
+
+- 用户反馈：Day5 出现了 2 个空白卷轴，怀疑上限表未按最新表执行（卷轴转化链也会触发空白卷轴）。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 将 `NEUTRAL_RANDOM_CAP_BY_DAY` 严格替换为用户最新表；重点修正：
+    - `blank_scroll`：Day1~Day5 均为 `0`，Day6 才为 `1`；
+    - `raw_stone`：Day1~Day5 均为 `0`，Day6 才为 `1`；
+    - `medal` 与其余列同步更新为最新给定曲线。
+- 影响：
+  - 即便通过“叶子卷轴/叶子石头”重写链，也必须先通过对应聚合物品（空白卷轴/原石）自身上限校验，故 Day5 不会再转出空白卷轴。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测 Day5 场景，确认空白卷轴不再超限出现。
+
+### 本次对话追加（2026-03-09，技能/事件刷新开关移入“玩法数值”分组）
+
+- 用户反馈：`技能选择可刷新` 与 `事件选择可刷新` 不应出现在“拖拽参数”，应归到“玩法数值”，并以布尔开关呈现。
+- 已完成：`src/debug/debugPage.ts`
+  - 将 `gameplaySkillDraftRerollEnabled`、`gameplayEventDraftRerollEnabled` 加入 `GAMEPLAY_CHECKBOX_KEYS`；
+  - 两项从“拖拽参数”分组迁移到“玩法数值”分组，继续以开关（checkbox）形式展示。
+- 默认值保持：`data/debug_defaults.json` 中两项默认 `0`（关闭）。
+- 验证：`npm run build` 通过。
+- 当前阶段：该调试页分组修正进入验收阶段，等待用户确认两项已在“玩法数值”显示。
+
+### 本次对话追加（2026-03-09，Day1 金币由9调整为6）
+
+- 用户需求：第一天金币改为 `6`（当前为 `9`）。
+- 已完成：`data/game_config.json`
+  - `daily_gold` 从 `9` 调整为 `6`；
+  - `daily_gold_by_day` 的 Day1 从 `9` 调整为 `6`（其余天数保持不变）。
+- 当前阶段：等待用户验收 Day1 开局金币是否为 6。
+
+### 本次对话追加（2026-03-09，中立抽取伪随机概率修正）
+
+- 用户要求：中立物品伪随机当次概率改为
+  - 第1次 18.2%
+  - 第2次 25.0%
+  - 第3次 31.8%
+  - 第4次 38.6%
+  - 第5次 45.4%
+  - 第6次 100%（保底）
+- 已完成：`data/game_config.json`
+  - `shopRules.quickBuyNeutralPseudoRandomChances` 已更新为：
+    - `[0.182, 0.25, 0.318, 0.386, 0.454, 1]`
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收中立掉落体感是否符合新伪随机曲线。
+
+### 本次对话追加（2026-03-09，勋章奖励等级改为“当日基础可购最高+1”）
+
+- 用户需求：勋章获得的物品等级应比“当前天数基础可购买最高等级”高 1 级；例如 Day4 基础最高 lv2，则勋章应给 lv3。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按最小侵入实现。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 新增 `getMaxQuickBuyLevelForDay(day)`：从 `quickBuyLevelChancesByDay` 计算当日基础可购最高等级；
+  - 新增 `pickArchetypeItemAtLevel(archetype, level)`：按指定等级+职业取候选并随机；
+  - 新增 `pickMedalArchetypeItem(archetype)`：目标等级=`min(7, 当日最高+1)`，用于勋章发奖；
+  - 勋章职业三选一确认逻辑由 `randomArchetypeItemsByDay(..., 1)` 改为 `pickMedalArchetypeItem(...)`，确保严格按“+1 级”发放。
+  - 无可用候选时提示文案改为带目标等级（`勋章：该职业无LvX可用物品`）。
+- 额外清理：移除未使用变量 `neutralRandomCategoryPickCount`，消除 TS 无用变量报错。
+- 验证：`npm run build` 通过。
+- 当前阶段：该勋章等级规则修正进入验收阶段，等待用户确认 Day4/Day10/Day16 等节点实机结果。
+
+### 本次对话追加（2026-03-09，中立 1:2:1 改为“四次一组、组内随机顺序”）
+
+- 用户需求：中立类别不再固定顺序循环；改为每 4 次中立中保证 `1 石头 + 2 卷轴 + 1 勋章`，但组内顺序随机。第 5~8 次同理。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 将原固定循环逻辑替换为“桶抽取”逻辑：
+    - 模板桶：`['stone','scroll','scroll','medal']`；
+    - 每当桶为空，重新洗牌生成新桶；
+    - 每次命中中立时，从当前桶按可用类别取 1 个并移除。
+  - 新增/调整关键函数：
+    - `refillNeutralRandomCategoryPool()`
+    - `pickNeutralRandomCategoryByPool(candidates)`
+  - 存档字段从计数器迁移为池队列：
+    - `neutralRandomCategoryPool`（已接入 `captureShopState/applySavedShopState`）
+  - 开局/重置逻辑同步清空池队列，确保分组随机从新桶开始。
+- 结果：
+  - 第 1~4 次中立：保证 1 石头 + 2 卷轴 + 1 勋章，内部顺序随机；
+  - 第 5~8 次中立：同样保证 1:2:1，内部重新随机。
+- 验证：`npm run build` 通过。
+- 当前阶段：该随机策略修正进入验收阶段，等待用户确认实际掉落序列符合预期。
+
+### 本次对话追加（2026-03-09，技能/事件选择刷新开关接入网页配置）
+
+- 用户需求：技能选择、事件选择分别增加“是否可刷新”开关，网页可配置，默认不允许刷新。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增 `gameplaySkillDraftRerollEnabled`（技能选择可刷新）
+    - 新增 `gameplayEventDraftRerollEnabled`（事件选择可刷新）
+    - 两者默认值均为 `0`。
+  - `data/debug_defaults.json`
+    - 新增默认配置：
+      - `"gameplaySkillDraftRerollEnabled": 0`
+      - `"gameplayEventDraftRerollEnabled": 0`
+  - `src/scenes/ShopScene.ts`
+    - 新增运行时判定 `isSkillDraftRerollEnabled()` / `isEventDraftRerollEnabled()`；
+    - 技能/事件两个弹窗刷新按钮可见性改为受开关控制；
+    - 刷新点击逻辑增加开关守卫（关闭时不可触发）。
+- 验证：`npm run build` 通过。
+- 当前阶段：该配置化改动进入验收阶段，等待用户确认“默认无刷新按钮，网页开关打开后可刷新”。
+
+### 本次对话追加（2026-03-09，中立物品伪随机改为按“购买结果”累计并跨 Day 延续）
+
+- 用户反馈：
+  - Day2 连续购买 6 件仍未出中立，不符合“第 6 件保底”；
+  - Day1 购买次数未计入伪随机，Day2 从第 1 档概率重算。
+- 根因定位：
+  - 原实现在 `rollNextQuickBuyOffer()` 的“刷新候选阶段”推进 miss 计数，而不是按“实际购买结果”推进；
+  - 且 Day1 因 `quickBuyNeutralStartDay=2` 不参与 miss 累计。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 新增 `updateNeutralPseudoRandomCounterOnPurchase(item)`：
+    - 购买结果为中立物品 -> miss 计数清零；
+    - 购买结果为非中立物品 -> miss 计数 +1（按伪随机数组上限封顶）。
+  - 在两条购买成功路径接入累计：
+    - 普通商店购买：`tryBuyShopSlotWithSkill()` 成功后累计；
+    - 快速购买：`buyRandomBronzeToBoardOrBackpack()` 成功后累计。
+  - 从 `rollNextQuickBuyOffer()` 移除 miss 计数增减逻辑，避免“仅刷新候选就推进计数”的偏差。
+- 结果：
+  - 伪随机按真实购买次数推进；
+  - Day1 购买会累计到 Day2，Day2 会从对应档位继续；
+  - 在当前配置 `[0.115,0.115,0.115,0.336,0.557,1]` 下，第 6 次非中立购买后下一次会命中中立（若中立池可用）。
+- 验证：`npm run build` 通过。
+- 当前阶段：该伪随机修正进入验收阶段，等待用户确认“跨天累计 + 第六次保底”行为。
+
+### 本次对话追加（2026-03-09，购买品质概率二次修正）
+
+- 用户需求：在已更新金币与买卖价格基础上，按新表二次修正 Day1~20 的购买品质概率。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改法，本轮超时（`MCP error -32001: Request timed out`），按配置最小改动直接落地。
+- 已完成：`data/game_config.json`
+  - 更新 `shopRules.quickBuyLevelChancesByDay` 为新表：
+    - Day1~3：`[1,0,0,0,0,0,0]`
+    - Day4~6：`[0.5,0.5,0,0,0,0,0]`
+    - Day7~9：`[0,1,0,0,0,0,0]`
+    - Day10~12：`[0,0.5,0.5,0,0,0,0]`
+    - Day13~15：`[0,0,1,0,0,0,0]`
+    - Day16~18：`[0,0,0.5,0.5,0,0,0]`
+    - Day19~20：`[0,0,0,1,0,0,0]`
+  - 每日金币与买卖价格保持上一轮口径不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：该概率修正进入验收阶段，等待用户确认 Day1~20 实机掉落品质分布。
+
+### 本次对话追加（2026-03-09，去除三类界面标题中的 Day 文案）
+
+- 用户需求：特殊商店、技能选择、事件选择界面的标题去掉 `Day X`。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 事件选择标题：`Day ${draft.day} 事件选择` -> `事件选择`
+  - 特殊商店标题：`Day ${currentDay} 特殊商店` -> `特殊商店`
+  - 技能选择标题：`Day ${draft.day} 技能选择` -> `技能选择`
+- 验证：`npm run build` 通过。
+- 当前阶段：该文案调整进入验收阶段，等待用户确认三处标题显示。
+
+### 本次对话追加（2026-03-09，空白卷轴前5天禁出修复）
+
+- 用户反馈：空白卷轴不应在前5天出现，但实机出现了。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 在 `getNeutralRandomMinDay(kind)` 中新增 `blank_scroll` 的最早天数限制：`Day5` 起才允许随机；
+  - 该门槛与既有 `raw_stone` 的 Day5 门槛同一入口生效，统一走 `isNeutralKindRandomAvailable` 校验。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收 Day1~Day4 不再出现空白卷轴。
+
+### 本次对话追加（2026-03-09，修复背包与上阵区换位时误触发入场闪动）
+
+- 用户反馈：背包区与上阵区物品换位时仍会出现闪白/入场动画。
+- 根因定位：跨区拖拽换位时 `DragController` 会通过 `GridZone.addItem()` 重建目标区节点，而 `addItem()` 默认播放入场特效，导致普通换位也出现动画。
+- 已完成：
+  - `src/grid/GridZone.ts`
+    - `addItem()` 新增可选参数 `options?: { playAcquireFx?: boolean }`；
+    - 默认保持原行为，仅在显式传 `playAcquireFx: false` 时关闭入场特效。
+  - `src/grid/DragController.ts`
+    - 所有跨区拖拽落位/换位/回填的 `addItem()` 调用统一传入 `{ playAcquireFx: false }`。
+- 结果：背包↔上阵区普通换位不再出现入场闪动；购买/获得等正常新增物品的入场表现仍保留。
+- 验证：`npm run build` 通过。
+- 当前阶段：该交互修正进入验收阶段，等待用户确认跨区换位已无多余动画。
+
+### 本次对话追加（2026-03-09，按新表更新每日金币与买卖价格）
+
+- 用户需求：按给定 Day1~20 表更新“每日金币 + 快速购买品质概率”，并同步基础/特殊商店购买价格与出售价格。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按配置优先最小改动落地。
+- 已完成：
+  - `data/game_config.json`
+    - `daily_gold: 6 -> 9`；
+    - `daily_gold_by_day` 更新为：`[9,15,24,30,36,42,48,54,66,72,84,90,108,120,138,150,180,210,240,270]`；
+    - `shopRules.quickBuyFixedPrice` 更新为：`3/6/12/24/48/96/192`（lv1~lv7）；
+    - `shopRules.sellFixedPriceBySize.small/medium/large` 统一更新为：`2/4/8/16/32/64/128`（lv1~lv7）；
+    - `shopRules.quickBuyLevelChancesByDay` 与用户提供表一致（本轮核对后保持一致，无额外改动）。
+  - `src/scenes/ShopScene.ts`
+    - `getUnlockPoolBuyPriceByLevel()` 兜底价改为 `3/6/12/24/48/96/192`；
+    - `getSpecialShopPriceByLevel()` 改为优先读取 `shopRules.quickBuyFixedPrice`，并同步同口径兜底，确保特殊商店与基础购买价格一致。
+- 验证：`npm run build` 通过。
+- 当前阶段：该经济参数更新进入验收阶段，等待用户确认“每日金币、基础购买、特殊商店购买、出售回收”四项口径表现。
+
+### 本次对话追加（2026-03-09，限制转化/升级闪白仅在事件与特殊物品生效）
+
+- 用户反馈：背包与上阵区普通换位时也出现了闪白动画，不符合预期。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 将升级/转化接口改为可选参数控制特效：
+    - `upgradePlacedItem(instanceId, zone, withFx=false)`
+    - `convertAndUpgradePlacedItem(instanceId, zone, withFx=false)`
+    - `convertPlacedItemKeepLevel(instanceId, zone, withFx=false)`
+    - `convertPlacedItemKeepLevelWithArchetypeRule(instanceId, zone, rule, withFx=false)`
+  - 默认关闭闪白，避免普通拖拽换位误触发；
+  - 仅在事件与特殊物品调用链中显式传 `withFx=true`，保留期望表现。
+- 结果：背包/上阵区普通换位不再闪白；事件与特殊物品导致的升级/转化仍有闪白反馈。
+- 验证：`npm run build` 通过。
+- 当前阶段：该修正进入验收阶段，等待用户确认“普通换位无闪白、事件/特殊触发有闪白”。
+
+### 本次对话追加（2026-03-09，中立掉落修正：1:2:1配比 + 原石前5天禁出）
+
+- 用户反馈问题：
+  - 原石出现过于频繁；
+  - 希望石头类/卷轴类/勋章类按 `1:2:1` 比例（每4次中立掉落强约束）；
+  - 原石应在 Day5 前不可获得，但当前 Day5 前大量出现。
+- 根因：
+  - 之前“叶子卷轴/叶子石头 -> 聚合物品（空白卷轴/原石）”重写已生效，但缺少类别配比调度；
+  - 原石仅受全局中立起始天与数量上限控制，缺少专门最早天数门槛。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 新增中立类别轮转配比：
+    - `NeutralRandomCategory = stone | scroll | medal`
+    - `NEUTRAL_RANDOM_RATIO_CYCLE = [stone, scroll, scroll, medal]`
+    - 每次命中中立候选后，优先从当前轮转类别抽取（4次一轮），并持久化计数。
+  - 新增“原石最早天数”门槛：
+    - `getNeutralRandomMinDay(kind)` 中 `raw_stone` 强制 `>= Day5`（其余沿用全局中立起始天）；
+    - `isNeutralKindRandomAvailable` 先做最早天数校验。
+  - 保持并兼容已有重写规则：
+    - 叶子卷轴命中时，若空白卷轴可随机则改为空白卷轴；
+    - 叶子石头命中时，若原石可随机则改为原石。
+  - 存档新增并接入：`neutralRandomCategoryPickCount`（保存/读取/新局重置）。
+- 验证：`npm run build` 通过。
+- 当前阶段：该掉落配比与原石天数门槛修复进入验收阶段，待用户确认体感与日志表现。
+
+### 本次对话追加（2026-03-09，转职石/变化石目标提示箭头改用 arrow3）
+
+- 用户需求：转职石和变化石拖动时，可被作用目标应显示 `arrow3`（循环箭头）提示，而不是 `arrow1`。
+- 已完成：
+  - `src/grid/GridZone.ts`
+    - 新增第三种引导箭头贴图 `arrow3.png`；
+    - `setDragGuideArrows()` 新增可选参数 `crossMode: 'cross' | 'convert'`，支持按场景切换 cross 提示图；
+    - 转化模式下将 cross 箭头纹理切换为 `arrow3`，普通合成仍保持原 `arrow1`。
+  - `src/scenes/ShopScene.ts`
+    - 转职石/变化石目标引导调用改为 `setDragGuideArrows([], ids, 'convert')`，仅该路径使用 `arrow3`。
+- 验证：`npm run build` 通过。
+- 当前阶段：该提示图标修正进入验收阶段，等待用户确认“石头拖拽目标=arrow3，普通合成目标=arrow1”。
+
+### 本次对话追加（2026-03-09，转职石/变化石允许直接丢弃）
+
+- 用户需求：变化石可被丢弃；随后确认转职石也应可被丢弃。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 拖拽命中丢弃区时，移除“转职石/变化石必须拖到目标物品上”的拦截逻辑；
+  - `applyNeutralDiscardEffect()` 中将 `class_shift_stone` / `class_morph_stone` 调整为允许丢弃且不再弹阻断提示。
+- 结果：转职石与变化石均可像其他物品一样直接丢弃；若拖到目标物品上，仍保留原有目标转化效果。
+- 验证：`npm run build` 通过。
+- 当前阶段：该交互修正进入验收阶段，等待用户确认“两种石头拖到丢弃区可正常销毁，拖到目标仍可生效”。
+
+### 本次对话追加（2026-03-09，中立随机重写：卷轴->空白卷轴，石头->原石）
+
+- 用户新增规则：
+  - 若随机到 `技能卷轴/购物卷轴/冒险卷轴`，且当前可随机到 `空白卷轴`，则重写为 `空白卷轴`；
+  - 若随机到 `升级石/转职石/变化石`，且当前可随机到 `原石`，则重写为 `原石`。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 新增随机重写函数：
+    - `getNeutralReplacementKindForRandom()`
+    - `rewriteNeutralRandomPick()`
+  - 在 `rollNextQuickBuyOffer()` 的中立分支接入重写逻辑：先抽中立，再按规则重写并写入 `nextQuickBuyOffer`；
+  - 在 `findCandidateByOffer()` 对中立缓存候选也做同样重写，确保读档/保留候选场景一致。
+- 与上一步上限逻辑关系：
+  - 仅在 `空白卷轴/原石` 当前仍可随机时才执行重写；
+  - 若对应聚合物品不可随机，则保持原叶子物品结果不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：该重写规则进入验收阶段，等待用户确认实际掉落体感是否符合预期。
+
+### 本次对话追加（2026-03-09，中立快速购买改为伪随机保底 6 次必出）
+
+- 用户需求：中立物品快速购买触发改为伪随机保底；连续未出时 6 次概率依次为 `11.5% / 11.5% / 11.5% / 33.6% / 55.7% / 100%`，出现中立后重置计数。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按“配置驱动 + 最小侵入”先落地。
+- 已完成：
+  - `data/game_config.json`
+    - 新增 `shopRules.quickBuyNeutralPseudoRandomChances`：`[0.115, 0.115, 0.115, 0.336, 0.557, 1]`；
+    - 保留 `quickBuyNeutralStartDay: 2` 与 `quickBuyNeutralChance: 0.25`（无伪随机表时回退基础概率）。
+  - `src/items/ItemDef.ts`
+    - `shopRules` 类型补充 `quickBuyNeutralPseudoRandomChances?: number[]`。
+  - `src/scenes/ShopScene.ts`
+    - 新增运行态计数 `quickBuyNeutralMissStreak`，并纳入存档/读档与开局重置；
+    - `rollNextQuickBuyOffer()` 中立注入改为按伪随机表取当前档位概率；
+    - 命中中立后计数清零，未命中时进位（封顶到最后一档），实现 6 次必出。
+- 验证：`npm run build` 通过。
+- 当前阶段：该伪随机保底改动进入验收阶段，等待用户复测“Day2+ 中立出现节奏与 6 次内必出”。
+
+### 本次对话追加（2026-03-09，中立物品按天数随机上限与联动限制）
+
+- 用户需求：
+  - 所有中立物品按天数有“可随机获得上限”；
+  - 超过上限后不再随机到；
+  - 若三种卷轴（技能/购物/冒险）都达到上限，则空白卷轴不再随机；
+  - 若三种石头（升级/转职/变化）都达到上限，则原石不再随机。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 新增中立上限表 `NEUTRAL_RANDOM_CAP_BY_DAY`（Day1~20，按用户给表落地）；
+  - 新增随机可用判定：`isNeutralKindRandomAvailable()` / `canRandomNeutralItem()`；
+  - 新增本局累计获得计数 `neutralObtainedCountByKind`，并在中立物品实际获得时累加（购买、事件放入、复制等统一覆盖）；
+  - 快速购买中立候选 `collectNeutralQuickBuyCandidates()` 改为按上限过滤；
+  - 已缓存的 quick-buy 候选在 `findCandidateByOffer()` 中也会做上限复检，超限自动失效并重掷；
+  - 原石/空白卷轴二次选择面板改为按可用性过滤子项，避免出现已超限子物品；
+  - 存档新增 `neutralObtainedCounts` 字段，支持保存/读取与新开局清零。
+- 验证：`npm run build` 通过。
+- 当前阶段：该中立随机约束进入验收阶段，等待用户确认“Day推进时中立掉落曲线与联动封禁表现”。
+
+### 本次对话追加（2026-03-09，移除每日默认商店/技能/事件入口，仅保留物品触发）
+
+- 用户需求：每天默认的商店、技能选择、事件选择全部去掉，统一改为通过物品触发。
+- 主程沟通：已向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按最小改动落地。
+- 已完成：`src/scenes/ShopScene.ts`
+  - `ensureDailyChoiceSelection()` 改为仅处理“当日存在 pending 草案”的情况：
+    - 有 `pendingSkillDraft(day=currentDay)` 才打开技能选择；
+    - 有 `pendingEventDraft(day=currentDay)` 才打开事件选择；
+    - 不再按 `dailyDraftPlan.shouldDraft/shouldEvent` 自动触发；
+    - 不再自动触发每日特殊商店。
+  - 保留物品触发链路不变：卷轴/石头设置 pending 后仍可正常拉起对应界面。
+  - 顺带清理：`ensureSpecialShopSelection` 保留函数引用（避免未使用告警），并修正中立快速购买配置字段类型读取。
+- 验证：`npm run build` 通过。
+- 当前阶段：该“仅物品触发日常选择”改动进入验收阶段，等待用户确认“开新的一天不再自动弹三类界面”。
+
+### 本次对话追加（2026-03-09，升级类目标排除中立 + 无目标提示）
+
+- 用户需求：升级石、随机升级、全部升级等效果不要命中中立物品；若仅有中立物品可选时，提示“没有可升级的目标”。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小方案，本轮超时（`MCP error -32001: Request timed out`），按最小侵入实现。
+- 已完成：`src/scenes/ShopScene.ts`
+  - `canUpgradePlacedItem()` 新增中立判定：中立物品直接不可升级；
+  - `convertAndUpgradePlacedItem()` / `canConvertAndUpgradePlacedItem()` 增加中立过滤，避免“全部物品转化升级”命中中立；
+  - 新增 `collectUpgradeableOwnedPlacedItems()` 统一收敛“可升级且非中立”目标筛选；
+  - 升级石、`event1`（上阵随机升级）、`event2`（背包随机升级）、`event24`（全部转化升级）、`event36`（全部最低级升级）与延期升级结算统一接入无目标提示：`没有可升级的目标`。
+- 验证：`npm run build` 通过。
+- 当前阶段：该升级目标修正进入验收阶段，等待用户确认“中立不再被选中 + 仅中立时提示文案”表现。
+- 下一步计划：根据验收反馈微调提示文案范围（是否对所有升级类事件统一文案前缀）。
+- 重要技术决定：升级目标合法性以 `canUpgradePlacedItem()` 为单一入口，避免后续新增升级效果遗漏中立过滤。
+
+### 本次对话追加（2026-03-09，新增“显示简版描述”网页开关，默认关闭）
+
+- 用户需求：增加“是否显示简版描述”开关；默认关闭；关闭时所有位置统一走详细版描述（物品/技能/事件/特殊商店/信息弹窗等）。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按最小侵入配置开关路径落地。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增配置项 `gameplayShowSimpleDescriptions`（`labelCn: 显示简版描述`，默认 `0`）。
+  - `data/debug_defaults.json`
+    - 新增默认值：`"gameplayShowSimpleDescriptions": 0`（默认关闭简版，直出详细版）。
+  - `src/debug/debugPage.ts`
+    - 将该项接入“网页开关（checkbox）”分组，可在线切换。
+  - `src/scenes/ShopScene.ts`
+    - 新增统一判定：`shouldShowSimpleDescriptions()`；
+    - 关闭简版时：物品信息弹窗默认 `detailed`、技能详情弹窗默认 `detailed`；
+    - 三选一/草案/事件/特殊商店描述统一按详细版展示；
+    - 相关点击行为保持原确认节奏，但不再依赖“先看简版再切详细”。
+  - `src/scenes/BattleScene.ts`
+    - 战斗内物品信息与技能详情同样接入该开关；关闭简版时默认详细展示。
+- 验证：`npm run build` 通过。
+- 当前阶段：该“简版描述开关”改动进入验收阶段，等待用户确认“默认详细展示 + 打开开关后恢复旧逻辑”是否符合预期。
+
+### 本次对话追加（2026-03-09，Day1 中立快速购买禁用，Day2 起恢复概率）
+
+- 用户反馈：Day1 首次购买可能随机到中立物品，导致与“首次购买需为弓手物品”冲突并卡流程。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按“配置驱动 + 最小代码改动”先落地。
+- 已完成：
+  - `data/game_config.json`
+    - 新增 `shopRules.quickBuyNeutralChance: 0.25`；
+    - 新增 `shopRules.quickBuyNeutralStartDay: 2`（Day1 固定不出中立）。
+  - `src/items/ItemDef.ts`
+    - 补充 `shopRules` 对应类型：`quickBuyNeutralChance`、`quickBuyNeutralStartDay`。
+  - `src/scenes/ShopScene.ts`
+    - `rollNextQuickBuyOffer()` 的中立注入判定改为读取上述配置：仅当 `currentDay >= quickBuyNeutralStartDay` 时，按 `quickBuyNeutralChance` 判定中立注入；
+    - 保持报价预览与实际购买共用同一报价缓存链路，避免显示/结算不一致。
+- 验证：`npm run build` 通过。
+- 当前阶段：该卡流程修复进入验收阶段，等待用户复测“Day1 首购不再出现中立，Day2 起恢复中立概率”。
+
+### 本次对话追加（2026-03-09，物品获得/消失全局可视化反馈）
+
+- 用户需求：所有“物品获得”和“物品消失”都要有可感知的视觉反馈，类似合成表现，明确告诉玩家哪些消失、哪些新出现。
+- 主程/设计沟通：主程与设计师 Notebook 问询均超时（`MCP error -32001: Request timed out`），本轮先以最小侵入全局方案实现。
+- 方案与实现：`src/grid/GridZone.ts`
+  - 在 `GridZone.addItem()` 中统一注入“获得反馈”：
+    - 新物品出现时执行短时入场 pop（从 0.9 缩放到 1）+ 蓝白轮廓脉冲；
+    - 这样不依赖调用方，所有来源（购买、事件、卷轴、勋章、复制、转移重建等）只要走 `addItem` 都可见。
+  - 在 `GridZone.removeItem()` 中统一注入“消失反馈”：
+    - 物品移除时在原格位播放红色衰减描边 + 叉形闪烁，提示“该位置物品已消失”；
+    - 同样为全局注入，覆盖出售、事件移除、合成消耗等。
+  - 新增内部 helper：`rootContainer()`、`playItemAcquireFx()`、`playItemDisappearFx()`，并维护 `itemFxTicks` 管理 tick 生命周期。
+- 验证：`npm run build` 通过。
+- 当前阶段：该全局反馈机制进入验收阶段，等待用户确认“反馈强度/时长/颜色是否合适”。
+- 下一步可选优化：若需要更强提示，可追加“来源标签气泡（事件/购买/合成）”与“飞入轨迹”。
+
+### 本次对话追加（2026-03-09，中立物品简版/详细描述按配置取值修正）
+
+- 用户反馈：中立物品在三选一界面的简版/详细描述未按配置口径显示，且切换详细后末尾会多句号体感。
+- 已完成：`src/scenes/ShopScene.ts`
+  - `getNeutralChoiceSimpleDesc()`：优先严格取 `simple_desc`；
+  - `getNeutralChoiceDetailDesc()`：优先严格取 `simple_desc_tiered`（作为详细文案口径）；
+  - 对展示文本做末尾标点清理（去除句号/分号等尾标点），避免“点击后多一个句号”的观感差异。
+- 验证：`npm run build` 通过。
+- 当前阶段：该文案口径修复进入验收阶段，等待用户确认“简版/详细切换与文本一致性”。
+
+### 本次对话追加（2026-03-09，事件/特殊物品触发转化或升级时新增闪白表现）
+
+- 用户需求：当事件或特殊物品触发“转化/升级”时，对应生效物品增加类似随机合成的闪白表现。
+- 设计/主程沟通：
+  - 已向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`）；
+  - 已向设计师 Notebook（`98dc4c7c-dcf5-4391-a65e-1529a4a6b6e5`）问询视觉规范，本轮超时（`MCP error -32001: Request timed out`）；
+  - 按现有随机合成闪白样式做最小复用落地。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 新增 `playTransformOrUpgradeFlashEffect(instanceId, zone)`，复用随机合成同款白色短促闪光（220ms）；
+  - 为防止同一物品瞬时重复闪烁，新增 80ms 轻量去重节流；
+  - 在以下转化/升级入口统一接入表现：
+    - `upgradePlacedItem()`
+    - `convertAndUpgradePlacedItem()`
+    - `convertPlacedItemKeepLevel()`
+    - `convertPlacedItemKeepLevelWithArchetypeRule()`
+  - 覆盖场景包括事件升级/转化（如 `event1/2/3/24/35/36`、延迟升级结算）与特殊物品（升级石/转职石/变化石）触发结果。
+- 验证：`npm run build` 通过。
+- 当前阶段：该视觉反馈增强进入验收阶段，等待用户实机确认“事件/特殊物品触发后的目标物品闪白”是否符合预期。
+
+### 本次对话追加（2026-03-09，勋章职业选择弹窗文案微调）
+
+- 用户反馈：
+  - 标题改为“获得一个物品”；
+  - 标题下方的小字说明不显示；
+  - 三个选择框文案改为“战士物品 / 弓手物品 / 刺客物品”。
+- 已完成：`src/scenes/ShopScene.ts`
+  - `showMedalArchetypeChoiceOverlay()`：
+    - 标题文本改为 `获得一个物品`；
+    - 删除副标题说明文本节点；
+    - 三张职业卡主文案改为 `战士物品 / 弓手物品 / 刺客物品`。
+- 验证：`npm run build` 通过。
+- 当前阶段：该 UI 文案微调进入验收阶段，等待用户确认实际显示效果。
+
+### 本次对话追加（2026-03-09，三选一卡片文案换行与图标上移微调）
+
+- 用户反馈：三选一界面描述文案需自动换行，图标再上移一点。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 物品卡图标整体上移（`icon.y: 108 -> 90`），名称同步上移保持视觉节奏；
+  - 简介/详情文本启用 `wordWrap + breakWords`，并收窄 `wordWrapWidth`，避免长文本横向溢出；
+  - 文案区起始位置上移（`y: 324 -> 312`），多行显示仍留在卡片可读区。
+- 验证：`npm run build` 通过。
+- 当前阶段：该 UI 微调进入验收阶段，等待用户确认“换行表现与图标位置”。
+
+### 本次对话追加（2026-03-09，勋章改为“职业三选一后随机物品”）
+
+- 用户需求：
+  - 勋章不再直接给具体物品三选一，而是先在三职业中选择（战士/弓手/刺客）；
+  - 选择职业后再随机具体物品；
+  - 获得物品的等级/品质应按“本日直接购买等级”随机；
+  - 图标固定使用 `event4`（战士）/`event5`（弓手）/`event6`（刺客）。
+- 设计/主程沟通：
+  - 主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询超时：`MCP error -32001: Request timed out`；
+  - 设计师 Notebook（`98dc4c7c-dcf5-4391-a65e-1529a4a6b6e5`）切换/问询同样超时，本轮按最小改动先落地。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 新增 `showMedalArchetypeChoiceOverlay()`：勋章弹窗改为“职业三选一”卡片；
+  - 三张职业卡图标固定加载 `event4/event5/event6`；
+  - 勾选职业后二次点击确认时，再调用 `randomArchetypeItemsByDay(archetype, 1)` 抽取具体物品；
+  - 随机结果沿用当日直接购买等级权重（即本日 quick buy 等级概率）并按所选职业过滤；
+  - 原勋章分支由 `showNeutralChoiceOverlay(职业物品)` 切换为新职业选择弹窗。
+- 验证：`npm run build` 通过。
+- 当前阶段：该勋章交互/数值口径修正进入验收阶段，等待用户确认“职业先选 + 结果按当日购买等级随机 + 图标正确”。
+
+### 本次对话追加（2026-03-09，三选一物品卡交互升级：简介/详情切换）
+
+- 用户需求：选择物品界面需先展示“简单描述”；点击卡片后进入选中态并切换为“详细描述”，同时显示“点击选择”；物品图标位置调整到卡片中央偏上。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 中立三选一弹窗 `showNeutralChoiceOverlay` 升级为二段式交互：
+    - 首次点击：仅选中卡片（高亮边框），显示详细描述与“点击选择”；
+    - 再次点击同一卡片：确认并获得该物品。
+  - 卡片内容层级调整：
+    - 图标居中且上移到“中央偏上”；
+    - 默认显示 `simple_desc`（缺省回退技能首行）；
+    - 选中后显示技能详细描述（最多两行合并）。
+- 验证：`npm run build` 通过。
+- 当前阶段：该交互优化进入验收阶段，等待用户确认“点击节奏、描述切换与图标位置”。
+
+### 本次对话追加（2026-03-09，中立合成越界修复 + 测试窗口可滚动 + 石头拖拽目标触发）
+
+- 用户反馈：
+  - 随机合成会产出中立物品，且出现“中立2”等级显示；
+  - 转职石/变化石应为“拖到目标物品触发”，不是丢弃随机触发；
+  - 物品测试需确保包含新物品，且技能/事件/物品测试窗口内容超屏时可上下拖动。
+- 已完成修复：
+  - `src/scenes/ShopScene.ts`
+    - 合成候选池 `getCrossIdEvolvePool` 排除中立物品，杜绝随机合成产出中立；
+    - 快速购买中立注入改为每次报价都独立判定 25%（不再被内部 force 路径跳过）；
+    - 转职石/变化石改为“拖到目标物品”触发：
+      - 拖拽时显示可作用目标引导箭头与目标详情提示；
+      - 命中目标后执行转化并消耗石头；
+      - 拖到丢弃区时提示需拖到目标，不消耗。
+    - 技能/事件/物品测试弹窗接入统一拖拽滚动（并支持滚轮），超屏内容可上下浏览。
+    - 物品测试列表取消 24 行上限，显示全量物品（含中立新物品）。
+  - `src/ui/itemStatBadges.ts`
+    - 中立角标在职业模式下不再拼接等级后缀（避免“中立2”）。
+- 验证：`npm run build` 通过。
+- 当前阶段：中立物品与测试工具修复进入验收阶段，等待用户复测“中立不再被合成产出 + 石头拖拽目标触发 + 三个测试窗滚动”。
+
+### 本次对话追加（2026-03-09，中立特殊物品体系接入与丢弃触发）
+
+- 用户确认规则：
+  - 新增“中立”物品类型，角标显示特殊字样且特殊底色；
+  - 中立物品不参与任何合成；
+  - 基础购买（快速购买）25% 概率出中立物品，价格=`天数+1`，可被打折技能影响；
+  - 卷轴/石头效果改为“丢弃触发”；
+  - 技能卷轴/购物卷轴/冒险卷轴分别复用现有技能选择/特殊商店/事件选择；
+  - 原石/勋章/空白卷轴使用新选择界面（不可刷新、直接选1个）。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询方案，本轮仍超时（`MCP error -32001: Request timed out`），按最小侵入实现。
+- 已完成：
+  - 数据：`data/vanessa_items_compact.json`、`data/vanessa_items.json`
+    - 新增 9 个中立特殊物品（升级石、转职石、变化石、技能卷轴、购物卷轴、冒险卷轴、原石、勋章、空白卷轴），图标映射 `item25~item33`。
+  - 合成与抽池：`src/scenes/ShopScene.ts`
+    - 新增中立识别；`canSynthesizePair` 禁止中立参与任意合成（含同物品）；
+    - 常规候选池排除中立；快速购买新增 25% 中立注入，价格=`currentDay+1`；
+    - `findCandidateByOffer` 支持中立报价回放，避免预览/购买链路失配。
+  - 角标与信息展示：
+    - `src/grid/GridZone.ts`：中立角标显示“中立”且不拼接等级，底色使用独立琥珀色；
+    - `src/shop/SellPopup.ts`：中立物品隐藏伤害/速度等数值条目，仅显示文本说明。
+  - 丢弃触发效果：`src/scenes/ShopScene.ts`
+    - 丢弃区命中时，若为中立特殊物品则先消费并触发对应效果；
+    - 升级石：随机升级1个可升级物品；
+    - 转职石：随机将1个非中立物品转为“其他职业同等级同尺寸”物品；
+    - 变化石：随机将1个非中立物品转为“本职业其他同等级同尺寸”物品；
+    - 技能卷轴/冒险卷轴：注入 pending 草案后复用既有选择界面；
+    - 购物卷轴：复用既有特殊商店界面；
+    - 原石/勋章/空白卷轴：新增轻量三选一界面，直接选择、无刷新、无需购买。
+  - 事件选择复用增强：`ensureEventDraftSelection` 支持“存在 pendingDraft 时不受 shouldEvent 限制”，用于卷轴触发。
+- 验证：`npm run build` 通过。
+- 当前阶段：该中立物品系统进入验收阶段，等待用户对“抽中概率、角标样式、丢弃触发链路、三选一界面”实机确认。
+
 ### 本次对话追加（2026-03-09，按住查看布局后隐藏项回显修复）
 
 - 用户反馈：在技能/事件选择界面“按住查看布局”后松开，会重新显示本应隐藏的按钮（如“强行离开”与已不可用的刷新按钮）。

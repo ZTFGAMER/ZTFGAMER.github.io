@@ -4,7 +4,7 @@ import { parseTags } from '@/items/ItemDef'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
 
 type StatKey = 'damage' | 'shield' | 'heal' | 'burn' | 'poison'
-type ArchetypeKey = 'warrior' | 'archer' | 'assassin'
+type ArchetypeKey = 'warrior' | 'archer' | 'assassin' | 'neutral'
 export type ItemBadgeDisplayMode = 'stats' | 'archetype'
 
 export interface ItemStatBadgeOverride {
@@ -22,23 +22,25 @@ export interface ItemStatBadgeTextOptions {
 
 const STAT_ORDER: StatKey[] = ['damage', 'shield', 'heal', 'burn', 'poison']
 
-const ARCHETYPE_ORDER: ArchetypeKey[] = ['warrior', 'archer', 'assassin']
+const ARCHETYPE_ORDER: ArchetypeKey[] = ['warrior', 'archer', 'assassin', 'neutral']
 
 function getArchetypeColor(key: ArchetypeKey): number {
   if (key === 'warrior') return 0xcc4b4b
   if (key === 'archer') return 0x34a853
+  if (key === 'neutral') return 0xb07a27
   return 0x4b7bcc
 }
 
 function getArchetypeLabel(key: ArchetypeKey): string {
   if (key === 'warrior') return '战'
   if (key === 'archer') return '弓'
+  if (key === 'neutral') return '中立'
   return '刺'
 }
 
 function parseArchetypes(item: ItemDef): ArchetypeKey[] {
   const tags = parseTags(item.tags).map((t) => t.trim().toLowerCase())
-  const hasWeapon = tags.some((t) => t === 'weapon' || t === '武器' || t === '战士' || t === '弓手' || t === '刺客')
+  const hasWeapon = tags.some((t) => t === 'weapon' || t === '武器' || t === '战士' || t === '弓手' || t === '刺客' || t === '中立' || t === 'neutral')
   if (!hasWeapon) return []
 
   const set = new Set<ArchetypeKey>()
@@ -46,8 +48,11 @@ function parseArchetypes(item: ItemDef): ArchetypeKey[] {
     if (tag === 'warrior' || tag === '战士') set.add('warrior')
     if (tag === 'archer' || tag === '弓手') set.add('archer')
     if (tag === 'assassin' || tag === '刺客') set.add('assassin')
+    if (tag === 'neutral' || tag === '中立') set.add('neutral')
   }
-  return ARCHETYPE_ORDER.filter((k) => set.has(k))
+  const ordered = ARCHETYPE_ORDER.filter((k) => set.has(k))
+  if (ordered.length > 0) return ordered
+  return set.has('neutral') ? ['neutral'] : []
 }
 
 function getStatColor(key: StatKey): number {
@@ -83,7 +88,7 @@ export function createItemStatBadges(
   const badges = isArchetypeMode
     ? archetypes.map((k) => ({
       key: k,
-      text: `${getArchetypeLabel(k)}${archetypeSuffix}`,
+      text: k === 'neutral' ? getArchetypeLabel(k) : `${getArchetypeLabel(k)}${archetypeSuffix}`,
       color: getArchetypeColor(k),
     }))
     : STAT_ORDER

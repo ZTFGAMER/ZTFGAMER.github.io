@@ -84,13 +84,13 @@ function startTierScoreFromItem(item: ItemDef): number {
   return 1
 }
 
-function formatTierLabel(rawTier: string): string {
-  const tier = parseTierName(rawTier) || 'Bronze'
-  const star = tier === 'Diamond' ? 1 : parseTierStar(rawTier)
-  if (tier === 'Bronze') return `青铜Lv${star}`
-  if (tier === 'Silver') return `白银Lv${star + 2}`
-  if (tier === 'Gold') return `黄金Lv${star + 4}`
-  return '钻石Lv7'
+function formatTierLabel(baseTierRaw: string, rawTier: string): string {
+  const baseTier = parseTierName(baseTierRaw) || 'Bronze'
+  const level = Math.max(1, Math.min(7, tierScoreFromRaw(rawTier)))
+  if (baseTier === 'Bronze') return `青铜Lv${level}`
+  if (baseTier === 'Silver') return `白银Lv${level}`
+  if (baseTier === 'Gold') return `黄金Lv${level}`
+  return `钻石Lv${level}`
 }
 
 function pickTierValue(series: string, tierIndex: number): string {
@@ -168,6 +168,7 @@ function extractSimpleStatEntries(
   rt?: ItemInfoRuntimeOverride,
   displayMode: ItemInfoMode = 'simple',
 ): SimpleStatEntry[] {
+  if (String(item.tags || '').includes('中立')) return []
   const out: SimpleStatEntry[] = []
   const find = (regex: RegExp): string | null => {
     for (const line of lines) {
@@ -565,8 +566,8 @@ export class SellPopup extends Container {
     const tier = parseTierName(tierRaw) || 'Bronze'
     const baseTier = parseTierName(item.starting_tier || 'Bronze') || 'Bronze'
     const tierColor = getTierColor(baseTier)
-    const tierLabel = formatTierLabel(tierRaw)
-    const fromTierLabel = formatTierLabel(upgradeFromTier ?? tierRaw)
+    const tierLabel = formatTierLabel(baseTier, tierRaw)
+    const fromTierLabel = formatTierLabel(baseTier, upgradeFromTier ?? tierRaw)
     const startScore = startTierScoreFromItem(item)
     const tierIndex = Math.max(0, tierScoreFromRaw(tierRaw) - startScore)
     const fromTier = parseTierName(upgradeFromTier ?? tierRaw) || tier
@@ -703,7 +704,9 @@ export class SellPopup extends Container {
       this.tierBadgeBg.fill({ color: tierColor, alpha: 0.92 })
       this.tierBadgeBg.stroke({ color: 0xffffff, width: 1, alpha: 0.5 })
     }
-    const showTierBadge = !isSimple && !customDisplay?.hideTierBadge
+    const isNeutral = String(item.tags || '').includes('中立')
+    const forceWhiteDesc = item.name_cn === '原石' || item.name_cn === '空白卷轴'
+    const showTierBadge = !isSimple && !customDisplay?.hideTierBadge && !isNeutral
     this.tierBadgeBg.visible = showTierBadge
     this.tierBadgeT.visible = showTierBadge
 
@@ -777,7 +780,7 @@ export class SellPopup extends Container {
           text: seg.text,
           style: {
             fontSize: seg.fontSize ?? baseFontSize,
-            fill: seg.fill ?? 0xbfc7f5,
+            fill: seg.fill ?? (forceWhiteDesc ? 0xffffff : 0xbfc7f5),
             fontFamily: 'Arial',
             wordWrap: false,
           },
@@ -807,7 +810,7 @@ export class SellPopup extends Container {
           text: descLines[i] ?? '',
           style: {
             fontSize: lineStyle?.fontSize ?? (isSimple ? this.textSize.simpleDesc : this.textSize.desc),
-            fill: lineStyle?.fill ?? 0xbfc7f5,
+            fill: lineStyle?.fill ?? (forceWhiteDesc ? 0xffffff : 0xbfc7f5),
             fontFamily: 'Arial',
             wordWrap: true,
             wordWrapWidth: rightW,

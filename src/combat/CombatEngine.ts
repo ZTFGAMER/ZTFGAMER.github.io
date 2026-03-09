@@ -1377,17 +1377,19 @@ export class CombatEngine {
   private makeEnemyRunners(snapshot: BattleSnapshotBundle): CombatItemRunner[] {
     const all = getAllItems()
     if (!all.length) return []
+    const nonNeutralAll = all.filter((def) => !this.isNeutralItemDef(def))
+    if (!nonNeutralAll.length) return []
     const cfg = getConfig()
     const labCfg = cfg.gameplayModeValues?.enemyDraftLab
     const labEnabled = rvBool('enemyDraftEnabled', labCfg?.enabled === true)
-    const configuredDefs = this.pickEnemyDefsByDay(all)
-    const seedDefs = configuredDefs.length > 0 ? configuredDefs : all
+    const configuredDefs = this.pickEnemyDefsByDay(nonNeutralAll)
+    const seedDefs = configuredDefs.length > 0 ? configuredDefs : nonNeutralAll
     if (seedDefs.length === 0) return []
 
     const rng = makeSeededRng(this.day * 977 + snapshot.activeColCount * 131 + seedDefs.length * 17)
 
     if (!labEnabled) {
-      const teaching = this.buildEnemyTeachingRunners(snapshot, all, rng)
+      const teaching = this.buildEnemyTeachingRunners(snapshot, nonNeutralAll, rng)
       if (teaching && teaching.length > 0) return teaching
     }
 
@@ -1564,9 +1566,14 @@ export class CombatEngine {
     const out: ItemDef[] = []
     for (const key of matched.itemNames) {
       const hit = byName.get(key)
-      if (hit) out.push(hit)
+      if (hit && !this.isNeutralItemDef(hit)) out.push(hit)
     }
     return out
+  }
+
+  private isNeutralItemDef(def: ItemDef): boolean {
+    const tag = getPrimaryArchetypeTag(def.tags)
+    return tag === '中立' || tag.toLowerCase() === 'neutral'
   }
 
   private validCooldown(cd: number): number {

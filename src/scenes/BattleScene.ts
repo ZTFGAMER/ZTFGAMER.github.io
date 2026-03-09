@@ -79,7 +79,7 @@ let itemInfoPopup: SellPopup | null = null
 let selectedItemId: string | null = null
 let selectedItemSide: 'player' | 'enemy' | null = null
 let selectedItemInfoKey: string | null = null
-let selectedItemInfoMode: ItemInfoMode = 'simple'
+let selectedItemInfoMode: ItemInfoMode = 'detailed'
 let fatigueToastCon: Container | null = null
 let fatigueToastBg: Graphics | null = null
 let fatigueToastText: Text | null = null
@@ -215,7 +215,19 @@ type BattleSkillPick = {
 }
 let battlePickedSkills: BattleSkillPick[] = []
 let enemyPickedSkills: BattleSkillPick[] = []
-let battleSkillDetailMode: 'simple' | 'detailed' = 'simple'
+let battleSkillDetailMode: 'simple' | 'detailed' = 'detailed'
+
+function shouldShowSimpleDescriptions(): boolean {
+  return getDebugCfg('gameplayShowSimpleDescriptions') >= 0.5
+}
+
+function getDefaultItemInfoMode(): ItemInfoMode {
+  return shouldShowSimpleDescriptions() ? 'simple' : 'detailed'
+}
+
+function getDefaultBattleSkillDetailMode(): 'simple' | 'detailed' {
+  return shouldShowSimpleDescriptions() ? 'simple' : 'detailed'
+}
 
 type ItemBattleStat = {
   sourceItemId: string
@@ -422,10 +434,14 @@ function resolveSkillBarIntroElapsedMs(snapshot: ReturnType<typeof getBattleSnap
 function handleBattleSkillIconTap(skill: BattleSkillPick): void {
   clearBattleItemSelection()
   if (battleSkillDetailSkillId === skill.id) {
-    battleSkillDetailMode = battleSkillDetailMode === 'simple' ? 'detailed' : 'simple'
+    if (shouldShowSimpleDescriptions()) {
+      battleSkillDetailMode = battleSkillDetailMode === 'simple' ? 'detailed' : 'simple'
+    } else {
+      battleSkillDetailMode = 'detailed'
+    }
     showBattleSkillDetailPopup(skill)
   } else {
-    battleSkillDetailMode = 'simple'
+    battleSkillDetailMode = getDefaultBattleSkillDetailMode()
     showBattleSkillDetailPopup(skill)
   }
   refreshBattleSkillIconBar(true)
@@ -435,7 +451,7 @@ function handleBattleSkillIconTap(skill: BattleSkillPick): void {
 function hideBattleSkillDetailPopup(): void {
   const hadSelection = battleSkillDetailSkillId !== null
   battleSkillDetailSkillId = null
-  battleSkillDetailMode = 'simple'
+  battleSkillDetailMode = getDefaultBattleSkillDetailMode()
   if (battleSkillDetailPopupCon) battleSkillDetailPopupCon.visible = false
   if (hadSelection) {
     refreshBattleSkillIconBar(true)
@@ -458,7 +474,7 @@ function showBattleSkillDetailPopup(skill: BattleSkillPick): void {
   const iconSize = 128
   const textX = pad + iconSize + 16
   const textW = panelW - textX - pad
-  const mode = battleSkillDetailMode
+  const mode = shouldShowSimpleDescriptions() ? battleSkillDetailMode : 'detailed'
   const shownDesc = mode === 'detailed' ? (skill.detailDesc ?? skill.desc) : skill.desc
 
   const title = new Text({
@@ -1893,7 +1909,8 @@ function resolveBattleSettlement(): void {
     PvpContext.recordBattleResult(winner, engine?.getResult()?.survivingDamage ?? 1)
   }
   const after = (!PvpContext.isActive() && winner === 'enemy') ? deductLife() : before
-  const trophyAfter = (!PvpContext.isActive() && winner === 'player') ? addWinTrophy(trophyTarget) : trophyBefore
+  const shouldAddTrophy = !PvpContext.isActive() && (winner === 'player' || winner === 'draw')
+  const trophyAfter = shouldAddTrophy ? addWinTrophy(trophyTarget) : trophyBefore
   if (!PvpContext.isActive()) {
     if (winner === 'player') setPlayerWinStreak(winStreakBefore + 1)
     else setPlayerWinStreak(0)
@@ -1941,7 +1958,7 @@ function resolveBattleSettlement(): void {
       ? `❤️ ${before.current}/${before.max} -> ${after.current}/${after.max} (-1)`
       : `❤️ ${after.current}/${after.max}`
     settlementLifeText.style.fill = after.current <= 1 ? 0xff6a6a : 0xffd4d4
-    settlementTrophyText.text = winner === 'player'
+    settlementTrophyText.text = (winner === 'player' || winner === 'draw')
       ? `🏆 ${trophyBefore.wins}/${trophyBefore.target} -> ${trophyAfter.wins}/${trophyAfter.target} (+1)`
       : `🏆 ${trophyAfter.wins}/${trophyAfter.target}`
     settlementTrophyText.style.fill = trophyAfter.wins >= trophyAfter.target ? 0xffde79 : 0xffe8b4
@@ -2272,7 +2289,7 @@ function clearBattleItemSelection(): void {
   selectedItemId = null
   selectedItemSide = null
   selectedItemInfoKey = null
-  selectedItemInfoMode = 'simple'
+  selectedItemInfoMode = getDefaultItemInfoMode()
   enemyZone?.setSelected(null)
   playerZone?.setSelected(null)
   itemInfoPopup?.hide()
@@ -2305,7 +2322,10 @@ function showBattleItemInfo(instanceId: string, side: 'player' | 'enemy', keepMo
     : undefined
   const nextKey = `${side}:${instanceId}:${hit.tier}:${runtimeOverride?.damage ?? -1}:${runtimeOverride?.shield ?? -1}:${runtimeOverride?.multicast ?? -1}:${runtimeOverride?.ammoCurrent ?? -1}:${runtimeOverride?.ammoMax ?? -1}`
   if (keepMode && selectedItemInfoKey === nextKey) return
-  if (!keepMode) {
+  if (!shouldShowSimpleDescriptions()) {
+    selectedItemInfoKey = nextKey
+    selectedItemInfoMode = 'detailed'
+  } else if (!keepMode) {
     if (selectedItemInfoKey === nextKey) {
       selectedItemInfoMode = selectedItemInfoMode === 'simple' ? 'detailed' : 'simple'
     } else {
@@ -2874,7 +2894,7 @@ export const BattleScene: Scene = {
     selectedItemId = null
     selectedItemSide = null
     selectedItemInfoKey = null
-    selectedItemInfoMode = 'simple'
+    selectedItemInfoMode = getDefaultItemInfoMode()
     fatigueToastCon = null
     fatigueToastBg = null
     fatigueToastText = null

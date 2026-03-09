@@ -480,7 +480,7 @@ export class DragController {
             return
           }
           sourcePair.view.removeItem(tr.instanceId)
-          destPair.view.addItem(tr.instanceId, movedItem.defId, movedItem.size, tr.newCol, tr.newRow, tier).then(() => {
+          destPair.view.addItem(tr.instanceId, movedItem.defId, movedItem.size, tr.newCol, tr.newRow, tier, { playAcquireFx: false }).then(() => {
             destPair.view.setItemTier(tr.instanceId, tier)
             this.refreshZone(destPair.view)
           })
@@ -514,7 +514,7 @@ export class DragController {
             return
           }
           sourcePair.view.removeItem(tr.instanceId)
-          destPair.view.addItem(tr.instanceId, movedItem.defId, movedItem.size, tr.newCol, tr.newRow, tier).then(() => {
+          destPair.view.addItem(tr.instanceId, movedItem.defId, movedItem.size, tr.newCol, tr.newRow, tier, { playAcquireFx: false }).then(() => {
             destPair.view.setItemTier(tr.instanceId, tier)
             this.refreshZone(destPair.view)
           })
@@ -590,7 +590,7 @@ export class DragController {
       container.destroy({ children: true })
       home.view.forgetDraggedItem(id)
 
-      targetPair.view.addItem(id, item.defId, item.size, dropCol, dropRow, draggedTier).then(() => {
+      targetPair.view.addItem(id, item.defId, item.size, dropCol, dropRow, draggedTier, { playAcquireFx: false }).then(() => {
         targetPair.view.setItemTier(id, draggedTier)
         this.refreshZone(targetPair.view)
       })
@@ -698,6 +698,7 @@ export class DragController {
         plan.incoming.col,
         plan.incoming.row,
         draggedTier,
+        { playAcquireFx: false },
       ).then(() => {
         targetPair.view.setItemTier(item.instanceId, draggedTier)
         this.refreshZone(targetPair.view)

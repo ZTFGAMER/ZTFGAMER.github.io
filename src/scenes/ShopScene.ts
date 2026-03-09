@@ -111,6 +111,7 @@ let shopDragPointerId  = -1
 let flashTickFn:    (() => void) | null = null
 let expandTickFn:   (() => void) | null = null
 let flashOverlay:   Graphics     | null = null
+const itemTransformFlashLastAtMs = new Map<string, number>()
 let gridDragFlashTick: (() => void) | null = null
 let gridDragFlashOverlay: Graphics | null = null
 let gridDragSellZoneCon: Container | null = null
@@ -169,14 +170,39 @@ type SelectionState =
 let currentSelection: SelectionState = { kind: 'none' }
 let selectedSellAction: (() => void) | null = null
 let selectedInfoKey: string | null = null
-let selectedInfoMode: ItemInfoMode = 'simple'
+let selectedInfoMode: ItemInfoMode = 'detailed'
+
+function shouldShowSimpleDescriptions(): boolean {
+  return getDebugCfg('gameplayShowSimpleDescriptions') >= 0.5
+}
+
+function isSkillDraftRerollEnabled(): boolean {
+  return getDebugCfg('gameplaySkillDraftRerollEnabled') >= 0.5
+}
+
+function isEventDraftRerollEnabled(): boolean {
+  return getDebugCfg('gameplayEventDraftRerollEnabled') >= 0.5
+}
+
+function getDefaultItemInfoMode(): ItemInfoMode {
+  return shouldShowSimpleDescriptions() ? 'simple' : 'detailed'
+}
+
+function getDefaultSkillDetailMode(): 'simple' | 'detailed' {
+  return shouldShowSimpleDescriptions() ? 'simple' : 'detailed'
+}
 
 function resetInfoModeSelection(): void {
   selectedInfoKey = null
-  selectedInfoMode = 'simple'
+  selectedInfoMode = getDefaultItemInfoMode()
 }
 
 function resolveInfoMode(nextKey: string): ItemInfoMode {
+  if (!shouldShowSimpleDescriptions()) {
+    selectedInfoKey = nextKey
+    selectedInfoMode = 'detailed'
+    return 'detailed'
+  }
   if (!sellPopup?.visible) {
     selectedInfoKey = nextKey
     selectedInfoMode = 'simple'
@@ -231,6 +257,7 @@ type SavedShopState = {
   skill30BuyCounter?: number
   skill30NextBuyFree?: boolean
   quickBuyNoSynthRefreshStreak?: number
+  quickBuyNeutralMissStreak?: number
   draftedEventDays?: number[]
   pendingEventDraft?: PendingEventDraft | null
   selectedEventCounts?: Array<{ id: string; count: number }>
@@ -250,6 +277,9 @@ type SavedShopState = {
   draftedSpecialShopDays?: number[]
   specialShopRefreshCount?: number
   specialShopOffers?: Array<{ itemId: string; tier: TierKey; star: 1 | 2; basePrice?: number; price: number; purchased: boolean }> | null
+  neutralObtainedCounts?: Array<{ kind: string; count: number }>
+  neutralRandomCategoryPool?: Array<'stone' | 'scroll' | 'medal'>
+  neutralDailyRollCounts?: Array<{ day: number; count: number }>
 }
 
 let pendingBattleTransition = false
@@ -275,7 +305,7 @@ let crossSynthesisConfirmCloseTimer: ReturnType<typeof setTimeout> | null = null
 let skillIconBarCon: Container | null = null
 let skillDetailPopupCon: Container | null = null
 let skillDetailSkillId: string | null = null
-let skillDetailMode: 'simple' | 'detailed' = 'simple'
+let skillDetailMode: 'simple' | 'detailed' = getDefaultSkillDetailMode()
 
 type SkillPick = {
   id: string
@@ -366,12 +396,17 @@ const pendingGoldByDay = new Map<number, number>()
 const pendingBattleUpgradeByDay = new Map<number, number>()
 const skill20GrantedDays = new Set<number>()
 const unlockedItemIds = new Set<string>()
+const neutralObtainedCountByKind = new Map<string, number>()
+const neutralDailyRollCountByDay = new Map<number, number>()
+void neutralDailyRollCountByDay
 const guaranteedNewUnlockTriggeredLevels = new Set<number>()
 let skill15NextBuyDiscountPrepared = false
 let skill15NextBuyDiscount = false
 let skill30BuyCounter = 0
 let skill30NextBuyFree = false
 let quickBuyNoSynthRefreshStreak = 0
+let quickBuyNeutralMissStreak = 0
+let neutralRandomCategoryPool: Array<'stone' | 'scroll' | 'medal'> = []
 let nextQuickBuyOffer: {
   itemId: string
   tier: TierKey
@@ -900,6 +935,7 @@ function captureShopState(): SavedShopState | null {
     skill30BuyCounter,
     skill30NextBuyFree,
     quickBuyNoSynthRefreshStreak,
+    quickBuyNeutralMissStreak,
     draftedEventDays,
     pendingEventDraft,
     selectedEventCounts: Array.from(selectedEventCountById.entries()).map(([id, count]) => ({ id, count })),
@@ -919,6 +955,9 @@ function captureShopState(): SavedShopState | null {
     draftedSpecialShopDays,
     specialShopRefreshCount,
     specialShopOffers,
+    neutralObtainedCounts: Array.from(neutralObtainedCountByKind.entries()).map(([kind, count]) => ({ kind, count })),
+    neutralRandomCategoryPool,
+    neutralDailyRollCounts: Array.from(neutralDailyRollCountByDay.entries()).map(([day, count]) => ({ day, count })),
   }
 }
 
@@ -1013,11 +1052,38 @@ function applySavedShopState(state: SavedShopState): void {
     ? state.skill20GrantedDays.filter((d): d is number => Number.isFinite(d)).map((d) => Math.max(1, Math.round(d)))
     : []
   for (const day of savedSkill20Days) skill20GrantedDays.add(day)
+  neutralObtainedCountByKind.clear()
+  for (const row of state.neutralObtainedCounts ?? []) {
+    const kind = String(row?.kind ?? '').trim()
+    const count = Math.max(0, Math.round(Number(row?.count) || 0))
+    if (!kind || count <= 0) continue
+    neutralObtainedCountByKind.set(kind, count)
+  }
+  const savedNeutralPool = Array.isArray(state.neutralRandomCategoryPool)
+    ? state.neutralRandomCategoryPool
+    : []
+  neutralRandomCategoryPool = savedNeutralPool
+    .filter((v): v is 'stone' | 'scroll' | 'medal' => v === 'stone' || v === 'scroll' || v === 'medal')
+  neutralDailyRollCountByDay.clear()
+  for (const row of state.neutralDailyRollCounts ?? []) {
+    const day = Math.max(1, Math.round(Number(row?.day) || 0))
+    const count = Math.max(0, Math.round(Number(row?.count) || 0))
+    if (day <= 0 || count <= 0) continue
+    neutralDailyRollCountByDay.set(day, count)
+  }
+  neutralDailyRollCountByDay.clear()
+  for (const row of state.neutralDailyRollCounts ?? []) {
+    const day = Math.max(1, Math.round(Number(row?.day) || 0))
+    const count = Math.max(0, Math.round(Number(row?.count) || 0))
+    if (day <= 0 || count <= 0) continue
+    neutralDailyRollCountByDay.set(day, count)
+  }
   skill15NextBuyDiscountPrepared = state.skill15NextBuyDiscountPrepared === true
   skill15NextBuyDiscount = state.skill15NextBuyDiscount === true
   skill30BuyCounter = Math.max(0, Math.round(Number(state.skill30BuyCounter ?? 0) || 0))
   skill30NextBuyFree = state.skill30NextBuyFree === true
   quickBuyNoSynthRefreshStreak = Math.max(0, Math.round(Number(state.quickBuyNoSynthRefreshStreak ?? 0) || 0))
+  quickBuyNeutralMissStreak = Math.max(0, Math.round(Number(state.quickBuyNeutralMissStreak ?? 0) || 0))
   if (!hasPickedSkill('skill15')) resetSkill15NextBuyDiscountState()
   if (!hasPickedSkill('skill30')) resetSkill30BundleState()
   nextQuickBuyOffer = (state.nextQuickBuyOffer && typeof state.nextQuickBuyOffer === 'object')
@@ -1119,6 +1185,7 @@ type SynthesisPreviewItem = {
 }
 
 const SYNTH_HIGHLIGHT_COLOR = 0xffcc44
+const NEUTRAL_TAG_CN = '中立'
 
 function getItemDefById(defId: string): ItemDef | undefined {
   return getAllItems().find((it) => it.id === defId)
@@ -1127,6 +1194,16 @@ function getItemDefById(defId: string): ItemDef | undefined {
 function getPrimaryArchetype(rawTags: string): string {
   const first = String(rawTags || '').split('|')[0]?.trim() ?? ''
   return first.split('/')[0]?.trim() ?? ''
+}
+
+function isNeutralArchetypeKey(raw: string): boolean {
+  const key = String(raw || '').trim()
+  return key === NEUTRAL_TAG_CN || key.toLowerCase() === 'neutral'
+}
+
+function isNeutralItemDef(item?: ItemDef | null): boolean {
+  if (!item) return false
+  return isNeutralArchetypeKey(getPrimaryArchetype(item.tags))
 }
 
 function isCrossIdSynthesisConfirmEnabled(): boolean {
@@ -1246,7 +1323,7 @@ function removePickedSkill(skillId: string): void {
   pickedSkills = pickedSkills.filter((s) => s.id !== skillId)
   if (skillDetailSkillId === skillId) {
     skillDetailSkillId = null
-    skillDetailMode = 'simple'
+    skillDetailMode = getDefaultSkillDetailMode()
   }
   if (skillId === 'skill15') resetSkill15NextBuyDiscountState()
   if (skillId === 'skill30') resetSkill30BundleState()
@@ -1280,6 +1357,7 @@ function tryBuyShopSlotWithSkill(slot: ShopSlot): { ok: boolean; finalPrice: num
   const skill30Ready = consumeSkill30BundleAfterSuccess(priced.freeBySkill30)
   if (priced.freeBySkill30) showHintToast('no_gold_buy', '打包购买触发：本次0金币', 0x9be5ff)
   else if (skill30Ready) showHintToast('no_gold_buy', '打包购买就绪：下次购买0金币', 0x9be5ff)
+  updateNeutralPseudoRandomCounterOnPurchase(slot.item)
   return { ok: true, finalPrice: priced.finalPrice, discount: priced.discount }
 }
 
@@ -1486,6 +1564,73 @@ function closeSettingsOverlay(): void {
   settingsOverlay = null
 }
 
+function setupOverlayListDragScroll(
+  panel: Container,
+  listCon: Container,
+  viewportRect: { x: number; y: number; w: number; h: number },
+  getContentBottomY: () => number,
+): () => void {
+  const clip = new Graphics()
+  clip.rect(viewportRect.x, viewportRect.y, viewportRect.w, viewportRect.h)
+  clip.fill({ color: 0xffffff, alpha: 1 })
+  panel.addChild(clip)
+  listCon.mask = clip
+
+  let scrollOffsetY = 0
+  let maybeDragging = false
+  let dragging = false
+  let dragStartY = 0
+  let dragStartOffsetY = 0
+
+  const isInViewport = (gx: number, gy: number): boolean => {
+    const p = panel.toLocal({ x: gx, y: gy })
+    return p.x >= viewportRect.x && p.x <= viewportRect.x + viewportRect.w
+      && p.y >= viewportRect.y && p.y <= viewportRect.y + viewportRect.h
+  }
+
+  const clampScroll = () => {
+    const contentBottomY = getContentBottomY()
+    const contentHeight = Math.max(0, contentBottomY - viewportRect.y)
+    const maxScroll = Math.max(0, contentHeight - viewportRect.h)
+    scrollOffsetY = Math.max(-maxScroll, Math.min(0, scrollOffsetY))
+    listCon.y = scrollOffsetY
+  }
+
+  panel.on('pointerdown', (e: FederatedPointerEvent) => {
+    if (!isInViewport(e.global.x, e.global.y)) return
+    maybeDragging = true
+    dragging = false
+    dragStartY = e.global.y
+    dragStartOffsetY = scrollOffsetY
+  })
+  panel.on('pointermove', (e: FederatedPointerEvent) => {
+    if (!maybeDragging && !dragging) return
+    if (!dragging && Math.abs(e.global.y - dragStartY) >= 8) dragging = true
+    if (!dragging) return
+    scrollOffsetY = dragStartOffsetY + (e.global.y - dragStartY)
+    clampScroll()
+  })
+  const stopDrag = () => {
+    maybeDragging = false
+    dragging = false
+  }
+  panel.on('pointerup', stopDrag)
+  panel.on('pointerupoutside', stopDrag)
+  panel.on('wheel', (e: any) => {
+    const gx = Number(e?.global?.x ?? e?.x ?? 0)
+    const gy = Number(e?.global?.y ?? e?.y ?? 0)
+    if (!isInViewport(gx, gy)) return
+    e.stopPropagation?.()
+    const dy = Number(e?.deltaY ?? 0)
+    if (!Number.isFinite(dy) || dy === 0) return
+    scrollOffsetY -= dy * 0.9
+    clampScroll()
+  })
+
+  clampScroll()
+  return clampScroll
+}
+
 function openSkillTestOverlay(): void {
   closeSkillTestOverlay()
   const stage = getApp().stage
@@ -1537,6 +1682,13 @@ function openSkillTestOverlay(): void {
 
   const listCon = new Container()
   panel.addChild(listCon)
+  let listBottomY = -300
+  const refreshListScroll = setupOverlayListDragScroll(
+    panel,
+    listCon,
+    { x: -276, y: -320, w: 552, h: 820 },
+    () => listBottomY,
+  )
 
   const drawTabs = () => {
     tierTabsCon.removeChildren().forEach((c) => c.destroy({ children: true }))
@@ -1579,6 +1731,7 @@ function openSkillTestOverlay(): void {
         : GOLD_SKILL_PICKS
     const listTop = -300
     const rowH = 40
+    listBottomY = listTop + Math.max(0, list.length - 1) * rowH + 18
     list.forEach((skill, idx) => {
       const y = listTop + idx * rowH
       const rowBg = new Graphics()
@@ -1626,6 +1779,7 @@ function openSkillTestOverlay(): void {
       btn.addChild(b, t)
       listCon.addChild(btn)
     })
+    refreshListScroll()
   }
 
   drawTabs()
@@ -1716,12 +1870,20 @@ function openEventTestOverlay(): void {
 
   const listCon = new Container()
   panel.addChild(listCon)
+  let listBottomY = -304
+  const refreshListScroll = setupOverlayListDragScroll(
+    panel,
+    listCon,
+    { x: -276, y: -322, w: 552, h: 820 },
+    () => listBottomY,
+  )
 
   const drawRows = () => {
     listCon.removeChildren().forEach((c) => c.destroy({ children: true }))
     const rows = getEventPoolRows()
     const topY = -304
     const rowH = 42
+    listBottomY = topY + Math.max(0, rows.length - 1) * rowH + 18
     rows.forEach((event, idx) => {
       const y = topY + idx * rowH
       const rowBg = new Graphics()
@@ -1771,6 +1933,7 @@ function openEventTestOverlay(): void {
       btn.addChild(b, t)
       listCon.addChild(btn)
     })
+    refreshListScroll()
   }
 
   resetBtn.on('pointerdown', (e) => {
@@ -1868,6 +2031,13 @@ function openItemTestOverlay(): void {
 
   const listCon = new Container()
   panel.addChild(listCon)
+  let listBottomY = -344
+  const refreshListScroll = setupOverlayListDragScroll(
+    panel,
+    listCon,
+    { x: -276, y: -360, w: 552, h: 860 },
+    () => listBottomY,
+  )
 
   const all = [...getAllItems()].sort((a, b) => {
     const ta = parseTierName(a.starting_tier) ?? 'Bronze'
@@ -1880,8 +2050,8 @@ function openItemTestOverlay(): void {
 
   const topY = -344
   const rowH = 38
-  const maxRows = Math.min(all.length, 24)
-  for (let idx = 0; idx < maxRows; idx++) {
+  listBottomY = topY + Math.max(0, all.length - 1) * rowH + 16
+  for (let idx = 0; idx < all.length; idx++) {
     const def = all[idx]!
     const y = topY + idx * rowH
     const rowBg = new Graphics()
@@ -1919,6 +2089,7 @@ function openItemTestOverlay(): void {
     btn.addChild(b, t)
     listCon.addChild(btn)
   }
+  refreshListScroll()
 
   const closeBtn = new Container()
   closeBtn.x = 0
@@ -2194,12 +2365,13 @@ function canSynthesizePair(
   targetTier: TierKey,
   targetStar: 1 | 2,
 ): boolean {
-  if (sourceTier !== targetTier || sourceStar !== targetStar) return false
-  if (!nextTierLevel(sourceTier, sourceStar)) return false
-  if (sourceDefId === targetDefId) return true
   const sourceDef = getItemDefById(sourceDefId)
   const targetDef = getItemDefById(targetDefId)
   if (!sourceDef || !targetDef) return false
+  if (isNeutralItemDef(sourceDef) || isNeutralItemDef(targetDef)) return false
+  if (sourceTier !== targetTier || sourceStar !== targetStar) return false
+  if (!nextTierLevel(sourceTier, sourceStar)) return false
+  if (sourceDefId === targetDefId) return true
   const sourceArch = getPrimaryArchetype(sourceDef.tags)
   const targetArch = getPrimaryArchetype(targetDef.tags)
   if (!sourceArch || !targetArch) return false
@@ -2430,9 +2602,13 @@ function unlockItemToPool(defId: string): boolean {
 
 function seedInitialUnlockPoolByStarterClass(_pick: StarterClass): void {
   unlockedItemIds.clear()
+  neutralObtainedCountByKind.clear()
+  neutralRandomCategoryPool = []
+  neutralDailyRollCountByDay.clear()
   resetSkill15NextBuyDiscountState()
   resetSkill30BundleState()
   quickBuyNoSynthRefreshStreak = 0
+  quickBuyNeutralMissStreak = 0
   nextQuickBuyOffer = null
   // 按当前规则：开局解锁“所有青铜物品”，不再仅限所选职业
   const bronzeIds = getAllItems()
@@ -2790,6 +2966,7 @@ function applyPostBattleAutoCopy(snapshot: BattleSnapshotBundle): boolean {
     instanceToTier.set(newId, entity.tier)
     instanceToTierStar.set(newId, 1)
     instanceToPermanentDamageBonus.set(newId, 0)
+    recordNeutralItemObtained(item.id)
     changed = true
     console.log(`[ShopScene] 战后复制 ${item.name_cn} -> 背包`)
   }
@@ -3152,6 +3329,7 @@ function getCrossIdEvolvePool(
 } {
   const basePool = getAllItems().filter((it) =>
     normalizeSize(it.size) === targetSize
+    && !isNeutralItemDef(it)
     && parseAvailableTiers(it.available_tiers).includes(resultTier)
     && compareTier(parseTierName(it.starting_tier) ?? 'Bronze', minStartingTier) >= 0
   )
@@ -3848,6 +4026,54 @@ function playSynthesisFlashEffect(stage: Container, result: SynthesizeResult): v
   Ticker.shared.add(tick)
 }
 
+function playTransformOrUpgradeFlashEffect(instanceId: string, zone: 'battle' | 'backpack'): void {
+  if (!battleSystem || !backpackSystem || !battleView || !backpackView) return
+  const flashKey = `${zone}:${instanceId}`
+  const now = Date.now()
+  const lastAt = itemTransformFlashLastAtMs.get(flashKey) ?? 0
+  if (now - lastAt < 80) return
+  itemTransformFlashLastAtMs.set(flashKey, now)
+
+  const system = zone === 'battle' ? battleSystem : backpackSystem
+  const view = zone === 'battle' ? battleView : backpackView
+  const item = system.getItem(instanceId)
+  if (!item) return
+  const stage = getApp().stage
+
+  const w = item.size === '1x1' ? CELL_SIZE : item.size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
+  const h = CELL_HEIGHT
+  const a = view.toGlobal({ x: item.col * CELL_SIZE, y: item.row * CELL_HEIGHT })
+  const b = view.toGlobal({ x: item.col * CELL_SIZE + w, y: item.row * CELL_HEIGHT + h })
+  const p0 = stage.toLocal(a)
+  const p1 = stage.toLocal(b)
+  const x = Math.min(p0.x, p1.x)
+  const y = Math.min(p0.y, p1.y)
+  const rectW = Math.abs(p1.x - p0.x)
+  const rectH = Math.abs(p1.y - p0.y)
+
+  const flash = new Graphics()
+  flash.eventMode = 'none'
+  stage.addChild(flash)
+  const durationMs = 220
+  const start = Date.now()
+  const tick = () => {
+    const t = Math.min(1, (Date.now() - start) / durationMs)
+    const alpha = Math.sin(Math.PI * t) * 0.78
+    const corner = Math.max(6, Math.round(getDebugCfg('gridItemCornerRadius') * (view.scale.x || 1)))
+    flash.clear()
+    flash.roundRect(x + 2, y + 2, Math.max(4, rectW - 4), Math.max(4, rectH - 4), corner)
+    flash.fill({ color: 0xffffff, alpha })
+    flash.roundRect(x + 1, y + 1, Math.max(2, rectW - 2), Math.max(2, rectH - 2), corner)
+    flash.stroke({ color: 0xffffff, width: 2, alpha: Math.max(0, alpha * 0.9) })
+    if (t >= 1) {
+      Ticker.shared.remove(tick)
+      flash.parent?.removeChild(flash)
+      flash.destroy()
+    }
+  }
+  Ticker.shared.add(tick)
+}
+
 function findFirstBackpackPlace(size: ItemSizeNorm): { col: number; row: number } | null {
   if (!backpackSystem || !backpackView) return null
   for (let row = 0; row < backpackSystem.rows; row++) {
@@ -3978,6 +4204,7 @@ function grantStarterItemsByClass(pick: StarterClass): void {
     instanceToTier.set(id, grant.tier)
     instanceToTierStar.set(id, grant.star)
     instanceToPermanentDamageBonus.set(id, 0)
+    recordNeutralItemObtained(item.id)
     unlockedItemIds.add(item.id)
   }
   syncUnlockPoolToManager()
@@ -4476,8 +4703,10 @@ function getEventArchetypeCn(arch: EventArchetype): string {
   return '刺客'
 }
 
-function getAllOwnedPlacedItems(): Array<{ item: PlacedItem; zone: 'battle' | 'backpack' }> {
-  const out: Array<{ item: PlacedItem; zone: 'battle' | 'backpack' }> = []
+type OwnedPlacedItem = { item: PlacedItem; zone: 'battle' | 'backpack' }
+
+function getAllOwnedPlacedItems(): OwnedPlacedItem[] {
+  const out: OwnedPlacedItem[] = []
   if (battleSystem) {
     for (const it of battleSystem.getAllItems()) out.push({ item: it, zone: 'battle' })
   }
@@ -4534,11 +4763,12 @@ function placeItemToInventoryOrBattle(def: ItemDef, tier: TierKey, star: 1 | 2):
   instanceToTier.set(id, tier)
   instanceToTierStar.set(id, star)
   instanceToPermanentDamageBonus.set(id, 0)
+  recordNeutralItemObtained(def.id)
   unlockItemToPool(def.id)
   return true
 }
 
-function upgradePlacedItem(instanceId: string, zone: 'battle' | 'backpack'): boolean {
+function upgradePlacedItem(instanceId: string, zone: 'battle' | 'backpack', withFx = false): boolean {
   const system = zone === 'battle' ? battleSystem : backpackSystem
   const view = zone === 'battle' ? battleView : backpackView
   if (!system || !view) return false
@@ -4563,10 +4793,11 @@ function upgradePlacedItem(instanceId: string, zone: 'battle' | 'backpack'): boo
   })
   instanceToTier.set(instanceId, next.tier)
   instanceToTierStar.set(instanceId, next.star)
+  if (withFx) playTransformOrUpgradeFlashEffect(instanceId, zone)
   return true
 }
 
-function convertAndUpgradePlacedItem(instanceId: string, zone: 'battle' | 'backpack'): boolean {
+function convertAndUpgradePlacedItem(instanceId: string, zone: 'battle' | 'backpack', withFx = false): boolean {
   const system = zone === 'battle' ? battleSystem : backpackSystem
   const view = zone === 'battle' ? battleView : backpackView
   if (!system || !view) return false
@@ -4578,6 +4809,7 @@ function convertAndUpgradePlacedItem(instanceId: string, zone: 'battle' | 'backp
   if (!next) return false
   const sourceDef = getItemDefById(placed.defId)
   if (!sourceDef) return false
+  if (isNeutralItemDef(sourceDef)) return false
   const candidates = pickCrossIdEvolveCandidates(sourceDef, placed.size, next.tier, 'Bronze')
   if (candidates.length <= 0) return false
   const picked = candidates[Math.floor(Math.random() * candidates.length)]
@@ -4597,6 +4829,7 @@ function convertAndUpgradePlacedItem(instanceId: string, zone: 'battle' | 'backp
   instanceToTier.set(instanceId, next.tier)
   instanceToTierStar.set(instanceId, next.star)
   unlockItemToPool(picked.id)
+  if (withFx) playTransformOrUpgradeFlashEffect(instanceId, zone)
   return true
 }
 
@@ -4605,6 +4838,8 @@ function canUpgradePlacedItem(instanceId: string, zone: 'battle' | 'backpack'): 
   if (!system) return false
   const placed = system.getItem(instanceId)
   if (!placed) return false
+  const def = getItemDefById(placed.defId)
+  if (!def || isNeutralItemDef(def)) return false
   const tier = instanceToTier.get(instanceId) ?? 'Bronze'
   const star = getInstanceTierStar(instanceId)
   return !!nextTierLevel(tier, star)
@@ -4621,8 +4856,16 @@ function canConvertAndUpgradePlacedItem(instanceId: string, zone: 'battle' | 'ba
   if (!next) return false
   const sourceDef = getItemDefById(placed.defId)
   if (!sourceDef) return false
+  if (isNeutralItemDef(sourceDef)) return false
   const candidates = pickCrossIdEvolveCandidates(sourceDef, placed.size, next.tier, 'Bronze')
   return candidates.length > 0
+}
+
+function collectUpgradeableOwnedPlacedItems(zone?: 'battle' | 'backpack'): OwnedPlacedItem[] {
+  return getAllOwnedPlacedItems().filter((it) => {
+    if (zone && it.zone !== zone) return false
+    return canUpgradePlacedItem(it.item.instanceId, it.zone)
+  })
 }
 
 function schedulePendingGold(day: number, amount: number): void {
@@ -4639,7 +4882,7 @@ function schedulePendingBattleUpgrade(day: number, count: number): void {
   pendingBattleUpgradeByDay.set(d, (pendingBattleUpgradeByDay.get(d) ?? 0) + c)
 }
 
-function convertPlacedItemKeepLevel(instanceId: string, zone: 'battle' | 'backpack'): boolean {
+function convertPlacedItemKeepLevel(instanceId: string, zone: 'battle' | 'backpack', withFx = false): boolean {
   const system = zone === 'battle' ? battleSystem : backpackSystem
   const view = zone === 'battle' ? battleView : backpackView
   if (!system || !view) return false
@@ -4667,11 +4910,12 @@ function convertPlacedItemKeepLevel(instanceId: string, zone: 'battle' | 'backpa
   })
   instanceToDefId.set(instanceId, picked.id)
   unlockItemToPool(picked.id)
+  if (withFx) playTransformOrUpgradeFlashEffect(instanceId, zone)
   return true
 }
 
 function upgradeLowestLevelItemsOnce(): number {
-  const all = getAllOwnedPlacedItems().filter((it) => canUpgradePlacedItem(it.item.instanceId, it.zone))
+  const all = collectUpgradeableOwnedPlacedItems()
   if (all.length <= 0) return 0
   let minLevel = Number.POSITIVE_INFINITY
   for (const one of all) {
@@ -4685,7 +4929,7 @@ function upgradeLowestLevelItemsOnce(): number {
     const star = getInstanceTierStar(one.item.instanceId)
     const lv = tierStarLevelIndex(tier, star) + 1
     if (lv !== minLevel) continue
-    if (upgradePlacedItem(one.item.instanceId, one.zone)) changed += 1
+    if (upgradePlacedItem(one.item.instanceId, one.zone, true)) changed += 1
   }
   return changed
 }
@@ -4705,9 +4949,896 @@ function convertHighestLevelItemsOnce(): number {
     const star = getInstanceTierStar(one.item.instanceId)
     const lv = tierStarLevelIndex(tier, star) + 1
     if (lv !== maxLevel) continue
-    if (convertPlacedItemKeepLevel(one.item.instanceId, one.zone)) changed += 1
+    if (convertPlacedItemKeepLevel(one.item.instanceId, one.zone, true)) changed += 1
   }
   return changed
+}
+
+type NeutralSpecialKind =
+  | 'upgrade_stone'
+  | 'class_shift_stone'
+  | 'class_morph_stone'
+  | 'skill_scroll'
+  | 'shop_scroll'
+  | 'event_scroll'
+  | 'raw_stone'
+  | 'medal'
+  | 'blank_scroll'
+
+type NeutralChoiceCandidate = {
+  item: ItemDef
+  tier: TierKey
+  star: 1 | 2
+}
+
+function getNeutralSpecialKind(item: ItemDef): NeutralSpecialKind | null {
+  const key = String(item.name_cn || '').trim()
+  if (key === '升级石') return 'upgrade_stone'
+  if (key === '转职石') return 'class_shift_stone'
+  if (key === '变化石') return 'class_morph_stone'
+  if (key === '技能卷轴') return 'skill_scroll'
+  if (key === '购物卷轴') return 'shop_scroll'
+  if (key === '冒险卷轴') return 'event_scroll'
+  if (key === '原石') return 'raw_stone'
+  if (key === '勋章') return 'medal'
+  if (key === '空白卷轴') return 'blank_scroll'
+  return null
+}
+
+const NEUTRAL_RANDOM_CAP_BY_DAY: Record<NeutralSpecialKind, number[]> = {
+  upgrade_stone: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6],
+  class_shift_stone: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
+  class_morph_stone: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
+  skill_scroll: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
+  shop_scroll: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
+  event_scroll: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
+  raw_stone: [0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6],
+  medal: [0, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
+  blank_scroll: [0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6],
+}
+
+const NEUTRAL_DAILY_ROLL_CAP_BY_DAY: number[] = [
+  0, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+  6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+]
+
+type NeutralRandomCategory = 'stone' | 'scroll' | 'medal'
+const NEUTRAL_RANDOM_RATIO_BUCKET_TEMPLATE: NeutralRandomCategory[] = ['stone', 'scroll', 'scroll', 'medal']
+
+function refillNeutralRandomCategoryPool(): void {
+  neutralRandomCategoryPool = [...NEUTRAL_RANDOM_RATIO_BUCKET_TEMPLATE]
+  for (let i = neutralRandomCategoryPool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const tmp = neutralRandomCategoryPool[i]
+    neutralRandomCategoryPool[i] = neutralRandomCategoryPool[j]!
+    neutralRandomCategoryPool[j] = tmp!
+  }
+}
+
+function pickNeutralRandomCategoryByPool(candidates: PoolCandidate[]): NeutralRandomCategory {
+  if (neutralRandomCategoryPool.length <= 0) refillNeutralRandomCategoryPool()
+  const available = new Set(
+    candidates
+      .map((one) => neutralRandomCategoryOfItem(one.item))
+      .filter((v): v is NeutralRandomCategory => v === 'stone' || v === 'scroll' || v === 'medal'),
+  )
+  for (let i = 0; i < neutralRandomCategoryPool.length; i++) {
+    const one = neutralRandomCategoryPool[i]!
+    if (!available.has(one)) continue
+    neutralRandomCategoryPool.splice(i, 1)
+    return one
+  }
+  const fallback = candidates
+    .map((one) => neutralRandomCategoryOfItem(one.item))
+    .find((v): v is NeutralRandomCategory => v === 'stone' || v === 'scroll' || v === 'medal')
+  if (fallback) return fallback
+  return 'stone'
+}
+
+function neutralRandomCategoryOfKind(kind: NeutralSpecialKind): NeutralRandomCategory | null {
+  if (kind === 'upgrade_stone' || kind === 'class_shift_stone' || kind === 'class_morph_stone' || kind === 'raw_stone') return 'stone'
+  if (kind === 'skill_scroll' || kind === 'shop_scroll' || kind === 'event_scroll' || kind === 'blank_scroll') return 'scroll'
+  if (kind === 'medal') return 'medal'
+  return null
+}
+
+function neutralRandomCategoryOfItem(item: ItemDef): NeutralRandomCategory | null {
+  const kind = getNeutralSpecialKind(item)
+  if (!kind) return null
+  return neutralRandomCategoryOfKind(kind)
+}
+
+function getNeutralRandomMinDay(kind: NeutralSpecialKind): number {
+  const shopRulesCfg = (getConfig().shopRules ?? {}) as { quickBuyNeutralStartDay?: number }
+  const defaultDay = Math.max(1, Math.round(Number(shopRulesCfg.quickBuyNeutralStartDay ?? 2) || 2))
+  if (kind === 'raw_stone') return Math.max(defaultDay, 5)
+  if (kind === 'blank_scroll') return Math.max(defaultDay, 5)
+  return defaultDay
+}
+
+function getNeutralDailyRollCap(day: number): number {
+  const d = Math.max(1, Math.min(20, Math.round(day)))
+  return Math.max(0, Math.round(NEUTRAL_DAILY_ROLL_CAP_BY_DAY[d - 1] ?? NEUTRAL_DAILY_ROLL_CAP_BY_DAY[NEUTRAL_DAILY_ROLL_CAP_BY_DAY.length - 1] ?? 0))
+}
+
+function getNeutralRandomCapByDay(day: number, kind: NeutralSpecialKind): number {
+  const row = NEUTRAL_RANDOM_CAP_BY_DAY[kind]
+  const d = Math.max(1, Math.min(20, Math.round(day)))
+  return Math.max(0, Math.round(row[d - 1] ?? row[row.length - 1] ?? 0))
+}
+
+function getNeutralObtainedCount(kind: NeutralSpecialKind): number {
+  return Math.max(0, Math.round(neutralObtainedCountByKind.get(kind) ?? 0))
+}
+
+function isNeutralKindOwnCapAvailable(kind: NeutralSpecialKind): boolean {
+  return getNeutralObtainedCount(kind) < getNeutralRandomCapByDay(currentDay, kind)
+}
+
+function isNeutralKindRandomAvailable(kind: NeutralSpecialKind): boolean {
+  if (currentDay < getNeutralRandomMinDay(kind)) return false
+  if (!isNeutralKindOwnCapAvailable(kind)) return false
+  if (kind === 'blank_scroll') {
+    const hasAnyScrollAvailable = isNeutralKindOwnCapAvailable('skill_scroll')
+      || isNeutralKindOwnCapAvailable('shop_scroll')
+      || isNeutralKindOwnCapAvailable('event_scroll')
+    if (!hasAnyScrollAvailable) return false
+  }
+  if (kind === 'raw_stone') {
+    const hasAnyStoneAvailable = isNeutralKindOwnCapAvailable('upgrade_stone')
+      || isNeutralKindOwnCapAvailable('class_shift_stone')
+      || isNeutralKindOwnCapAvailable('class_morph_stone')
+    if (!hasAnyStoneAvailable) return false
+  }
+  return true
+}
+
+function canRandomNeutralItem(item: ItemDef): boolean {
+  if (!isNeutralItemDef(item)) return true
+  const kind = getNeutralSpecialKind(item)
+  if (!kind) return true
+  return isNeutralKindRandomAvailable(kind)
+}
+
+function getNeutralReplacementKindForRandom(kind: NeutralSpecialKind): NeutralSpecialKind | null {
+  if (kind === 'skill_scroll' || kind === 'shop_scroll' || kind === 'event_scroll') return 'blank_scroll'
+  if (kind === 'upgrade_stone' || kind === 'class_shift_stone' || kind === 'class_morph_stone') return 'raw_stone'
+  return null
+}
+
+function rewriteNeutralRandomPick(item: ItemDef): ItemDef {
+  if (!isNeutralItemDef(item)) return item
+  const kind = getNeutralSpecialKind(item)
+  if (!kind) return item
+  const replacementKind = getNeutralReplacementKindForRandom(kind)
+  if (!replacementKind) return item
+  if (!isNeutralKindRandomAvailable(replacementKind)) return item
+  const replacementName = replacementKind === 'blank_scroll' ? '空白卷轴' : '原石'
+  return getItemDefByCn(replacementName) ?? item
+}
+
+function recordNeutralItemObtained(defId: string): void {
+  const item = getItemDefById(defId)
+  if (!item || !isNeutralItemDef(item)) return
+  const kind = getNeutralSpecialKind(item)
+  if (!kind) return
+  const prev = neutralObtainedCountByKind.get(kind) ?? 0
+  neutralObtainedCountByKind.set(kind, Math.max(0, Math.round(prev + 1)))
+}
+
+function isNeutralTargetStone(item: ItemDef | null | undefined): boolean {
+  if (!item) return false
+  const kind = getNeutralSpecialKind(item)
+  return kind === 'class_shift_stone' || kind === 'class_morph_stone'
+}
+
+function isValidNeutralStoneTarget(sourceDef: ItemDef, targetDef: ItemDef): boolean {
+  if (!isNeutralTargetStone(sourceDef)) return false
+  if (isNeutralItemDef(targetDef)) return false
+  const sourceKind = getNeutralSpecialKind(sourceDef)
+  const srcArch = toSkillArchetype(getPrimaryArchetype(targetDef.tags))
+  if (srcArch !== 'warrior' && srcArch !== 'archer' && srcArch !== 'assassin') return false
+  void sourceKind
+  return true
+}
+
+function collectNeutralStoneGuideIds(
+  system: GridSystem | null,
+  sourceDef: ItemDef,
+  excludeInstanceId?: string,
+): string[] {
+  if (!system) return []
+  const out: string[] = []
+  for (const it of system.getAllItems()) {
+    if (excludeInstanceId && it.instanceId === excludeInstanceId) continue
+    const targetDef = getItemDefById(it.defId)
+    if (!targetDef) continue
+    if (!isValidNeutralStoneTarget(sourceDef, targetDef)) continue
+    out.push(it.instanceId)
+  }
+  return out
+}
+
+function refreshNeutralStoneGuideArrows(sourceDef: ItemDef | null | undefined, excludeInstanceId?: string): void {
+  if (!backpackView || !battleView) return
+  if (!sourceDef || !isNeutralTargetStone(sourceDef)) {
+    clearBackpackSynthesisGuideArrows()
+    return
+  }
+  const backpackIds = collectNeutralStoneGuideIds(backpackSystem, sourceDef, excludeInstanceId)
+  const battleIds = collectNeutralStoneGuideIds(battleSystem, sourceDef, excludeInstanceId)
+  backpackView.setDragGuideArrows([], backpackIds, 'convert')
+  battleView.setDragGuideArrows([], battleIds, 'convert')
+}
+
+function findNeutralStoneTargetWithDragProbe(
+  sourceDef: ItemDef,
+  gx: number,
+  gy: number,
+  dragSize?: ItemSizeNorm,
+): SynthesisTarget | null {
+  const matchAtPointer = (
+    system: GridSystem | null,
+    view: GridZone | null,
+    zone: 'battle' | 'backpack',
+    probeY: number,
+  ): SynthesisTarget | null => {
+    if (!system || !view || (zone === 'backpack' && !view.visible)) return null
+    for (const it of system.getAllItems()) {
+      const targetDef = getItemDefById(it.defId)
+      if (!targetDef) continue
+      if (!isValidNeutralStoneTarget(sourceDef, targetDef)) continue
+      if (isPointInItemBounds(view, it, gx, probeY)) return { instanceId: it.instanceId, zone }
+    }
+    return null
+  }
+
+  const matchByFootprint = (
+    system: GridSystem | null,
+    view: GridZone | null,
+    zone: 'battle' | 'backpack',
+    probeY: number,
+  ): SynthesisTarget | null => {
+    if (!dragSize || !system || !view || (zone === 'backpack' && !view.visible)) return null
+    const { w, h } = getSizeCellDim(dragSize)
+    const cell = view.pixelToCellForItem(gx, probeY, dragSize, 0)
+    if (!cell) return null
+    const l = cell.col
+    const r = cell.col + w
+    const t = cell.row
+    const b = cell.row + h
+    for (const it of system.getAllItems()) {
+      const targetDef = getItemDefById(it.defId)
+      if (!targetDef) continue
+      if (!isValidNeutralStoneTarget(sourceDef, targetDef)) continue
+      const d = getSizeCellDim(it.size)
+      const il = it.col
+      const ir = it.col + d.w
+      const itop = it.row
+      const ib = it.row + d.h
+      if (l < ir && r > il && t < ib && b > itop) return { instanceId: it.instanceId, zone }
+    }
+    return null
+  }
+
+  const direct =
+    matchAtPointer(battleSystem, battleView, 'battle', gy)
+    ?? matchAtPointer(backpackSystem, backpackView, 'backpack', gy)
+    ?? matchByFootprint(battleSystem, battleView, 'battle', gy)
+    ?? matchByFootprint(backpackSystem, backpackView, 'backpack', gy)
+  if (direct) return direct
+  const probeY = gy + (dragSize ? getDebugCfg('dragYOffset') : 0)
+  if (probeY === gy) return null
+  return (
+    matchAtPointer(battleSystem, battleView, 'battle', probeY)
+    ?? matchAtPointer(backpackSystem, backpackView, 'backpack', probeY)
+    ?? matchByFootprint(battleSystem, battleView, 'battle', probeY)
+    ?? matchByFootprint(backpackSystem, backpackView, 'backpack', probeY)
+  )
+}
+
+function showNeutralStoneHoverInfo(sourceDef: ItemDef, target: SynthesisTarget): void {
+  if (!sellPopup || !shopManager) return
+  const system = target.zone === 'battle' ? battleSystem : backpackSystem
+  const targetItem = system?.getItem(target.instanceId)
+  if (!targetItem) return
+  const targetDef = getItemDefById(targetItem.defId)
+  if (!targetDef) return
+  const kind = getNeutralSpecialKind(sourceDef)
+  if (kind !== 'class_shift_stone' && kind !== 'class_morph_stone') return
+  const desc = kind === 'class_shift_stone'
+    ? `拖到目标：将${targetDef.name_cn}转化为其他职业同等级物品`
+    : `拖到目标：将${targetDef.name_cn}转化为本职业其他同等级物品`
+  const customDisplay: ItemInfoCustomDisplay = {
+    overrideName: `${sourceDef.name_cn}（作用于目标）`,
+    lines: [desc],
+    suppressStats: true,
+  }
+  sellPopup.show(sourceDef, 0, 'none', 'Bronze#1', undefined, 'detailed', undefined, customDisplay)
+}
+
+function pickCandidateItemsByNames(names: string[]): ItemDef[] {
+  const all = getAllItems()
+  const out: ItemDef[] = []
+  for (const name of names) {
+    const hit = all.find((it) => it.name_cn === name)
+    if (hit) out.push(hit)
+  }
+  return out
+}
+
+function showMedalArchetypeChoiceOverlay(stage: Container): boolean {
+  const choices: Array<{ archetype: EventArchetype; title: string; cardLabel: string; icon: string }> = [
+    { archetype: 'warrior', title: '战士', cardLabel: '战士物品', icon: 'event4' },
+    { archetype: 'archer', title: '弓手', cardLabel: '弓手物品', icon: 'event5' },
+    { archetype: 'assassin', title: '刺客', cardLabel: '刺客物品', icon: 'event6' },
+  ]
+
+  setTransitionInputEnabled(false)
+  setBaseShopPrimaryButtonsVisible(false)
+
+  const overlay = new Container()
+  overlay.zIndex = 3600
+  overlay.eventMode = 'static'
+  overlay.hitArea = new Rectangle(0, 0, CANVAS_W, CANVAS_H)
+
+  const mask = new Graphics()
+  mask.rect(0, 0, CANVAS_W, CANVAS_H)
+  mask.fill({ color: 0x070d1d, alpha: 0.92 })
+  overlay.addChild(mask)
+
+  const title = new Text({
+    text: '获得一个物品',
+    style: { fontSize: 40, fill: 0xfff2cf, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  title.anchor.set(0.5)
+  title.x = CANVAS_W / 2
+  title.y = 250
+  overlay.addChild(title)
+
+  const closeOverlay = () => {
+    if (overlay.parent) overlay.parent.removeChild(overlay)
+    overlay.destroy({ children: true })
+    setTransitionInputEnabled(true)
+    applyPhaseInputLock()
+    refreshShopUI()
+    saveShopStateToStorage(captureShopState())
+  }
+
+  const cardW = 184
+  const cardH = 330
+  const gap = 24
+  const totalW = choices.length * cardW + (choices.length - 1) * gap
+  const startX = (CANVAS_W - totalW) / 2
+  const cardY = 520
+
+  let selectedIdx = -1
+  const redrawList: Array<() => void> = []
+
+  choices.forEach((choice, idx) => {
+    const card = new Container()
+    card.x = startX + idx * (cardW + gap)
+    card.y = cardY
+    card.eventMode = 'static'
+    card.cursor = 'pointer'
+    card.hitArea = new Rectangle(0, 0, cardW, cardH)
+
+    const bg = new Graphics()
+    card.addChild(bg)
+
+    const iconFallback = new Text({
+      text: choice.title.slice(0, 1),
+      style: { fontSize: 64, fill: 0xeaf4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    iconFallback.anchor.set(0.5)
+    iconFallback.x = cardW / 2
+    iconFallback.y = 116
+    card.addChild(iconFallback)
+    mountEventIconSprite(card, choice.icon, choice.icon, cardW / 2, 116, 156, iconFallback)
+
+    const name = new Text({
+      text: choice.cardLabel,
+      style: { fontSize: 34, fill: 0xeaf4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    name.anchor.set(0.5)
+    name.x = cardW / 2
+    name.y = 228
+    card.addChild(name)
+
+    const pick = new Text({
+      text: '点击选择',
+      style: { fontSize: 24, fill: 0x8fe6b2, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    pick.anchor.set(0.5)
+    pick.x = cardW / 2
+    pick.y = 286
+    pick.visible = false
+    card.addChild(pick)
+
+    const redraw = () => {
+      const selected = selectedIdx === idx
+      bg.clear()
+      bg.roundRect(0, 0, cardW, cardH, 20)
+      bg.fill({ color: selected ? 0x223a5f : 0x18263e, alpha: 0.96 })
+      bg.stroke({ color: selected ? 0xaee0ff : 0x8ec6ff, width: selected ? 4 : 3, alpha: 1 })
+      pick.visible = selected
+    }
+    redraw()
+    redrawList.push(redraw)
+
+    card.on('pointerdown', (e: FederatedPointerEvent) => {
+      e.stopPropagation()
+      if (selectedIdx !== idx) {
+        selectedIdx = idx
+        redrawList.forEach((fn) => fn())
+        return
+      }
+      const roll = pickMedalArchetypeItem(choice.archetype)
+      if (!roll) {
+        const baseMax = getMaxQuickBuyLevelForDay(currentDay)
+        const targetLevel = Math.min(7, baseMax + 1)
+        showHintToast('no_gold_buy', `勋章：该职业无Lv${targetLevel}可用物品`, 0xffb27a)
+        closeOverlay()
+        return
+      }
+      const ok = placeItemToInventoryOrBattle(roll.item, roll.tier, roll.star)
+      if (!ok) showHintToast('backpack_full_buy', '上阵区和背包已满，无法获得该物品', 0xff8f8f)
+      closeOverlay()
+    })
+
+    overlay.addChild(card)
+  })
+
+  const actionBtnW = 186
+  const actionBtnH = 96
+  const actionBtnGap = 18
+  const actionBtnFontSize = 22
+  const actionBtnStartX = Math.round((CANVAS_W - (actionBtnW * 3 + actionBtnGap * 2)) / 2)
+  const actionBtnY = CANVAS_H - 146
+
+  const holdBtn = new Container()
+  holdBtn.x = actionBtnStartX
+  holdBtn.y = actionBtnY
+  holdBtn.eventMode = 'static'
+  holdBtn.cursor = 'pointer'
+  const holdBg = new Graphics()
+  holdBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
+  holdBg.fill({ color: 0x29436e, alpha: 0.94 })
+  holdBg.stroke({ color: 0x84b7ff, width: 3, alpha: 0.95 })
+  const holdTxt = new Text({
+    text: '按住查看布局',
+    style: { fontSize: actionBtnFontSize, fill: 0xeaf4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  holdTxt.anchor.set(0.5)
+  holdTxt.x = actionBtnW / 2
+  holdTxt.y = actionBtnH / 2
+  holdBtn.addChild(holdBg, holdTxt)
+
+  const setHoldView = (holding: boolean): void => {
+    setBaseShopPrimaryButtonsVisible(false)
+    title.visible = !holding
+    mask.alpha = holding ? 0.16 : 0.92
+    for (const c of overlay.children) {
+      if (c === mask || c === holdBtn) continue
+      c.visible = !holding
+    }
+  }
+
+  holdBtn.on('pointerdown', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    setHoldView(true)
+  })
+  holdBtn.on('pointerup', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    setHoldView(false)
+  })
+  holdBtn.on('pointerupoutside', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    setHoldView(false)
+  })
+  overlay.addChild(holdBtn)
+
+  stage.addChild(overlay)
+  return true
+}
+
+function getNeutralChoiceSimpleDesc(item: ItemDef): string {
+  const normalize = (raw: string): string => raw.trim().replace(/[。！!；;，,\s]+$/g, '')
+  const simple = String(item.simple_desc || '').trim()
+  if (simple) return normalize(simple)
+  const line = (item.skills ?? []).map((s) => String(s.cn || '').trim()).find((v) => v.length > 0)
+  return line ? normalize(line) : '点击查看详细效果'
+}
+
+function getNeutralChoiceDetailDesc(item: ItemDef): string {
+  const normalize = (raw: string): string => raw.trim().replace(/[。！!；;，,\s]+$/g, '')
+  const detailByConfig = String(item.simple_desc_tiered || '').trim()
+  if (detailByConfig) return normalize(detailByConfig)
+  const lines = (item.skills ?? [])
+    .map((s) => String(s.cn || '').trim())
+    .filter((v) => v.length > 0)
+  if (lines.length <= 0) return getNeutralChoiceSimpleDesc(item)
+  return normalize(lines[0] || '') || getNeutralChoiceSimpleDesc(item)
+}
+
+function showNeutralChoiceOverlay(
+  stage: Container,
+  titleText: string,
+  candidates: NeutralChoiceCandidate[],
+): boolean {
+  const showSimple = shouldShowSimpleDescriptions()
+  const uniq = candidates.filter((one, idx, arr) => arr.findIndex((it) => it.item.id === one.item.id) === idx).slice(0, 3)
+  if (uniq.length <= 0) return false
+
+  setTransitionInputEnabled(false)
+  setBaseShopPrimaryButtonsVisible(false)
+
+  const overlay = new Container()
+  overlay.zIndex = 3600
+  overlay.eventMode = 'static'
+  overlay.hitArea = new Rectangle(0, 0, CANVAS_W, CANVAS_H)
+
+  const mask = new Graphics()
+  mask.rect(0, 0, CANVAS_W, CANVAS_H)
+  mask.fill({ color: 0x070d1d, alpha: 0.92 })
+  overlay.addChild(mask)
+
+  const title = new Text({
+    text: titleText,
+    style: { fontSize: 40, fill: 0xfff2cf, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  title.anchor.set(0.5)
+  title.x = CANVAS_W / 2
+  title.y = 220
+  overlay.addChild(title)
+
+  const hint = new Text({
+    text: '选择1个物品',
+    style: { fontSize: 24, fill: 0xbcd0f2, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  hint.anchor.set(0.5)
+  hint.x = CANVAS_W / 2
+  hint.y = 270
+  overlay.addChild(hint)
+
+  const cardW = 186
+  const cardH = 470
+  const gap = 18
+  const totalW = uniq.length * cardW + (uniq.length - 1) * gap
+  const startX = (CANVAS_W - totalW) / 2
+  const cardY = 560
+
+  const closeOverlay = () => {
+    if (overlay.parent) overlay.parent.removeChild(overlay)
+    overlay.destroy({ children: true })
+    setTransitionInputEnabled(true)
+    applyPhaseInputLock()
+    refreshShopUI()
+    saveShopStateToStorage(captureShopState())
+  }
+
+  let selectedIdx = -1
+  const redrawList: Array<() => void> = []
+
+  uniq.forEach((cand, idx) => {
+    const card = new Container()
+    card.x = startX + idx * (cardW + gap)
+    card.y = cardY
+    card.eventMode = 'static'
+    card.cursor = 'pointer'
+    card.hitArea = new Rectangle(0, 0, cardW, cardH)
+
+    const cardBg = new Graphics()
+    card.addChild(cardBg)
+
+    const level = String(Math.max(1, Math.min(7, tierStarLevelIndex(cand.tier, cand.star) + 1)))
+    const icon = createGuideItemCard(cand.item, level, getGuideFrameTierByLevel(level))
+    icon.x = Math.round((cardW - icon.width) / 2)
+    icon.y = 90
+    card.addChild(icon)
+
+    const name = new Text({
+      text: cand.item.name_cn,
+      style: { fontSize: 28, fill: 0xeaf4ff, fontFamily: 'Arial', fontWeight: 'bold', wordWrap: true, wordWrapWidth: cardW - 20, align: 'center' },
+    })
+    name.anchor.set(0.5, 0)
+    name.x = cardW / 2
+    name.y = 238
+    card.addChild(name)
+
+    const simpleDesc = new Text({
+      text: getNeutralChoiceSimpleDesc(cand.item),
+      style: {
+        fontSize: 20,
+        fill: 0xbfd0ea,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        wordWrap: true,
+        breakWords: true,
+        wordWrapWidth: cardW - 34,
+        align: 'center',
+      },
+    })
+    simpleDesc.anchor.set(0.5, 0)
+    simpleDesc.x = cardW / 2
+    simpleDesc.y = 312
+    card.addChild(simpleDesc)
+
+    const detailDesc = new Text({
+      text: getNeutralChoiceDetailDesc(cand.item),
+      style: {
+        fontSize: 20,
+        fill: 0x9fe3b9,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        wordWrap: true,
+        breakWords: true,
+        wordWrapWidth: cardW - 34,
+        align: 'center',
+      },
+    })
+    detailDesc.anchor.set(0.5, 0)
+    detailDesc.x = cardW / 2
+    detailDesc.y = 312
+    detailDesc.visible = false
+    card.addChild(detailDesc)
+
+    const pick = new Text({
+      text: '点击选择',
+      style: { fontSize: 24, fill: 0x8fe6b2, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    pick.anchor.set(0.5)
+    pick.x = cardW / 2
+    pick.y = 440
+    pick.visible = false
+    card.addChild(pick)
+
+    const redraw = () => {
+      const selected = selectedIdx === idx
+      cardBg.clear()
+      cardBg.roundRect(0, 0, cardW, cardH, 20)
+      cardBg.fill({ color: selected ? 0x223a5f : 0x18263e, alpha: 0.96 })
+      cardBg.stroke({ color: selected ? 0xaee0ff : 0x8ec6ff, width: selected ? 4 : 3, alpha: 1 })
+      simpleDesc.visible = showSimple && !selected
+      detailDesc.visible = !showSimple || selected
+      pick.visible = selected
+    }
+    redraw()
+    redrawList.push(redraw)
+
+    card.on('pointerdown', (e: FederatedPointerEvent) => {
+      e.stopPropagation()
+      if (selectedIdx !== idx) {
+        selectedIdx = idx
+        redrawList.forEach((fn) => fn())
+        return
+      }
+      const ok = placeItemToInventoryOrBattle(cand.item, cand.tier, cand.star)
+      if (!ok) showHintToast('backpack_full_buy', '上阵区和背包已满，无法获得该物品', 0xff8f8f)
+      closeOverlay()
+    })
+
+    overlay.addChild(card)
+  })
+
+  const actionBtnW = 186
+  const actionBtnH = 96
+  const actionBtnGap = 18
+  const actionBtnFontSize = 22
+  const actionBtnStartX = Math.round((CANVAS_W - (actionBtnW * 3 + actionBtnGap * 2)) / 2)
+  const actionBtnY = CANVAS_H - 146
+
+  const holdBtn = new Container()
+  holdBtn.x = actionBtnStartX
+  holdBtn.y = actionBtnY
+  holdBtn.eventMode = 'static'
+  holdBtn.cursor = 'pointer'
+  const holdBg = new Graphics()
+  holdBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
+  holdBg.fill({ color: 0x29436e, alpha: 0.94 })
+  holdBg.stroke({ color: 0x84b7ff, width: 3, alpha: 0.95 })
+  const holdTxt = new Text({
+    text: '按住查看布局',
+    style: { fontSize: actionBtnFontSize, fill: 0xeaf4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  holdTxt.anchor.set(0.5)
+  holdTxt.x = actionBtnW / 2
+  holdTxt.y = actionBtnH / 2
+  holdBtn.addChild(holdBg, holdTxt)
+
+  const setHoldView = (holding: boolean): void => {
+    setBaseShopPrimaryButtonsVisible(false)
+    title.visible = !holding
+    mask.alpha = holding ? 0.16 : 0.92
+    for (const c of overlay.children) {
+      if (c === mask || c === holdBtn) continue
+      c.visible = !holding
+    }
+  }
+
+  holdBtn.on('pointerdown', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    setHoldView(true)
+  })
+  holdBtn.on('pointerup', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    setHoldView(false)
+  })
+  holdBtn.on('pointerupoutside', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    setHoldView(false)
+  })
+  overlay.addChild(holdBtn)
+
+  stage.addChild(overlay)
+  return true
+}
+
+function convertPlacedItemKeepLevelWithArchetypeRule(
+  instanceId: string,
+  zone: 'battle' | 'backpack',
+  rule: 'same' | 'other',
+  withFx = false,
+): boolean {
+  const system = zone === 'battle' ? battleSystem : backpackSystem
+  const view = zone === 'battle' ? battleView : backpackView
+  if (!system || !view) return false
+  const placed = system.getItem(instanceId)
+  if (!placed) return false
+  const srcDef = getItemDefById(placed.defId)
+  if (!srcDef || isNeutralItemDef(srcDef)) return false
+  const srcArch = toSkillArchetype(getPrimaryArchetype(srcDef.tags))
+  if (srcArch !== 'warrior' && srcArch !== 'archer' && srcArch !== 'assassin') return false
+
+  const tier = instanceToTier.get(instanceId) ?? 'Bronze'
+  const star = getInstanceTierStar(instanceId)
+  const level = Math.max(1, Math.min(7, tierStarLevelIndex(tier, star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const candidates = collectPoolCandidatesByLevel(level)
+    .filter((c) => normalizeSize(c.item.size) === placed.size)
+    .map((c) => c.item)
+    .filter((it) => it.id !== placed.defId)
+    .filter((it) => !isNeutralItemDef(it))
+    .filter((it) => {
+      const arch = toSkillArchetype(getPrimaryArchetype(it.tags))
+      if (arch !== 'warrior' && arch !== 'archer' && arch !== 'assassin') return false
+      return rule === 'same' ? arch === srcArch : arch !== srcArch
+    })
+  const picked = candidates[Math.floor(Math.random() * candidates.length)]
+  if (!picked) return false
+
+  system.remove(instanceId)
+  if (!system.place(placed.col, placed.row, placed.size, picked.id, instanceId)) {
+    system.place(placed.col, placed.row, placed.size, placed.defId, instanceId)
+    return false
+  }
+  view.removeItem(instanceId)
+  void view.addItem(instanceId, picked.id, placed.size, placed.col, placed.row, toVisualTier(tier, star)).then(() => {
+    view.setItemTier(instanceId, toVisualTier(tier, star))
+    drag?.refreshZone(view)
+  })
+  instanceToDefId.set(instanceId, picked.id)
+  unlockItemToPool(picked.id)
+  if (withFx) playTransformOrUpgradeFlashEffect(instanceId, zone)
+  return true
+}
+
+function openSkillDraftFromNeutralScroll(stage: Container): boolean {
+  const tier = getSkillTierForDay(currentDay) ?? 'bronze'
+  const choices = pickSkillChoices(tier, currentDay).slice(0, 2)
+  if (choices.length < 2) return false
+  pendingSkillDraft = { day: currentDay, tier, choices, rerolled: false }
+  closeSkillDraftOverlay()
+  ensureSkillDraftSelection(stage)
+  return true
+}
+
+function openEventDraftFromNeutralScroll(stage: Container): boolean {
+  const choices = pickRandomEventDraftChoices(currentDay).slice(0, 2)
+  if (choices.length < 2) return false
+  pendingEventDraft = { day: currentDay, choices, rerolled: false }
+  closeEventDraftOverlay()
+  ensureEventDraftSelection(stage)
+  return true
+}
+
+function openSpecialShopFromNeutralScroll(stage: Container): boolean {
+  if (specialShopOffers.length !== 3) {
+    specialShopRefreshCount = 0
+    specialShopOffers = rollSpecialShopOffers()
+  }
+  if (specialShopOffers.length !== 3) return false
+  openSpecialShopOverlay(stage)
+  return true
+}
+
+function applyNeutralDiscardEffect(source: ItemDef, stage: Container): boolean {
+  const kind = getNeutralSpecialKind(source)
+  if (!kind) return false
+
+  if (kind === 'upgrade_stone') {
+    const nonNeutralCount = getAllOwnedPlacedItems().filter((it) => {
+      const def = getItemDefById(it.item.defId)
+      return !!def && !isNeutralItemDef(def)
+    }).length
+    if (nonNeutralCount < 5) {
+      showHintToast('no_gold_buy', '升级石：非中立物品不足5个，丢弃失败', 0xffb27a)
+      return false
+    }
+    const targets = collectUpgradeableOwnedPlacedItems()
+    const picked = targets[Math.floor(Math.random() * targets.length)]
+    if (!picked) {
+      showHintToast('no_gold_buy', '升级石：没有可升级的目标', 0xffb27a)
+      return true
+    }
+    const ok = upgradePlacedItem(picked.item.instanceId, picked.zone, true)
+    if (ok) showHintToast('no_gold_buy', '升级石：已升级1个随机物品', 0x9be5ff)
+    return true
+  }
+
+  if (kind === 'class_shift_stone' || kind === 'class_morph_stone') return true
+
+  if (kind === 'skill_scroll') {
+    const ok = openSkillDraftFromNeutralScroll(stage)
+    if (!ok) showHintToast('no_gold_buy', '技能卷轴：当前无法打开技能选择', 0xffb27a)
+    return true
+  }
+  if (kind === 'shop_scroll') {
+    const ok = openSpecialShopFromNeutralScroll(stage)
+    if (!ok) showHintToast('no_gold_buy', '购物卷轴：当前无法打开折扣商店', 0xffb27a)
+    return true
+  }
+  if (kind === 'event_scroll') {
+    const ok = openEventDraftFromNeutralScroll(stage)
+    if (!ok) showHintToast('no_gold_buy', '冒险卷轴：当前无法打开事件选择', 0xffb27a)
+    return true
+  }
+  if (kind === 'raw_stone') {
+    const picks = pickCandidateItemsByNames(['升级石', '转职石', '变化石'])
+      .filter((item) => {
+        const oneKind = getNeutralSpecialKind(item)
+        return oneKind ? isNeutralKindRandomAvailable(oneKind) : true
+      })
+      .map((item) => ({ item, tier: 'Bronze' as TierKey, star: 1 as const }))
+    const ok = showNeutralChoiceOverlay(stage, '选择一块石头', picks)
+    if (!ok) showHintToast('no_gold_buy', '原石：可选物品不足', 0xffb27a)
+    return true
+  }
+  if (kind === 'blank_scroll') {
+    const picks = pickCandidateItemsByNames(['技能卷轴', '购物卷轴', '冒险卷轴'])
+      .filter((item) => {
+        const oneKind = getNeutralSpecialKind(item)
+        return oneKind ? isNeutralKindRandomAvailable(oneKind) : true
+      })
+      .map((item) => ({ item, tier: 'Bronze' as TierKey, star: 1 as const }))
+    const ok = showNeutralChoiceOverlay(stage, '选择一张卷轴', picks)
+    if (!ok) showHintToast('no_gold_buy', '空白卷轴：可选物品不足', 0xffb27a)
+    return true
+  }
+  if (kind === 'medal') {
+    const ok = showMedalArchetypeChoiceOverlay(stage)
+    if (!ok) showHintToast('no_gold_buy', '勋章：当前无法打开职业选择', 0xffb27a)
+    return true
+  }
+
+  return false
+}
+
+function applyNeutralStoneTargetEffect(sourceDef: ItemDef, target: SynthesisTarget): boolean {
+  const kind = getNeutralSpecialKind(sourceDef)
+  if (kind !== 'class_shift_stone' && kind !== 'class_morph_stone') return false
+  const system = target.zone === 'battle' ? battleSystem : backpackSystem
+  const placed = system?.getItem(target.instanceId)
+  if (!placed) return false
+  const targetDef = getItemDefById(placed.defId)
+  if (!targetDef || !isValidNeutralStoneTarget(sourceDef, targetDef)) return false
+  const rule = kind === 'class_shift_stone' ? 'other' : 'same'
+  const ok = convertPlacedItemKeepLevelWithArchetypeRule(target.instanceId, target.zone, rule, true)
+  if (!ok) {
+    showHintToast('no_gold_buy', kind === 'class_shift_stone' ? '转职石：该目标当前无法转化' : '变化石：该目标当前无法转化', 0xffb27a)
+    return false
+  }
+  showHintToast('no_gold_buy', kind === 'class_shift_stone' ? '转职石：已转化目标物品' : '变化石：已转化目标物品', 0x9be5ff)
+  return true
 }
 
 function applyFutureEventEffectsOnNewDay(day: number): void {
@@ -4723,13 +5854,14 @@ function applyFutureEventEffectsOnNewDay(day: number): void {
     pendingBattleUpgradeByDay.delete(day)
     let changed = 0
     for (let i = 0; i < pendingBattleUp; i++) {
-      const battleItems = getAllOwnedPlacedItems().filter((it) => it.zone === 'battle' && canUpgradePlacedItem(it.item.instanceId, 'battle'))
+      const battleItems = collectUpgradeableOwnedPlacedItems('battle')
       if (battleItems.length <= 0) break
       for (const one of battleItems) {
-        if (upgradePlacedItem(one.item.instanceId, 'battle')) changed += 1
+        if (upgradePlacedItem(one.item.instanceId, 'battle', true)) changed += 1
       }
     }
     if (changed > 0) showHintToast('no_gold_buy', `事件结算：上阵区升级${changed}个物品`, 0x9be5ff)
+    else showHintToast('no_gold_buy', '事件结算：没有可升级的目标', 0xffb27a)
   }
 }
 
@@ -4773,26 +5905,54 @@ function randomArchetypeItemsByDay(archetype: EventArchetype, count: number): Po
   return out
 }
 
+function getMaxQuickBuyLevelForDay(day: number): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+  const weights = getQuickBuyLevelWeightsByDay(day)
+  let maxLevel: 1 | 2 | 3 | 4 | 5 | 6 | 7 = 1
+  for (let i = 0; i < weights.length; i++) {
+    if (Number(weights[i] ?? 0) > 0) maxLevel = (i + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  }
+  return maxLevel
+}
+
+function pickArchetypeItemAtLevel(archetype: EventArchetype, level: 1 | 2 | 3 | 4 | 5 | 6 | 7): PoolCandidate | null {
+  const pool = collectPoolCandidatesByLevel(level)
+    .filter((c) => toSkillArchetype(getPrimaryArchetype(c.item.tags)) === archetype)
+  if (pool.length <= 0) return null
+  return pool[Math.floor(Math.random() * pool.length)] ?? null
+}
+
+function pickMedalArchetypeItem(archetype: EventArchetype): PoolCandidate | null {
+  const baseMax = getMaxQuickBuyLevelForDay(currentDay)
+  const targetLevel = Math.min(7, baseMax + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  return pickArchetypeItemAtLevel(archetype, targetLevel)
+}
+
 function applyEventEffect(event: EventChoice, fromTest = false): boolean {
   if (!shopManager) return false
   const day = currentDay
   const toastPrefix = fromTest ? '[测试] ' : ''
 
   if (event.id === 'event1') {
-    const targets = getAllOwnedPlacedItems().filter((it) => it.zone === 'battle')
+    const targets = collectUpgradeableOwnedPlacedItems('battle')
+    if (targets.length <= 0) {
+      showHintToast('no_gold_buy', `${toastPrefix}没有可升级的目标`, 0xffb27a)
+      return false
+    }
     const picked = pickRandomElements(targets, 1)
-    const ok = picked.some((it) => upgradePlacedItem(it.item.instanceId, it.zone))
+    const ok = picked.some((it) => upgradePlacedItem(it.item.instanceId, it.zone, true))
     if (ok) showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}`, 0x9be5ff)
     return ok
   }
   if (event.id === 'event2') {
-    const targets = getAllOwnedPlacedItems()
-      .filter((it) => it.zone === 'backpack')
-      .filter((it) => canUpgradePlacedItem(it.item.instanceId, it.zone))
+    const targets = collectUpgradeableOwnedPlacedItems('backpack')
+    if (targets.length <= 0) {
+      showHintToast('no_gold_buy', `${toastPrefix}没有可升级的目标`, 0xffb27a)
+      return false
+    }
     const picked = pickRandomElements(targets, 2)
     let okCount = 0
     for (const it of picked) {
-      if (upgradePlacedItem(it.item.instanceId, it.zone)) okCount += 1
+      if (upgradePlacedItem(it.item.instanceId, it.zone, true)) okCount += 1
     }
     if (okCount > 0) showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}（${okCount}/2）`, 0x9be5ff)
     return okCount > 0
@@ -4804,7 +5964,7 @@ function applyEventEffect(event: EventChoice, fromTest = false): boolean {
     const picked = pickRandomElements(targets, 3)
     let okCount = 0
     for (const it of picked) {
-      if (convertAndUpgradePlacedItem(it.item.instanceId, it.zone)) okCount += 1
+      if (convertAndUpgradePlacedItem(it.item.instanceId, it.zone, true)) okCount += 1
     }
     if (okCount > 0) showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}（${okCount}/3）`, 0x9be5ff)
     return okCount > 0
@@ -4916,9 +6076,10 @@ function applyEventEffect(event: EventChoice, fromTest = false): boolean {
     const all = getAllOwnedPlacedItems()
     let changed = false
     for (const one of all) {
-      changed = convertAndUpgradePlacedItem(one.item.instanceId, one.zone) || changed
+      changed = convertAndUpgradePlacedItem(one.item.instanceId, one.zone, true) || changed
     }
     if (changed) showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}`, 0x9be5ff)
+    else showHintToast('no_gold_buy', `${toastPrefix}没有可升级的目标`, 0xffb27a)
     return changed
   }
   if (event.id === 'event25') {
@@ -4980,6 +6141,7 @@ function applyEventEffect(event: EventChoice, fromTest = false): boolean {
   if (event.id === 'event36') {
     const changed = upgradeLowestLevelItemsOnce()
     if (changed > 0) showHintToast('no_gold_buy', `${toastPrefix}${event.shortDesc}`, 0x9be5ff)
+    else showHintToast('no_gold_buy', `${toastPrefix}没有可升级的目标`, 0xffb27a)
     return changed > 0
   }
   return false
@@ -5130,7 +6292,8 @@ function pickRandomEventDraftChoicesNoOverlap(day: number, blockedIds: Set<strin
 }
 
 function resolveEventDescText(event: EventChoice, detailed: boolean): string {
-  const raw = detailed ? event.detailDesc : event.shortDesc
+  const useDetailed = detailed || !shouldShowSimpleDescriptions()
+  const raw = useDetailed ? event.detailDesc : event.shortDesc
   if (event.id === 'event20') {
     return raw.replace(/x/g, String(currentDay + 3))
   }
@@ -5405,7 +6568,11 @@ function refreshSkillIconBar(): void {
     cell.on('pointerdown', (e: FederatedPointerEvent) => {
       e.stopPropagation()
       if (skillDetailSkillId === s.id) {
-        skillDetailMode = skillDetailMode === 'simple' ? 'detailed' : 'simple'
+        if (shouldShowSimpleDescriptions()) {
+          skillDetailMode = skillDetailMode === 'simple' ? 'detailed' : 'simple'
+        } else {
+          skillDetailMode = 'detailed'
+        }
         showSkillDetailPopup(s)
       } else {
         currentSelection = { kind: 'none' }
@@ -5416,7 +6583,7 @@ function refreshSkillIconBar(): void {
         backpackView?.setSelected(null)
         sellPopup?.hide()
         applySellButtonState()
-        skillDetailMode = 'simple'
+        skillDetailMode = getDefaultSkillDetailMode()
         showSkillDetailPopup(s)
       }
     })
@@ -5430,7 +6597,7 @@ function refreshSkillIconBar(): void {
 
 function hideSkillDetailPopup(): void {
   skillDetailSkillId = null
-  skillDetailMode = 'simple'
+  skillDetailMode = getDefaultSkillDetailMode()
   if (skillDetailPopupCon) skillDetailPopupCon.visible = false
 }
 
@@ -5456,7 +6623,7 @@ function showSkillDetailPopup(skill: SkillPick): void {
   const textW = panelW - textX - pad
   const titleFontSize = getDebugCfg('itemInfoNameFontSize')
   const descFontSize = getDebugCfg('itemInfoSimpleDescFontSize')
-  const mode = skillDetailMode
+  const mode = shouldShowSimpleDescriptions() ? skillDetailMode : 'detailed'
   const shownDesc = mode === 'detailed' ? (skill.detailDesc ?? skill.desc) : skill.desc
 
   const title = new Text({
@@ -5561,14 +6728,17 @@ function ensureEventDraftSelection(stage: Container): void {
   if (skillDraftOverlay) return
   if (eventDraftOverlay) return
 
-  const plan = getDailyPlanRow(currentDay)
-  const shouldEvent = (Number(plan?.shouldEvent) || 0) >= 0.5
-  if (!shouldEvent) {
-    pendingEventDraft = null
-    closeEventDraftOverlay()
-    return
+  const hasPendingDraft = !!(pendingEventDraft && pendingEventDraft.day === currentDay)
+  if (!hasPendingDraft) {
+    const plan = getDailyPlanRow(currentDay)
+    const shouldEvent = (Number(plan?.shouldEvent) || 0) >= 0.5
+    if (!shouldEvent) {
+      pendingEventDraft = null
+      closeEventDraftOverlay()
+      return
+    }
+    if (draftedEventDays.includes(currentDay)) return
   }
-  if (draftedEventDays.includes(currentDay)) return
 
   let draft = pendingEventDraft
   if (!draft || draft.day !== currentDay) {
@@ -5596,7 +6766,7 @@ function ensureEventDraftSelection(stage: Container): void {
   overlay.addChild(bg)
 
   const title = new Text({
-    text: `Day ${draft.day} 事件选择`,
+    text: '事件选择',
     style: { fontSize: 42, fill: 0xfff2cf, fontFamily: 'Arial', fontWeight: 'bold' },
   })
   title.anchor.set(0.5)
@@ -5646,7 +6816,7 @@ function ensureEventDraftSelection(stage: Container): void {
       const frame = selectedFrameById.get(choice.id)
       if (frame) frame.visible = selected
       const desc = descTextById.get(choice.id)
-      if (desc) desc.text = resolveEventDescText(choice, selected)
+      if (desc) desc.text = resolveEventDescText(choice, selected || !shouldShowSimpleDescriptions())
       const confirm = confirmAreaById.get(choice.id)
       if (confirm) confirm.visible = selected
     }
@@ -5684,7 +6854,7 @@ function ensureEventDraftSelection(stage: Container): void {
     mountEventIconSprite(con, choice.id, choice.icon, cardW / 2, 108, 160, iconText)
 
     const detail = new Text({
-      text: resolveEventDescText(choice, false),
+      text: resolveEventDescText(choice, !shouldShowSimpleDescriptions()),
       style: {
         fontSize: 24,
         fill: 0xffefc8,
@@ -5907,7 +7077,7 @@ function ensureEventDraftSelection(stage: Container): void {
   })
 
   const redrawRerollBtn = () => {
-    const canReroll = !(draft?.rerolled === true)
+    const canReroll = isEventDraftRerollEnabled() && !(draft?.rerolled === true)
     const can = canReroll
     rerollBg.clear()
     rerollBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
@@ -5932,6 +7102,7 @@ function ensureEventDraftSelection(stage: Container): void {
 
   rerollBtn.on('pointerdown', (e: FederatedPointerEvent) => {
     e.stopPropagation()
+    if (!isEventDraftRerollEnabled()) return
     if (draft?.rerolled === true) return
     const blocked = new Set(shownChoices.map((it) => it.id))
     const nextChoices = pickRandomEventDraftChoicesNoOverlap(currentDay, blocked)
@@ -5990,6 +7161,11 @@ function getSpecialShopDetailDesc(item: ItemDef, tier: TierKey, star: 1 | 2): st
   if (fromTiered) return resolveSkillLineByTierStar(item, tier, star, fromTiered)
   const fromSimple = String(item.simple_desc ?? '').trim()
   if (fromSimple) return fromSimple
+  return getSpecialShopSimpleDesc(item, tier, star)
+}
+
+function getSpecialShopShownDesc(item: ItemDef, tier: TierKey, star: 1 | 2, detailed: boolean): string {
+  if (!shouldShowSimpleDescriptions() || detailed) return getSpecialShopDetailDesc(item, tier, star)
   return getSpecialShopSimpleDesc(item, tier, star)
 }
 
@@ -6073,6 +7249,7 @@ function tryBuySpecialShopOffer(offerIndex: number): boolean {
   instanceToTier.set(id, candidate.tier)
   instanceToTierStar.set(id, candidate.star)
   instanceToPermanentDamageBonus.set(id, 0)
+  recordNeutralItemObtained(candidate.item.id)
   unlockItemToPool(candidate.item.id)
   refreshShopUI()
   return true
@@ -6096,7 +7273,7 @@ function openSpecialShopOverlay(stage: Container): void {
   overlay.addChild(bg)
 
   const title = new Text({
-    text: `Day ${currentDay} 特殊商店`,
+    text: '折扣商店',
     style: { fontSize: 42, fill: 0xfff2cf, fontFamily: 'Arial', fontWeight: 'bold' },
   })
   title.anchor.set(0.5)
@@ -6170,7 +7347,7 @@ function openSpecialShopOverlay(stage: Container): void {
   holdBg.fill({ color: 0x29436e, alpha: 0.94 })
   holdBg.stroke({ color: 0x84b7ff, width: 3, alpha: 0.95 })
   const holdTxt = new Text({
-    text: '查看背包',
+    text: '出售物品',
     style: { fontSize: actionBtnFontSize, fill: 0xeaf4ff, fontFamily: 'Arial', fontWeight: 'bold' },
   })
   holdTxt.anchor.set(0.5)
@@ -6210,7 +7387,7 @@ function openSpecialShopOverlay(stage: Container): void {
       ? new Rectangle(0, actionBtnY, CANVAS_W, Math.max(1, CANVAS_H - actionBtnY))
       : new Rectangle(0, 0, CANVAS_W, CANVAS_H)
     bg.eventMode = 'none'
-    holdTxt.text = active ? '回到特殊商店' : '查看背包'
+    holdTxt.text = active ? '回到折扣商店' : '出售物品'
     holdBg.clear()
     holdBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
     if (active) {
@@ -6221,7 +7398,7 @@ function openSpecialShopOverlay(stage: Container): void {
       if (refreshBtnHandle) refreshBtnHandle.container.visible = true
       drag?.setEnabled(false)
       bindTapOnly()
-      showHintToast('backpack_full_buy', '已切换到背包查看模式', 0x9be5ff)
+      showHintToast('backpack_full_buy', '已切换到出售物品模式', 0x9be5ff)
     } else {
       holdBg.fill({ color: 0x29436e, alpha: 0.94 })
       holdBg.stroke({ color: 0x84b7ff, width: 3, alpha: 0.95 })
@@ -6410,7 +7587,7 @@ function openSpecialShopOverlay(stage: Container): void {
       card.addChild(divider)
 
       const desc = new Text({
-        text: selected ? getSpecialShopDetailDesc(candidate.item, candidate.tier, candidate.star) : getSpecialShopSimpleDesc(candidate.item, candidate.tier, candidate.star),
+        text: getSpecialShopShownDesc(candidate.item, candidate.tier, candidate.star, selected),
         style: {
           fontSize: 20,
           fill: selected ? 0xf2f7ff : 0xcad7f5,
@@ -6587,23 +7764,22 @@ function ensureSpecialShopSelection(stage: Container): void {
   normalizeSpecialShopOfferPrices()
   openSpecialShopOverlay(stage)
 }
+void ensureSpecialShopSelection
 
 function ensureDailyChoiceSelection(stage: Container): void {
   if (classSelectOverlay) return
   if (starterGuideOverlay) return
   if (skillDraftOverlay || eventDraftOverlay || specialShopOverlay) return
-  const plan = getDailyPlanRow(currentDay)
-  const shouldDraft = (Number(plan?.shouldDraft) || 0) >= 0.5
-  if (shouldDraft) {
+  const hasPendingSkillDraft = !!(pendingSkillDraft && pendingSkillDraft.day === currentDay)
+  if (hasPendingSkillDraft) {
     ensureSkillDraftSelection(stage)
     return
   }
-  const shouldEvent = (Number(plan?.shouldEvent) || 0) >= 0.5
-  if (shouldEvent) {
+  const hasPendingEventDraft = !!(pendingEventDraft && pendingEventDraft.day === currentDay)
+  if (hasPendingEventDraft) {
     ensureEventDraftSelection(stage)
     return
   }
-  ensureSpecialShopSelection(stage)
 }
 void ensureDailyChoiceSelection
 
@@ -6647,7 +7823,7 @@ function ensureSkillDraftSelection(stage: Container): void {
   overlay.addChild(bg)
 
   const title = new Text({
-    text: `Day ${draft.day} 技能选择`,
+    text: '技能选择',
     style: { fontSize: 42, fill: 0xfff2cf, fontFamily: 'Arial', fontWeight: 'bold' },
   })
   title.anchor.set(0.5)
@@ -6662,6 +7838,7 @@ function ensureSkillDraftSelection(stage: Container): void {
   goldInfo.anchor.set(0.5)
   goldInfo.x = CANVAS_W / 2
   goldInfo.y = 390
+  goldInfo.visible = false
   overlay.addChild(goldInfo)
 
   const shownChoices = draft.choices.slice(0, 2)
@@ -6696,7 +7873,7 @@ function ensureSkillDraftSelection(stage: Container): void {
       const frame = selectedFrameById.get(choice.id)
       if (frame) frame.visible = selected
       const desc = descTextById.get(choice.id)
-      if (desc) desc.text = selected ? (choice.detailDesc ?? choice.desc) : choice.desc
+      if (desc) desc.text = selected || !shouldShowSimpleDescriptions() ? (choice.detailDesc ?? choice.desc) : choice.desc
       const confirmArea = confirmAreaById.get(choice.id)
       if (confirmArea) confirmArea.visible = selected
     }
@@ -6778,7 +7955,7 @@ function ensureSkillDraftSelection(stage: Container): void {
     con.addChild(qualityText)
 
     const desc = new Text({
-      text: choice.desc,
+      text: shouldShowSimpleDescriptions() ? choice.desc : (choice.detailDesc ?? choice.desc),
       style: {
         fontSize: 22,
         fill: 0xd4def1,
@@ -7002,7 +8179,7 @@ function ensureSkillDraftSelection(stage: Container): void {
   })
 
   const redrawRerollBtn = () => {
-    const canReroll = !(draft?.rerolled === true)
+    const canReroll = isSkillDraftRerollEnabled() && !(draft?.rerolled === true)
     const can = canReroll
     rerollBg.clear()
     rerollBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
@@ -7026,6 +8203,7 @@ function ensureSkillDraftSelection(stage: Container): void {
 
   rerollBtn.on('pointerdown', (e: FederatedPointerEvent) => {
     e.stopPropagation()
+    if (!isSkillDraftRerollEnabled()) return
     if (draft?.rerolled === true) return
     const blocked = new Set(shownChoices.map((it) => it.id))
     const nextChoices = pickSkillChoicesNoOverlap(draft!.tier, currentDay, blocked)
@@ -7177,7 +8355,7 @@ function getUnlockPoolBuyPriceByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): number 
   if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
     return Math.max(1, Math.round(raw))
   }
-  const byLevel: [number, number, number, number, number, number, number] = [3, 5, 9, 16, 27, 42, 60]
+  const byLevel: [number, number, number, number, number, number, number] = [3, 6, 12, 24, 48, 96, 192]
   return byLevel[level - 1] ?? 3
 }
 
@@ -7189,6 +8367,7 @@ function collectPoolCandidatesByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): PoolCan
   const out: PoolCandidate[] = []
   for (const item of allById.values()) {
     if (!item) continue
+    if (isNeutralItemDef(item)) continue
     const minTier = parseTierName(item.starting_tier) ?? 'Bronze'
     if (!getAllowedLevelsByStartingTier(minTier).includes(level)) continue
     if (!parseAvailableTiers(item.available_tiers).includes(tierStar.tier)) continue
@@ -7210,35 +8389,39 @@ function getSpecialShopRefreshCost(): number {
 }
 
 function getSpecialShopPriceByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): number {
-  const byLevel: [number, number, number, number, number, number, number] = [3, 5, 9, 16, 27, 42, 60]
-  return byLevel[Math.max(1, Math.min(7, level)) - 1] ?? 3
+  const clamped = Math.max(1, Math.min(7, level)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const tierStar = levelToTierStar(clamped)
+  const key = `${tierStar?.tier ?? 'Bronze'}#${tierStar?.star ?? 1}`
+  const raw = getConfig().shopRules?.quickBuyFixedPrice?.[key]
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+    return Math.max(1, Math.round(raw))
+  }
+  const byLevel: [number, number, number, number, number, number, number] = [3, 6, 12, 24, 48, 96, 192]
+  return byLevel[clamped - 1] ?? 3
 }
 
-function applyRandomSpecialOfferDiscount(offers: SpecialShopOffer[]): SpecialShopOffer[] {
-  if (offers.length <= 0) return offers
-  const out = offers.map((it) => ({
-    ...it,
-    price: it.basePrice,
-  }))
-  const idx = Math.floor(Math.random() * out.length)
-  const picked = out[idx]
-  if (picked) picked.price = Math.max(1, Math.floor(picked.basePrice * 2 / 3))
-  return out
+function applyFixedSpecialOfferDiscounts(offers: SpecialShopOffer[]): SpecialShopOffer[] {
+  const rates = [0.9, 0.8, 0.7]
+  return offers.map((it, idx) => {
+    const rate = rates[idx] ?? 0.7
+    return {
+      ...it,
+      price: Math.max(1, Math.floor(it.basePrice * rate)),
+    }
+  })
 }
 
 function normalizeSpecialShopOfferPrices(): void {
-  let next = specialShopOffers.map((one) => {
+  const normalized = specialShopOffers.map((one) => {
     const level = Math.max(1, Math.min(7, tierStarLevelIndex(one.tier, one.star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
     const basePrice = getSpecialShopPriceByLevel(level)
     return {
       ...one,
       basePrice,
-      price: one.price > 0 && one.price < basePrice ? Math.max(1, Math.floor(basePrice * 2 / 3)) : basePrice,
+      price: basePrice,
     }
   })
-  const discountCount = next.filter((it) => it.price < it.basePrice).length
-  if (next.length > 0 && discountCount !== 1) next = applyRandomSpecialOfferDiscount(next)
-  specialShopOffers = next
+  specialShopOffers = applyFixedSpecialOfferDiscounts(normalized)
 }
 
 function isSpecialShopPlannedForDay(day: number): boolean {
@@ -7387,7 +8570,7 @@ function rollSpecialShopOffers(prevOffers?: SpecialShopOffer[]): SpecialShopOffe
     }
     if (offers.length < 3) continue
 
-    const pricedOffers = applyRandomSpecialOfferDiscount(offers)
+    const pricedOffers = applyFixedSpecialOfferDiscounts(offers)
     const same = prevOffers && prevOffers.length > 0 ? countSameOfferDefIds(prevOffers, pricedOffers) : 0
     if (same < bestAnySame) {
       bestAny = pricedOffers
@@ -7408,11 +8591,24 @@ function rollSpecialShopOffers(prevOffers?: SpecialShopOffer[]): SpecialShopOffe
 
 function findCandidateByOffer(offer: { itemId: string; tier: TierKey; star: 1 | 2; price: number } | null): PoolCandidate | null {
   if (!offer) return null
+  const item = getItemDefById(offer.itemId)
+  if (!item) return null
+  if (isNeutralItemDef(item)) {
+    const rewrittenItem = rewriteNeutralRandomPick(item)
+    if (!canRandomNeutralItem(rewrittenItem)) return null
+    const size = normalizeSize(rewrittenItem.size)
+    if (!findFirstBattlePlace(size) && !findFirstBackpackPlace(size)) return null
+    return {
+      item: rewrittenItem,
+      level: 1,
+      tier: 'Bronze',
+      star: 1,
+      price: Math.max(1, Math.round(Number(offer.price) || currentDay + 1)),
+    }
+  }
   const level = tierStarLevelIndex(offer.tier, offer.star) + 1
   if (level < 1 || level > 7) return null
   const levelKey = level as 1 | 2 | 3 | 4 | 5 | 6 | 7
-  const item = getItemDefById(offer.itemId)
-  if (!item) return null
   const size = normalizeSize(item.size)
   if (!findFirstBattlePlace(size) && !findFirstBackpackPlace(size)) return null
   const minTier = parseTierName(item.starting_tier) ?? 'Bronze'
@@ -7509,6 +8705,44 @@ function getQuickBuyLevelWeightsByDay(day: number): [number, number, number, num
   ]
 }
 
+function collectNeutralQuickBuyCandidates(): PoolCandidate[] {
+  if (!battleSystem || !backpackSystem) return []
+  const out: PoolCandidate[] = []
+  for (const item of getAllItems()) {
+    if (!isNeutralItemDef(item)) continue
+    if (!canRandomNeutralItem(item)) continue
+    const size = normalizeSize(item.size)
+    if (!findFirstBattlePlace(size) && !findFirstBackpackPlace(size)) continue
+    out.push({
+      item,
+      level: 1,
+      tier: 'Bronze',
+      star: 1,
+      price: Math.max(1, currentDay + 1),
+    })
+  }
+  return out
+}
+
+function updateNeutralPseudoRandomCounterOnPurchase(item: ItemDef): void {
+  if (isNeutralItemDef(item)) {
+    quickBuyNeutralMissStreak = 0
+    return
+  }
+  const shopRulesCfg = (getConfig().shopRules ?? {}) as { quickBuyNeutralPseudoRandomChances?: number[] }
+  const pseudoChanceSource = shopRulesCfg.quickBuyNeutralPseudoRandomChances
+  const pseudoChanceRows = Array.isArray(pseudoChanceSource)
+    ? pseudoChanceSource
+      .map((v: number) => clamp01(Number(v)))
+      .filter((v: number) => Number.isFinite(v))
+    : []
+  if (pseudoChanceRows.length > 0) {
+    quickBuyNeutralMissStreak = Math.min(quickBuyNeutralMissStreak + 1, pseudoChanceRows.length - 1)
+  } else {
+    quickBuyNeutralMissStreak = Math.min(quickBuyNeutralMissStreak + 1, 999)
+  }
+}
+
 function rollNextQuickBuyOffer(force = false): PoolCandidate | null {
   if (!force) {
     const keep = findCandidateByOffer(nextQuickBuyOffer)
@@ -7532,6 +8766,49 @@ function rollNextQuickBuyOffer(force = false): PoolCandidate | null {
     byLevel[6] = byLevel[6].filter((c) => isStarterClassItem(c.item))
     byLevel[7] = byLevel[7].filter((c) => isStarterClassItem(c.item))
   }
+
+  const neutralCandidates = collectNeutralQuickBuyCandidates()
+  const shopRulesCfg = (getConfig().shopRules ?? {}) as {
+    quickBuyNeutralStartDay?: number
+    quickBuyNeutralChance?: number
+    quickBuyNeutralPseudoRandomChances?: number[]
+  }
+  const neutralStartDay = Math.max(1, Math.round(Number(shopRulesCfg.quickBuyNeutralStartDay ?? 2) || 2))
+  const neutralChance = clamp01(Number(shopRulesCfg.quickBuyNeutralChance ?? 0.25))
+  const pseudoChanceRows = Array.isArray(shopRulesCfg.quickBuyNeutralPseudoRandomChances)
+    ? shopRulesCfg.quickBuyNeutralPseudoRandomChances
+      .map((v: number) => clamp01(Number(v)))
+      .filter((v: number) => Number.isFinite(v))
+    : []
+  const neutralDailyCap = getNeutralDailyRollCap(currentDay)
+  const neutralRolledToday = Math.max(0, Math.round(neutralDailyRollCountByDay.get(currentDay) ?? 0))
+  const neutralEligible = currentDay >= neutralStartDay
+    && neutralCandidates.length > 0
+    && neutralRolledToday < neutralDailyCap
+  const neutralRollChance = pseudoChanceRows.length > 0
+    ? pseudoChanceRows[Math.min(quickBuyNeutralMissStreak, pseudoChanceRows.length - 1)]
+    : neutralChance
+  const shouldTryNeutral = neutralEligible && Math.random() < neutralRollChance
+  if (shouldTryNeutral) {
+    const neutralPicked = neutralCandidates[Math.floor(Math.random() * neutralCandidates.length)] ?? null
+    if (neutralPicked) {
+      const rewrittenCandidates = neutralCandidates.map((one) => ({ ...one, item: rewriteNeutralRandomPick(one.item) }))
+      const targetCategory = pickNeutralRandomCategoryByPool(rewrittenCandidates)
+      const sameCategory = rewrittenCandidates.filter((one) => neutralRandomCategoryOfItem(one.item) === targetCategory)
+      const pickedAfterRatio = (sameCategory[Math.floor(Math.random() * sameCategory.length)]
+        ?? rewrittenCandidates[Math.floor(Math.random() * rewrittenCandidates.length)]
+        ?? neutralPicked)
+      nextQuickBuyOffer = {
+        itemId: pickedAfterRatio.item.id,
+        tier: pickedAfterRatio.tier,
+        star: pickedAfterRatio.star,
+        price: pickedAfterRatio.price,
+      }
+      neutralDailyRollCountByDay.set(currentDay, neutralRolledToday + 1)
+      return pickedAfterRatio
+    }
+  }
+
   const baseWeights = getQuickBuyLevelWeightsByDay(currentDay)
   const effectiveWeights: [number, number, number, number, number, number, number] = [
     byLevel[1].length > 0 ? baseWeights[0] : 0,
@@ -7704,6 +8981,8 @@ function buyRandomBronzeToBoardOrBackpack(): void {
   instanceToTier.set(id, tierForced)
   instanceToTierStar.set(id, starForced)
   instanceToPermanentDamageBonus.set(id, 0)
+  recordNeutralItemObtained(itemForced.id)
+  updateNeutralPseudoRandomCounterOnPurchase(itemForced)
   unlockItemToPool(itemForced.id)
   rollNextQuickBuyOffer(true)
   refreshShopUI()
@@ -7748,7 +9027,7 @@ function grantSkill20DailyBronzeItemIfNeeded(): void {
   if (skill20GrantedDays.has(currentDay)) return
   if (!backpackSystem || !backpackView) return
 
-  const candidate = getAllItems().filter((it) => String(it.starting_tier || '').includes('Bronze'))
+  const candidate = getAllItems().filter((it) => String(it.starting_tier || '').includes('Bronze') && !isNeutralItemDef(it))
   if (candidate.length <= 0) return
 
   skill20GrantedDays.add(currentDay)
@@ -7770,6 +9049,7 @@ function grantSkill20DailyBronzeItemIfNeeded(): void {
   instanceToTier.set(id, 'Bronze')
   instanceToTierStar.set(id, 1)
   instanceToPermanentDamageBonus.set(id, 0)
+  recordNeutralItemObtained(picked.id)
   unlockItemToPool(picked.id)
   showHintToast('backpack_full_buy', `背包大师：获得 ${picked.name_cn}（青铜1星）`, 0x86e1ff)
 }
@@ -8868,7 +10148,7 @@ function onShopDragMove(e: FederatedPointerEvent): void {
   hideSynthesisHoverInfo()
 
   if (dragSlot && sellPopup) {
-    sellPopup.show(dragSlot.item, getShopSlotPreviewPrice(dragSlot), 'buy', toVisualTier(dragSlot.tier, 1), undefined, 'simple')
+    sellPopup.show(dragSlot.item, getShopSlotPreviewPrice(dragSlot), 'buy', toVisualTier(dragSlot.tier, 1), undefined, getDefaultItemInfoMode())
   }
 
   if (battleCell && battleSystem) {
@@ -9110,6 +10390,7 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
       instanceToTier.set(id, slot.tier)
       instanceToTierStar.set(id, 1)
       instanceToPermanentDamageBonus.set(id, 0)
+      recordNeutralItemObtained(slot.item.id)
       unlockItemToPool(slot.item.id)
       refreshShopUI()
     } else {
@@ -9152,6 +10433,7 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
     instanceToTier.set(id, slot.tier)
     instanceToTierStar.set(id, 1)
     instanceToPermanentDamageBonus.set(id, 0)
+    recordNeutralItemObtained(slot.item.id)
     unlockItemToPool(slot.item.id)
     refreshShopUI()
   }
@@ -9386,12 +10668,13 @@ export const ShopScene: Scene = {
       const tier = getInstanceTier(instanceId)
       const star = getInstanceTierStar(instanceId)
       const sellPrice = 0
-      refreshBackpackSynthesisGuideArrows(defId, tier ?? null, star, instanceId)
+      if (isNeutralTargetStone(item)) refreshNeutralStoneGuideArrows(item, instanceId)
+      else refreshBackpackSynthesisGuideArrows(defId, tier ?? null, star, instanceId)
       // 拖拽中视为选中：显示物品详情（不设置区域高亮，因物品已脱离格子）
       const inBattle = !!battleView?.hasItem(instanceId)
       currentSelection = { kind: inBattle ? 'battle' : 'backpack', instanceId }
       selectedSellAction = null  // 拖拽中暂不执行出售
-      sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, 'simple')
+      sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, getDefaultItemInfoMode())
       setSellButtonPrice(sellPrice)
       applySellButtonState()
 
@@ -9408,6 +10691,23 @@ export const ShopScene: Scene = {
 
       // 1) 拖到下方丢弃区域：直接丢弃（若命中任意格子候选，优先走落位/换位）
       if (isOverGridDragSellArea(anchorGx, anchorGy) && !isOverAnyGridDropTarget(anchorGx, anchorGy, size)) {
+        const sourceDef = getItemDefById(defId)
+        if (sourceDef && isNeutralItemDef(sourceDef)) {
+          const ok = applyNeutralDiscardEffect(sourceDef, stage)
+          if (!ok) return false
+        }
+        homeSystem.remove(instanceId)
+        removeInstanceMeta(instanceId)
+        refreshShopUI()
+        return true
+      }
+
+      const sourceDef = getItemDefById(defId)
+      if (sourceDef && isNeutralTargetStone(sourceDef)) {
+        const target = findNeutralStoneTargetWithDragProbe(sourceDef, anchorGx, anchorGy, size)
+        if (!target) return false
+        const ok = applyNeutralStoneTargetEffect(sourceDef, target)
+        if (!ok) return false
         homeSystem.remove(instanceId)
         removeInstanceMeta(instanceId)
         refreshShopUI()
@@ -9541,15 +10841,19 @@ export const ShopScene: Scene = {
       const defId = instanceToDefId.get(instanceId)
       const tier = getInstanceTier(instanceId)
       const star = getInstanceTierStar(instanceId)
-      refreshBackpackSynthesisGuideArrows(defId ?? null, tier ?? null, star, instanceId)
-
       const item = defId ? getItemDefById(defId) : null
+      if (isNeutralTargetStone(item)) refreshNeutralStoneGuideArrows(item, instanceId)
+      else refreshBackpackSynthesisGuideArrows(defId ?? null, tier ?? null, star, instanceId)
+
       const sellPrice = 0
       const overSell = gridDragCanSell && gridDragSellHot
       if (item && sellPopup && tier && overSell) {
+        const stoneHint = isNeutralTargetStone(item)
+          ? (item.name_cn === '转职石' ? '拖到目标物品上触发转职效果' : '拖到目标物品上触发变化效果')
+          : '丢弃后不会获得金币'
         const customDisplay: ItemInfoCustomDisplay = {
           overrideName: `${item.name_cn}（拖拽丢弃）`,
-          lines: ['丢弃后不会获得金币'],
+          lines: [stoneHint],
           suppressStats: true,
         }
         sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, 'detailed', undefined, customDisplay)
@@ -9562,7 +10866,27 @@ export const ShopScene: Scene = {
         drag?.setSqueezeSuppressed(false)
         clearBackpackSynthesisGuideArrows()
         if (item && sellPopup) {
-          sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, 'simple')
+          sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, getDefaultItemInfoMode())
+        }
+        return
+      }
+
+      if (item && isNeutralTargetStone(item)) {
+        const target = findNeutralStoneTargetWithDragProbe(item, anchorGx, anchorGy, size)
+        if (target) {
+          drag?.setSqueezeSuppressed(true, true)
+          highlightSynthesisTarget(target)
+          showNeutralStoneHoverInfo(item, target)
+        } else {
+          drag?.setSqueezeSuppressed(false)
+          hideSynthesisHoverInfo()
+          if (sellPopup) {
+            const customDisplay: ItemInfoCustomDisplay = {
+              lines: ['拖到目标物品上触发效果'],
+              suppressStats: true,
+            }
+            sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, 'detailed', undefined, customDisplay)
+          }
         }
         return
       }
@@ -9576,7 +10900,7 @@ export const ShopScene: Scene = {
         drag?.setSqueezeSuppressed(false)
         hideSynthesisHoverInfo()
         if (item && sellPopup) {
-          sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, 'simple')
+          sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, getDefaultItemInfoMode())
         }
       }
     }
@@ -10055,6 +11379,7 @@ export const ShopScene: Scene = {
       resetSkill15NextBuyDiscountState()
       resetSkill30BundleState()
       quickBuyNoSynthRefreshStreak = 0
+      quickBuyNeutralMissStreak = 0
       pickedSkills = []
       draftedSkillDays = []
       pendingSkillDraft = null
@@ -10066,9 +11391,12 @@ export const ShopScene: Scene = {
       resetEventSelectionCounters()
       resetDayEventState()
       resetFutureEventState()
-      skillDetailMode = 'simple'
+      skillDetailMode = getDefaultSkillDetailMode()
       skill20GrantedDays.clear()
       unlockedItemIds.clear()
+      neutralObtainedCountByKind.clear()
+      neutralRandomCategoryPool = []
+      neutralDailyRollCountByDay.clear()
       guaranteedNewUnlockTriggeredLevels.clear()
       CROSS_SYNTH_MIN_TIER_CYCLE_CURSOR.clear()
       CROSS_SYNTH_MIN_TIER_CYCLE_BAG.clear()
@@ -10222,6 +11550,9 @@ export const ShopScene: Scene = {
     settingsBtn     = null
     currentDay      = 1
     unlockedItemIds.clear()
+    neutralObtainedCountByKind.clear()
+    neutralRandomCategoryPool = []
+    neutralDailyRollCountByDay.clear()
     guaranteedNewUnlockTriggeredLevels.clear()
     CROSS_SYNTH_MIN_TIER_CYCLE_CURSOR.clear()
     CROSS_SYNTH_MIN_TIER_CYCLE_BAG.clear()
@@ -10233,6 +11564,7 @@ export const ShopScene: Scene = {
     resetSkill15NextBuyDiscountState()
     resetSkill30BundleState()
     quickBuyNoSynthRefreshStreak = 0
+    quickBuyNeutralMissStreak = 0
     pickedSkills    = []
     draftedSkillDays = []
     pendingSkillDraft = null
@@ -10244,7 +11576,8 @@ export const ShopScene: Scene = {
     resetEventSelectionCounters()
     resetDayEventState()
     resetFutureEventState()
-    skillDetailMode = 'simple'
+    itemTransformFlashLastAtMs.clear()
+    skillDetailMode = getDefaultSkillDetailMode()
     skill20GrantedDays.clear()
     showingBackpack = false
     battleSystem = backpackSystem = battleView = backpackView = drag = null

@@ -182,6 +182,9 @@ const GAMEPLAY_CHECKBOX_KEYS = [
   'gameplayShowSpeedButton',
   'gameplayCrossSynthesisConfirm',
   'gameplayBattleZoneNoSynthesis',
+  'gameplayShowSimpleDescriptions',
+  'gameplaySkillDraftRerollEnabled',
+  'gameplayEventDraftRerollEnabled',
 ]
 const ENEMY_DATA_PARAM_KEYS: string[] = [
   'enemyDraftSameArchetypeBias',

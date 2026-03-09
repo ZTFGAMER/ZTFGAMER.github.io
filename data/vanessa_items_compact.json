@@ -614,5 +614,194 @@
     "attack_style": "旋转飞行",
     "simple_desc": "右侧的攻击物品连发次数+1",
     "simple_desc_tiered": "右侧的攻击物品连发次数+1"
+  },
+  {
+    "id": "neutral_item_25_upgrade_stone",
+    "name_en": "",
+    "name_cn": "升级石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Bronze / 青铜",
+    "available_tiers": "Bronze",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      { "en": "", "cn": "丢弃时，若非中立物品不少于5个，随机升级1个物品；否则丢弃失败。" }
+    ],
+    "icon": "item25",
+    "attack_style": "不飞行",
+    "simple_desc": "丢弃时非中立物品>=5则随机升级1个，否则丢弃失败",
+    "simple_desc_tiered": "丢弃时非中立物品>=5则随机升级1个，否则丢弃失败"
+  },
+  {
+    "id": "neutral_item_26_class_shift_stone",
+    "name_en": "",
+    "name_cn": "转职石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Bronze / 青铜",
+    "available_tiers": "Bronze",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      { "en": "", "cn": "拖动到目标物品上：将其转化为其他职业的同等级物品。" }
+    ],
+    "icon": "item26",
+    "attack_style": "不飞行",
+    "simple_desc": "拖到目标物品上转化为其他职业",
+    "simple_desc_tiered": "拖到目标物品上转化为其他职业"
+  },
+  {
+    "id": "neutral_item_27_class_morph_stone",
+    "name_en": "",
+    "name_cn": "变化石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Bronze / 青铜",
+    "available_tiers": "Bronze",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      { "en": "", "cn": "拖动到目标物品上：将其转化为本职业其他同等级物品。" }
+    ],
+    "icon": "item27",
+    "attack_style": "不飞行",
+    "simple_desc": "拖到目标物品上转化为本职业其他物品",
+    "simple_desc_tiered": "拖到目标物品上转化为本职业其他物品"
+  },
+  {
+    "id": "neutral_item_28_skill_scroll",
+    "name_en": "",
+    "name_cn": "技能卷轴",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Bronze / 青铜",
+    "available_tiers": "Bronze",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      { "en": "", "cn": "丢弃时选择一个技能。" }
+    ],
+    "icon": "item28",
+    "attack_style": "不飞行",
+    "simple_desc": "丢弃时选择一个技能",
+    "simple_desc_tiered": "丢弃时选择一个技能"
+  },
+  {
+    "id": "neutral_item_29_shop_scroll",
+    "name_en": "",
+    "name_cn": "购物卷轴",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Bronze / 青铜",
+    "available_tiers": "Bronze",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      { "en": "", "cn": "丢弃时打开折扣商店。" }
+    ],
+    "icon": "item29",
+    "attack_style": "不飞行",
+    "simple_desc": "丢弃时打开折扣商店",
+    "simple_desc_tiered": "丢弃时打开折扣商店"
+  },
+  {
+    "id": "neutral_item_30_event_scroll",
+    "name_en": "",
+    "name_cn": "冒险卷轴",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Bronze / 青铜",
+    "available_tiers": "Bronze",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      { "en": "", "cn": "丢弃时选择一个事件。" }
+    ],
+    "icon": "item30",
+    "attack_style": "不飞行",
+    "simple_desc": "丢弃时选择一个事件",
+    "simple_desc_tiered": "丢弃时选择一个事件"
+  },
+  {
+    "id": "neutral_item_31_raw_stone",
+    "name_en": "",
+    "name_cn": "原石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Bronze / 青铜",
+    "available_tiers": "Bronze",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      { "en": "", "cn": "丢弃时从升级石、转职石、变化石中选择1个。" }
+    ],
+    "icon": "item31",
+    "attack_style": "不飞行",
+    "simple_desc": "丢弃时选择一块石头",
+    "simple_desc_tiered": "丢弃时选择一块石头"
+  },
+  {
+    "id": "neutral_item_32_medal",
+    "name_en": "",
+    "name_cn": "勋章",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Bronze / 青铜",
+    "available_tiers": "Bronze",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      { "en": "", "cn": "丢弃时选择一个特定职业的物品。" }
+    ],
+    "icon": "item32",
+    "attack_style": "不飞行",
+    "simple_desc": "丢弃时选择一个职业物品",
+    "simple_desc_tiered": "丢弃时选择一个职业物品"
+  },
+  {
+    "id": "neutral_item_33_blank_scroll",
+    "name_en": "",
+    "name_cn": "空白卷轴",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Bronze / 青铜",
+    "available_tiers": "Bronze",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      { "en": "", "cn": "丢弃时从技能卷轴、购物卷轴、冒险卷轴中选择1个。" }
+    ],
+    "icon": "item33",
+    "attack_style": "不飞行",
+    "simple_desc": "丢弃时选择一张卷轴",
+    "simple_desc_tiered": "丢弃时选择一张卷轴"
   }
 ]
