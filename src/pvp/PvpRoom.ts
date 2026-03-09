@@ -4,10 +4,9 @@
 // Hub-and-spoke：所有消息经房主中继
 // ============================================================
 
-import type { DataConnection } from 'peerjs'
-import { PeerConnection } from '@/pvp/PeerConnection'
+import { WsConnection, type VirtualDataConnection } from '@/pvp/WsConnection'
 import type { PvpPlayer, PvpMsgToClient, PvpMsgToHost, PvpMode } from '@/pvp/PvpTypes'
-import { getOpponentIndex, getOpponentFromAlive } from '@/pvp/PvpTypes'
+import { getOpponentFromAlive } from '@/pvp/PvpTypes'
 import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 import { getConfig } from '@/core/DataLoader'
 
@@ -16,13 +15,13 @@ const DEFAULT_COUNTDOWN_MS = 90_000
 export type RoomRole = 'host' | 'client'
 
 export class PvpRoom {
-  private peerConn = new PeerConnection()
+  private peerConn = new WsConnection()
   private role: RoomRole = 'client'
 
-  // Host only: map from peerId → DataConnection
-  private hostConns = new Map<string, DataConnection>()
+  // Host only: map from peerId → VirtualDataConnection
+  private hostConns = new Map<string, VirtualDataConnection>()
   // Client only: connection to host
-  private clientConn: DataConnection | null = null
+  private clientConn: VirtualDataConnection | null = null
 
   // Shared state
   private _players: PvpPlayer[] = []
@@ -119,7 +118,7 @@ export class PvpRoom {
   // ----------------------------------------------------------------
   // 房主：处理新连接
   // ----------------------------------------------------------------
-  private handleIncomingConnection(conn: DataConnection): void {
+  private handleIncomingConnection(conn: VirtualDataConnection): void {
     conn.on('open', () => {
       this.hostConns.set(conn.peer, conn)
       conn.on('data', (raw) => this.handleHostReceive(conn.peer, raw as PvpMsgToHost))
