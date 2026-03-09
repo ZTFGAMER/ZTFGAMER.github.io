@@ -4990,7 +4990,7 @@ const NEUTRAL_RANDOM_CAP_BY_DAY: Record<NeutralSpecialKind, number[]> = {
   class_shift_stone: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
   class_morph_stone: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
   skill_scroll: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
-  shop_scroll: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
+  shop_scroll: [0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7],
   event_scroll: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
   raw_stone: [0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6],
   medal: [0, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
@@ -5003,7 +5003,7 @@ const NEUTRAL_DAILY_ROLL_CAP_BY_DAY: number[] = [
 ]
 
 type NeutralRandomCategory = 'stone' | 'scroll' | 'medal'
-const NEUTRAL_RANDOM_RATIO_BUCKET_TEMPLATE: NeutralRandomCategory[] = ['stone', 'scroll', 'scroll', 'medal']
+const NEUTRAL_RANDOM_RATIO_BUCKET_TEMPLATE: NeutralRandomCategory[] = ['stone', 'stone', 'scroll', 'scroll', 'medal']
 
 function refillNeutralRandomCategoryPool(): void {
   neutralRandomCategoryPool = [...NEUTRAL_RANDOM_RATIO_BUCKET_TEMPLATE]
@@ -5376,7 +5376,7 @@ function showMedalArchetypeChoiceOverlay(stage: Container): boolean {
       const roll = pickMedalArchetypeItem(choice.archetype)
       if (!roll) {
         const baseMax = getMaxQuickBuyLevelForDay(currentDay)
-        const targetLevel = Math.min(7, baseMax + 1)
+        const targetLevel = Math.min(7, baseMax + 2)
         showHintToast('no_gold_buy', `勋章：该职业无Lv${targetLevel}可用物品`, 0xffb27a)
         closeOverlay()
         return
@@ -5923,7 +5923,7 @@ function pickArchetypeItemAtLevel(archetype: EventArchetype, level: 1 | 2 | 3 | 
 
 function pickMedalArchetypeItem(archetype: EventArchetype): PoolCandidate | null {
   const baseMax = getMaxQuickBuyLevelForDay(currentDay)
-  const targetLevel = Math.min(7, baseMax + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const targetLevel = Math.min(7, baseMax + 2) as 1 | 2 | 3 | 4 | 5 | 6 | 7
   return pickArchetypeItemAtLevel(archetype, targetLevel)
 }
 
