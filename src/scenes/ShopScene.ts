@@ -9799,6 +9799,8 @@ export const ShopScene: Scene = {
       // PVP 模式：提交快照给对手，等待对方快照，不走本地过渡动画
       if (PvpContext.isActive()) {
         PvpContext.onPlayerReady()
+        phaseBtnHandle?.setLabel('等待...')
+        phaseBtnHandle?.redraw(true)
         return
       }
       beginBattleStartTransition()
@@ -10240,5 +10242,17 @@ export const ShopScene: Scene = {
 
   update(dt: number) {
     tickBattleStartTransition(dt)
+    // PVP 倒计时：实时更新 Day 标签旁的秒数
+    if (PvpContext.isActive() && dayDebugText) {
+      const remain = PvpContext.getCountdownRemainMs()
+      const secs = Math.ceil(remain / 1000)
+      const next = remain > 0 ? `Day ${currentDay} · ${secs}s` : `Day ${currentDay}`
+      if (dayDebugText.text !== next) {
+        dayDebugText.text = next
+        layoutDayDebugControls()
+      }
+      const color = remain <= 0 ? 0xcccccc : remain < 30000 ? 0xff6b6b : 0xffd86b
+      if (dayDebugText.style.fill !== color) dayDebugText.style.fill = color
+    }
   },
 }

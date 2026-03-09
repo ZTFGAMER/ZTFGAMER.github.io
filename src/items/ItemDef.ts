@@ -287,6 +287,12 @@ export interface GameConfig {
     synthTitle:       number
     synthName:        number
   }
+  pvpRules?: {
+    initialHp: number
+    maxRounds: number
+    baseDamage: number
+    tierDamageWeights: { Bronze: number; Silver: number; Gold: number; Diamond: number }
+  }
   combatRuntime: {
     tickMs: number
     fatigueStartMs: number

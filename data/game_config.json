@@ -1647,5 +1647,17 @@
       "crossIdSynthesisSameArchetypeChance": 0
     },
     "note": "弹药支持物品需先拥有弹药系物品；Day1 初始第3件与前两件职业一致"
+  },
+  {
+    "id": 17,
+    "name": "pvp_rules",
+    "desc": "PVP 对战规则参数",
+    "desc_en": "PVP battle rule parameters",
+    "value": {
+      "initialHp": 6,
+      "maxRounds": 30,
+      "baseDamage": 1,
+      "tierDamageWeights": { "Bronze": 1, "Silver": 2, "Gold": 3, "Diamond": 4 }
+    }
   }
 ]

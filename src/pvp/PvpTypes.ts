@@ -4,6 +4,8 @@
 
 import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 
+export type PvpMode = 'async' | 'sync-a'
+
 export interface PvpPlayer {
   peerId: string
   nickname: string
@@ -20,7 +22,10 @@ export interface PvpSession {
   currentDay: number
   wins: number                // my win count
   dayResults: Record<number, 'player' | 'enemy' | 'draw'>
+  pvpMode: PvpMode
   rankings?: { nickname: string; wins: number | null; index: number }[]  // filled after game_over
+  playerHps: Record<number, number>       // playerIndex → current HP
+  eliminatedPlayers: number[]             // playerIndices eliminated (HP ≤ 0)
 }
 
 /**
@@ -34,10 +39,13 @@ export function calcTotalDays(totalPlayers: number): number {
   return Math.max(1, totalPlayers - 1) * 3
 }
 
+
 export type PvpMsgToHost =
   | { type: 'join'; nickname: string }
   | { type: 'snapshot_ready'; day: number; snapshot: BattleSnapshotBundle }
   | { type: 'wins_report'; wins: number }
+  | { type: 'battle_sync_ready'; day: number }
+  | { type: 'round_result'; day: number; winner: 'player' | 'enemy' | 'draw'; survivingDamage: number }
 
 export type PvpMsgToClient =
   | { type: 'room_state'; players: Omit<PvpPlayer, 'peerId'>[]; maxPlayers: number }
@@ -46,6 +54,8 @@ export type PvpMsgToClient =
   | { type: 'player_status'; day: number; readyIndices: number[] }
   | { type: 'opponent_snapshot'; day: number; snapshot: BattleSnapshotBundle }
   | { type: 'game_over'; rankings: { nickname: string; wins: number | null; index: number }[] }
+  | { type: 'battle_sync_start'; day: number }
+  | { type: 'round_summary'; day: number; hpMap: Record<number, number>; newlyEliminated: number[] }
 
 export type PvpMsg = PvpMsgToHost | PvpMsgToClient
 

@@ -53,6 +53,7 @@ function extractConfig(entries: ConfigEntry[]): GameConfig {
     shopRules:          getOptional<GameConfig['shopRules']>('shop_rules'),
     textSizes:          get<GameConfig['textSizes']>('text_sizes'),
     combatRuntime:      get<GameConfig['combatRuntime']>('combat_runtime'),
+    pvpRules:           getOptional<GameConfig['pvpRules']>('pvp_rules'),
   }
 }
 

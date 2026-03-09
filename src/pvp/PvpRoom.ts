@@ -6,10 +6,11 @@
 
 import type { DataConnection } from 'peerjs'
 import { PeerConnection } from '@/pvp/PeerConnection'
-import type { PvpPlayer, PvpMsgToClient, PvpMsgToHost } from '@/pvp/PvpTypes'
+import type { PvpPlayer, PvpMsgToClient, PvpMsgToHost, PvpMode } from '@/pvp/PvpTypes'
 import { getOpponentIndex } from '@/pvp/PvpTypes'
 import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 import { generateAiSnapshot } from '@/pvp/AiSnapshot'
+import { getConfig } from '@/core/DataLoader'
 
 const DEFAULT_COUNTDOWN_MS = 90_000
 
@@ -43,6 +44,17 @@ export class PvpRoom {
   private playerWins = new Map<number, number>()
   private gameOverBroadcast = false
 
+  // HP / elimination system (host only)
+  private playerHps = new Map<number, number>()
+  private eliminatedSet = new Set<number>()
+  private ghostSnapshots: BattleSnapshotBundle[] = []
+  private roundResultsByDay = new Map<number, Map<number, { winner: 'player' | 'enemy' | 'draw'; survivingDamage: number }>>()
+
+  pvpMode: PvpMode = 'async'
+  // Mode A: sync-ready tracking per day
+  private daySyncReadyPlayers = new Map<number, Set<number>>() // day → set of playerIndex
+  onBattleSyncStart?: (day: number) => void
+
   // ---------- Callbacks (set by PvpContext / PvpLobbyScene) ----------
   onRoomStateChange?: (players: PvpPlayer[]) => void
   onGameStart?: (myIndex: number, totalPlayers: number) => void
@@ -51,6 +63,7 @@ export class PvpRoom {
   onOpponentSnapshot?: (day: number, snapshot: BattleSnapshotBundle) => void
   onGameOver?: (rankings: { nickname: string; wins: number | null; index: number }[]) => void
   onError?: (msg: string) => void
+  onRoundSummary?: (day: number, hpMap: Record<number, number>, newlyEliminated: number[]) => void
 
   get players(): PvpPlayer[] { return this._players }
   get myIndex(): number { return this._myIndex }
@@ -177,6 +190,23 @@ export class PvpRoom {
         console.log('[PvpRoom] 收到胜场上报 player[' + player.index + '] ' + player.nickname + ' wins=' + msg.wins)
         this.hostTryBroadcastGameOver()
       }
+    } else if (msg.type === 'battle_sync_ready') {
+      const player = this._players.find((p) => p.peerId === peerId)
+      if (!player) return
+      const day = msg.day
+      if (!this.daySyncReadyPlayers.has(day)) this.daySyncReadyPlayers.set(day, new Set())
+      this.daySyncReadyPlayers.get(day)!.add(player.index)
+      const humanPlayers = this._players.filter((p) => !p.isAi)
+      if (humanPlayers.every((p) => this.daySyncReadyPlayers.get(day)?.has(p.index))) {
+        console.log('[PvpRoom] 所有玩家 sync-ready，广播 battle_sync_start day=' + day)
+        this.broadcastToClients({ type: 'battle_sync_start', day })
+        this.onBattleSyncStart?.(day)
+      }
+    } else if (msg.type === 'round_result') {
+      const player = this._players.find((p) => p.peerId === peerId)
+      if (player) {
+        this.hostReceiveRoundResult(player.index, msg.day, msg.winner, msg.survivingDamage)
+      }
     }
   }
 
@@ -218,6 +248,12 @@ export class PvpRoom {
       case 'game_over':
         this.onGameOver?.(msg.rankings)
         break
+      case 'battle_sync_start':
+        this.onBattleSyncStart?.(msg.day)
+        break
+      case 'round_summary':
+        this.onRoundSummary?.(msg.day, msg.hpMap, msg.newlyEliminated)
+        break
     }
   }
 
@@ -242,6 +278,10 @@ export class PvpRoom {
       }
     }
     this._totalPlayers = this._maxPlayers
+
+    // Initialize HP for all players
+    const initHp = getConfig().pvpRules?.initialHp ?? 6
+    this._players.forEach((p) => this.playerHps.set(p.index, initHp))
 
     // 先广播含 AI 的完整房间状态，让客户端 session.players 包含 AI 信息
     // （客户端收到 room_state 后更新 _players，之后收到 game_start 时 session.players 已完整）
@@ -371,9 +411,10 @@ export class PvpRoom {
     for (const player of this._players) {
       if (player.index === 0 || player.isAi) continue
       const opponentIdx = getOpponentIndex(player.index, this._totalPlayers, day - 1)
-      const opponentSnap = opponentIdx >= 0
-        ? (map.get(opponentIdx) ?? generateAiSnapshot(day))
-        : generateAiSnapshot(day)
+      const isOpponentEliminated = opponentIdx >= 0 && this.eliminatedSet.has(opponentIdx)
+      const opponentSnap = opponentIdx < 0 || isOpponentEliminated
+        ? this.getGhostOrAi(day)
+        : (map.get(opponentIdx) ?? generateAiSnapshot(day))
       console.log('[PvpRoom] 分发→client player[' + player.index + '] ' + player.nickname + ' vs opponent[' + opponentIdx + '] entities=' + opponentSnap.entities.length)
       dayOpponentSnaps.set(player.index, opponentSnap)
       this.sendToPlayer(player.index, { type: 'opponent_snapshot', day, snapshot: opponentSnap })
@@ -381,9 +422,10 @@ export class PvpRoom {
 
     // 第二步：最后触发房主自身（放最后，防止同步场景跳转影响上方发送循环）
     const hostOpponentIdx = getOpponentIndex(0, this._totalPlayers, day - 1)
-    const hostOpponentSnap = hostOpponentIdx >= 0
-      ? (map.get(hostOpponentIdx) ?? generateAiSnapshot(day))
-      : generateAiSnapshot(day)
+    const isHostOpponentEliminated = hostOpponentIdx >= 0 && this.eliminatedSet.has(hostOpponentIdx)
+    const hostOpponentSnap = hostOpponentIdx < 0 || isHostOpponentEliminated
+      ? this.getGhostOrAi(day)
+      : (map.get(hostOpponentIdx) ?? generateAiSnapshot(day))
     console.log('[PvpRoom] 分发→host vs opponent[' + hostOpponentIdx + '] entities=' + hostOpponentSnap.entities.length)
     this.onOpponentSnapshot?.(day, hostOpponentSnap)
 
@@ -493,6 +535,109 @@ export class PvpRoom {
       isAi: p.isAi,
     }))
     this.broadcastToClients({ type: 'room_state', players: state, maxPlayers: this._maxPlayers })
+  }
+
+  /** Mode A: client/host signals ready for sync battle */
+  notifySyncReady(day: number): void {
+    if (this.isHost) {
+      if (!this.daySyncReadyPlayers.has(day)) this.daySyncReadyPlayers.set(day, new Set())
+      this.daySyncReadyPlayers.get(day)!.add(0)
+      const humanPlayers = this._players.filter((p) => !p.isAi)
+      if (humanPlayers.every((p) => this.daySyncReadyPlayers.get(day)?.has(p.index))) {
+        console.log('[PvpRoom] 所有玩家 sync-ready（host路径），广播 battle_sync_start day=' + day)
+        this.broadcastToClients({ type: 'battle_sync_start', day })
+        this.onBattleSyncStart?.(day)
+      }
+    } else {
+      this.sendToHost({ type: 'battle_sync_ready', day })
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // HP / elimination system
+  // ----------------------------------------------------------------
+
+  /** Returns a ghost snapshot (last known eliminated player snapshot) or AI fallback */
+  private getGhostOrAi(day: number): BattleSnapshotBundle {
+    if (this.ghostSnapshots.length > 0) {
+      return this.ghostSnapshots[Math.floor(Math.random() * this.ghostSnapshots.length)]!
+    }
+    return generateAiSnapshot(day)
+  }
+
+  /** Called at end of each round to report result (winner + survivingDamage) */
+  reportRoundResult(day: number, winner: 'player' | 'enemy' | 'draw', survivingDamage: number): void {
+    if (this.isHost) {
+      this.hostReceiveRoundResult(0, day, winner, survivingDamage)
+    } else {
+      this.sendToHost({ type: 'round_result', day, winner, survivingDamage })
+    }
+  }
+
+  private hostReceiveRoundResult(playerIndex: number, day: number, winner: 'player' | 'enemy' | 'draw', survivingDamage: number): void {
+    if (!this.isHost) return
+    if (!this.roundResultsByDay.has(day)) this.roundResultsByDay.set(day, new Map())
+    this.roundResultsByDay.get(day)!.set(playerIndex, { winner, survivingDamage })
+    console.log('[PvpRoom] round_result day=' + day + ' player[' + playerIndex + '] winner=' + winner + ' dmg=' + survivingDamage)
+
+    // Check if all alive players have reported
+    // 只等待存活的真人玩家上报（AI 玩家没有连接，永远不会上报）
+    const humanAlivePlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
+    const allReported = humanAlivePlayers.every((p) => this.roundResultsByDay.get(day)?.has(p.index))
+    if (allReported) {
+      this.hostProcessRoundEnd(day)
+    }
+  }
+
+  private hostProcessRoundEnd(day: number): void {
+    const results = this.roundResultsByDay.get(day)
+    if (!results) return
+    const hpMap: Record<number, number> = {}
+    const newlyEliminated: number[] = []
+
+    // 只处理存活的真人玩家 HP（AI 玩家不参与 HP 计算）
+    const alivePlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
+    for (const player of alivePlayers) {
+      const opponentIdx = getOpponentIndex(player.index, this._totalPlayers, day - 1)
+      const myResult = results.get(player.index)
+      const lost = myResult?.winner === 'enemy'
+      if (lost) {
+        // Opponent's survivingDamage is what the opponent reported as winner
+        const opponentResult = opponentIdx >= 0 ? results.get(opponentIdx) : undefined
+        const damage = opponentResult?.survivingDamage ?? (getConfig().pvpRules?.baseDamage ?? 1)
+        const currentHp = this.playerHps.get(player.index) ?? 0
+        const newHp = Math.max(0, currentHp - damage)
+        this.playerHps.set(player.index, newHp)
+      }
+      hpMap[player.index] = this.playerHps.get(player.index) ?? 0
+    }
+
+    // Check for new eliminations
+    for (const player of alivePlayers) {
+      if ((this.playerHps.get(player.index) ?? 0) <= 0) {
+        this.eliminatedSet.add(player.index)
+        newlyEliminated.push(player.index)
+        // Cache ghost snapshot from this day's snapshots
+        const lastSnap = this.daySnapshots.get(day)?.get(player.index)
+        if (lastSnap) this.ghostSnapshots.push(lastSnap)
+        console.log('[PvpRoom] player[' + player.index + '] eliminated at day=' + day)
+      }
+    }
+
+    console.log('[PvpRoom] hostProcessRoundEnd day=' + day + ' hpMap=' + JSON.stringify(hpMap) + ' newlyEliminated=' + JSON.stringify(newlyEliminated))
+    this.broadcastToClients({ type: 'round_summary', day, hpMap, newlyEliminated })
+    this.onRoundSummary?.(day, hpMap, newlyEliminated)
+
+    // Check game over
+    const cfg = getConfig()
+    const maxRounds = cfg.pvpRules?.maxRounds ?? 30
+    // 只统计存活的真人玩家数量（AI 不计入胜负）
+    const survivorCount = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index)).length
+    if (survivorCount <= 1 || day >= maxRounds) {
+      // Use HP as win score for rankings
+      this._players.forEach((p) => this.playerWins.set(p.index, this.playerHps.get(p.index) ?? 0))
+      this.hostTryBroadcastGameOver()
+    }
   }
 
   // ----------------------------------------------------------------

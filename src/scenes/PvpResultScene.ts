@@ -46,19 +46,6 @@ function makeBtn(label: string, color: number, borderColor: number, onClick: () 
   return con
 }
 
-function drawWinDots(g: Graphics, x: number, y: number, wins: number, max: number, color: number): void {
-  const dotR = 7, gap = 18
-  const totalW = max * (dotR * 2 + gap) - gap
-  const startX = x - totalW / 2
-  for (let i = 0; i < max; i++) {
-    const cx = startX + i * (dotR * 2 + gap) + dotR
-    if (i < wins) {
-      g.circle(cx, y, dotR).fill({ color })
-    } else {
-      g.circle(cx, y, dotR).fill({ color: 0x334466 })
-    }
-  }
-}
 
 function buildContent(): void {
   if (!root) return
@@ -107,10 +94,10 @@ function buildContent(): void {
         })
       })
     } else {
-      // 排名尚未到达：自己数据准确，其他人显示"结算中"
+      // 排名尚未到达：自己 HP 准确，其他人显示"结算中"
       entries.push({
         nickname: session.players.find((p) => p.index === session.myIndex)?.nickname ?? '我',
-        wins: session.wins,
+        wins: session.playerHps?.[session.myIndex] ?? 0,   // 用 HP 而非胜场数
         isMe: true,
         winsKnown: true,
       })
@@ -127,7 +114,6 @@ function buildContent(): void {
     }
   }
 
-  const totalDays = session ? session.totalDays : 9
   const listStartY = 210
 
   entries.forEach((entry, i) => {
@@ -170,16 +156,16 @@ function buildContent(): void {
     nameT.y = i === 0 ? 10 : 8
     rowCon.addChild(nameT)
 
-    const winsLabel = entry.wins === null ? '断线' : entry.winsKnown ? `${entry.wins}胜` : '结算中...'
-    // 颜色阈值按总天数等比缩放：绿色 ≥ 67%，黄色 ≥ 33%
-    const greenThreshold = Math.round(totalDays * 2 / 3)
-    const yellowThreshold = Math.round(totalDays / 3)
+    // HP display: entry.wins now stores HP (set by hostProcessRoundEnd)
+    const isEliminated = entry.wins !== null && entry.winsKnown && entry.wins <= 0
+    const winsLabel = entry.wins === null ? '断线' : entry.winsKnown ? (isEliminated ? '已淘汰' : `${entry.wins} HP`) : '结算中...'
+    // HP color thresholds: green ≥ 4, yellow ≥ 2, gray otherwise
     const wins = entry.wins ?? 0
     const winsColor = entry.wins === null
       ? 0x556677
       : !entry.winsKnown
         ? 0x778899
-        : (wins >= greenThreshold ? 0x7fff7f : (wins >= yellowThreshold ? 0xffd86b : 0xaabbcc))
+        : (isEliminated ? 0x886655 : (wins >= 4 ? 0x7fff7f : (wins >= 2 ? 0xffd86b : 0xaabbcc)))
     const winsT = new Text({
       text: winsLabel,
       style: { fill: winsColor, fontSize: i === 0 ? 36 : 28, fontWeight: 'bold' },
@@ -189,20 +175,14 @@ function buildContent(): void {
     winsT.y = 0
     rowCon.addChild(winsT)
 
-    if (entry.isMe && entry.winsKnown && entry.wins !== null) {
-      const dotG = new Graphics()
-      drawWinDots(dotG, 0, i === 0 ? 40 : 32, entry.wins, totalDays, RANK_COLORS[i] ?? 0x5588cc)
-      rowCon.addChild(dotG)
-    }
+    // HP dots removed: showing numeric HP value instead
 
     root!.addChild(rowCon)
   })
 
   // ── 总结 ──────────────────────────────────────────────
   if (session) {
-    const myWins = session.wins
-    const myDraws = Object.values(session.dayResults).filter((r) => r === 'draw').length
-    const myLosses = Object.values(session.dayResults).filter((r) => r === 'enemy').length
+    const myHpVal = session.playerHps?.[session.myIndex] ?? session.wins
     const myRank = entries.findIndex((e) => e.isMe) + 1
 
     const summaryY = listStartY + 155 + (entries.length - 1) * 128 + 80
@@ -211,9 +191,8 @@ function buildContent(): void {
     summaryBg.roundRect(CANVAS_W / 2 - 240, summaryY - 36, 480, 72, 14).fill({ color: 0x1a2035 })
     root.addChild(summaryBg)
 
-    const drawPart = myDraws > 0 ? ` ${myDraws} 平` : ''
     const summaryT = new Text({
-      text: `本局  ${myWins} 胜${drawPart} ${myLosses} 败  ·  第 ${myRank} 名`,
+      text: `HP剩余 ${myHpVal}  ·  第 ${myRank} 名`,
       style: { fill: 0x99bbdd, fontSize: 24, align: 'center' },
     })
     summaryT.anchor.set(0.5, 0.5)

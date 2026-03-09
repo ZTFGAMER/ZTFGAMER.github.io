@@ -98,6 +98,8 @@ let playerHeroIdleElapsedMs = 0
 let enemyPresentationVisible = true
 let battleSpeed = 1
 let battleDay = 1
+// PVP sync mode state
+let syncAStarted = false        // Mode A: true after sync_start received
 let enteredSnapshot: ReturnType<typeof getBattleSnapshot> = null
 let battleIntroElapsedMs = 0
 let battleIntroDurationMs = 0
@@ -1888,7 +1890,7 @@ function resolveBattleSettlement(): void {
   const winStreakBefore = getPlayerWinStreakState().count
   // PVP 模式：记录胜负，不修改 PVE 生命/奖杯
   if (PvpContext.isActive()) {
-    PvpContext.recordBattleResult(winner)
+    PvpContext.recordBattleResult(winner, engine?.getResult()?.survivingDamage ?? 1)
   }
   const after = (!PvpContext.isActive() && winner === 'enemy') ? deductLife() : before
   const trophyAfter = (!PvpContext.isActive() && winner === 'player') ? addWinTrophy(trophyTarget) : trophyBefore
@@ -1920,12 +1922,20 @@ function resolveBattleSettlement(): void {
 
   if (PvpContext.isActive()) {
     const pvpSession = PvpContext.getSession()
+    const myHp = pvpSession?.playerHps?.[pvpSession?.myIndex ?? -1] ?? 6
+    const damage = winner === 'enemy' ? (result?.survivingDamage ?? 1) : 0
+    const hpAfter = Math.max(0, myHp - damage)
     settlementLifeText.text = '⚔️ PVP 对战'
     settlementLifeText.style.fill = 0x99bbdd
-    const pvpWins = pvpSession?.wins ?? 0
-    const pvpTotal = pvpSession?.totalDays ?? 0
-    settlementTrophyText.text = `🏆 胜场：${pvpWins} / ${pvpTotal}`
-    settlementTrophyText.style.fill = 0xffe8b4
+    if (damage > 0) {
+      settlementTrophyText.text = hpAfter <= 0
+        ? `❤️ ${myHp} → 0  已淘汰`
+        : `❤️ ${myHp} → ${hpAfter}  (-${damage})`
+      settlementTrophyText.style.fill = hpAfter <= 0 ? 0xff4444 : 0xff9999
+    } else {
+      settlementTrophyText.text = `❤️ ${myHp} HP`
+      settlementTrophyText.style.fill = 0x7fff7f
+    }
   } else {
     settlementLifeText.text = delta < 0
       ? `❤️ ${before.current}/${before.max} -> ${after.current}/${after.max} (-1)`
@@ -2612,6 +2622,18 @@ export const BattleScene: Scene = {
     refreshEnemySkillIconBar(true)
     console.log(`[BattleScene] 进入战斗场景 day=${snapshot.day} entities=${snapshot.entities.length} cols=${snapshot.activeColCount}`)
 
+    // PVP sync mode setup
+    const pvpMode = PvpContext.getPvpMode()
+    syncAStarted = pvpMode !== 'sync-a'  // false only for sync-a; true for all others (allows engine.update)
+
+    if (pvpMode === 'sync-a') {
+      // Notify PvpContext we're ready; start battle when all players are ready
+      PvpContext.notifyBattleSyncReady(battleDay, () => {
+        syncAStarted = true
+        battleIntroElapsedMs = 0  // reset intro so it starts fresh
+      })
+    }
+
     const board = engine.getBoardState()
     bootstrapBattleStatEntriesFromBoard()
     await mountZoneItems(playerZone, board.items.filter((it) => it.side === 'player'))
@@ -2916,6 +2938,8 @@ export const BattleScene: Scene = {
     damageStatsPanelVisible = false
     damageStatsDirty = false
     damageStatsLastRenderAtMs = 0
+    // PVP sync cleanup
+    syncAStarted = false
     engine = null
     console.log('[BattleScene] 离开战斗场景')
   },
@@ -2928,7 +2952,9 @@ export const BattleScene: Scene = {
     battlePresentationMs += dtMs
     skillBarIntroElapsedMs = Math.min(SKILL_BAR_INTRO_DURATION_MS, skillBarIntroElapsedMs + dtMs)
     const introDone = tickBattleIntro(simDt * 1000)
-    if (introDone) engine.update(simDt)
+    if (introDone && syncAStarted) {
+      engine.update(simDt)
+    }
     const pendingDamageImpactFx = hasPendingDamageImpactPresentation()
     enemyPresentationVisible = !engine.isFinished() || pendingDamageImpactFx
     enemyZone.visible = enemyPresentationVisible

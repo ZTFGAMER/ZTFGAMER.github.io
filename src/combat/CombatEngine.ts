@@ -14,6 +14,7 @@ export type CombatPhase = 'IDLE' | 'INIT' | 'SETUP' | 'TICK' | 'RESOLVE' | 'END'
 export interface CombatResult {
   winner: 'player' | 'enemy' | 'draw'
   ticks: number
+  survivingDamage: number  // 1 + tier-weight sum of winner's surviving items
 }
 
 interface HeroState {
@@ -3248,6 +3249,21 @@ export class CombatEngine {
     return this.playerHero.hp <= 0 || this.enemyHero.hp <= 0
   }
 
+  private computeSurvivingDamage(winnerSide: 'player' | 'enemy'): number {
+    const cfg = getConfig()
+    const weights = cfg.pvpRules?.tierDamageWeights ?? { Bronze: 1, Silver: 2, Gold: 3, Diamond: 4 }
+    const base = cfg.pvpRules?.baseDamage ?? 1
+    const survivingItems = this.items.filter((it) => it.side === winnerSide)
+    const bonus = survivingItems.reduce((sum, it) => {
+      const tier = it.tier
+      if (tier.startsWith('Diamond')) return sum + (weights.Diamond ?? 4)
+      if (tier.startsWith('Gold')) return sum + (weights.Gold ?? 3)
+      if (tier.startsWith('Silver')) return sum + (weights.Silver ?? 2)
+      return sum + (weights.Bronze ?? 1)
+    }, 0)
+    return base + bonus
+  }
+
   private finishCombat(): void {
     if (this.finished) return
     this.finished = true
@@ -3255,7 +3271,10 @@ export class CombatEngine {
     let winner: 'player' | 'enemy' | 'draw' = 'draw'
     if (this.playerHero.hp > 0 && this.enemyHero.hp <= 0) winner = 'player'
     if (this.enemyHero.hp > 0 && this.playerHero.hp <= 0) winner = 'enemy'
-    this.result = { winner, ticks: this.tickIndex }
+    const survivingDamage = winner === 'draw' ? 0
+      : winner === 'player' ? this.computeSurvivingDamage('player')
+      : this.computeSurvivingDamage('enemy')
+    this.result = { winner, ticks: this.tickIndex, survivingDamage }
     EventBus.emit('battle:end', {
       winner,
       blameLog: [

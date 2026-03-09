@@ -11,7 +11,7 @@ import { Container, Graphics, Text } from 'pixi.js'
 import { PvpRoom } from '@/pvp/PvpRoom'
 import { PvpContext } from '@/pvp/PvpContext'
 import { generateRoomCode } from '@/pvp/PeerConnection'
-import type { PvpSession, PvpPlayer } from '@/pvp/PvpTypes'
+import type { PvpSession, PvpPlayer, PvpMode } from '@/pvp/PvpTypes'
 import { calcTotalDays } from '@/pvp/PvpTypes'
 
 const CANVAS_W = 640
@@ -29,6 +29,8 @@ let maxPlayers = 4
 let playerListTexts: Text[] = []
 let statusText: Text | null = null
 let activeInput: PixiInputHandle | null = null
+let selectedMode: PvpMode = 'async'
+let modePreSelected = false  // 从主菜单直接带入模式时为 true，跳过模式选择页
 
 // ----------------------------------------------------------------
 // PixiJS 原生输入控件
@@ -257,7 +259,7 @@ function setStatus(msg: string): void {
 function drawNicknameView(): void {
   clearRoot()
   drawPageBg()
-  drawPageTitle('联机对战', '与全球玩家实时对战')
+  drawPageTitle(modePreSelected ? pvpModeLabel(selectedMode) : 'PVP 联机对战', modePreSelected ? '设置昵称后即可匹配' : '选择对战模式')
 
   if (!root) return
 
@@ -289,7 +291,7 @@ function drawNicknameView(): void {
   // PixiJS 原生输入框（designCx=320, designCy=cardConY+30=CANVAS_H/2-60+30）
   const inp = createPixiInput('输入昵称（最多8字）', 8, (val) => {
     myNickname = val
-    drawMainView()
+    modePreSelected ? drawMainView() : drawModeSelectView()
   }, CANVAS_W / 2, CANVAS_H / 2 - 30, 400)
   inp.container.x = 0
   inp.container.y = 30
@@ -299,7 +301,7 @@ function drawNicknameView(): void {
   // 确认按钮
   const confirmBtn = makeBtn('确认', 280, 0x163a22, 0x4caf50, () => {
     const val = inp.getValue().trim()
-    if (val) { myNickname = val; drawMainView() }
+    if (val) { myNickname = val; modePreSelected ? drawMainView() : drawModeSelectView() }
   })
   confirmBtn.x = 0
   confirmBtn.y = 140
@@ -388,12 +390,80 @@ function drawJoinRoomView(): void {
 }
 
 // ----------------------------------------------------------------
+// 模式选择视图
+// ----------------------------------------------------------------
+function drawModeSelectView(): void {
+  clearRoot()
+  drawPageBg()
+  drawPageTitle('选择对战模式', `昵称：${myNickname}`)
+
+  if (!root) return
+
+  const modes: { mode: PvpMode; label: string; sub: string; color: number; border: number }[] = [
+    { mode: 'async',  label: '巴扎异步对战', sub: '经典模式·双方独立结算', color: 0x12213a, border: 0x5b8def },
+    { mode: 'sync-a', label: '即时同步对战', sub: '双端同步启动·确定性模拟', color: 0x1a2a12, border: 0x4caf50 },
+  ]
+
+  modes.forEach((m, i) => {
+    const y = 360 + i * 148
+    const active = m.mode === selectedMode
+    const con = new Container()
+    con.x = CANVAS_W / 2
+    con.y = y
+
+    const bg = new Graphics()
+    if (active) bg.roundRect(-250, -58, 500, 116, 18).fill({ color: m.border, alpha: 0.18 })
+    bg.roundRect(-248, -56, 496, 112, 16).fill({ color: m.color })
+    bg.roundRect(-248, -56, 496, 112, 16).stroke({ color: active ? m.border : 0x2a3a5c, width: active ? 2.5 : 1.5 })
+    con.addChild(bg)
+
+    const label = makeText(m.label, 30, active ? 0xffd86b : 0xddeeff, true)
+    label.anchor.set(0.5, 0.5)
+    label.y = -14
+    con.addChild(label)
+
+    const subT = makeText(m.sub, 18, active ? 0xaaccee : 0x445566)
+    subT.anchor.set(0.5, 0.5)
+    subT.y = 24
+    con.addChild(subT)
+
+    if (active) {
+      const checkT = makeText('✓', 26, m.border, true)
+      checkT.anchor.set(1, 0.5)
+      checkT.x = 226
+      checkT.y = 0
+      con.addChild(checkT)
+    }
+
+    con.eventMode = 'static'
+    con.cursor = 'pointer'
+    con.on('pointerdown', () => { selectedMode = m.mode; drawModeSelectView() })
+    root!.addChild(con)
+  })
+
+  const confirmBtn = makeBtn('确认 →', PANEL_W - 60, 0x163a22, 0x4caf50, drawMainView)
+  confirmBtn.x = CANVAS_W / 2
+  confirmBtn.y = CANVAS_H - 240
+  root.addChild(confirmBtn)
+
+  const backBtn = makeBtn('← 返回修改昵称', 260, 0x1c1c2e, 0x334466, drawNicknameView)
+  backBtn.x = CANVAS_W / 2
+  backBtn.y = CANVAS_H - 140
+  root.addChild(backBtn)
+}
+
+function pvpModeLabel(mode: PvpMode): string {
+  if (mode === 'sync-a') return '即时同步对战'
+  return '巴扎异步对战'
+}
+
+// ----------------------------------------------------------------
 // 主操作视图
 // ----------------------------------------------------------------
 function drawMainView(): void {
   clearRoot()
   drawPageBg()
-  drawPageTitle('联机对战', '创建或加入一个房间')
+  drawPageTitle(pvpModeLabel(selectedMode), '创建或加入一个房间')
 
   if (!root) return
 
@@ -416,32 +486,48 @@ function drawMainView(): void {
   nameBarCon.addChild(changeT)
   root.addChild(nameBarCon)
 
+  // 当前模式标签 + 切换入口
+  const modeLabelCon = new Container()
+  modeLabelCon.x = CANVAS_W / 2
+  modeLabelCon.y = 268
+  const modeLabelG = new Graphics()
+  modeLabelG.roundRect(-200, -18, 400, 36, 8).fill({ color: 0x131828 })
+  modeLabelCon.addChild(modeLabelG)
+  const modeNameT = makeText(pvpModeLabel(selectedMode), 18, 0x7ab8ff)
+  modeNameT.anchor.set(0, 0.5)
+  modeNameT.x = -186
+  modeLabelCon.addChild(modeNameT)
+  const switchT = makeText('切换模式', 16, 0x5b8def)
+  switchT.anchor.set(1, 0.5)
+  switchT.x = 186
+  switchT.eventMode = 'static'
+  switchT.cursor = 'pointer'
+  switchT.on('pointerdown', () => { modePreSelected = false; drawModeSelectView() })
+  modeLabelCon.addChild(switchT)
+  root.addChild(modeLabelCon)
+
   // 人数选择
   const playerCountLabel = makeText('房间人数', 22, 0x6677aa)
   playerCountLabel.anchor.set(0.5)
   playerCountLabel.x = CANVAS_W / 2
-  playerCountLabel.y = 300
+  playerCountLabel.y = 326
   root.addChild(playerCountLabel);
 
-  [2, 3, 4].forEach((n, i) => {
+  [4, 8].forEach((n, i) => {
     const active = n === maxPlayers
     const con = new Container()
-    con.x = CANVAS_W / 2 + (i - 1) * 148
-    con.y = 362
+    con.x = CANVAS_W / 2 + (i - 0.5) * 148
+    con.y = 390
     const g = new Graphics()
     if (active) {
       g.roundRect(-58, -38, 116, 76, 15).fill({ color: 0x5b8def, alpha: 0.25 })
     }
     g.roundRect(-56, -36, 112, 72, 14).fill({ color: active ? 0x1a3a6e : 0x141824 })
     con.addChild(g)
-    const numT = new Text({ text: `${n}`, style: { fill: active ? 0x7ab8ff : 0x445566, fontSize: 32, fontWeight: 'bold' } })
+    const numT = new Text({ text: `${n}人`, style: { fill: active ? 0x7ab8ff : 0x445566, fontSize: 28, fontWeight: 'bold' } })
     numT.anchor.set(0.5, 0.5)
-    numT.y = -6
+    numT.y = 0
     con.addChild(numT)
-    const lblT = new Text({ text: '人', style: { fill: active ? 0x99bbdd : 0x334455, fontSize: 18 } })
-    lblT.anchor.set(0.5, 0.5)
-    lblT.y = 20
-    con.addChild(lblT)
     con.eventMode = 'static'
     con.cursor = 'pointer'
     con.on('pointerdown', () => { maxPlayers = n; drawMainView() })
@@ -449,31 +535,31 @@ function drawMainView(): void {
   })
 
   const divG = new Graphics()
-  divG.rect(CANVAS_W / 2 - 220, 438, 440, 1).fill({ color: 0x223355, alpha: 0.8 })
+  divG.rect(CANVAS_W / 2 - 220, 466, 440, 1).fill({ color: 0x223355, alpha: 0.8 })
   root.addChild(divG)
 
   // 创建房间
   const createLabel = makeText('成为房主，邀请好友加入', 20, 0x6677aa)
   createLabel.anchor.set(0.5)
   createLabel.x = CANVAS_W / 2
-  createLabel.y = 464
+  createLabel.y = 492
   root.addChild(createLabel)
 
   const createBtn = makeBtn('＋ 创建房间', PANEL_W - 60, 0x163a22, 0x4caf50, handleCreateRoom)
   createBtn.x = CANVAS_W / 2
-  createBtn.y = 538
+  createBtn.y = 566
   root.addChild(createBtn)
 
   // 加入房间
   const joinLabel = makeText('已有房间码？直接加入', 20, 0x6677aa)
   joinLabel.anchor.set(0.5)
   joinLabel.x = CANVAS_W / 2
-  joinLabel.y = 648
+  joinLabel.y = 676
   root.addChild(joinLabel)
 
   const joinBtn = makeBtn('输入房间码加入', PANEL_W - 60, 0x12213a, 0x5b8def, drawJoinRoomView)
   joinBtn.x = CANVAS_W / 2
-  joinBtn.y = 722
+  joinBtn.y = 750
   root.addChild(joinBtn)
 
   const backBtn = makeBtn('← 返回主菜单', 220, 0x1c1c2e, 0x334466, () => SceneManager.goto('menu'))
@@ -644,6 +730,7 @@ function refreshPlayerList(): void {
 async function handleCreateRoom(): Promise<void> {
   roomCode = generateRoomCode()
   pvpRoom = new PvpRoom()
+  pvpRoom.pvpMode = selectedMode
   pvpRoom.onRoomStateChange = () => { refreshPlayerList() }
   pvpRoom.onError = (msg) => { setStatus(`错误：${msg}`) }
   pvpRoom.onGameStart = (myIndex, totalPlayers) => {
@@ -651,6 +738,9 @@ async function handleCreateRoom(): Promise<void> {
       myIndex, totalPlayers, players: pvpRoom!.players,
       totalDays: calcTotalDays(totalPlayers),
       currentDay: 1, wins: 0, dayResults: {},
+      pvpMode: selectedMode,
+      playerHps: {},
+      eliminatedPlayers: [],
     }
     PvpContext.startSession(pvpRoom!, sess)
     SceneManager.goto('shop')
@@ -670,13 +760,17 @@ async function handleJoinRoom(code: string): Promise<void> {
   const upperCode = code.toUpperCase().trim()
   if (upperCode.length < 4) return
   pvpRoom = new PvpRoom()
-  pvpRoom.onRoomStateChange = () => { refreshPlayerList() }
+  pvpRoom.pvpMode = selectedMode
+  pvpRoom.onRoomStateChange = () => { drawClientWaitingView() }
   pvpRoom.onError = (msg) => { setStatus(`加入失败：${msg}`) }
   pvpRoom.onGameStart = (myIndex, totalPlayers) => {
     const sess: PvpSession = {
       myIndex, totalPlayers, players: pvpRoom!.players,
       totalDays: calcTotalDays(totalPlayers),
       currentDay: 1, wins: 0, dayResults: {},
+      pvpMode: selectedMode,
+      playerHps: {},
+      eliminatedPlayers: [],
     }
     PvpContext.startSession(pvpRoom!, sess)
     SceneManager.goto('shop')
@@ -699,6 +793,12 @@ function handleStartGame(): void {
 // ----------------------------------------------------------------
 // Scene 接口
 // ----------------------------------------------------------------
+/** 从主菜单预设模式后直接进入大厅（跳过模式选择页） */
+export function setPvpLobbyMode(mode: PvpMode): void {
+  selectedMode = mode
+  modePreSelected = true
+}
+
 export const PvpLobbyScene: Scene = {
   name: 'pvp-lobby',
 

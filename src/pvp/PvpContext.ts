@@ -3,31 +3,26 @@
 // 桥接 PvpRoom ↔ SceneManager ↔ ShopScene/BattleScene
 // ============================================================
 
-import { Container, Graphics, Text } from 'pixi.js'
-import { getApp } from '@/core/AppContext'
 import { SceneManager } from '@/scenes/SceneManager'
+import { getConfig } from '@/core/DataLoader'
 import { getBattleSnapshot, setBattleSnapshot } from '@/combat/BattleSnapshotStore'
 import { consumeBattleOutcome } from '@/combat/BattleOutcomeStore'
 import { SHOP_STATE_STORAGE_KEY } from '@/core/RunState'
 import { clearPvpShopState } from '@/scenes/ShopScene'
-import type { PvpSession, PvpPlayer } from '@/pvp/PvpTypes'
+import type { PvpSession } from '@/pvp/PvpTypes'
 import { getOpponentIndex } from '@/pvp/PvpTypes'
 import type { PvpRoom } from '@/pvp/PvpRoom'
 import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 
 const PVE_BACKUP_KEY = 'bigbazzar_pve_backup_v1'
-const CANVAS_W = 640
 
 // ShopScene 注册：倒计时结束时自动构建并提交快照
 let autoSubmitCallback: (() => void) | null = null
 
-// ---------- 覆盖层 UI 状态 ----------
-let overlayContainer: Container | null = null
-let overlayCountdownText: Text | null = null
-let overlayStatusTexts: Text[] = []
-let overlayTitleText: Text | null = null
-let countdownInterval: ReturnType<typeof setInterval> | null = null
-let countdownRemainMs = 0
+// ---------- 倒计时状态（ShopScene 通过 getCountdownRemainMs() 轮询显示） ----------
+let countdownTotalMs = 0
+let countdownStartMs = 0
+let countdownTimeoutId: ReturnType<typeof setTimeout> | null = null
 
 // ---------- 主状态 ----------
 let active = false
@@ -35,6 +30,13 @@ let session: PvpSession | null = null
 let room: PvpRoom | null = null
 // day_ready 在战斗途中到达时延迟显示覆盖层
 let pendingDayReadyAt = 0   // 非 0 表示有待展示的 day_ready，值为到达时间戳 ms
+
+// Mode A: sync-start pending
+let syncStartCallbacks = new Map<number, (() => void)>() // day → callback
+
+// HP system state
+let pendingSurvivingDamage = 0
+let pendingRoundWinner: 'player' | 'enemy' | 'draw' = 'draw'
 
 
 // ----------------------------------------------------------------
@@ -78,23 +80,16 @@ export const PvpContext = {
     pvpRoom.onDayReady = (_day, countdownMs) => {
       // 注意：不在此处更新 session.currentDay！
       // currentDay 由 session 初始值(1) 和 onBattleComplete 负责推进。
-      // 若在此处更新，当 day_ready 在战斗途中到达时会提前覆盖 currentDay，
-      // 导致 onBattleComplete 计算出错误的 nextDay，使玩家跳过整天甚至误判游戏结束。
-      countdownRemainMs = countdownMs
-      // 战斗场景中收到下一天 day_ready 时（宿主先完成战斗触发下一天）
-      // 不立即弹出覆盖层，等进入商店场景后再显示，避免干扰战斗界面
+      countdownTotalMs = countdownMs
+      // 战斗场景中收到下一天 day_ready 时，延迟启动倒计时，避免干扰战斗界面
       if (SceneManager.currentName() === 'battle') {
         pendingDayReadyAt = Date.now()
       } else {
-        showOverlay()
-        updateOverlayTitle('布置好后点「战斗」准备')
         startCountdown()
       }
     }
 
-    pvpRoom.onPlayerStatusUpdate = (_day, readyIndices) => {
-      updateOverlayPlayerStatus(readyIndices)
-    }
+    pvpRoom.onPlayerStatusUpdate = () => { /* 不再显示玩家准备状态 */ }
 
     pvpRoom.onOpponentSnapshot = (day, opponentSnap) => {
       // 校验 day：只处理与当前天匹配的快照，防止乱序/残留消息导致误入战斗
@@ -107,7 +102,6 @@ export const PvpContext = {
         console.warn('[PvpContext] 已在战斗中，忽略重复的 opponent_snapshot day=' + day)
         return
       }
-      hideOverlay()
       stopCountdown()
       applyOpponentSnapshot(day, opponentSnap)
     }
@@ -116,6 +110,39 @@ export const PvpContext = {
       // 收到最终排名，写入 session；pvp-result 场景会在 update() 中检测并刷新
       if (session) session.rankings = rankings
     }
+
+    pvpRoom.onBattleSyncStart = (day) => {
+      const cb = syncStartCallbacks.get(day)
+      if (cb) { cb(); syncStartCallbacks.delete(day) }
+    }
+
+    pvpRoom.onRoundSummary = (day, hpMap, newlyEliminated) => {
+      if (!session) return
+      // 更新所有玩家 HP
+      Object.entries(hpMap).forEach(([idx, hp]) => {
+        session!.playerHps[Number(idx)] = hp
+      })
+      // 标记淘汰
+      newlyEliminated.forEach((idx) => {
+        if (!session!.eliminatedPlayers.includes(idx)) {
+          session!.eliminatedPlayers.push(idx)
+        }
+      })
+      console.log('[PvpContext] round_summary day=' + day + ' hpMap=' + JSON.stringify(hpMap) + ' eliminated=' + JSON.stringify(newlyEliminated))
+      // 我被淘汰：直接跳转结算页
+      if (newlyEliminated.includes(session.myIndex)) {
+        console.log('[PvpContext] 我被淘汰，跳转结算页')
+        SceneManager.goto('pvp-result')
+      }
+    }
+
+    // 初始化 HP（从 pvp_rules 配置读取，fallback 6）
+    if (!session.playerHps || Object.keys(session.playerHps).length === 0) {
+      const initHp = getConfig().pvpRules?.initialHp ?? 6
+      session.playerHps = {}
+      session.players.forEach((p) => { session!.playerHps[p.index] = initHp })
+    }
+    if (!session.eliminatedPlayers) session.eliminatedPlayers = []
   },
 
   /** ShopScene 注册自动提交回调（倒计时结束时若未手动提交则自动触发） */
@@ -132,15 +159,34 @@ export const PvpContext = {
       return
     }
     console.log('[PvpContext] onPlayerReady day=' + session.currentDay + ' entities=' + mySnap.entities.length)
-    updateOverlayTitle('已准备，等待其他玩家...')
     room.submitSnapshot(session.currentDay, mySnap)
   },
 
   /** BattleScene 结算时调用：记录本场胜负（在 deductLife 等之前） */
-  recordBattleResult(winner: 'player' | 'enemy' | 'draw'): void {
+  recordBattleResult(winner: 'player' | 'enemy' | 'draw', survivingDamage = 0): void {
     if (!session) return
     if (winner === 'player') session.wins++
     session.dayResults[session.currentDay] = winner
+    pendingSurvivingDamage = survivingDamage
+    pendingRoundWinner = winner
+  },
+
+  /** Mode A: BattleScene calls this to signal ready for sync start */
+  notifyBattleSyncReady(day: number, onStart: () => void): void {
+    if (!active || !room || !session) return
+    if (session.pvpMode !== 'sync-a') return
+    syncStartCallbacks.set(day, onStart)
+    room.notifySyncReady(day)
+  },
+
+  /** Returns current PVP mode */
+  getPvpMode(): import('./PvpTypes').PvpMode | null {
+    return session?.pvpMode ?? null
+  },
+
+  /** Returns whether the current player is the host */
+  isHost(): boolean {
+    return room?.isHost ?? false
   },
 
   /** BattleScene 退出过渡结束时调用（替代 SceneManager.goto('shop')） */
@@ -155,11 +201,16 @@ export const PvpContext = {
     // 进入战斗/结算前清除 autoSubmitCallback，防止下一天倒计时到时调用旧 ShopScene 的闭包
     autoSubmitCallback = null
 
-    if (nextDay > session.totalDays) {
-      // 上报胜场给房主；房主收齐后广播含真实排名的 game_over
-      // pvp-result 场景会在 update() 中检测 session.rankings 后刷新
-      // active/session 保持存活直到 endSession()，确保 onGameOver 回调能写入 rankings
-      room?.reportWins(session.wins)
+    // 上报本轮结果（HP 系统：每轮都上报，由 round_summary 决定淘汰与否）
+    // 注意：host 侧 onRoundSummary 可能在此同步触发并调用 goto('pvp-result')
+    room?.reportRoundResult(session.currentDay, pendingRoundWinner, pendingSurvivingDamage)
+    pendingSurvivingDamage = 0
+
+    // host 侧 onRoundSummary 可能已同步更新 eliminatedPlayers，若已淘汰则不再 goto('shop')
+    if (session.eliminatedPlayers.includes(session.myIndex)) return
+
+    if (nextDay > (getConfig().pvpRules?.maxRounds ?? 30) + 2) {
+      // 安全兜底：超过 maxRounds（PvpRoom 应更早触发 game_over）
       SceneManager.goto('pvp-result')
     } else {
       session.currentDay = nextDay
@@ -175,13 +226,17 @@ export const PvpContext = {
       // 并扣除战斗期间已流逝的时间，保持倒计时对齐
       if (pendingDayReadyAt > 0) {
         const elapsed = Date.now() - pendingDayReadyAt
-        countdownRemainMs = Math.max(0, countdownRemainMs - elapsed)
+        countdownTotalMs = Math.max(0, countdownTotalMs - elapsed)
         pendingDayReadyAt = 0
-        showOverlay()
-        updateOverlayTitle('布置好后点「战斗」准备')
         startCountdown()
       }
     }
+  },
+
+  /** ShopScene 轮询：获取当前剩余倒计时毫秒数（0 表示未激活或已结束） */
+  getCountdownRemainMs(): number {
+    if (countdownStartMs === 0) return 0
+    return Math.max(0, countdownTotalMs - (Date.now() - countdownStartMs))
   },
 
   /** PvpResultScene 离开时调用 */
@@ -194,7 +249,9 @@ export const PvpContext = {
     session = null
     active = false
     pendingDayReadyAt = 0
-    hideOverlay()
+    syncStartCallbacks.clear()
+    pendingSurvivingDamage = 0
+    pendingRoundWinner = 'draw'
     stopCountdown()
   },
 }
@@ -259,134 +316,25 @@ function applyOpponentSnapshot(day: number, opponentSnap: BattleSnapshotBundle):
 // 覆盖层 UI
 // ----------------------------------------------------------------
 
-function showOverlay(): void {
-  const { stage } = getApp()
-
-  if (!overlayContainer) {
-    overlayContainer = new Container()
-    overlayContainer.zIndex = 500
-    overlayContainer.eventMode = 'passive'  // 子元素可接收事件
-
-    const bg = new Graphics()
-    bg.rect(0, 0, CANVAS_W, 430).fill({ color: 0x000000, alpha: 0.78 })  // 只覆盖顶部背景区，不遮挡商店/背包/战斗按钮
-    bg.eventMode = 'static'  // 拦截顶部区域误触，底部商店/战斗按钮仍可点击
-    overlayContainer.addChild(bg)
-
-    // 标题
-    overlayTitleText = new Text({
-      text: '等待其他玩家...',
-      style: { fill: 0xffd86b, fontSize: 36, fontWeight: 'bold', align: 'center' },
-    })
-    overlayTitleText.anchor.set(0.5, 0)
-    overlayTitleText.x = CANVAS_W / 2
-    overlayTitleText.y = 160  // 顶部区域显示，不遮挡商店主界面
-
-    overlayContainer.addChild(overlayTitleText)
-
-    // 倒计时
-    overlayCountdownText = new Text({
-      text: '',
-      style: { fill: 0xffffff, fontSize: 28, align: 'center' },
-    })
-    overlayCountdownText.anchor.set(0.5, 0)
-    overlayCountdownText.x = CANVAS_W / 2
-    overlayCountdownText.y = 220
-    overlayContainer.addChild(overlayCountdownText)
-
-    // 玩家状态（最多 4 行）
-    overlayStatusTexts = []
-    for (let i = 0; i < 4; i++) {
-      const t = new Text({
-        text: '',
-        style: { fill: 0xcccccc, fontSize: 24, align: 'center' },
-      })
-      t.anchor.set(0.5, 0)
-      t.x = CANVAS_W / 2
-      t.y = 270 + i * 38
-      overlayContainer.addChild(t)
-      overlayStatusTexts.push(t)
-    }
-  }
-
-  updateOverlayPlayerStatus([])
-  stage.addChild(overlayContainer)
-  overlayContainer.visible = true
-}
-
-function hideOverlay(): void {
-  if (overlayContainer) {
-    overlayContainer.visible = false
-    try {
-      getApp().stage.removeChild(overlayContainer)
-    } catch {
-      // ignore
-    }
-  }
-}
-
-function updateOverlayTitle(text: string): void {
-  if (overlayTitleText) overlayTitleText.text = text
-}
-
-function updateOverlayPlayerStatus(readyIndices: number[]): void {
-  if (!session) return
-  const players = room?.players ?? []
-
-  // 只显示实际在场的玩家，空行隐藏
-  for (let i = 0; i < 4; i++) {
-    const t = overlayStatusTexts[i]
-    if (!t) continue
-    const player = players[i] as PvpPlayer | undefined
-    if (!player) {
-      t.text = ''
-      continue
-    }
-    const isMe = player.index === session.myIndex
-    const isReady = readyIndices.includes(player.index)
-    const icon = player.isAi ? '[AI]' : isReady ? '✓ 已准备' : '… 未准备'
-    const meTag = isMe ? '（我）' : ''
-    t.text = `${icon}  ${player.nickname}${meTag}`
-    t.style.fill = isReady ? 0x7fff7f : (isMe ? 0xffd86b : 0xaaaaaa)
-  }
-
-  // 当有人已准备但自己未准备时，更新标题提示
-  const myReady = readyIndices.includes(session?.myIndex ?? -1)
-  const othersReady = readyIndices.filter(i => i !== (session?.myIndex ?? -1)).length
-  if (!myReady && othersReady > 0) {
-    updateOverlayTitle('队友已准备！请点「准备」按钮')
-  }
-}
-
 function startCountdown(): void {
   stopCountdown()
-  const startMs = Date.now()
-  const total = countdownRemainMs
-  if (overlayCountdownText) overlayCountdownText.text = `${Math.ceil(total / 1000)}s`
-
-  countdownInterval = setInterval(() => {
-    const elapsed = Date.now() - startMs
-    const remain = Math.max(0, total - elapsed)
-    if (overlayCountdownText) {
-      overlayCountdownText.text = `${Math.ceil(remain / 1000)}s`
+  countdownStartMs = Date.now()
+  // 倒计时结束时自动提交快照（若玩家未手动准备）
+  countdownTimeoutId = setTimeout(() => {
+    countdownTimeoutId = null
+    const currentSnap = getBattleSnapshot()
+    const alreadySubmitted = currentSnap && currentSnap.day === session?.currentDay
+    if (!alreadySubmitted && autoSubmitCallback) {
+      console.log('[PvpContext] 倒计时结束，自动触发快照提交')
+      autoSubmitCallback()
     }
-    if (remain <= 0) {
-      stopCountdown()
-      // 倒计时结束：若玩家还未提交本轮快照，自动提交（防止宿主用 AI 替代）
-      // 注意：不能用 !getBattleSnapshot() 判断，因为第 2 轮起 store 里会残留上一轮的合并快照
-      // 改为比较快照的 day 与当前轮次：只有快照 day 与 currentDay 一致才说明本轮已手动提交
-      const currentSnap = getBattleSnapshot()
-      const alreadySubmitted = currentSnap && currentSnap.day === session?.currentDay
-      if (!alreadySubmitted && autoSubmitCallback) {
-        console.log('[PvpContext] 倒计时结束，自动触发快照提交')
-        autoSubmitCallback()
-      }
-    }
-  }, 500)
+  }, countdownTotalMs + 500)
 }
 
 function stopCountdown(): void {
-  if (countdownInterval !== null) {
-    clearInterval(countdownInterval)
-    countdownInterval = null
+  if (countdownTimeoutId !== null) {
+    clearTimeout(countdownTimeoutId)
+    countdownTimeoutId = null
   }
+  countdownStartMs = 0
 }
