@@ -1409,10 +1409,10 @@ function getSpecialBulkSellUnitPriceByLevel(level: number): number {
   if (level <= 1) return 3
   if (level === 2) return 5
   if (level === 3) return 10
-  if (level === 4) return 20
-  if (level === 5) return 30
-  if (level === 6) return 40
-  return 50
+  if (level === 4) return 18
+  if (level === 5) return 36
+  if (level === 6) return 64
+  return 128
 }
 
 function getSpecialBulkSellPriceByInstance(instanceId: string): number {
