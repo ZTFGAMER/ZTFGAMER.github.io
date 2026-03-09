@@ -355,6 +355,7 @@ function drawCreateRoomView(): void {
   drawPageTitle('创建房间', '设置房间信息')
   if (!root) return
 
+  if (!roomName) roomName = myNickname ? `${myNickname}的房间` : ''
   const inp = createPixiInput(
     roomName || '输入房间名（最多8字）',
     8,

@@ -52,7 +52,7 @@ export type PvpMsgToClient =
   | { type: 'game_start'; myIndex: number; totalPlayers: number; countdownMs: number }
   | { type: 'day_ready'; day: number; countdownMs: number }
   | { type: 'player_status'; day: number; readyIndices: number[] }
-  | { type: 'opponent_snapshot'; day: number; snapshot: BattleSnapshotBundle }
+  | { type: 'opponent_snapshot'; day: number; snapshot: BattleSnapshotBundle; opponentPlayerIndex?: number }
   | { type: 'game_over'; rankings: { nickname: string; wins: number | null; index: number }[] }
   | { type: 'battle_sync_start'; day: number }
   | { type: 'round_summary'; day: number; hpMap: Record<number, number>; newlyEliminated: number[] }

@@ -34,6 +34,9 @@ let pendingDayReadyAt = 0   // 非 0 表示有待展示的 day_ready，值为到
 // Mode A: sync-start pending
 let syncStartCallbacks = new Map<number, (() => void)>() // day → callback
 
+// bye 轮实际对手：day → playerIndex（host 分发时确定）
+let byeOpponentIndexByDay = new Map<number, number>()
+
 // HP system state
 let pendingSurvivingDamage = 0
 let pendingRoundWinner: 'player' | 'enemy' | 'draw' = 'draw'
@@ -56,6 +59,7 @@ export const PvpContext = {
   getOpponentNickname(): string | null {
     if (!session || !room) return null
     const opponentIdx = getOpponentIndex(session.myIndex, session.totalPlayers, session.currentDay - 1)
+    if (opponentIdx < 0) return 'AI 对手'
     const opponent = session.players.find((p) => p.index === opponentIdx)
     return opponent?.nickname ?? null
   },
@@ -91,7 +95,7 @@ export const PvpContext = {
 
     pvpRoom.onPlayerStatusUpdate = () => { /* 不再显示玩家准备状态 */ }
 
-    pvpRoom.onOpponentSnapshot = (day, opponentSnap) => {
+    pvpRoom.onOpponentSnapshot = (day, opponentSnap, opponentPlayerIndex) => {
       // 校验 day：只处理与当前天匹配的快照，防止乱序/残留消息导致误入战斗
       if (session && day !== session.currentDay) {
         console.warn('[PvpContext] 忽略不匹配的 opponent_snapshot day=' + day + ' (expected ' + session.currentDay + ')')
@@ -101,6 +105,10 @@ export const PvpContext = {
       if (SceneManager.currentName() === 'battle') {
         console.warn('[PvpContext] 已在战斗中，忽略重复的 opponent_snapshot day=' + day)
         return
+      }
+      // 记录 bye 轮实际对手 index（host 已解析出真实快照来源）
+      if (opponentPlayerIndex !== undefined) {
+        byeOpponentIndexByDay.set(day, opponentPlayerIndex)
       }
       stopCountdown()
       applyOpponentSnapshot(day, opponentSnap)
@@ -129,12 +137,17 @@ export const PvpContext = {
         }
       })
       console.log('[PvpContext] round_summary day=' + day + ' hpMap=' + JSON.stringify(hpMap) + ' eliminated=' + JSON.stringify(newlyEliminated))
-      // 我被淘汰：停止倒计时（防止 timeout 在离开后触发 autoSubmit）再跳转
+      // 我被淘汰：停止倒计时，跳转结算页，主动断开连接
       if (newlyEliminated.includes(session.myIndex)) {
-        console.log('[PvpContext] 我被淘汰，跳转结算页')
+        console.log('[PvpContext] 我被淘汰，跳转结算页并断开连接')
         stopCountdown()
         autoSubmitCallback = null
         SceneManager.goto('pvp-result')
+        // 非 host 才主动断开：host 断开会关闭所有连接导致其他玩家崩溃
+        if (!room?.isHost) {
+          room?.destroy()
+          room = null
+        }
       }
     }
 

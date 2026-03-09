@@ -9,7 +9,6 @@ import { PeerConnection } from '@/pvp/PeerConnection'
 import type { PvpPlayer, PvpMsgToClient, PvpMsgToHost, PvpMode } from '@/pvp/PvpTypes'
 import { getOpponentIndex } from '@/pvp/PvpTypes'
 import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
-import { generateAiSnapshot } from '@/pvp/AiSnapshot'
 import { getConfig } from '@/core/DataLoader'
 
 const DEFAULT_COUNTDOWN_MS = 90_000
@@ -61,7 +60,7 @@ export class PvpRoom {
   onGameStart?: (myIndex: number, totalPlayers: number) => void
   onDayReady?: (day: number, countdownMs: number) => void
   onPlayerStatusUpdate?: (day: number, readyIndices: number[]) => void
-  onOpponentSnapshot?: (day: number, snapshot: BattleSnapshotBundle) => void
+  onOpponentSnapshot?: (day: number, snapshot: BattleSnapshotBundle, opponentPlayerIndex?: number) => void
   onGameOver?: (rankings: { nickname: string; wins: number | null; index: number }[]) => void
   onError?: (msg: string) => void
   onRoundSummary?: (day: number, hpMap: Record<number, number>, newlyEliminated: number[]) => void
@@ -244,7 +243,7 @@ export class PvpRoom {
         this.onPlayerStatusUpdate?.(msg.day, msg.readyIndices)
         break
       case 'opponent_snapshot':
-        this.onOpponentSnapshot?.(msg.day, msg.snapshot)
+        this.onOpponentSnapshot?.(msg.day, msg.snapshot, msg.opponentPlayerIndex)
         break
       case 'game_over':
         this.onGameOver?.(msg.rankings)
@@ -266,31 +265,19 @@ export class PvpRoom {
 
     this.gameStarted = true  // 锁定房间，拒绝后续加入
 
-    // 用 AI 补全不足的玩家槽
-    for (let i = 1; i < this._maxPlayers; i++) {
-      if (!this._players.find((p) => p.index === i)) {
-        this._players.push({
-          peerId: `ai-${i}`,
-          nickname: `AI ${i}`,
-          index: i,
-          connected: false,
-          isAi: true,
-        })
-      }
-    }
-    this._totalPlayers = this._maxPlayers
+    // 只使用实际加入的真人玩家，不补 AI
+    this._totalPlayers = this._players.length
 
     // Initialize HP for all players
     const initHp = getConfig().pvpRules?.initialHp ?? 6
     this._players.forEach((p) => this.playerHps.set(p.index, initHp))
 
-    // 先广播含 AI 的完整房间状态，让客户端 session.players 包含 AI 信息
-    // （客户端收到 room_state 后更新 _players，之后收到 game_start 时 session.players 已完整）
+    // 广播房间状态
     this.broadcastRoomState()
 
-    // 再通知每个客户端开始游戏
+    // 通知每个客户端开始游戏
     this._players.forEach((player) => {
-      if (player.isAi || player.index === 0) return
+      if (player.index === 0) return
       this.sendToPlayer(player.index, {
         type: 'game_start',
         myIndex: player.index,
@@ -343,11 +330,11 @@ export class PvpRoom {
     this.broadcastToClients({ type: 'player_status', day, readyIndices })
     this.onPlayerStatusUpdate?.(day, readyIndices)
 
-    // 检查所有真人玩家是否都已提交
-    const humanPlayers = this._players.filter((p) => !p.isAi)
+    // 检查所有存活真人玩家是否都已提交（淘汰玩家不再等待）
+    const humanPlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
     const allReady = humanPlayers.every((p) => map.has(p.index))
     if (allReady) {
-      console.log('[PvpRoom] 所有真人玩家已提交，分发快照')
+      console.log('[PvpRoom] 所有存活真人玩家已提交，分发快照')
       if (this.dayCountdownTimer) clearTimeout(this.dayCountdownTimer)
       this.hostDispatchSnapshots(day)
     }
@@ -370,10 +357,10 @@ export class PvpRoom {
     this.broadcastToClients({ type: 'player_status', day, readyIndices })
     this.onPlayerStatusUpdate?.(day, readyIndices)
 
-    const humanPlayers = this._players.filter((p) => !p.isAi)
+    const humanPlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
     const allReady = humanPlayers.every((p) => map.has(p.index))
     if (allReady) {
-      console.log('[PvpRoom] 所有真人玩家已提交（host路径），分发快照')
+      console.log('[PvpRoom] 所有存活真人玩家已提交（host路径），分发快照')
       if (this.dayCountdownTimer) clearTimeout(this.dayCountdownTimer)
       this.hostDispatchSnapshots(day)
     }
@@ -396,11 +383,11 @@ export class PvpRoom {
 
     const map = this.daySnapshots.get(day) ?? new Map()
 
-    // 为未提交的玩家用 AI 快照补全
+    // 为未提交的真人玩家用空快照补全（断线保护）
     for (const player of this._players) {
       if (!map.has(player.index)) {
-        console.log('[PvpRoom] player[' + player.index + '] ' + player.nickname + ' 未提交，用AI快照补全')
-        map.set(player.index, generateAiSnapshot(day))
+        console.log('[PvpRoom] player[' + player.index + '] ' + player.nickname + ' 未提交，用空快照补全')
+        map.set(player.index, this.makeEmptySnapshot(day))
       }
     }
 
@@ -408,27 +395,44 @@ export class PvpRoom {
     const dayOpponentSnaps = new Map<number, BattleSnapshotBundle>()
     this.dispatchedOpponentSnaps.set(day, dayOpponentSnaps)
 
-    // 第一步：向所有客户端发送 opponent_snapshot
+    // 第一步：向所有存活客户端发送 opponent_snapshot（已淘汰玩家跳过）
     for (const player of this._players) {
       if (player.index === 0 || player.isAi) continue
+      if (this.eliminatedSet.has(player.index)) continue
       const opponentIdx = getOpponentIndex(player.index, this._totalPlayers, day - 1)
       const isOpponentEliminated = opponentIdx >= 0 && this.eliminatedSet.has(opponentIdx)
-      const opponentSnap = opponentIdx < 0 || isOpponentEliminated
-        ? this.getGhostOrAi(day)
-        : (map.get(opponentIdx) ?? generateAiSnapshot(day))
-      console.log('[PvpRoom] 分发→client player[' + player.index + '] ' + player.nickname + ' vs opponent[' + opponentIdx + '] entities=' + opponentSnap.entities.length)
+      let opponentSnap: BattleSnapshotBundle
+      let resolvedOpponentIdx = opponentIdx
+      if (opponentIdx < 0) {
+        const bye = this.getByeOpponentSnap(map, player.index, day)
+        opponentSnap = bye.snap
+        resolvedOpponentIdx = bye.ownerIndex
+      } else if (isOpponentEliminated) {
+        opponentSnap = this.getGhostOrEmpty(day)
+      } else {
+        opponentSnap = map.get(opponentIdx) ?? this.getGhostOrEmpty(day)
+      }
+      console.log('[PvpRoom] 分发→client player[' + player.index + '] ' + player.nickname + ' vs opponent[' + resolvedOpponentIdx + '] entities=' + opponentSnap.entities.length)
       dayOpponentSnaps.set(player.index, opponentSnap)
-      this.sendToPlayer(player.index, { type: 'opponent_snapshot', day, snapshot: opponentSnap })
+      this.sendToPlayer(player.index, { type: 'opponent_snapshot', day, snapshot: opponentSnap, opponentPlayerIndex: resolvedOpponentIdx >= 0 ? resolvedOpponentIdx : undefined })
     }
 
     // 第二步：最后触发房主自身（放最后，防止同步场景跳转影响上方发送循环）
     const hostOpponentIdx = getOpponentIndex(0, this._totalPlayers, day - 1)
     const isHostOpponentEliminated = hostOpponentIdx >= 0 && this.eliminatedSet.has(hostOpponentIdx)
-    const hostOpponentSnap = hostOpponentIdx < 0 || isHostOpponentEliminated
-      ? this.getGhostOrAi(day)
-      : (map.get(hostOpponentIdx) ?? generateAiSnapshot(day))
-    console.log('[PvpRoom] 分发→host vs opponent[' + hostOpponentIdx + '] entities=' + hostOpponentSnap.entities.length)
-    this.onOpponentSnapshot?.(day, hostOpponentSnap)
+    let hostOpponentSnap: BattleSnapshotBundle
+    let resolvedHostOpponentIdx = hostOpponentIdx
+    if (hostOpponentIdx < 0) {
+      const bye = this.getByeOpponentSnap(map, 0, day)
+      hostOpponentSnap = bye.snap
+      resolvedHostOpponentIdx = bye.ownerIndex
+    } else if (isHostOpponentEliminated) {
+      hostOpponentSnap = this.getGhostOrEmpty(day)
+    } else {
+      hostOpponentSnap = map.get(hostOpponentIdx) ?? this.getGhostOrEmpty(day)
+    }
+    console.log('[PvpRoom] 分发→host vs opponent[' + resolvedHostOpponentIdx + '] entities=' + hostOpponentSnap.entities.length)
+    this.onOpponentSnapshot?.(day, hostOpponentSnap, resolvedHostOpponentIdx >= 0 ? resolvedHostOpponentIdx : undefined)
 
     // 删除前将本轮快照存入 playerLastSnapshots，供淘汰时填入幽灵快照池
     for (const [playerIdx, snap] of map.entries()) {
@@ -562,12 +566,36 @@ export class PvpRoom {
   // HP / elimination system
   // ----------------------------------------------------------------
 
-  /** Returns a ghost snapshot (last known eliminated player snapshot) or AI fallback */
-  private getGhostOrAi(day: number): BattleSnapshotBundle {
+  /** Bye 轮 / 对手已淘汰：优先返回幽灵快照（已淘汰玩家的阵容），否则返回空快照（玩家自动获胜） */
+  private getGhostOrEmpty(day: number): BattleSnapshotBundle {
     if (this.ghostSnapshots.length > 0) {
       return this.ghostSnapshots[Math.floor(Math.random() * this.ghostSnapshots.length)]!
     }
-    return generateAiSnapshot(day)
+    return this.makeEmptySnapshot(day)
+  }
+
+  /** 返回无实体的空快照（用于 bye 轮对手 / 断线补全） */
+  private makeEmptySnapshot(day: number): BattleSnapshotBundle {
+    return { day, activeColCount: 1, createdAtMs: Date.now(), entities: [] }
+  }
+
+  /**
+   * Bye 轮对手快照：从当天存活玩家的提交中随机选一个（排除自身）。
+   * 保证 bye 玩家永远面对真实阵容，而非空对手。
+   * 返回 { snap, ownerIndex }，ownerIndex 用于在客户端显示真实昵称。
+   */
+  private getByeOpponentSnap(
+    map: Map<number, BattleSnapshotBundle>,
+    byePlayerIndex: number,
+    day: number,
+  ): { snap: BattleSnapshotBundle; ownerIndex: number } {
+    const candidates = [...map.entries()]
+      .filter(([idx]) => idx !== byePlayerIndex && !this.eliminatedSet.has(idx))
+    if (candidates.length > 0) {
+      const [ownerIndex, snap] = candidates[Math.floor(Math.random() * candidates.length)]!
+      return { snap, ownerIndex }
+    }
+    return { snap: this.getGhostOrEmpty(day), ownerIndex: -1 }
   }
 
   /** Called at end of each round to report result (winner + survivingDamage) */

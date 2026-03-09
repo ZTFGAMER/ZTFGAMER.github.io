@@ -499,7 +499,9 @@ export class CombatEngine {
 
     this.playerSkillIds = new Set((options?.playerSkillIds ?? []).map((id) => `${id}`.trim()).filter(Boolean))
     this.enemySkillIds = new Set((options?.enemySkillIds ?? []).map((id) => `${id}`.trim()).filter(Boolean))
-    if (!options?.enemyDisabled && this.enemySkillIds.size <= 0) {
+    // PVP 模式（pvpEnemyEntities 存在）时不随机生成敌方技能，使用对手传来的 pvpEnemySkillIds（可能为空）
+    const isPvpBattle = !!snapshot.pvpEnemyEntities
+    if (!options?.enemyDisabled && this.enemySkillIds.size <= 0 && !isPvpBattle) {
       this.enemySkillIds = this.rollEnemySkillIds(snapshot)
     }
     this.skillEnemyHalfTriggered = false
@@ -3256,19 +3258,9 @@ export class CombatEngine {
     return this.playerHero.hp <= 0 || this.enemyHero.hp <= 0
   }
 
-  private computeSurvivingDamage(winnerSide: 'player' | 'enemy'): number {
-    const cfg = getConfig()
-    const weights = cfg.pvpRules?.tierDamageWeights ?? { Bronze: 1, Silver: 2, Gold: 3, Diamond: 4 }
-    const base = cfg.pvpRules?.baseDamage ?? 1
-    const survivingItems = this.items.filter((it) => it.side === winnerSide)
-    const bonus = survivingItems.reduce((sum, it) => {
-      const tier = it.tier
-      if (tier.startsWith('Diamond')) return sum + (weights.Diamond ?? 4)
-      if (tier.startsWith('Gold')) return sum + (weights.Gold ?? 3)
-      if (tier.startsWith('Silver')) return sum + (weights.Silver ?? 2)
-      return sum + (weights.Bronze ?? 1)
-    }, 0)
-    return base + bonus
+  private computeSurvivingDamage(_winnerSide: 'player' | 'enemy'): number {
+    // 固定扣血：每次失败扣 baseDamage 点，不计算存活物品权重
+    return getConfig().pvpRules?.baseDamage ?? 1
   }
 
   private finishCombat(): void {
