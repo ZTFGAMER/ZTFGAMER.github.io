@@ -28,8 +28,7 @@ let pvpRoom: PvpRoom | null = null
 let roomCode = ''
 let myNickname = ''
 let roomName = ''
-let maxPlayers = 4
-let playerListTexts: Text[] = []
+const maxPlayers = 8
 let statusText: Text | null = null
 let activeInput: PixiInputHandle | null = null
 let selectedMode: PvpMode = 'async'
@@ -218,7 +217,6 @@ function clearRoot(): void {
   activeInput = null
   if (root) {
     root.removeChildren()
-    playerListTexts = []
     statusText = null
   }
 }
@@ -624,66 +622,38 @@ function drawMainView(): void {
   infoT.y = 228
   root.addChild(infoT)
 
-  // 人数选择
-  const playerCountLabel = makeText('房间人数', 22, 0x6677aa)
-  playerCountLabel.anchor.set(0.5)
-  playerCountLabel.x = CANVAS_W / 2
-  playerCountLabel.y = 300
-  root.addChild(playerCountLabel);
-
-  [4, 8].forEach((n, i) => {
-    const active = n === maxPlayers
-    const con = new Container()
-    con.x = CANVAS_W / 2 + (i - 0.5) * 148
-    con.y = 365
-    const g = new Graphics()
-    if (active) {
-      g.roundRect(-58, -38, 116, 76, 15).fill({ color: 0x5b8def, alpha: 0.25 })
-    }
-    g.roundRect(-56, -36, 112, 72, 14).fill({ color: active ? 0x1a3a6e : 0x141824 })
-    con.addChild(g)
-    const numT = new Text({ text: `${n}人`, style: { fill: active ? 0x7ab8ff : 0x445566, fontSize: 28, fontWeight: 'bold' } })
-    numT.anchor.set(0.5, 0.5)
-    numT.y = 0
-    con.addChild(numT)
-    con.eventMode = 'static'
-    con.cursor = 'pointer'
-    con.on('pointerdown', () => { maxPlayers = n; drawMainView() })
-    root!.addChild(con)
-  })
-
   const divG = new Graphics()
-  divG.rect(CANVAS_W / 2 - 220, 440, 440, 1).fill({ color: 0x223355, alpha: 0.8 })
+  divG.rect(CANVAS_W / 2 - 220, 270, 440, 1).fill({ color: 0x223355, alpha: 0.8 })
   root.addChild(divG)
 
   // 创建房间
   const createLabel = makeText('成为房主，邀请好友加入', 20, 0x6677aa)
   createLabel.anchor.set(0.5)
   createLabel.x = CANVAS_W / 2
-  createLabel.y = 466
+  createLabel.y = 296
   root.addChild(createLabel)
 
   const createBtn = makeBtn('＋ 创建房间', PANEL_W - 60, 0x163a22, 0x4caf50, drawCreateRoomView)
   createBtn.x = CANVAS_W / 2
-  createBtn.y = 540
+  createBtn.y = 370
   root.addChild(createBtn)
 
   // 加入房间
   const joinLabel = makeText('已有房间？直接加入', 20, 0x6677aa)
   joinLabel.anchor.set(0.5)
   joinLabel.x = CANVAS_W / 2
-  joinLabel.y = 650
+  joinLabel.y = 480
   root.addChild(joinLabel)
 
   const searchBtn = makeBtn('搜索房间', PANEL_W - 60, 0x12213a, 0x5b8def, () => { drawSearchRoomsView(); startSearchPoll() })
   searchBtn.x = CANVAS_W / 2
-  searchBtn.y = 724
+  searchBtn.y = 554
   root.addChild(searchBtn)
 
   const codeJoinT = makeText('用房间码加入', 18, 0x445577)
   codeJoinT.anchor.set(0.5)
   codeJoinT.x = CANVAS_W / 2
-  codeJoinT.y = 804
+  codeJoinT.y = 634
   codeJoinT.eventMode = 'static'
   codeJoinT.cursor = 'pointer'
   codeJoinT.on('pointerdown', drawJoinRoomView)
@@ -736,28 +706,28 @@ function drawHostWaitingView(): void {
   listLabelT.y = 398
   root.addChild(listLabelT)
 
-  playerListTexts = []
-  for (let i = 0; i < maxPlayers; i++) {
+  const players = pvpRoom?.players ?? []
+  for (let i = 0; i < players.length; i++) {
+    const player = players[i]!
     const cardY = 430 + i * 78
     const cardG = new Graphics()
     cardG.roundRect(CANVAS_W / 2 - 220, cardY, 440, 64, 12).fill({ color: 0x131828 })
     root.addChild(cardG)
-    const t = makeText('', 24, 0xcccccc)
+    const icon = player.connected ? '●' : '○'
+    const t = makeText(`${icon}  ${player.nickname}`, 24, player.connected ? 0xddeeff : 0xff8877)
     t.anchor.set(0, 0.5)
     t.x = CANVAS_W / 2 - 194
     t.y = cardY + 32
     root.addChild(t)
-    playerListTexts.push(t)
   }
-  refreshPlayerList()
 
   statusText = makeText('', 20, 0xff9966)
   statusText.anchor.set(0.5)
   statusText.x = CANVAS_W / 2
-  statusText.y = 430 + maxPlayers * 78 + 28
+  statusText.y = 430 + players.length * 78 + 28
   root.addChild(statusText)
 
-  const startY = 430 + maxPlayers * 78 + 92
+  const startY = 430 + players.length * 78 + 92
   const startBtn = makeBtn('开始游戏 ▶', PANEL_W - 60, 0x163a22, 0x4caf50, handleStartGame)
   startBtn.x = CANVAS_W / 2
   startBtn.y = startY
@@ -801,26 +771,25 @@ function drawClientWaitingView(): void {
   listLabelT.y = 346
   root.addChild(listLabelT)
 
-  playerListTexts = []
-  const clientSlots = pvpRoom?.maxPlayers ?? 4
-  for (let i = 0; i < clientSlots; i++) {
+  const clientPlayers = pvpRoom?.players ?? []
+  for (let i = 0; i < clientPlayers.length; i++) {
+    const player = clientPlayers[i]!
     const cardY = 380 + i * 76
     const cardG = new Graphics()
     cardG.roundRect(CANVAS_W / 2 - 220, cardY, 440, 62, 12).fill({ color: 0x131828 })
     root.addChild(cardG)
-    const t = makeText('', 24, 0xcccccc)
+    const icon = player.connected ? '●' : '○'
+    const t = makeText(`${icon}  ${player.nickname}`, 24, player.connected ? 0xddeeff : 0xff8877)
     t.anchor.set(0, 0.5)
     t.x = CANVAS_W / 2 - 194
     t.y = cardY + 31
     root.addChild(t)
-    playerListTexts.push(t)
   }
-  refreshPlayerList()
 
   statusText = makeText('', 20, 0xff9966)
   statusText.anchor.set(0.5)
   statusText.x = CANVAS_W / 2
-  statusText.y = 692
+  statusText.y = 380 + clientPlayers.length * 76 + 28
   root.addChild(statusText)
 
   const cancelBtn = makeBtn('离开房间', 200, 0x1c1c2e, 0x553333, () => {
@@ -829,29 +798,13 @@ function drawClientWaitingView(): void {
     drawMainView()
   })
   cancelBtn.x = CANVAS_W / 2
-  cancelBtn.y = 766
+  cancelBtn.y = 380 + clientPlayers.length * 76 + 96
   root.addChild(cancelBtn)
 }
 
 // ----------------------------------------------------------------
 // 玩家列表刷新
 // ----------------------------------------------------------------
-function refreshPlayerList(): void {
-  const players = pvpRoom?.players ?? []
-  for (let i = 0; i < playerListTexts.length; i++) {
-    const t = playerListTexts[i]
-    const player = players.find((p: PvpPlayer) => p.index === i)
-    if (player) {
-      const icon = player.isAi ? '🤖' : player.connected ? '●' : '○'
-      t.text = `${icon}  ${player.nickname}`
-      t.style.fill = player.isAi ? 0x667788 : player.connected ? 0xddeeff : 0xff8877
-    } else {
-      t.text = `·  等待玩家 ${i + 1} 加入...`
-      t.style.fill = 0x445566
-    }
-  }
-}
-
 // ----------------------------------------------------------------
 // 事件处理
 // ----------------------------------------------------------------
@@ -860,7 +813,7 @@ async function handleCreateRoom(): Promise<void> {
   pvpRoom = new PvpRoom()
   pvpRoom.pvpMode = selectedMode
   pvpRoom.onRoomStateChange = () => {
-    refreshPlayerList()
+    drawHostWaitingView()
     updateRoomPlayers(roomCode, pvpRoom!.players.filter(p => !p.isAi).length).catch(() => {})
   }
   pvpRoom.onError = (msg) => { setStatus(`错误：${msg}`) }
@@ -956,7 +909,6 @@ export const PvpLobbyScene: Scene = {
       root.destroy({ children: true })
       root = null
     }
-    playerListTexts = []
     statusText = null
   },
 

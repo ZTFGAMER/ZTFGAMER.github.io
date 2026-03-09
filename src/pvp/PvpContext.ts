@@ -10,7 +10,6 @@ import { consumeBattleOutcome } from '@/combat/BattleOutcomeStore'
 import { SHOP_STATE_STORAGE_KEY } from '@/core/RunState'
 import { clearPvpShopState } from '@/scenes/ShopScene'
 import type { PvpSession } from '@/pvp/PvpTypes'
-import { getOpponentIndex } from '@/pvp/PvpTypes'
 import type { PvpRoom } from '@/pvp/PvpRoom'
 import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 
@@ -56,11 +55,8 @@ export const PvpContext = {
   /** 获取当天的对手昵称（BattleScene 使用） */
   getOpponentNickname(): string | null {
     if (!session || !room) return null
-    let opponentIdx = getOpponentIndex(session.myIndex, session.totalPlayers, session.currentDay - 1)
-    // bye 轮：用 host 分发时确定的真实快照来源玩家 index
-    if (opponentIdx < 0) {
-      opponentIdx = session.currentOpponentPlayerIndex ?? -1
-    }
+    // 优先使用 host 分发时确定的真实对手 index（算法收缩后本地计算不再可靠）
+    const opponentIdx = session.currentOpponentPlayerIndex ?? -1
     if (opponentIdx < 0) return null
     const opponent = session.players.find((p) => p.index === opponentIdx)
     return opponent?.nickname ?? null
@@ -117,8 +113,16 @@ export const PvpContext = {
     }
 
     pvpRoom.onGameOver = (rankings) => {
-      // 收到最终排名，写入 session；pvp-result 场景会在 update() 中检测并刷新
       if (session) session.rankings = rankings
+      // 胜者在 onBattleComplete 里已 advanceToDay 并 goto('shop')，此时需主动跳转结算
+      // 观赛/结算场景已在 update() 中检测 rankings，不需要额外处理
+      const cur = SceneManager.currentName()
+      if (cur === 'shop' || cur === 'battle') {
+        console.log('[PvpContext] game_over 到达，当前在 ' + cur + '，跳转结算页')
+        stopCountdown()
+        autoSubmitCallback = null
+        SceneManager.goto('pvp-result')
+      }
     }
 
     pvpRoom.onBattleSyncStart = (day) => {
@@ -139,17 +143,12 @@ export const PvpContext = {
         }
       })
       console.log('[PvpContext] round_summary day=' + day + ' hpMap=' + JSON.stringify(hpMap) + ' eliminated=' + JSON.stringify(newlyEliminated))
-      // 我被淘汰：停止倒计时，跳转结算页，主动断开连接
+      // 我被淘汰：停止倒计时，进入观赛模式（保持连接以接收后续 round_summary / game_over）
       if (newlyEliminated.includes(session.myIndex)) {
-        console.log('[PvpContext] 我被淘汰，跳转结算页并断开连接')
+        console.log('[PvpContext] 我被淘汰，进入观赛模式')
         stopCountdown()
         autoSubmitCallback = null
-        SceneManager.goto('pvp-result')
-        // 非 host 才主动断开：host 断开会关闭所有连接导致其他玩家崩溃
-        if (!room?.isHost) {
-          room?.destroy()
-          room = null
-        }
+        SceneManager.goto('pvp-spectator')
       }
     }
 

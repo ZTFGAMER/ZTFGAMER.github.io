@@ -7,7 +7,7 @@
 import type { DataConnection } from 'peerjs'
 import { PeerConnection } from '@/pvp/PeerConnection'
 import type { PvpPlayer, PvpMsgToClient, PvpMsgToHost, PvpMode } from '@/pvp/PvpTypes'
-import { getOpponentIndex } from '@/pvp/PvpTypes'
+import { getOpponentIndex, getOpponentFromAlive } from '@/pvp/PvpTypes'
 import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 import { getConfig } from '@/core/DataLoader'
 
@@ -49,6 +49,8 @@ export class PvpRoom {
   private ghostSnapshots: BattleSnapshotBundle[] = []
   private playerLastSnapshots = new Map<number, BattleSnapshotBundle>()  // 每位玩家最新快照，用于淘汰后的幽灵对手
   private roundResultsByDay = new Map<number, Map<number, { winner: 'player' | 'enemy' | 'draw'; survivingDamage: number }>>()
+  // day → 该天分发快照时的存活玩家 index 列表（升序），供 hostProcessRoundEnd 对称使用
+  private dayAliveIndices = new Map<number, number[]>()
 
   pvpMode: PvpMode = 'async'
   // Mode A: sync-ready tracking per day
@@ -196,7 +198,7 @@ export class PvpRoom {
       const day = msg.day
       if (!this.daySyncReadyPlayers.has(day)) this.daySyncReadyPlayers.set(day, new Set())
       this.daySyncReadyPlayers.get(day)!.add(player.index)
-      const humanPlayers = this._players.filter((p) => !p.isAi)
+      const humanPlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
       if (humanPlayers.every((p) => this.daySyncReadyPlayers.get(day)?.has(p.index))) {
         console.log('[PvpRoom] 所有玩家 sync-ready，广播 battle_sync_start day=' + day)
         this.broadcastToClients({ type: 'battle_sync_start', day })
@@ -395,20 +397,25 @@ export class PvpRoom {
     const dayOpponentSnaps = new Map<number, BattleSnapshotBundle>()
     this.dispatchedOpponentSnaps.set(day, dayOpponentSnaps)
 
+    // 当天存活玩家列表（升序），收缩配对算法所用；同时存入 dayAliveIndices 供 hostProcessRoundEnd 使用
+    const aliveIndices = this._players
+      .filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
+      .map((p) => p.index)
+      .sort((a, b) => a - b)
+    this.dayAliveIndices.set(day, aliveIndices)
+    console.log('[PvpRoom] day=' + day + ' aliveIndices=' + JSON.stringify(aliveIndices))
+
     // 第一步：向所有存活客户端发送 opponent_snapshot（已淘汰玩家跳过）
     for (const player of this._players) {
       if (player.index === 0 || player.isAi) continue
       if (this.eliminatedSet.has(player.index)) continue
-      const opponentIdx = getOpponentIndex(player.index, this._totalPlayers, day - 1)
-      const isOpponentEliminated = opponentIdx >= 0 && this.eliminatedSet.has(opponentIdx)
+      const opponentIdx = getOpponentFromAlive(player.index, aliveIndices, day - 1)
       let opponentSnap: BattleSnapshotBundle
       let resolvedOpponentIdx = opponentIdx
       if (opponentIdx < 0) {
         const bye = this.getByeOpponentSnap(map, player.index, day)
         opponentSnap = bye.snap
         resolvedOpponentIdx = bye.ownerIndex
-      } else if (isOpponentEliminated) {
-        opponentSnap = this.getGhostOrEmpty(day)
       } else {
         opponentSnap = map.get(opponentIdx) ?? this.getGhostOrEmpty(day)
       }
@@ -418,21 +425,25 @@ export class PvpRoom {
     }
 
     // 第二步：最后触发房主自身（放最后，防止同步场景跳转影响上方发送循环）
-    const hostOpponentIdx = getOpponentIndex(0, this._totalPlayers, day - 1)
-    const isHostOpponentEliminated = hostOpponentIdx >= 0 && this.eliminatedSet.has(hostOpponentIdx)
     let hostOpponentSnap: BattleSnapshotBundle
-    let resolvedHostOpponentIdx = hostOpponentIdx
-    if (hostOpponentIdx < 0) {
-      const bye = this.getByeOpponentSnap(map, 0, day)
-      hostOpponentSnap = bye.snap
-      resolvedHostOpponentIdx = bye.ownerIndex
-    } else if (isHostOpponentEliminated) {
-      hostOpponentSnap = this.getGhostOrEmpty(day)
+    let resolvedHostOpponentIdx: number
+    if (this.eliminatedSet.has(0)) {
+      // host 已被淘汰，不参与本轮战斗，跳过自身触发
+      resolvedHostOpponentIdx = -1
+      hostOpponentSnap = this.makeEmptySnapshot(day)
     } else {
-      hostOpponentSnap = map.get(hostOpponentIdx) ?? this.getGhostOrEmpty(day)
+      const hostOpponentIdx = getOpponentFromAlive(0, aliveIndices, day - 1)
+      resolvedHostOpponentIdx = hostOpponentIdx
+      if (hostOpponentIdx < 0) {
+        const bye = this.getByeOpponentSnap(map, 0, day)
+        hostOpponentSnap = bye.snap
+        resolvedHostOpponentIdx = bye.ownerIndex
+      } else {
+        hostOpponentSnap = map.get(hostOpponentIdx) ?? this.getGhostOrEmpty(day)
+      }
+      console.log('[PvpRoom] 分发→host vs opponent[' + resolvedHostOpponentIdx + '] entities=' + hostOpponentSnap.entities.length)
+      this.onOpponentSnapshot?.(day, hostOpponentSnap, resolvedHostOpponentIdx >= 0 ? resolvedHostOpponentIdx : undefined)
     }
-    console.log('[PvpRoom] 分发→host vs opponent[' + resolvedHostOpponentIdx + '] entities=' + hostOpponentSnap.entities.length)
-    this.onOpponentSnapshot?.(day, hostOpponentSnap, resolvedHostOpponentIdx >= 0 ? resolvedHostOpponentIdx : undefined)
 
     // 删除前将本轮快照存入 playerLastSnapshots，供淘汰时填入幽灵快照池
     for (const [playerIdx, snap] of map.entries()) {
@@ -551,7 +562,7 @@ export class PvpRoom {
     if (this.isHost) {
       if (!this.daySyncReadyPlayers.has(day)) this.daySyncReadyPlayers.set(day, new Set())
       this.daySyncReadyPlayers.get(day)!.add(0)
-      const humanPlayers = this._players.filter((p) => !p.isAi)
+      const humanPlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
       if (humanPlayers.every((p) => this.daySyncReadyPlayers.get(day)?.has(p.index))) {
         console.log('[PvpRoom] 所有玩家 sync-ready（host路径），广播 battle_sync_start day=' + day)
         this.broadcastToClients({ type: 'battle_sync_start', day })
@@ -629,9 +640,11 @@ export class PvpRoom {
     const newlyEliminated: number[] = []
 
     // 只处理存活的真人玩家 HP（AI 玩家不参与 HP 计算）
+    // 使用派发快照时记录的存活列表，保证配对与分发时一致
+    const aliveIndices = this.dayAliveIndices.get(day) ?? []
     const alivePlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
     for (const player of alivePlayers) {
-      const opponentIdx = getOpponentIndex(player.index, this._totalPlayers, day - 1)
+      const opponentIdx = getOpponentFromAlive(player.index, aliveIndices, day - 1)
       const myResult = results.get(player.index)
       const lost = myResult?.winner === 'enemy'
       if (lost) {
@@ -654,6 +667,19 @@ export class PvpRoom {
         const lastSnap = this.playerLastSnapshots.get(player.index)
         if (lastSnap) this.ghostSnapshots.push(lastSnap)
         console.log('[PvpRoom] player[' + player.index + '] eliminated at day=' + day)
+      }
+    }
+
+    // 淘汰后重新检查：若有待派发的天，其快照已被所有存活玩家提交，立即派发（解决竞态：D+1 快照先于淘汰处理到达）
+    if (newlyEliminated.length > 0) {
+      for (const [pendingDay, pendingMap] of this.daySnapshots.entries()) {
+        if (this.dispatchedDays.has(pendingDay)) continue
+        const humanAlivePlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
+        if (humanAlivePlayers.every((p) => pendingMap.has(p.index))) {
+          console.log('[PvpRoom] 淘汰后重新检查 day=' + pendingDay + '：所有存活玩家已提交，立即派发')
+          if (this.dayCountdownTimer) clearTimeout(this.dayCountdownTimer)
+          this.hostDispatchSnapshots(pendingDay)
+        }
       }
     }
 

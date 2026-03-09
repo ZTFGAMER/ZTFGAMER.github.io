@@ -40,6 +40,18 @@ export function calcTotalDays(totalPlayers: number): number {
   return Math.max(1, totalPlayers - 1) * 3
 }
 
+/**
+ * 基于存活玩家列表的配对：将存活玩家映射为连续位置再调用 getOpponentIndex。
+ * alivePlayers: 存活玩家实际 playerIndex 列表（升序），淘汰后自动收缩。
+ * 返回实际 playerIndex，-1 表示轮空。
+ */
+export function getOpponentFromAlive(myIndex: number, alivePlayers: number[], dayZeroBased: number): number {
+  const myPos = alivePlayers.indexOf(myIndex)
+  if (myPos < 0) return -1
+  const opponentPos = getOpponentIndex(myPos, alivePlayers.length, dayZeroBased)
+  return opponentPos >= 0 ? (alivePlayers[opponentPos] ?? -1) : -1
+}
+
 
 export type PvpMsgToHost =
   | { type: 'join'; nickname: string }
@@ -67,6 +79,9 @@ export type PvpMsg = PvpMsgToHost | PvpMsgToClient
  * 算法（标准 circle method）：
  *   固定 player[0]，将 [1..n-1] 排成一个圈，每轮左旋一格。
  *   第 round 轮配对：0 vs rotated[0]，rotated[n-2] vs rotated[1]，...
+ *
+ * 注意：myIndex / 返回值均为"位置编号"（0..totalPlayers-1），非实际 playerIndex。
+ * 若需基于存活玩家配对，请使用 getOpponentFromAlive。
  */
 export function getOpponentIndex(myIndex: number, totalPlayers: number, dayZeroBased: number): number {
   if (totalPlayers <= 1) return -1
