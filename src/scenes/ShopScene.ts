@@ -7088,19 +7088,34 @@ function refreshShopUI(): void {
     goldText.y    = getDebugCfg('goldTextY')
   }
   if (livesText) {
-    const lives = getLifeState()
-    livesText.text = `❤️ ${lives.current}/${lives.max}`
-    livesText.style.fill = lives.current <= 1 ? 0xff6a6a : 0xffd4d4
+    if (PvpContext.isActive()) {
+      // PVP 模式：显示 PVP HP，不显示 PVE 生命
+      const pvpSession = PvpContext.getSession()
+      const myHp = pvpSession?.playerHps?.[pvpSession?.myIndex ?? -1] ?? 6
+      const initHp = getConfig().pvpRules?.initialHp ?? 6
+      livesText.text = `❤️ ${myHp}/${initHp}`
+      livesText.style.fill = myHp <= 2 ? 0xff6a6a : 0xffd4d4
+    } else {
+      const lives = getLifeState()
+      livesText.text = `❤️ ${lives.current}/${lives.max}`
+      livesText.style.fill = lives.current <= 1 ? 0xff6a6a : 0xffd4d4
+    }
     livesText.x = CANVAS_W - livesText.width - 18
     livesText.y = 18
   }
   if (trophyText) {
-    const target = getConfig().runRules?.trophyWinsToFinalVictory ?? 10
-    const trophy = getWinTrophyState(target)
-    trophyText.text = `🏆 ${trophy.wins}/${trophy.target}`
-    trophyText.style.fill = trophy.wins >= trophy.target ? 0xffde79 : 0xffe8b4
-    trophyText.x = CANVAS_W - trophyText.width - 18
-    trophyText.y = (livesText?.y ?? 18) + (livesText?.height ?? 0) + 6
+    if (PvpContext.isActive()) {
+      // PVP 模式：隐藏奖杯
+      trophyText.visible = false
+    } else {
+      trophyText.visible = true
+      const target = getConfig().runRules?.trophyWinsToFinalVictory ?? 10
+      const trophy = getWinTrophyState(target)
+      trophyText.text = `🏆 ${trophy.wins}/${trophy.target}`
+      trophyText.style.fill = trophy.wins >= trophy.target ? 0xffde79 : 0xffe8b4
+      trophyText.x = CANVAS_W - trophyText.width - 18
+      trophyText.y = (livesText?.y ?? 18) + (livesText?.height ?? 0) + 6
+    }
   }
   if (refreshCostText) {
     refreshCostText.text = `💰 ${shopManager.gold}/${getQuickBuyPricePreviewLabel()}`
@@ -10253,6 +10268,18 @@ export const ShopScene: Scene = {
       }
       const color = remain <= 0 ? 0xcccccc : remain < 30000 ? 0xff6b6b : 0xffd86b
       if (dayDebugText.style.fill !== color) dayDebugText.style.fill = color
+    }
+    // PVP HP：实时响应 round_summary 更新右上角血量显示
+    if (PvpContext.isActive() && livesText) {
+      const pvpSession = PvpContext.getSession()
+      const myHp = pvpSession?.playerHps?.[pvpSession?.myIndex ?? -1] ?? 6
+      const initHp = getConfig().pvpRules?.initialHp ?? 6
+      const next = `❤️ ${myHp}/${initHp}`
+      if (livesText.text !== next) {
+        livesText.text = next
+        livesText.style.fill = myHp <= 2 ? 0xff6a6a : 0xffd4d4
+        livesText.x = CANVAS_W - livesText.width - 18
+      }
     }
   },
 }

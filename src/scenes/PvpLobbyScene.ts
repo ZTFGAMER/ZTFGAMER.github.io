@@ -13,6 +13,8 @@ import { PvpContext } from '@/pvp/PvpContext'
 import { generateRoomCode } from '@/pvp/PeerConnection'
 import type { PvpSession, PvpPlayer, PvpMode } from '@/pvp/PvpTypes'
 import { calcTotalDays } from '@/pvp/PvpTypes'
+import { registerRoom, unregisterRoom, updateRoomPlayers, fetchRooms } from '@/pvp/RoomRegistry'
+import type { RoomInfo } from '@/pvp/RoomRegistry'
 
 const CANVAS_W = 640
 const CANVAS_H = 1384
@@ -25,12 +27,14 @@ let root: Container | null = null
 let pvpRoom: PvpRoom | null = null
 let roomCode = ''
 let myNickname = ''
+let roomName = ''
 let maxPlayers = 4
 let playerListTexts: Text[] = []
 let statusText: Text | null = null
 let activeInput: PixiInputHandle | null = null
 let selectedMode: PvpMode = 'async'
 let modePreSelected = false  // 从主菜单直接带入模式时为 true，跳过模式选择页
+let searchPollTimer: ReturnType<typeof setInterval> | null = null
 
 // ----------------------------------------------------------------
 // PixiJS 原生输入控件
@@ -250,7 +254,17 @@ function drawPageTitle(text: string, sub = ''): void {
 }
 
 function setStatus(msg: string): void {
-  if (statusText) statusText.text = msg
+  if (statusText) {
+    statusText.text = msg
+  } else if (root) {
+    // drawMainView 没有 statusText，创建临时错误提示
+    const errT = makeText(msg, 20, 0xff6655)
+    errT.anchor.set(0.5)
+    errT.x = CANVAS_W / 2
+    errT.y = 620
+    root.addChild(errT)
+    statusText = errT
+  }
 }
 
 // ----------------------------------------------------------------
@@ -322,6 +336,141 @@ function drawNicknameView(): void {
 
   // 自动聚焦
   setTimeout(() => inp.focus(), 100)
+}
+
+// ----------------------------------------------------------------
+// 搜索房间视图
+// ----------------------------------------------------------------
+function pvpModeShortLabel(mode: string): string {
+  if (mode === 'sync-a') return '同步'
+  return '异步'
+}
+
+// ----------------------------------------------------------------
+// 创建房间设置视图（填房间名后确认创建）
+// ----------------------------------------------------------------
+function drawCreateRoomView(): void {
+  clearRoot()
+  drawPageBg()
+  drawPageTitle('创建房间', '设置房间信息')
+  if (!root) return
+
+  const inp = createPixiInput(
+    roomName || '输入房间名（最多8字）',
+    8,
+    (val) => { roomName = val },
+    CANVAS_W / 2,
+    380,
+    420,
+  )
+  inp.container.x = CANVAS_W / 2
+  inp.container.y = 380
+  root.addChild(inp.container)
+  activeInput = inp
+
+  const confirmBtn = makeBtn('确认创建', PANEL_W - 60, 0x163a22, 0x4caf50, handleCreateRoom)
+  confirmBtn.x = CANVAS_W / 2
+  confirmBtn.y = 480
+  root.addChild(confirmBtn)
+
+  const backBtn = makeBtn('← 返回', 180, 0x1c1c2e, 0x334466, drawMainView)
+  backBtn.x = CANVAS_W / 2
+  backBtn.y = 600
+  root.addChild(backBtn)
+}
+
+function drawSearchRoomsView(rooms: RoomInfo[] = [], loading = true): void {
+  clearRoot()
+  drawPageBg()
+  drawPageTitle('搜索房间', '选择一个房间加入')
+  if (!root) return
+
+  if (loading) {
+    const loadT = makeText('加载中...', 24, 0x6677aa)
+    loadT.anchor.set(0.5)
+    loadT.x = CANVAS_W / 2
+    loadT.y = 500
+    root.addChild(loadT)
+  } else if (rooms.length === 0) {
+    const emptyT = makeText('暂无可用房间', 26, 0x445566)
+    emptyT.anchor.set(0.5)
+    emptyT.x = CANVAS_W / 2
+    emptyT.y = 480
+    root.addChild(emptyT)
+    const hintT = makeText('创建房间并邀请好友，或稍后刷新', 20, 0x334455)
+    hintT.anchor.set(0.5)
+    hintT.x = CANVAS_W / 2
+    hintT.y = 530
+    root.addChild(hintT)
+  } else {
+    rooms.slice(0, 6).forEach((room, i) => {
+      const cardY = 240 + i * 116
+      const cardG = new Graphics()
+      cardG.roundRect(CANVAS_W / 2 - 260, cardY, 520, 100, 14).fill({ color: 0x111828 })
+      cardG.roundRect(CANVAS_W / 2 - 261, cardY - 1, 522, 102, 15).fill({ color: 0x223355, alpha: 0.5 })
+      root!.addChild(cardG)
+
+      const nameT = makeText(room.roomName || room.nickname, 26, 0xddeeff, true)
+      nameT.anchor.set(0, 0.5)
+      nameT.x = CANVAS_W / 2 - 236
+      nameT.y = cardY + 32
+      root!.addChild(nameT)
+
+      const hostT = makeText(room.nickname, 18, 0x6677aa)
+      hostT.anchor.set(0, 0.5)
+      hostT.x = CANVAS_W / 2 - 236 + 200
+      hostT.y = cardY + 32
+      root!.addChild(hostT)
+
+      const modeT = makeText(pvpModeShortLabel(room.mode), 18, 0x5b8def)
+      modeT.anchor.set(0, 0.5)
+      modeT.x = CANVAS_W / 2 - 236
+      modeT.y = cardY + 70
+      root!.addChild(modeT)
+
+      const countT = makeText(`${room.currentPlayers}/${room.maxPlayers}人`, 20, 0x99bbaa)
+      countT.anchor.set(0, 0.5)
+      countT.x = CANVAS_W / 2 - 236 + 100
+      countT.y = cardY + 70
+      root!.addChild(countT)
+
+      const joinBtn = makeBtn('加入', 120, 0x163a22, 0x4caf50, () => {
+        stopSearchPoll()
+        handleJoinRoom(room.roomId)
+      })
+      joinBtn.x = CANVAS_W / 2 + 180
+      joinBtn.y = cardY + 50
+      root!.addChild(joinBtn)
+    })
+  }
+
+  const refreshBtn = makeBtn('刷新', 160, 0x12213a, 0x5b8def, startSearchPoll)
+  refreshBtn.x = CANVAS_W / 2
+  refreshBtn.y = CANVAS_H - 280
+  root.addChild(refreshBtn)
+
+  const backBtn = makeBtn('← 返回', 180, 0x1c1c2e, 0x334466, () => {
+    stopSearchPoll()
+    drawMainView()
+  })
+  backBtn.x = CANVAS_W / 2
+  backBtn.y = CANVAS_H - 140
+  root.addChild(backBtn)
+}
+
+function stopSearchPoll(): void {
+  if (searchPollTimer !== null) {
+    clearInterval(searchPollTimer)
+    searchPollTimer = null
+  }
+}
+
+function startSearchPoll(): void {
+  stopSearchPoll()
+  fetchRooms().then(rooms => drawSearchRoomsView(rooms, false)).catch(() => drawSearchRoomsView([], false))
+  searchPollTimer = setInterval(() => {
+    fetchRooms().then(rooms => drawSearchRoomsView(rooms, false)).catch(() => {})
+  }, 3000)
 }
 
 // ----------------------------------------------------------------
@@ -467,57 +616,25 @@ function drawMainView(): void {
 
   if (!root) return
 
-  // 昵称展示条
-  const nameBarCon = new Container()
-  nameBarCon.x = CANVAS_W / 2
-  nameBarCon.y = 228
-  const nameBarG = new Graphics()
-  nameBarG.roundRect(-200, -26, 400, 52, 10).fill({ color: 0x1a2035 })
-  nameBarCon.addChild(nameBarG)
-  const nameT = makeText(myNickname, 24, 0x99bbff, true)
-  nameT.anchor.set(0.5)
-  nameBarCon.addChild(nameT)
-  const changeT = makeText('修改', 18, 0x5b8def)
-  changeT.anchor.set(1, 0.5)
-  changeT.x = 188
-  changeT.eventMode = 'static'
-  changeT.cursor = 'pointer'
-  changeT.on('pointerdown', drawNicknameView)
-  nameBarCon.addChild(changeT)
-  root.addChild(nameBarCon)
-
-  // 当前模式标签 + 切换入口
-  const modeLabelCon = new Container()
-  modeLabelCon.x = CANVAS_W / 2
-  modeLabelCon.y = 268
-  const modeLabelG = new Graphics()
-  modeLabelG.roundRect(-200, -18, 400, 36, 8).fill({ color: 0x131828 })
-  modeLabelCon.addChild(modeLabelG)
-  const modeNameT = makeText(pvpModeLabel(selectedMode), 18, 0x7ab8ff)
-  modeNameT.anchor.set(0, 0.5)
-  modeNameT.x = -186
-  modeLabelCon.addChild(modeNameT)
-  const switchT = makeText('切换模式', 16, 0x5b8def)
-  switchT.anchor.set(1, 0.5)
-  switchT.x = 186
-  switchT.eventMode = 'static'
-  switchT.cursor = 'pointer'
-  switchT.on('pointerdown', () => { modePreSelected = false; drawModeSelectView() })
-  modeLabelCon.addChild(switchT)
-  root.addChild(modeLabelCon)
+  // 紧凑信息行：昵称 · 模式（只读，无操作入口）
+  const infoT = makeText(`${myNickname}  ·  ${pvpModeLabel(selectedMode)}`, 18, 0x556688)
+  infoT.anchor.set(0.5)
+  infoT.x = CANVAS_W / 2
+  infoT.y = 228
+  root.addChild(infoT)
 
   // 人数选择
   const playerCountLabel = makeText('房间人数', 22, 0x6677aa)
   playerCountLabel.anchor.set(0.5)
   playerCountLabel.x = CANVAS_W / 2
-  playerCountLabel.y = 326
+  playerCountLabel.y = 300
   root.addChild(playerCountLabel);
 
   [4, 8].forEach((n, i) => {
     const active = n === maxPlayers
     const con = new Container()
     con.x = CANVAS_W / 2 + (i - 0.5) * 148
-    con.y = 390
+    con.y = 365
     const g = new Graphics()
     if (active) {
       g.roundRect(-58, -38, 116, 76, 15).fill({ color: 0x5b8def, alpha: 0.25 })
@@ -535,32 +652,41 @@ function drawMainView(): void {
   })
 
   const divG = new Graphics()
-  divG.rect(CANVAS_W / 2 - 220, 466, 440, 1).fill({ color: 0x223355, alpha: 0.8 })
+  divG.rect(CANVAS_W / 2 - 220, 440, 440, 1).fill({ color: 0x223355, alpha: 0.8 })
   root.addChild(divG)
 
   // 创建房间
   const createLabel = makeText('成为房主，邀请好友加入', 20, 0x6677aa)
   createLabel.anchor.set(0.5)
   createLabel.x = CANVAS_W / 2
-  createLabel.y = 492
+  createLabel.y = 466
   root.addChild(createLabel)
 
-  const createBtn = makeBtn('＋ 创建房间', PANEL_W - 60, 0x163a22, 0x4caf50, handleCreateRoom)
+  const createBtn = makeBtn('＋ 创建房间', PANEL_W - 60, 0x163a22, 0x4caf50, drawCreateRoomView)
   createBtn.x = CANVAS_W / 2
-  createBtn.y = 566
+  createBtn.y = 540
   root.addChild(createBtn)
 
   // 加入房间
-  const joinLabel = makeText('已有房间码？直接加入', 20, 0x6677aa)
+  const joinLabel = makeText('已有房间？直接加入', 20, 0x6677aa)
   joinLabel.anchor.set(0.5)
   joinLabel.x = CANVAS_W / 2
-  joinLabel.y = 676
+  joinLabel.y = 650
   root.addChild(joinLabel)
 
-  const joinBtn = makeBtn('输入房间码加入', PANEL_W - 60, 0x12213a, 0x5b8def, drawJoinRoomView)
-  joinBtn.x = CANVAS_W / 2
-  joinBtn.y = 750
-  root.addChild(joinBtn)
+  const searchBtn = makeBtn('搜索房间', PANEL_W - 60, 0x12213a, 0x5b8def, () => { drawSearchRoomsView(); startSearchPoll() })
+  searchBtn.x = CANVAS_W / 2
+  searchBtn.y = 724
+  root.addChild(searchBtn)
+
+  const codeJoinT = makeText('用房间码加入', 18, 0x445577)
+  codeJoinT.anchor.set(0.5)
+  codeJoinT.x = CANVAS_W / 2
+  codeJoinT.y = 804
+  codeJoinT.eventMode = 'static'
+  codeJoinT.cursor = 'pointer'
+  codeJoinT.on('pointerdown', drawJoinRoomView)
+  root.addChild(codeJoinT)
 
   const backBtn = makeBtn('← 返回主菜单', 220, 0x1c1c2e, 0x334466, () => SceneManager.goto('menu'))
   backBtn.x = CANVAS_W / 2
@@ -637,6 +763,7 @@ function drawHostWaitingView(): void {
   root.addChild(startBtn)
 
   const cancelBtn = makeBtn('取消', 180, 0x1c1c2e, 0x553333, () => {
+    unregisterRoom(roomCode).catch(() => {})
     pvpRoom?.destroy()
     pvpRoom = null
     drawMainView()
@@ -731,7 +858,10 @@ async function handleCreateRoom(): Promise<void> {
   roomCode = generateRoomCode()
   pvpRoom = new PvpRoom()
   pvpRoom.pvpMode = selectedMode
-  pvpRoom.onRoomStateChange = () => { refreshPlayerList() }
+  pvpRoom.onRoomStateChange = () => {
+    refreshPlayerList()
+    updateRoomPlayers(roomCode, pvpRoom!.players.filter(p => !p.isAi).length).catch(() => {})
+  }
   pvpRoom.onError = (msg) => { setStatus(`错误：${msg}`) }
   pvpRoom.onGameStart = (myIndex, totalPlayers) => {
     const sess: PvpSession = {
@@ -748,6 +878,7 @@ async function handleCreateRoom(): Promise<void> {
   try {
     await pvpRoom.createRoom(roomCode, myNickname, maxPlayers)
     console.log('[PvpLobby] 房间已创建 code=' + roomCode)
+    registerRoom({ roomId: roomCode, nickname: myNickname, roomName: roomName || myNickname, maxPlayers, currentPlayers: 1, mode: selectedMode }).catch(() => {})
     drawHostWaitingView()
   } catch (e) {
     setStatus(`创建房间失败：${e instanceof Error ? e.message : String(e)}`)
@@ -787,6 +918,7 @@ async function handleJoinRoom(code: string): Promise<void> {
 
 function handleStartGame(): void {
   if (!pvpRoom) return
+  unregisterRoom(roomCode).catch(() => {})
   pvpRoom.startGame()
 }
 
@@ -815,6 +947,7 @@ export const PvpLobbyScene: Scene = {
   },
 
   onExit() {
+    stopSearchPoll()
     activeInput?.destroy()
     activeInput = null
     if (root) {

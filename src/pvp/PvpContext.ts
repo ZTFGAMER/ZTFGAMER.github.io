@@ -129,9 +129,11 @@ export const PvpContext = {
         }
       })
       console.log('[PvpContext] round_summary day=' + day + ' hpMap=' + JSON.stringify(hpMap) + ' eliminated=' + JSON.stringify(newlyEliminated))
-      // 我被淘汰：直接跳转结算页
+      // 我被淘汰：停止倒计时（防止 timeout 在离开后触发 autoSubmit）再跳转
       if (newlyEliminated.includes(session.myIndex)) {
         console.log('[PvpContext] 我被淘汰，跳转结算页')
+        stopCountdown()
+        autoSubmitCallback = null
         SceneManager.goto('pvp-result')
       }
     }

@@ -48,6 +48,7 @@ export class PvpRoom {
   private playerHps = new Map<number, number>()
   private eliminatedSet = new Set<number>()
   private ghostSnapshots: BattleSnapshotBundle[] = []
+  private playerLastSnapshots = new Map<number, BattleSnapshotBundle>()  // 每位玩家最新快照，用于淘汰后的幽灵对手
   private roundResultsByDay = new Map<number, Map<number, { winner: 'player' | 'enemy' | 'draw'; survivingDamage: number }>>()
 
   pvpMode: PvpMode = 'async'
@@ -429,6 +430,10 @@ export class PvpRoom {
     console.log('[PvpRoom] 分发→host vs opponent[' + hostOpponentIdx + '] entities=' + hostOpponentSnap.entities.length)
     this.onOpponentSnapshot?.(day, hostOpponentSnap)
 
+    // 删除前将本轮快照存入 playerLastSnapshots，供淘汰时填入幽灵快照池
+    for (const [playerIdx, snap] of map.entries()) {
+      this.playerLastSnapshots.set(playerIdx, snap)
+    }
     // 清理当天快照数据（节省内存；防重派发已由 dispatchedDays 保护）
     this.daySnapshots.delete(day)
   }
@@ -617,8 +622,8 @@ export class PvpRoom {
       if ((this.playerHps.get(player.index) ?? 0) <= 0) {
         this.eliminatedSet.add(player.index)
         newlyEliminated.push(player.index)
-        // Cache ghost snapshot from this day's snapshots
-        const lastSnap = this.daySnapshots.get(day)?.get(player.index)
+        // 从缓存的最新快照中取该玩家的阵容存入幽灵池
+        const lastSnap = this.playerLastSnapshots.get(player.index)
         if (lastSnap) this.ghostSnapshots.push(lastSnap)
         console.log('[PvpRoom] player[' + player.index + '] eliminated at day=' + day)
       }
