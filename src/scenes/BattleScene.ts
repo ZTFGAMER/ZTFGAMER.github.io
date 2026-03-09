@@ -2599,7 +2599,13 @@ export const BattleScene: Scene = {
       enemyDraftEnabled: getDebugCfg('enemyDraftEnabled'),
       enemyDraftSameArchetypeBias: getDebugCfg('enemyDraftSameArchetypeBias'),
     })
-    engine.start(snapshot, { playerSkillIds: battlePickedSkills.map((s) => s.id) })
+    engine.start(snapshot, {
+      playerSkillIds: battlePickedSkills.map((s) => s.id),
+      enemySkillIds: snapshot.pvpEnemySkillIds ?? [],
+      enemyBackpackItemCount: snapshot.pvpEnemyBackpackItemCount,
+      enemyGold: snapshot.pvpEnemyGold,
+      enemyTrophyWins: snapshot.pvpEnemyTrophyWins,
+    })
     enemyPickedSkills = engine.getEnemySkillIds()
       .map((id) => toBattleSkillPickById(id))
       .filter((v): v is BattleSkillPick => !!v)

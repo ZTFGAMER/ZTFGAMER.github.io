@@ -119,6 +119,9 @@ interface CombatStartOptions {
   playerBackpackItemCount?: number
   playerGold?: number
   playerTrophyWins?: number
+  enemyBackpackItemCount?: number
+  enemyGold?: number
+  enemyTrophyWins?: number
 }
 
 type SkillTierLite = 'bronze' | 'silver' | 'gold'
@@ -460,6 +463,9 @@ export class CombatEngine {
   private playerActiveColCount = 0
   private playerGoldAtBattleStart = 0
   private playerTrophyWinsAtBattleStart = 0
+  private enemyBackpackItemCount = 0
+  private enemyGoldAtBattleStart = 0
+  private enemyTrophyWinsAtBattleStart = 0
 
   private debugShieldChargeLog(msg: string, extra?: Record<string, unknown>): void {
     if (!DEBUG_SHIELD_CHARGE) return
@@ -517,6 +523,9 @@ export class CombatEngine {
     this.playerActiveColCount = Math.max(1, Math.round(snapshot.activeColCount || 1))
     this.playerGoldAtBattleStart = Math.max(0, Math.round(options?.playerGold ?? snapshot.playerGold ?? 0))
     this.playerTrophyWinsAtBattleStart = Math.max(0, Math.round(options?.playerTrophyWins ?? snapshot.playerTrophyWins ?? 0))
+    this.enemyBackpackItemCount = Math.max(0, Math.round(options?.enemyBackpackItemCount ?? snapshot.pvpEnemyBackpackItemCount ?? 0))
+    this.enemyGoldAtBattleStart = Math.max(0, Math.round(options?.enemyGold ?? snapshot.pvpEnemyGold ?? 0))
+    this.enemyTrophyWinsAtBattleStart = Math.max(0, Math.round(options?.enemyTrophyWins ?? snapshot.pvpEnemyTrophyWins ?? 0))
 
     this.applyPickedSkillBattleStartEffects()
     this.applyBattleStartEffects()
@@ -716,6 +725,9 @@ export class CombatEngine {
     this.playerActiveColCount = 0
     this.playerGoldAtBattleStart = 0
     this.playerTrophyWinsAtBattleStart = 0
+    this.enemyBackpackItemCount = 0
+    this.enemyGoldAtBattleStart = 0
+    this.enemyTrophyWinsAtBattleStart = 0
   }
 
   private hasPlayerSkill(id: string): boolean {
@@ -1050,17 +1062,21 @@ export class CombatEngine {
         }
       }
 
-      if (side === 'player' && this.hasSkill('player', 'skill35') && this.playerBackpackItemCount > 0) {
-        const mul = 1 + this.playerBackpackItemCount * 0.02
-        this.playerHero.maxHp = Math.max(1, Math.round(this.playerHero.maxHp * mul))
-        this.playerHero.hp = Math.min(this.playerHero.maxHp, Math.round(this.playerHero.hp * mul))
+      const backpackCount = side === 'player' ? this.playerBackpackItemCount : this.enemyBackpackItemCount
+      if (this.hasSkill(side, 'skill35') && backpackCount > 0) {
+        const mul = 1 + backpackCount * 0.02
+        hero.maxHp = Math.max(1, Math.round(hero.maxHp * mul))
+        hero.hp = Math.min(hero.maxHp, Math.round(hero.hp * mul))
       }
 
-      if (side === 'player' && this.hasSkill('player', 'skill46') && this.playerTrophyWinsAtBattleStart > 0) {
-        this.skillExecuteDamageBonus += this.playerTrophyWinsAtBattleStart * 15
+      const trophyWins = side === 'player' ? this.playerTrophyWinsAtBattleStart : this.enemyTrophyWinsAtBattleStart
+      const goldAtStart = side === 'player' ? this.playerGoldAtBattleStart : this.enemyGoldAtBattleStart
+      const execBonus = side === 'player' ? 'skillExecuteDamageBonus' : 'skillEnemyExecuteDamageBonus'
+      if (this.hasSkill(side, 'skill46') && trophyWins > 0) {
+        this[execBonus] += trophyWins * 15
       }
-      if (side === 'player' && this.hasSkill('player', 'skill95') && this.playerGoldAtBattleStart > 0) {
-        this.skillExecuteDamageBonus += this.playerGoldAtBattleStart
+      if (this.hasSkill(side, 'skill95') && goldAtStart > 0) {
+        this[execBonus] += goldAtStart
       }
 
       if (this.hasSkill(side, 'skill33')) {
@@ -2651,7 +2667,7 @@ export class CombatEngine {
         this.refillAmmoAndTriggerGrowth(item, 3)
       }
       if (this.hasSkill(item.side, 'skill52') && becameEmpty) {
-        if (Math.random() < 0.5) {
+        if (makeSeededRng(this.seedFrom(item.defId, this.tickIndex))() < 0.5) {
           this.refillAmmoAndTriggerGrowth(item, item.runtime.ammoMax)
         }
       }
@@ -2934,7 +2950,8 @@ export class CombatEngine {
     const due = this.pendingHits.filter((h) => h.dueTick <= this.tickIndex)
     this.pendingHits = this.pendingHits.filter((h) => h.dueTick > this.tickIndex)
 
-    for (const hit of due) {
+    for (let hitIdx = 0; hitIdx < due.length; hitIdx++) {
+      const hit = due[hitIdx]!
       EventBus.emit('battle:item_fire', {
         itemId: hit.defId,
         sourceItemId: hit.sourceItemId,
@@ -2956,7 +2973,7 @@ export class CombatEngine {
       }
       const targetHero = hit.side === 'player' ? this.enemyHero : this.playerHero
       if (targetHero.hp <= 0) continue
-      const critRoll = Math.random() * 100
+      const critRoll = makeSeededRng(this.seedFrom(hit.defId, this.tickIndex * 1000 + hitIdx))() * 100
       const isCrit = critRoll < hit.crit
       const critMult = getConfig().combatRuntime.critMultiplier
       const panel = isCrit ? Math.round(resolvedDamage * critMult) : resolvedDamage

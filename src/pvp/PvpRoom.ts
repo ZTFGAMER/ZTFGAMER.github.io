@@ -49,7 +49,7 @@ export class PvpRoom {
   onDayReady?: (day: number, countdownMs: number) => void
   onPlayerStatusUpdate?: (day: number, readyIndices: number[]) => void
   onOpponentSnapshot?: (day: number, snapshot: BattleSnapshotBundle) => void
-  onGameOver?: (rankings: { nickname: string; wins: number; index: number }[]) => void
+  onGameOver?: (rankings: { nickname: string; wins: number | null; index: number }[]) => void
   onError?: (msg: string) => void
 
   get players(): PvpPlayer[] { return this._players }
@@ -434,10 +434,10 @@ export class PvpRoom {
     }
   }
 
-  private buildRankings(): { nickname: string; wins: number; index: number }[] {
+  private buildRankings(): { nickname: string; wins: number | null; index: number }[] {
     return this._players
-      .map((p) => ({ nickname: p.nickname, wins: this.playerWins.get(p.index) ?? 0, index: p.index }))
-      .sort((a, b) => b.wins - a.wins)
+      .map((p) => ({ nickname: p.nickname, wins: this.playerWins.get(p.index) ?? null, index: p.index }))
+      .sort((a, b) => (b.wins ?? -1) - (a.wins ?? -1))
   }
 
   private hostTryBroadcastGameOver(): void {

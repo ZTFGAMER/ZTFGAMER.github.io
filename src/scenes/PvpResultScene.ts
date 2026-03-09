@@ -92,7 +92,7 @@ function buildContent(): void {
   const hasRealRankings = !!(session?.rankings && session.rankings.length > 0)
 
   // ── 排名列表 ──────────────────────────────────────────
-  type RankEntry = { nickname: string; wins: number; isMe: boolean; winsKnown: boolean }
+  type RankEntry = { nickname: string; wins: number | null; isMe: boolean; winsKnown: boolean }
   const entries: RankEntry[] = []
 
   if (session) {
@@ -103,7 +103,7 @@ function buildContent(): void {
           nickname: r.nickname,
           wins: r.wins,
           isMe: r.index === session.myIndex,
-          winsKnown: true,
+          winsKnown: r.wins !== null,
         })
       })
     } else {
@@ -122,7 +122,7 @@ function buildContent(): void {
       entries.sort((a, b) => {
         if (a.winsKnown && !b.winsKnown) return -1
         if (!a.winsKnown && b.winsKnown) return 1
-        return b.wins - a.wins
+        return (b.wins ?? -1) - (a.wins ?? -1)
       })
     }
   }
@@ -170,13 +170,16 @@ function buildContent(): void {
     nameT.y = i === 0 ? 10 : 8
     rowCon.addChild(nameT)
 
-    const winsLabel = entry.winsKnown ? `${entry.wins}胜` : '结算中...'
+    const winsLabel = entry.wins === null ? '断线' : entry.winsKnown ? `${entry.wins}胜` : '结算中...'
     // 颜色阈值按总天数等比缩放：绿色 ≥ 67%，黄色 ≥ 33%
     const greenThreshold = Math.round(totalDays * 2 / 3)
     const yellowThreshold = Math.round(totalDays / 3)
-    const winsColor = !entry.winsKnown
-      ? 0x778899
-      : (entry.wins >= greenThreshold ? 0x7fff7f : (entry.wins >= yellowThreshold ? 0xffd86b : 0xaabbcc))
+    const wins = entry.wins ?? 0
+    const winsColor = entry.wins === null
+      ? 0x556677
+      : !entry.winsKnown
+        ? 0x778899
+        : (wins >= greenThreshold ? 0x7fff7f : (wins >= yellowThreshold ? 0xffd86b : 0xaabbcc))
     const winsT = new Text({
       text: winsLabel,
       style: { fill: winsColor, fontSize: i === 0 ? 36 : 28, fontWeight: 'bold' },
@@ -186,7 +189,7 @@ function buildContent(): void {
     winsT.y = 0
     rowCon.addChild(winsT)
 
-    if (entry.isMe && entry.winsKnown) {
+    if (entry.isMe && entry.winsKnown && entry.wins !== null) {
       const dotG = new Graphics()
       drawWinDots(dotG, 0, i === 0 ? 40 : 32, entry.wins, totalDays, RANK_COLORS[i] ?? 0x5588cc)
       rowCon.addChild(dotG)

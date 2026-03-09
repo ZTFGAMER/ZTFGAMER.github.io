@@ -20,7 +20,7 @@ export interface PvpSession {
   currentDay: number
   wins: number                // my win count
   dayResults: Record<number, 'player' | 'enemy' | 'draw'>
-  rankings?: { nickname: string; wins: number; index: number }[]  // filled after game_over
+  rankings?: { nickname: string; wins: number | null; index: number }[]  // filled after game_over
 }
 
 /**
@@ -45,7 +45,7 @@ export type PvpMsgToClient =
   | { type: 'day_ready'; day: number; countdownMs: number }
   | { type: 'player_status'; day: number; readyIndices: number[] }
   | { type: 'opponent_snapshot'; day: number; snapshot: BattleSnapshotBundle }
-  | { type: 'game_over'; rankings: { nickname: string; wins: number; index: number }[] }
+  | { type: 'game_over'; rankings: { nickname: string; wins: number | null; index: number }[] }
 
 export type PvpMsg = PvpMsgToHost | PvpMsgToClient
 

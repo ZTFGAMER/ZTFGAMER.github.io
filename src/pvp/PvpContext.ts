@@ -246,6 +246,10 @@ function applyOpponentSnapshot(day: number, opponentSnap: BattleSnapshotBundle):
     ...base,
     day,
     pvpEnemyEntities: opponentSnap.entities,
+    pvpEnemySkillIds: opponentSnap.ownerSkillIds ?? [],
+    pvpEnemyBackpackItemCount: opponentSnap.playerBackpackItemCount,
+    pvpEnemyGold: opponentSnap.playerGold,
+    pvpEnemyTrophyWins: opponentSnap.playerTrophyWins,
   }
   setBattleSnapshot(pvpSnap)
   SceneManager.goto('battle')

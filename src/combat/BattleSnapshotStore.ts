@@ -28,8 +28,15 @@ export interface BattleSnapshotBundle {
   playerTrophyWins?: number
   showBasicSynthesisGuide?: boolean
   entities: BattleSnapshotEntity[]
+  /** 快照所有者自身的技能 ID（PVP 提交时附带，对手用作 enemySkillIds） */
+  ownerSkillIds?: string[]
   /** PVP 专用：对手的 entities，替代 CombatEngine 内部的 makeEnemyRunners */
   pvpEnemyEntities?: BattleSnapshotEntity[]
+  /** PVP 专用：对手的技能 ID、背包数、金币、奖杯胜场 */
+  pvpEnemySkillIds?: string[]
+  pvpEnemyBackpackItemCount?: number
+  pvpEnemyGold?: number
+  pvpEnemyTrophyWins?: number
 }
 
 let currentSnapshot: BattleSnapshotBundle | null = null
@@ -45,7 +52,12 @@ export function setBattleSnapshot(snapshot: BattleSnapshotBundle): void {
     playerTrophyWins: typeof snapshot.playerTrophyWins === 'number' ? Math.max(0, Math.round(snapshot.playerTrophyWins)) : undefined,
     showBasicSynthesisGuide: snapshot.showBasicSynthesisGuide === true,
     entities: snapshot.entities.map((it) => ({ ...it })),
+    ownerSkillIds: snapshot.ownerSkillIds ? [...snapshot.ownerSkillIds] : undefined,
     pvpEnemyEntities: snapshot.pvpEnemyEntities?.map((it) => ({ ...it })),
+    pvpEnemySkillIds: snapshot.pvpEnemySkillIds ? [...snapshot.pvpEnemySkillIds] : undefined,
+    pvpEnemyBackpackItemCount: snapshot.pvpEnemyBackpackItemCount,
+    pvpEnemyGold: snapshot.pvpEnemyGold,
+    pvpEnemyTrophyWins: snapshot.pvpEnemyTrophyWins,
   }
   console.log('[Snapshot] setBattleSnapshot day=' + snapshot.day + ' entities=' + snapshot.entities.length + ' pvpEnemyEntities=' + (snapshot.pvpEnemyEntities?.length ?? 'none'))
 }
@@ -62,7 +74,12 @@ export function getBattleSnapshot(): BattleSnapshotBundle | null {
     playerTrophyWins: typeof currentSnapshot.playerTrophyWins === 'number' ? Math.max(0, Math.round(currentSnapshot.playerTrophyWins)) : undefined,
     showBasicSynthesisGuide: currentSnapshot.showBasicSynthesisGuide === true,
     entities: currentSnapshot.entities.map((it) => ({ ...it })),
+    ownerSkillIds: currentSnapshot.ownerSkillIds ? [...currentSnapshot.ownerSkillIds] : undefined,
     pvpEnemyEntities: currentSnapshot.pvpEnemyEntities?.map((it) => ({ ...it })),
+    pvpEnemySkillIds: currentSnapshot.pvpEnemySkillIds ? [...currentSnapshot.pvpEnemySkillIds] : undefined,
+    pvpEnemyBackpackItemCount: currentSnapshot.pvpEnemyBackpackItemCount,
+    pvpEnemyGold: currentSnapshot.pvpEnemyGold,
+    pvpEnemyTrophyWins: currentSnapshot.pvpEnemyTrophyWins,
   }
 }
 

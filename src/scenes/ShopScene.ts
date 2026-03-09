@@ -825,6 +825,7 @@ function buildBattleSnapshot(skillBarMoveStartAtMs?: number): BattleSnapshotBund
     playerBackpackItemCount,
     playerGold: Math.max(0, Math.round(shopManager?.gold ?? 0)),
     playerTrophyWins: Math.max(0, Math.round(trophy.wins)),
+    ownerSkillIds: pickedSkills.map((s) => s.id),
     entities: snap.entities.map((it) => ({
       ...it,
       tier: instanceToTier.get(it.instanceId) ?? 'Bronze',
