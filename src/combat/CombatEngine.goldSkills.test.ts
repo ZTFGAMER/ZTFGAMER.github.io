@@ -70,6 +70,15 @@ describe('CombatEngine gold skills', () => {
     expect(board.player.shield).toBe(Math.round(board.player.maxHp * 0.3))
   })
 
+  it('enemy skill36: 开场也应获得30%最大生命护盾', () => {
+    const engine = new CombatEngine()
+    engine.start(mkSnapshot([], {
+      pvpEnemyEntities: [mkEntity('e36', 0, { damage: 10 })],
+    }), { enemySkillIds: ['skill36'] })
+    const board = engine.getBoardState()
+    expect(board.enemy.shield).toBe(Math.round(board.enemy.maxHp * 0.3))
+  })
+
   it('skill37: 每10点护盾提升1点全体伤害（实时）', () => {
     const engine = new CombatEngine()
     engine.start(mkSnapshot([mkEntity('g37', 0, { damage: 10 })]), { playerSkillIds: ['skill36', 'skill37'], enemyDisabled: true })
@@ -218,6 +227,18 @@ describe('CombatEngine gold skills', () => {
     expect(late?.multicast).toBe(1)
   })
 
+  it('enemy skill88: 前5秒敌方也应连发+1', () => {
+    const engine = new CombatEngine()
+    engine.start(mkSnapshot([], {
+      pvpEnemyEntities: [mkEntity('e88', 0, { damage: 10, multicast: 1 })],
+    }), { enemySkillIds: ['skill88'] })
+    const early = runtimeByInstance(engine, 'e88')
+    expect(early?.multicast).toBe(2)
+    tick(engine, 360)
+    const late = runtimeByInstance(engine, 'e88')
+    expect(late?.multicast).toBe(1)
+  })
+
   it('skill87: 左侧物品使用时为最右侧充能0.5秒', () => {
     const baseline = new CombatEngine()
     baseline.start(mkSnapshot([
@@ -278,6 +299,30 @@ describe('CombatEngine gold skills', () => {
     off()
     setCombatRuntimeOverride({})
     expect(skill47Healed).toBeGreaterThan(0)
+  })
+
+  it('enemy skill47: 濒死时也应复活并恢复50%最大生命（每场一次）', () => {
+    const engine = new CombatEngine()
+    let enemySkill47Healed = 0
+    const off = EventBus.on('battle:heal', (e) => {
+      if (e.sourceItemId === 'skill47' && e.targetSide === 'enemy') enemySkill47Healed += e.amount
+    })
+    setCombatRuntimeOverride({
+      fatigueStartMs: 100,
+      fatigueTickMs: 100,
+      fatigueBaseValue: 999,
+      fatigueDoubleEveryMs: 1000,
+    })
+    engine.start(mkSnapshot([], {
+      pvpEnemyEntities: [mkEntity('e47', 0, { damage: 0 })],
+    }), { enemySkillIds: ['skill47'] })
+    for (let i = 0; i < 20000; i++) {
+      engine.update(1 / 60)
+      if (engine.isFinished() && enemySkill47Healed > 0) break
+    }
+    off()
+    setCombatRuntimeOverride({})
+    expect(enemySkill47Healed).toBeGreaterThan(0)
   })
 
   it('skill49: 上阵区不满时开场最大生命翻倍', () => {

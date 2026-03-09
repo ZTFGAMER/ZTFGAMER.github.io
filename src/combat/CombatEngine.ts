@@ -443,14 +443,15 @@ export class CombatEngine {
   private enemySkillIds = new Set<string>()
   private skillEnemyHalfTriggered = false
   private skillPlayerHalfTriggered = false
+  private skillEnemySelfHalfTriggered = false
   private skillEnemyHalfTriggeredFromEnemy = false
   private skillPlayerHalfShieldTriggered = false
   private skillEnemyHalfShieldTriggered = false
   private skillPlayerHalfShieldCdTriggered = false
   private skillEnemyHalfShieldCdTriggered = false
-  private skillFirstAmmoEmptyTriggered = false
-  private skill47ReviveTriggered = false
-  private skill86UseCount = 0
+  private skillFirstAmmoEmptyTriggeredBySide: Record<'player' | 'enemy', boolean> = { player: false, enemy: false }
+  private skill47ReviveTriggeredBySide: Record<'player' | 'enemy', boolean> = { player: false, enemy: false }
+  private skill86UseCountBySide: Record<'player' | 'enemy', number> = { player: 0, enemy: 0 }
   private skillExecuteDamageBonus = 0
   private skillEnemyExecuteDamageBonus = 0
   private skill33RegenPerTick = 0
@@ -496,13 +497,19 @@ export class CombatEngine {
     }
     this.skillEnemyHalfTriggered = false
     this.skillPlayerHalfTriggered = false
+    this.skillEnemySelfHalfTriggered = false
+    this.skillEnemyHalfTriggeredFromEnemy = false
     this.skillPlayerHalfShieldTriggered = false
+    this.skillEnemyHalfShieldTriggered = false
     this.skillPlayerHalfShieldCdTriggered = false
-    this.skillFirstAmmoEmptyTriggered = false
-    this.skill47ReviveTriggered = false
-    this.skill86UseCount = 0
+    this.skillEnemyHalfShieldCdTriggered = false
+    this.skillFirstAmmoEmptyTriggeredBySide = { player: false, enemy: false }
+    this.skill47ReviveTriggeredBySide = { player: false, enemy: false }
+    this.skill86UseCountBySide = { player: 0, enemy: 0 }
     this.skillExecuteDamageBonus = 0
+    this.skillEnemyExecuteDamageBonus = 0
     this.skill33RegenPerTick = 0
+    this.skillEnemy33RegenPerTick = 0
     this.playerBackpackItemCount = Math.max(
       0,
       Math.round(options?.playerBackpackItemCount ?? snapshot.playerBackpackItemCount ?? 0),
@@ -660,7 +667,7 @@ export class CombatEngine {
           poison: Math.max(0, it.baseStats.poison),
           multicast: (() => {
             const base = Math.max(1, Math.round(it.baseStats.multicast))
-            const goldMulticast = this.hasPlayerSkill('skill88') && it.side === 'player' && this.elapsedMs <= 5000 ? 1 : 0
+            const goldMulticast = this.hasSkill(it.side, 'skill88') && this.elapsedMs <= 5000 ? 1 : 0
             const boosted = Math.max(1, base + Math.max(0, Math.round(it.runtime.bonusMulticast)) + goldMulticast)
             const localDef = this.findItemDef(it.defId)
             if (!localDef) return boosted
@@ -692,13 +699,19 @@ export class CombatEngine {
     this.enemySkillIds.clear()
     this.skillEnemyHalfTriggered = false
     this.skillPlayerHalfTriggered = false
+    this.skillEnemySelfHalfTriggered = false
+    this.skillEnemyHalfTriggeredFromEnemy = false
     this.skillPlayerHalfShieldTriggered = false
+    this.skillEnemyHalfShieldTriggered = false
     this.skillPlayerHalfShieldCdTriggered = false
-    this.skillFirstAmmoEmptyTriggered = false
-    this.skill47ReviveTriggered = false
-    this.skill86UseCount = 0
+    this.skillEnemyHalfShieldCdTriggered = false
+    this.skillFirstAmmoEmptyTriggeredBySide = { player: false, enemy: false }
+    this.skill47ReviveTriggeredBySide = { player: false, enemy: false }
+    this.skill86UseCountBySide = { player: 0, enemy: 0 }
     this.skillExecuteDamageBonus = 0
+    this.skillEnemyExecuteDamageBonus = 0
     this.skill33RegenPerTick = 0
+    this.skillEnemy33RegenPerTick = 0
     this.playerBackpackItemCount = 0
     this.playerActiveColCount = 0
     this.playerGoldAtBattleStart = 0
@@ -928,11 +941,6 @@ export class CombatEngine {
     return occupied.size
   }
 
-  private isPlayerBattleZoneNotFull(): boolean {
-    const cap = Math.max(1, this.playerActiveColCount)
-    return this.occupiedColsBySide('player') < cap
-  }
-
   private totalAmmoCurrent(side: 'player' | 'enemy'): number {
     let total = 0
     for (const it of this.items) {
@@ -948,113 +956,122 @@ export class CombatEngine {
       .sort((a, b) => (a.col - b.col) || a.id.localeCompare(b.id))
   }
 
-  private sortedPlayerItems(filterFn: (item: CombatItemRunner) => boolean): CombatItemRunner[] {
-    return this.sortedItemsBySide('player', filterFn)
-  }
-
   private applyPickedSkillBattleStartEffects(): void {
-    if (this.playerSkillIds.size <= 0) return
-
-    const shieldItems = this.sortedPlayerItems((it) => this.isShieldItem(it))
-    const ammoItems = this.sortedPlayerItems((it) => this.isAmmoItem(it))
-    const weaponItems = this.sortedPlayerItems((it) => this.isWeaponItem(it))
-
-    if (this.hasPlayerSkill('skill1') && shieldItems.length > 0) shieldItems[0]!.baseStats.shield += 25
-    if (this.hasPlayerSkill('skill2') && shieldItems.length > 0) shieldItems[shieldItems.length - 1]!.baseStats.shield += 25
-    if (this.hasPlayerSkill('skill3')) {
-      for (const one of shieldItems) one.baseStats.shield += 10
+    const isZoneNotFull = (side: 'player' | 'enemy'): boolean => {
+      const cap = Math.max(1, this.playerActiveColCount)
+      return this.occupiedColsBySide(side) < cap
     }
 
-    if (this.hasPlayerSkill('skill7')) {
-      this.playerHero.maxHp = Math.max(1, Math.round(this.playerHero.maxHp * 1.1))
-      this.playerHero.hp = Math.min(this.playerHero.maxHp, Math.round(this.playerHero.hp * 1.1))
-    }
+    const applySide = (side: 'player' | 'enemy'): void => {
+      const hasAnySkill = side === 'player' ? this.playerSkillIds.size > 0 : this.enemySkillIds.size > 0
+      if (!hasAnySkill) return
+      const hero = this.heroOf(side)
+      const shieldItems = this.sortedItemsBySide(side, (it) => this.isShieldItem(it))
+      const ammoItems = this.sortedItemsBySide(side, (it) => this.isAmmoItem(it))
+      const weaponItems = this.sortedItemsBySide(side, (it) => this.isWeaponItem(it))
 
-    if (this.hasPlayerSkill('skill49') && this.isPlayerBattleZoneNotFull()) {
-      this.playerHero.maxHp = Math.max(1, Math.round(this.playerHero.maxHp * 2))
-      this.playerHero.hp = Math.min(this.playerHero.maxHp, Math.round(this.playerHero.hp * 2))
-    }
-
-    if (this.hasPlayerSkill('skill36')) {
-      const gainShield = this.scaleShieldGain('player', Math.round(this.playerHero.maxHp * 0.3))
-      if (gainShield > 0) {
-        this.playerHero.shield += gainShield
-        EventBus.emit('battle:gain_shield', {
-          targetId: this.playerHero.id,
-          sourceItemId: 'skill36',
-          amount: gainShield,
-          targetType: 'hero',
-          targetSide: this.playerHero.side,
-          sourceType: 'system',
-          sourceSide: 'player',
-        })
-        this.applyOnShieldGainCharge('player')
-        this.applyPlayerShieldGainSkillTriggers('skill36', gainShield, false)
+      if (this.hasSkill(side, 'skill1') && shieldItems.length > 0) shieldItems[0]!.baseStats.shield += 25
+      if (this.hasSkill(side, 'skill2') && shieldItems.length > 0) shieldItems[shieldItems.length - 1]!.baseStats.shield += 25
+      if (this.hasSkill(side, 'skill3')) {
+        for (const one of shieldItems) one.baseStats.shield += 10
       }
-    }
 
-    if (this.hasPlayerSkill('skill8') && ammoItems.length > 0) {
-      const one = ammoItems[0]!
-      one.runtime.ammoMax += 2
-      one.runtime.ammoCurrent = Math.min(one.runtime.ammoMax, one.runtime.ammoCurrent + 2)
-    }
-    if (this.hasPlayerSkill('skill51')) {
-      for (const one of ammoItems) {
+      if (this.hasSkill(side, 'skill7')) {
+        hero.maxHp = Math.max(1, Math.round(hero.maxHp * 1.1))
+        hero.hp = Math.min(hero.maxHp, Math.round(hero.hp * 1.1))
+      }
+
+      if (this.hasSkill(side, 'skill49') && isZoneNotFull(side)) {
+        hero.maxHp = Math.max(1, Math.round(hero.maxHp * 2))
+        hero.hp = Math.min(hero.maxHp, Math.round(hero.hp * 2))
+      }
+
+      if (this.hasSkill(side, 'skill36')) {
+        const gainShield = this.scaleShieldGain(side, Math.round(hero.maxHp * 0.3))
+        if (gainShield > 0) {
+          hero.shield += gainShield
+          EventBus.emit('battle:gain_shield', {
+            targetId: hero.id,
+            sourceItemId: 'skill36',
+            amount: gainShield,
+            targetType: 'hero',
+            targetSide: hero.side,
+            sourceType: 'system',
+            sourceSide: side,
+          })
+          this.applyOnShieldGainCharge(side)
+          this.applyShieldGainSkillTriggers(side, 'skill36', gainShield, false)
+        }
+      }
+
+      if (this.hasSkill(side, 'skill8') && ammoItems.length > 0) {
+        const one = ammoItems[0]!
         one.runtime.ammoMax += 2
         one.runtime.ammoCurrent = Math.min(one.runtime.ammoMax, one.runtime.ammoCurrent + 2)
       }
-    }
-    if (this.hasPlayerSkill('skill44') && ammoItems.length === 1) {
-      const one = ammoItems[0]!
-      one.runtime.ammoMax += 10
-      one.runtime.ammoCurrent = Math.min(one.runtime.ammoMax, one.runtime.ammoCurrent + 10)
-    }
-
-    if (this.hasPlayerSkill('skill10')) {
-      for (const one of ammoItems) one.baseStats.damage += 10
-    }
-
-    if (this.hasPlayerSkill('skill16')) {
-      for (const one of weaponItems) one.baseStats.damage += 8
-    }
-
-    if (this.hasPlayerSkill('skill19') && weaponItems.length > 0) {
-      const first = weaponItems[0]!
-      const last = weaponItems[weaponItems.length - 1]!
-      first.baseStats.damage += 12
-      if (last.id !== first.id) last.baseStats.damage += 12
-    }
-
-    if (this.hasPlayerSkill('skill59')) {
-      const countByDef = new Map<string, number>()
-      for (const one of this.items) {
-        if (one.side !== 'player') continue
-        countByDef.set(one.defId, (countByDef.get(one.defId) ?? 0) + 1)
+      if (this.hasSkill(side, 'skill51')) {
+        for (const one of ammoItems) {
+          one.runtime.ammoMax += 2
+          one.runtime.ammoCurrent = Math.min(one.runtime.ammoMax, one.runtime.ammoCurrent + 2)
+        }
       }
-      for (const one of this.items) {
-        if (one.side !== 'player') continue
-        if (one.baseStats.damage <= 0) continue
-        if ((countByDef.get(one.defId) ?? 0) < 2) continue
-        one.baseStats.damage += 20
+      if (this.hasSkill(side, 'skill44') && ammoItems.length === 1) {
+        const one = ammoItems[0]!
+        one.runtime.ammoMax += 10
+        one.runtime.ammoCurrent = Math.min(one.runtime.ammoMax, one.runtime.ammoCurrent + 10)
+      }
+
+      if (this.hasSkill(side, 'skill10')) {
+        for (const one of ammoItems) one.baseStats.damage += 10
+      }
+
+      if (this.hasSkill(side, 'skill16')) {
+        for (const one of weaponItems) one.baseStats.damage += 8
+      }
+
+      if (this.hasSkill(side, 'skill19') && weaponItems.length > 0) {
+        const first = weaponItems[0]!
+        const last = weaponItems[weaponItems.length - 1]!
+        first.baseStats.damage += 12
+        if (last.id !== first.id) last.baseStats.damage += 12
+      }
+
+      if (this.hasSkill(side, 'skill59')) {
+        const countByDef = new Map<string, number>()
+        for (const one of this.items) {
+          if (one.side !== side) continue
+          countByDef.set(one.defId, (countByDef.get(one.defId) ?? 0) + 1)
+        }
+        for (const one of this.items) {
+          if (one.side !== side) continue
+          if (one.baseStats.damage <= 0) continue
+          if ((countByDef.get(one.defId) ?? 0) < 2) continue
+          one.baseStats.damage += 20
+        }
+      }
+
+      if (side === 'player' && this.hasSkill('player', 'skill35') && this.playerBackpackItemCount > 0) {
+        const mul = 1 + this.playerBackpackItemCount * 0.02
+        this.playerHero.maxHp = Math.max(1, Math.round(this.playerHero.maxHp * mul))
+        this.playerHero.hp = Math.min(this.playerHero.maxHp, Math.round(this.playerHero.hp * mul))
+      }
+
+      if (side === 'player' && this.hasSkill('player', 'skill46') && this.playerTrophyWinsAtBattleStart > 0) {
+        this.skillExecuteDamageBonus += this.playerTrophyWinsAtBattleStart * 15
+      }
+      if (side === 'player' && this.hasSkill('player', 'skill95') && this.playerGoldAtBattleStart > 0) {
+        this.skillExecuteDamageBonus += this.playerGoldAtBattleStart
+      }
+
+      if (this.hasSkill(side, 'skill33')) {
+        const regenPerTick = Math.max(1, Math.round(hero.maxHp * 0.03))
+        if (side === 'player') this.skill33RegenPerTick = regenPerTick
+        else this.skillEnemy33RegenPerTick = regenPerTick
       }
     }
 
-    if (this.hasPlayerSkill('skill35') && this.playerBackpackItemCount > 0) {
-      const mul = 1 + this.playerBackpackItemCount * 0.02
-      this.playerHero.maxHp = Math.max(1, Math.round(this.playerHero.maxHp * mul))
-      this.playerHero.hp = Math.min(this.playerHero.maxHp, Math.round(this.playerHero.hp * mul))
-    }
-
-    if (this.hasPlayerSkill('skill46') && this.playerTrophyWinsAtBattleStart > 0) {
-      this.skillExecuteDamageBonus += this.playerTrophyWinsAtBattleStart * 15
-    }
-    if (this.hasPlayerSkill('skill95') && this.playerGoldAtBattleStart > 0) {
-      this.skillExecuteDamageBonus += this.playerGoldAtBattleStart
-    }
-
-    if (this.hasPlayerSkill('skill33')) {
-      this.skill33RegenPerTick = Math.max(1, Math.round(this.playerHero.maxHp * 0.03))
-    }
+    applySide('player')
+    applySide('enemy')
   }
 
   private handleHeroHpThresholdTriggers(side: 'player' | 'enemy', hpBefore: number, hpAfter: number): void {
@@ -1122,7 +1139,7 @@ export class CombatEngine {
             sourceSide: 'player',
           })
           this.applyOnShieldGainCharge('player')
-          this.applyPlayerShieldGainSkillTriggers('skill25', gainShield, false)
+          this.applyShieldGainSkillTriggers('player', 'skill25', gainShield, false)
         }
       }
 
@@ -1132,8 +1149,8 @@ export class CombatEngine {
       return
     }
 
-    if (!this.skillEnemyHalfShieldTriggered && this.hasEnemySkill('skill21')) {
-      this.skillEnemyHalfShieldTriggered = true
+    if (!this.skillEnemySelfHalfTriggered && this.hasEnemySkill('skill21')) {
+      this.skillEnemySelfHalfTriggered = true
       const heal = Math.max(0, Math.round(hero.maxHp * 0.15))
       const real = Math.max(0, Math.min(hero.maxHp - hero.hp, heal))
       if (real > 0) {
@@ -1166,6 +1183,7 @@ export class CombatEngine {
           sourceSide: 'enemy',
         })
         this.applyOnShieldGainCharge('enemy')
+        this.applyShieldGainSkillTriggers('enemy', 'skill25', gainShield, false)
       }
     }
 
@@ -1174,13 +1192,13 @@ export class CombatEngine {
     }
   }
 
-  private leftmostPlayerDamageItem(): CombatItemRunner | null {
-    const all = this.sortedPlayerItems((it) => this.isDamageBonusEligible(it))
+  private leftmostDamageItem(side: 'player' | 'enemy'): CombatItemRunner | null {
+    const all = this.sortedItemsBySide(side, (it) => this.isDamageBonusEligible(it))
     return all[0] ?? null
   }
 
-  private applyDirectSkillDamageToEnemy(panel: number, sourceSkillId: string): void {
-    const targetHero = this.enemyHero
+  private applyDirectSkillDamage(sourceSide: 'player' | 'enemy', panel: number, sourceSkillId: string): void {
+    const targetHero = sourceSide === 'player' ? this.enemyHero : this.playerHero
     if (panel <= 0 || targetHero.hp <= 0) return
     let remaining = panel
     const hpBefore = targetHero.hp
@@ -1202,7 +1220,7 @@ export class CombatEngine {
       targetType: 'hero',
       targetSide: targetHero.side,
       sourceType: 'system',
-      sourceSide: 'player',
+      sourceSide,
       baseDamage: panel,
       finalDamage: remaining,
     })
@@ -1214,23 +1232,23 @@ export class CombatEngine {
     }
   }
 
-  private applyPlayerShieldGainSkillTriggers(sourceItemId: string, gainedShield = 0, fromShieldItem = false): void {
-    if (!this.hasPlayerSkill('skill22') && !this.hasPlayerSkill('skill23') && !this.hasPlayerSkill('skill24') && !this.hasPlayerSkill('skill82')) return
+  private applyShieldGainSkillTriggers(side: 'player' | 'enemy', sourceItemId: string, gainedShield = 0, fromShieldItem = false): void {
+    if (!this.hasSkill(side, 'skill22') && !this.hasSkill(side, 'skill23') && !this.hasSkill(side, 'skill24') && !this.hasSkill(side, 'skill82')) return
 
-    if (this.hasPlayerSkill('skill22')) {
-      const leftmostDamage = this.leftmostPlayerDamageItem()
+    if (this.hasSkill(side, 'skill22')) {
+      const leftmostDamage = this.leftmostDamageItem(side)
       if (leftmostDamage) leftmostDamage.baseStats.damage += 15
     }
 
-    if (this.hasPlayerSkill('skill23')) {
-      this.applyDirectSkillDamageToEnemy(30, 'skill23')
+    if (this.hasSkill(side, 'skill23')) {
+      this.applyDirectSkillDamage(side, 30, 'skill23')
     }
 
-    if (this.hasPlayerSkill('skill24')) {
-      const source = this.items.find((it) => it.id === sourceItemId && it.side === 'player')
+    if (this.hasSkill(side, 'skill24')) {
+      const source = this.items.find((it) => it.id === sourceItemId && it.side === side)
       if (source) {
         for (const ally of this.items) {
-          if (ally.side !== 'player' || ally.id === source.id) continue
+          if (ally.side !== side || ally.id === source.id) continue
           if (!this.isAdjacentByFootprint(ally, source)) continue
           if (!this.isShieldItem(ally)) continue
           ally.baseStats.shield += 15
@@ -1238,28 +1256,33 @@ export class CombatEngine {
       }
     }
 
-    if (this.hasPlayerSkill('skill82') && fromShieldItem && gainedShield > 0) {
-      this.applyDirectSkillDamageToEnemy(gainedShield, 'skill82')
+    if (this.hasSkill(side, 'skill82') && fromShieldItem && gainedShield > 0) {
+      this.applyDirectSkillDamage(side, gainedShield, 'skill82')
     }
   }
 
   private applySkill33RegenTick(): void {
-    if (!this.hasPlayerSkill('skill33')) return
-    if (this.skill33RegenPerTick <= 0) return
-    if (this.playerHero.hp <= 0) return
-    const healed = Math.max(0, Math.min(this.playerHero.maxHp - this.playerHero.hp, this.skill33RegenPerTick))
-    if (healed <= 0) return
-    this.playerHero.hp += healed
-    EventBus.emit('battle:heal', {
-      targetId: this.playerHero.id,
-      sourceItemId: 'skill33',
-      amount: healed,
-      isRegen: true,
-      targetType: 'hero',
-      targetSide: this.playerHero.side,
-      sourceType: 'system',
-      sourceSide: 'player',
-    })
+    const applyOne = (side: 'player' | 'enemy', perTick: number): void => {
+      if (!this.hasSkill(side, 'skill33')) return
+      if (perTick <= 0) return
+      const hero = this.heroOf(side)
+      if (hero.hp <= 0) return
+      const healed = Math.max(0, Math.min(hero.maxHp - hero.hp, perTick))
+      if (healed <= 0) return
+      hero.hp += healed
+      EventBus.emit('battle:heal', {
+        targetId: hero.id,
+        sourceItemId: 'skill33',
+        amount: healed,
+        isRegen: true,
+        targetType: 'hero',
+        targetSide: hero.side,
+        sourceType: 'system',
+        sourceSide: side,
+      })
+    }
+    applyOne('player', this.skill33RegenPerTick)
+    applyOne('enemy', this.skillEnemy33RegenPerTick)
   }
 
   private scaleShieldGain(side: 'player' | 'enemy', amount: number): number {
@@ -1271,12 +1294,11 @@ export class CombatEngine {
     return base
   }
 
-  private applyPlayerOnDealDamageSkillTriggers(attacker: CombatItemRunner): void {
-    if (attacker.side !== 'player') return
-    if (this.hasPlayerSkill('skill58') && this.isDamageBonusEligible(attacker)) {
+  private applyOnDealDamageSkillTriggers(attacker: CombatItemRunner): void {
+    if (this.hasSkill(attacker.side, 'skill58') && this.isDamageBonusEligible(attacker)) {
       attacker.baseStats.damage += 2
     }
-    if (this.hasPlayerSkill('skill57')) {
+    if (this.hasSkill(attacker.side, 'skill57')) {
       attacker.baseStats.cooldownMs = Math.max(
         this.minReducedCdMsFor(attacker),
         Math.round(attacker.baseStats.cooldownMs * 0.98),
@@ -2025,8 +2047,8 @@ export class CombatEngine {
   private applyReviveIfPossible(side: 'player' | 'enemy'): boolean {
     const hero = side === 'player' ? this.playerHero : this.enemyHero
     if (hero.hp > 0) return false
-    if (side === 'player' && this.hasPlayerSkill('skill47') && !this.skill47ReviveTriggered) {
-      this.skill47ReviveTriggered = true
+    if (this.hasSkill(side, 'skill47') && !this.skill47ReviveTriggeredBySide[side]) {
+      this.skill47ReviveTriggeredBySide[side] = true
       hero.hp = Math.max(1, Math.round(hero.maxHp * 0.5))
       EventBus.emit('battle:heal', {
         targetId: hero.id,
@@ -2036,7 +2058,7 @@ export class CombatEngine {
         targetType: 'hero',
         targetSide: hero.side,
         sourceType: 'system',
-        sourceSide: 'player',
+        sourceSide: side,
       })
       return true
     }
@@ -2207,7 +2229,7 @@ export class CombatEngine {
     const useDamageLine = lines.find((s) => /使用时伤害\+\d+(?:[\/|]\d+)*/.test(s))
     const useDamageBonus = useDamageLine ? Math.round(this.tierValueFromLine(useDamageLine, tIdx)) : 0
     const canGrowDamageOnUse = useDamageBonus > 0 && this.isDamageBonusEligible(item)
-    const skill88Multicast = item.side === 'player' && this.hasPlayerSkill('skill88') && this.elapsedMs <= 5000 ? 1 : 0
+    const skill88Multicast = this.hasSkill(item.side, 'skill88') && this.elapsedMs <= 5000 ? 1 : 0
     let fireCount = Math.max(1, item.baseStats.multicast + item.runtime.bonusMulticast + skill88Multicast)
     const ammoBeforeUse = item.runtime.ammoCurrent
     if (item.runtime.ammoMax > 0) {
@@ -2241,19 +2263,19 @@ export class CombatEngine {
       this.applyBurnUseSlowTriggers(item)
     }
 
-    if (item.side === 'player' && this.hasPlayerSkill('skill86') && this.skill86UseCount < 8) {
-      const triggerCount = Math.min(useRepeatCount, 8 - this.skill86UseCount)
-      this.skill86UseCount += triggerCount
+    if (this.hasSkill(item.side, 'skill86') && this.skill86UseCountBySide[item.side] < 8) {
+      const triggerCount = Math.min(useRepeatCount, 8 - this.skill86UseCountBySide[item.side])
+      this.skill86UseCountBySide[item.side] += triggerCount
       const ammoCandidates = this.items
-        .filter((it) => it.side === 'player' && this.isAmmoItem(it))
+        .filter((it) => it.side === item.side && this.isAmmoItem(it))
         .sort((a, b) => (a.col - b.col) || a.id.localeCompare(b.id))
       const target = ammoCandidates.find((it) => it.runtime.currentChargeMs < this.effectiveCooldownMs(it)) ?? ammoCandidates[0]
       if (target) this.scheduleRepeatedChargePulses(item, target, triggerCount, 1000, shotIntervalTick)
     }
 
-    if (item.side === 'player' && this.hasPlayerSkill('skill87')) {
+    if (this.hasSkill(item.side, 'skill87')) {
       const ordered = this.items
-        .filter((it) => it.side === 'player')
+        .filter((it) => it.side === item.side)
         .sort((a, b) => (a.col - b.col) || a.id.localeCompare(b.id))
       const leftmost = ordered[0]
       const rightmost = ordered[ordered.length - 1]
@@ -2262,7 +2284,7 @@ export class CombatEngine {
         }
       }
 
-    if (item.side === 'player' && this.hasPlayerSkill('skill4') && this.isShieldItem(item)) {
+    if (this.hasSkill(item.side, 'skill4') && this.isShieldItem(item)) {
       for (const ally of this.items) {
         if (ally.side !== item.side || ally.id === item.id) continue
         if (!this.isAdjacentByFootprint(ally, item)) continue
@@ -2270,10 +2292,10 @@ export class CombatEngine {
         ally.baseStats.damage += 4 * useRepeatCount
       }
     }
-    if (item.side === 'player' && this.hasPlayerSkill('skill5') && this.isShieldItem(item)) {
+    if (this.hasSkill(item.side, 'skill5') && this.isShieldItem(item)) {
       item.baseStats.shield += 7 * useRepeatCount
     }
-    if (item.side === 'player' && this.hasPlayerSkill('skill11') && this.isAmmoItem(item)) {
+    if (this.hasSkill(item.side, 'skill11') && this.isAmmoItem(item)) {
       for (const ally of this.items) {
         if (ally.side !== item.side || ally.id === item.id) continue
         if (!this.isAdjacentByFootprint(ally, item)) continue
@@ -2341,7 +2363,7 @@ export class CombatEngine {
         sourceSide: item.side,
       })
       this.applyOnShieldGainCharge(item.side)
-      if (item.side === 'player') this.applyPlayerShieldGainSkillTriggers(item.id, shieldPanel, this.isShieldItem(item))
+      this.applyShieldGainSkillTriggers(item.side, item.id, shieldPanel, this.isShieldItem(item))
 
       // 获得护盾时加速 1 件物品
       const shieldHasteLine = lines.find((s) => /获得护盾时.*加速.*件物品/.test(s))
@@ -2584,8 +2606,7 @@ export class CombatEngine {
     }
 
     if (damageAfterBonus > 0) {
-      const isLastShotDoubleTriggered = item.side === 'player'
-        && this.hasPlayerSkill('skill50')
+      const isLastShotDoubleTriggered = this.hasSkill(item.side, 'skill50')
         && item.runtime.ammoMax > 0
         && ((isAllAmmoShot && ammoBeforeUse > 0) || (!isAllAmmoShot && ammoBeforeUse === 1))
       if (lines.some((s) => /唯一的攻击物品.*触发2次/.test(s))) {
@@ -2625,30 +2646,25 @@ export class CombatEngine {
       else item.runtime.ammoCurrent = Math.max(0, item.runtime.ammoCurrent - 1)
       const ammoSpent = Math.max(0, ammoBefore - item.runtime.ammoCurrent)
       const becameEmpty = ammoBefore > 0 && item.runtime.ammoCurrent <= 0
-      if (
-        item.side === 'player'
-        && this.hasPlayerSkill('skill9')
-        && !this.skillFirstAmmoEmptyTriggered
-        && becameEmpty
-      ) {
-        this.skillFirstAmmoEmptyTriggered = true
+      if (this.hasSkill(item.side, 'skill9') && !this.skillFirstAmmoEmptyTriggeredBySide[item.side] && becameEmpty) {
+        this.skillFirstAmmoEmptyTriggeredBySide[item.side] = true
         this.refillAmmoAndTriggerGrowth(item, 3)
       }
-      if (item.side === 'player' && this.hasPlayerSkill('skill52') && becameEmpty) {
+      if (this.hasSkill(item.side, 'skill52') && becameEmpty) {
         if (Math.random() < 0.5) {
           this.refillAmmoAndTriggerGrowth(item, item.runtime.ammoMax)
         }
       }
-      if (item.side === 'player' && this.hasPlayerSkill('skill54') && ammoSpent > 0) {
+      if (this.hasSkill(item.side, 'skill54') && ammoSpent > 0) {
         for (const ally of this.items) {
-          if (ally.side !== 'player') continue
+          if (ally.side !== item.side) continue
           if (!this.isDamageBonusEligible(ally)) continue
           ally.baseStats.damage += 5
         }
       }
-      if (item.side === 'player' && this.hasPlayerSkill('skill85') && becameEmpty) {
+      if (this.hasSkill(item.side, 'skill85') && becameEmpty) {
         for (const ally of this.items) {
-          if (ally.side !== 'player' || ally.id === item.id) continue
+          if (ally.side !== item.side || ally.id === item.id) continue
           if (!this.isAdjacentByFootprint(ally, item)) continue
           if (!this.isDamageBonusEligible(ally)) continue
           ally.baseStats.damage += 50
@@ -2978,7 +2994,7 @@ export class CombatEngine {
       if (remaining > 0) {
         if (attacker) {
           this.applyOnDealDamageLifesteal(attacker, remaining)
-          this.applyPlayerOnDealDamageSkillTriggers(attacker)
+          this.applyOnDealDamageSkillTriggers(attacker)
           this.applyAdjacentAttackDamageGrowth(attacker)
         }
       }
@@ -3018,7 +3034,7 @@ export class CombatEngine {
             sourceSide: item.side,
           })
           this.applyOnShieldGainCharge(side)
-          if (side === 'player') this.applyPlayerShieldGainSkillTriggers(item.id, amount, false)
+          this.applyShieldGainSkillTriggers(side, item.id, amount, false)
         }
       }
 

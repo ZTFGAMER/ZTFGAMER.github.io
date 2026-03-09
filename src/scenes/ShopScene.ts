@@ -3159,18 +3159,41 @@ function getCrossIdEvolvePool(
     return { basePool, sameArchPool: basePool, otherArchPool: basePool }
   }
   const sameArchPool = basePool.filter((it) => getPrimaryArchetype(it.tags) === sourceArch)
-  return { basePool, sameArchPool, otherArchPool: basePool }
+  const otherArchPool = basePool.filter((it) => getPrimaryArchetype(it.tags) !== sourceArch)
+  return { basePool, sameArchPool, otherArchPool }
 }
 
-function pickCrossIdEvolveCandidates(sourceDef: ItemDef, targetSize: ItemSizeNorm, resultTier: TierKey, minStartingTier: TierKey): ItemDef[] {
-  const { basePool } = getCrossIdEvolvePool(sourceDef, targetSize, resultTier, minStartingTier)
+function pickCrossIdEvolveCandidates(
+  sourceDef: ItemDef,
+  targetSize: ItemSizeNorm,
+  resultTier: TierKey,
+  minStartingTier: TierKey,
+  preferOtherArchetype = false,
+): ItemDef[] {
+  const { basePool, otherArchPool } = getCrossIdEvolvePool(sourceDef, targetSize, resultTier, minStartingTier)
+  if (preferOtherArchetype) return otherArchPool
   if (basePool.length > 0) return basePool
   return []
 }
 
-function getCrossIdPreviewCandidates(sourceDef: ItemDef, targetSize: ItemSizeNorm, resultTier: TierKey, minStartingTier: TierKey): ItemDef[] {
-  const { basePool } = getCrossIdEvolvePool(sourceDef, targetSize, resultTier, minStartingTier)
+function getCrossIdPreviewCandidates(
+  sourceDef: ItemDef,
+  targetSize: ItemSizeNorm,
+  resultTier: TierKey,
+  minStartingTier: TierKey,
+  preferOtherArchetype = false,
+): ItemDef[] {
+  const { basePool, otherArchPool } = getCrossIdEvolvePool(sourceDef, targetSize, resultTier, minStartingTier)
+  if (preferOtherArchetype) return otherArchPool
   return basePool
+}
+
+function shouldCrossSynthesisPreferOtherArchetype(sourceDef: ItemDef, targetDef: ItemDef): boolean {
+  if (sourceDef.id === targetDef.id) return false
+  const sourceArch = toSkillArchetype(getPrimaryArchetype(sourceDef.tags))
+  const targetArch = toSkillArchetype(getPrimaryArchetype(targetDef.tags))
+  if (sourceArch !== targetArch) return false
+  return sourceArch === 'warrior' || sourceArch === 'archer' || sourceArch === 'assassin'
 }
 
 function highlightSynthesisTarget(target: SynthesisTarget | null): void {
@@ -3231,10 +3254,11 @@ function synthesizeTarget(
   const isSameIdSynthesis = defId === targetItem.defId
   const forceSynthesisActive = !!(dayEventState.forceSynthesisArchetype && dayEventState.forceSynthesisRemaining > 0)
   const minStartingTier = getCrossSynthesisMinStartingTier(sourceDef, targetDef)
+  const preferOtherArchetype = shouldCrossSynthesisPreferOtherArchetype(sourceDef, targetDef) && !forceSynthesisActive
   let guaranteeNewUnlock = shouldGuaranteeNewUnlock(upgradeTo.tier, upgradeTo.star)
   let resultLevel = tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1
   const buildCandidates = (targetTier: TierKey) => {
-    const all = pickCrossIdEvolveCandidates(sourceDef, targetItem.size, targetTier, minStartingTier)
+    const all = pickCrossIdEvolveCandidates(sourceDef, targetItem.size, targetTier, minStartingTier, preferOtherArchetype)
     if (forceSynthesisActive) {
       const forced = all.filter((it) => toSkillArchetype(getPrimaryArchetype(it.tags)) === dayEventState.forceSynthesisArchetype)
       if (forced.length > 0) return forced
@@ -3468,7 +3492,15 @@ function showCrossSynthesisConfirmOverlay(
   }
 
   const minStartingTier = getCrossSynthesisMinStartingTier(sourcePreview.def, targetPreview.def)
-  const candidates = getCrossIdPreviewCandidates(sourcePreview.def, normalizeSize(targetPreview.def.size), resultTier, minStartingTier)
+  const forceSynthesisActive = !!(dayEventState.forceSynthesisArchetype && dayEventState.forceSynthesisRemaining > 0)
+  const preferOtherArchetype = shouldCrossSynthesisPreferOtherArchetype(sourcePreview.def, targetPreview.def) && !forceSynthesisActive
+  const candidates = getCrossIdPreviewCandidates(
+    sourcePreview.def,
+    normalizeSize(targetPreview.def.size),
+    resultTier,
+    minStartingTier,
+    preferOtherArchetype,
+  )
   crossSynthesisConfirmAction = onConfirm
 
   const overlay = new Container()
@@ -3826,25 +3858,24 @@ function getItemDefByCn(nameCn: string): ItemDef | null {
   return getAllItems().find((it) => it.name_cn === nameCn) ?? null
 }
 
-function pickGuideCrossArchetypeItem(pick: StarterClass): ItemDef | null {
-  // 展示用“不同物品随机升级”示例：每个职业固定挑一个 3 级结果物品
-  const preferredByPick: Record<StarterClass, string[]> = {
-    swordsman: ['长盾'],
-    archer: ['手弩'],
-    assassin: ['回旋镖'],
-  }
+function pickGuideOtherArchetypeResultItem(pick: StarterClass): ItemDef | null {
   const targetTagByPick: Record<StarterClass, string> = {
-    swordsman: '战士',
-    archer: '弓手',
-    assassin: '刺客',
+    swordsman: '弓手',
+    archer: '刺客',
+    assassin: '战士',
+  }
+  const preferredByPick: Record<StarterClass, string[]> = {
+    swordsman: ['木弓'],
+    archer: ['匕首', '刺客匕首'],
+    assassin: ['短剑'],
   }
 
   for (const nameCn of preferredByPick[pick]) {
     const hit = getItemDefByCn(nameCn)
-    if (hit && parseTierName(hit.starting_tier) === 'Silver') return hit
+    if (hit && parseTierName(hit.starting_tier) === 'Bronze') return hit
   }
   const targetTag = targetTagByPick[pick]
-  return getAllItems().find((it) => `${it.tags ?? ''}`.includes(targetTag) && parseTierName(it.starting_tier) === 'Silver')
+  return getAllItems().find((it) => `${it.tags ?? ''}`.includes(targetTag) && parseTierName(it.starting_tier) === 'Bronze')
     ?? getAllItems().find((it) => `${it.tags ?? ''}`.includes(targetTag))
     ?? null
 }
@@ -4000,8 +4031,8 @@ function showStarterSynthesisGuide(stage: Container, pick: StarterClass): void {
   const itemA = getItemDefByCn(preset.gifts[0])
   const itemB = getItemDefByCn(preset.gifts[1])
   const sameArchetypeResultItem = itemA ? pickGuideSameArchetypeResultItem(pick, itemA) : null
-  const otherArchetypeItem = pickGuideCrossArchetypeItem(pick)
-  if (!itemA || !itemB || !sameArchetypeResultItem || !otherArchetypeItem) return
+  const otherArchetypeResultItem = pickGuideOtherArchetypeResultItem(pick)
+  if (!itemA || !itemB || !sameArchetypeResultItem || !otherArchetypeResultItem) return
 
   starterBattleGuideShown = true
   saveShopStateToStorage(captureShopState())
@@ -4097,7 +4128,7 @@ function showStarterSynthesisGuide(stage: Container, pick: StarterClass): void {
   }
 
   panel.addChild(createGuideColumn(-145, '相同物品 → 升级', itemA, '1', itemA, '1', sameArchetypeResultItem, '2'))
-  panel.addChild(createGuideColumn(145, '不同物品 → 随机升级', itemA, '2', itemB, '2', otherArchetypeItem, '3'))
+  panel.addChild(createGuideColumn(145, '相同职业 → 其他职业', itemA, '1', itemB, '1', otherArchetypeResultItem, '2'))
 
   const closeBtn = new Container()
   closeBtn.eventMode = 'static'

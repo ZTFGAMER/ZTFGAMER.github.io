@@ -1447,7 +1447,7 @@
         "cellScale": 1,
         "cellHeightRatio": 1.3,
         "squareCell": true,
-        "backpackRows": 3,
+        "backpackRows": 2,
         "battleCols": 5,
         "mediumValueScale": 0.5
       },
@@ -1461,7 +1461,7 @@
         "showSpeedButton": false
       }
     },
-    "note": "全小型试验模式：半格正方形、背包6x3、中型改小型并按0.5数值模板读取"
+    "note": "全小型试验模式：半格正方形、背包6x2、中型改小型并按0.5数值模板读取"
   },
   {
     "id": 20,
