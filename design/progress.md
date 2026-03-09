@@ -1,5 +1,21 @@
 # 大巴扎 — 开发进度记录
 
+### 本次对话追加（2026-03-09，Vercel 生产更新 + TestFlight 打包上传）
+
+- 用户指令：`更新vercel，打tf包`。
+- 已完成（Vercel）：
+  - 首次 `vercel --prod --yes` 因云端 TypeScript 校验失败（`PvpRoom.ts`、`PvpLobbyScene.ts` 未使用导入）中断；
+  - 修复未使用导入后重新部署成功：
+    - Production：`https://bigbazzar-j9sxm23a7-zhengtengfeis-projects.vercel.app`
+    - Alias：`https://bigbazzar.vercel.app`
+- 已完成（TestFlight）：
+  - 执行 `npm run release:tf` 完成 iOS 打包与上传；
+  - 关键结果：`Upload succeeded.`，`No errors uploading archive .../BigBazzar.ipa`，`[DONE] TestFlight flow completed. CURRENT_PROJECT_VERSION=21`。
+- 本次为保证发布通过的代码修正：
+  - `src/pvp/PvpRoom.ts`：移除未使用导入 `getOpponentIndex`；
+  - `src/scenes/PvpLobbyScene.ts`：移除未使用类型导入 `PvpPlayer`。
+- 当前阶段：发布与分发完成，等待用户在 Vercel 线上和 App Store Connect/TestFlight 构建处理中验收。
+
 ### 本次对话追加（2026-03-09，中立随机类别比例改为2:2:1 + 勋章等级上调）
 
 - 用户需求：石头类/卷轴类/勋章类随机比例修正为 `2:2:1`；勋章获得等级再 +1（达到“当前可获得最高等级 +2”）。
