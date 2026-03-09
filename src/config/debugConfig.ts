@@ -932,14 +932,14 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
   gameplayCrossSynthesisConfirm: {
     labelCn:      '跨物品合成二次确认',
     description:  '1=不同物品合成弹出确认；0=直接合成',
-    defaultValue: 0,
+    defaultValue: 1,
     min:  0,
     max:  1,
     step: 1,
     unit: '',
   },
   gameplayBattleZoneNoSynthesis: {
-    labelCn:      '上阵区禁合成引导',
+    labelCn:      '上阵区禁止合成',
     description:  '1=上阵区仅挤出/换位且拖拽时背包显示合成箭头；0=关闭该逻辑',
     defaultValue: 1,
     min:  0,

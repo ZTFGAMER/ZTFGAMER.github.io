@@ -1997,7 +1997,7 @@ function openSettingsOverlay(): void {
     label: string
   }
   const rows: ToggleRow[] = [
-    { key: 'gameplayBattleZoneNoSynthesis', label: '上阵区禁合成引导' },
+    { key: 'gameplayBattleZoneNoSynthesis', label: '上阵区禁止合成' },
     { key: 'gameplayCrossSynthesisConfirm', label: '合成二次弹窗' },
     { key: 'gameplayShowSpeedButton', label: '战斗加速按钮' },
   ]
@@ -3522,7 +3522,12 @@ function showCrossSynthesisConfirmOverlay(
   overlay.addChild(panel)
 
   const panelW = 592
-  const panelH = 640
+  const panelH = 700
+  const titleY = -268
+  const viewportY = -90
+  const dontShowAgainY = 62
+  const actionBtnStartY = 157
+  const actionBtnGap = 34
   const panelBg = new Graphics()
   panelBg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 22)
   panelBg.fill({ color: 0x151c2d, alpha: 0.98 })
@@ -3540,12 +3545,12 @@ function showCrossSynthesisConfirmOverlay(
     },
   })
   title.anchor.set(0.5)
-  title.y = -248
+  title.y = titleY
   panel.addChild(title)
 
   const viewport = new Container()
   viewport.x = 0
-  viewport.y = -62
+  viewport.y = viewportY
   panel.addChild(viewport)
 
   const viewportW = panelW - 70
@@ -3647,6 +3652,47 @@ function showCrossSynthesisConfirmOverlay(
     Ticker.shared.add(crossSynthesisConfirmTick)
   }
 
+  let dontShowAgainChecked = false
+  const dontShowAgainRow = new Container()
+  dontShowAgainRow.y = dontShowAgainY
+  dontShowAgainRow.eventMode = 'static'
+  dontShowAgainRow.cursor = 'pointer'
+  panel.addChild(dontShowAgainRow)
+
+  const dontShowAgainBox = new Graphics()
+  const dontShowAgainMark = new Text({
+    text: '✓',
+    style: { fontSize: 28, fill: 0xeaf4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  dontShowAgainMark.anchor.set(0.5)
+  dontShowAgainMark.x = -154
+  dontShowAgainMark.y = 1
+  const dontShowAgainLabel = new Text({
+    text: '不再显示此提示',
+    style: { fontSize: 24, fill: 0xd6e4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  dontShowAgainLabel.anchor.set(0, 0.5)
+  dontShowAgainLabel.x = -130
+  dontShowAgainLabel.y = 0
+
+  const redrawDontShowAgain = () => {
+    const checked = dontShowAgainChecked
+    dontShowAgainBox.clear()
+    dontShowAgainBox.roundRect(-172, -18, 34, 34, 8)
+    dontShowAgainBox.fill({ color: checked ? 0x4d79b9 : 0x202f49, alpha: 0.98 })
+    dontShowAgainBox.stroke({ color: checked ? 0xaed3ff : 0x6e86aa, width: 2, alpha: 0.95 })
+    dontShowAgainMark.visible = checked
+  }
+  redrawDontShowAgain()
+
+  dontShowAgainRow.on('pointerdown', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    dontShowAgainChecked = !dontShowAgainChecked
+    setDebugCfg('gameplayCrossSynthesisConfirm', dontShowAgainChecked ? 0 : 1)
+    redrawDontShowAgain()
+  })
+  dontShowAgainRow.addChild(dontShowAgainBox, dontShowAgainMark, dontShowAgainLabel)
+
   const closeAsCancel = () => {
     teardownCrossSynthesisConfirmOverlay()
     onCancel?.()
@@ -3655,8 +3701,6 @@ function showCrossSynthesisConfirmOverlay(
   const actionBtnW = 376
   const actionBtnH = 88
   const actionBtnRadius = 18
-  const actionBtnGap = 18
-  const actionBtnStartY = 146
   const confirmBtn = new Container()
   confirmBtn.y = actionBtnStartY
   confirmBtn.eventMode = 'static'
@@ -3910,15 +3954,25 @@ function grantStarterItemsByClass(pick: StarterClass): void {
     const item = grant.item
     if (!item) continue
     const size = normalizeSize(item.size)
-    const backpackSlot = findFirstBackpackPlace(size)
-    if (!backpackSlot) continue
+    const battleSlot = findFirstBattlePlace(size)
+    const backpackSlot = battleSlot ? null : findFirstBackpackPlace(size)
+    if (!battleSlot && !backpackSlot) continue
 
     const id = nextId()
-    backpackSystem.place(backpackSlot.col, backpackSlot.row, size, item.id, id)
-    void backpackView.addItem(id, item.id, size, backpackSlot.col, backpackSlot.row, toVisualTier(grant.tier, grant.star)).then(() => {
-      backpackView!.setItemTier(id, toVisualTier(grant.tier, grant.star))
-      drag?.refreshZone(backpackView!)
-    })
+    const visualTier = toVisualTier(grant.tier, grant.star)
+    if (battleSlot) {
+      battleSystem.place(battleSlot.col, battleSlot.row, size, item.id, id)
+      void battleView.addItem(id, item.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
+        battleView!.setItemTier(id, visualTier)
+        drag?.refreshZone(battleView!)
+      })
+    } else if (backpackSlot) {
+      backpackSystem.place(backpackSlot.col, backpackSlot.row, size, item.id, id)
+      void backpackView.addItem(id, item.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
+        backpackView!.setItemTier(id, visualTier)
+        drag?.refreshZone(backpackView!)
+      })
+    }
 
     instanceToDefId.set(id, item.id)
     instanceToTier.set(id, grant.tier)
@@ -4457,23 +4511,23 @@ function removePlacedItemById(instanceId: string, zone: 'battle' | 'backpack'): 
 function placeItemToInventoryOrBattle(def: ItemDef, tier: TierKey, star: 1 | 2): boolean {
   if (!battleSystem || !battleView || !backpackSystem || !backpackView) return false
   const size = normalizeSize(def.size)
-  const backpackSlot = findFirstBackpackPlace(size)
-  const battleSlot = backpackSlot ? null : findFirstBattlePlace(size)
-  if (!backpackSlot && !battleSlot) return false
+  const battleSlot = findFirstBattlePlace(size)
+  const backpackSlot = battleSlot ? null : findFirstBackpackPlace(size)
+  if (!battleSlot && !backpackSlot) return false
 
   const id = nextId()
   const visualTier = toVisualTier(tier, star)
-  if (backpackSlot) {
-    backpackSystem.place(backpackSlot.col, backpackSlot.row, size, def.id, id)
-    void backpackView.addItem(id, def.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
-      backpackView!.setItemTier(id, visualTier)
-      drag?.refreshZone(backpackView!)
-    })
-  } else if (battleSlot) {
+  if (battleSlot) {
     battleSystem.place(battleSlot.col, battleSlot.row, size, def.id, id)
     void battleView.addItem(id, def.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
       battleView!.setItemTier(id, visualTier)
       drag?.refreshZone(battleView!)
+    })
+  } else if (backpackSlot) {
+    backpackSystem.place(backpackSlot.col, backpackSlot.row, size, def.id, id)
+    void backpackView.addItem(id, def.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
+      backpackView!.setItemTier(id, visualTier)
+      drag?.refreshZone(backpackView!)
     })
   }
   instanceToDefId.set(id, def.id)
@@ -5557,6 +5611,7 @@ function ensureEventDraftSelection(stage: Container): void {
   goldInfo.anchor.set(0.5)
   goldInfo.x = CANVAS_W / 2
   goldInfo.y = 390
+  goldInfo.visible = false
   overlay.addChild(goldInfo)
 
   const shownChoices = draft.choices.slice(0, 2)
@@ -5718,6 +5773,11 @@ function ensureEventDraftSelection(stage: Container): void {
       if (c === bg || c === holdBtn) continue
       c.visible = !holding
     }
+    if (!holding) {
+      goldInfo.visible = false
+      forceLeaveBtn.visible = false
+      redrawOverlayStatus()
+    }
   }
 
   holdBtn.on('pointerdown', (e: FederatedPointerEvent) => {
@@ -5751,6 +5811,7 @@ function ensureEventDraftSelection(stage: Container): void {
   forceLeaveText.x = actionBtnW / 2
   forceLeaveText.y = actionBtnH / 2
   forceLeaveBtn.addChild(forceLeaveBg, forceLeaveText)
+  forceLeaveBtn.visible = false
   overlay.addChild(forceLeaveBtn)
 
   let forceLeaveConfirmLayer: Container | null = null
@@ -5846,17 +5907,15 @@ function ensureEventDraftSelection(stage: Container): void {
   })
 
   const redrawRerollBtn = () => {
-    const cost = Math.max(1, currentDay)
     const canReroll = !(draft?.rerolled === true)
-    const canAfford = (shopManager?.gold ?? 0) >= cost
-    const can = canReroll && canAfford
+    const can = canReroll
     rerollBg.clear()
     rerollBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
     rerollBg.fill({ color: can ? 0xffd86b : 0x8a6e4b, alpha: 0.95 })
     rerollBg.stroke({ color: can ? 0xffefad : 0xb89d78, width: 3, alpha: 0.95 })
     rerollText.style.fill = can ? 0x10213a : 0xd7c4a8
     rerollBtn.visible = canReroll
-    rerollText.text = `刷新  ${cost}G`
+    rerollText.text = '刷新'
     rerollText.x = actionBtnW / 2
     rerollText.y = actionBtnH / 2
   }
@@ -5873,20 +5932,13 @@ function ensureEventDraftSelection(stage: Container): void {
 
   rerollBtn.on('pointerdown', (e: FederatedPointerEvent) => {
     e.stopPropagation()
-    if (!shopManager) return
     if (draft?.rerolled === true) return
-    const cost = Math.max(1, currentDay)
-    if (shopManager.gold < cost) {
-      showHintToast('no_gold_refresh', `金币不足，需${cost}G`, 0xff8f8f)
-      return
-    }
     const blocked = new Set(shownChoices.map((it) => it.id))
     const nextChoices = pickRandomEventDraftChoicesNoOverlap(currentDay, blocked)
     if (nextChoices.length < 2) {
       showHintToast('no_gold_refresh', '可刷新候选不足', 0xff8f8f)
       return
     }
-    shopManager.gold -= cost
     pendingEventDraft = { day: currentDay, choices: nextChoices, rerolled: true }
     closeEventDraftOverlay()
     refreshShopUI()
@@ -5985,9 +6037,9 @@ function tryBuySpecialShopOffer(offerIndex: number): boolean {
   }
 
   const size = normalizeSize(candidate.item.size)
-  const backpackSlot = findFirstBackpackPlace(size)
-  const battleSlot = backpackSlot ? null : findFirstBattlePlace(size)
-  if (!backpackSlot && !battleSlot) {
+  const battleSlot = findFirstBattlePlace(size)
+  const backpackSlot = battleSlot ? null : findFirstBackpackPlace(size)
+  if (!battleSlot && !backpackSlot) {
     showHintToast('backpack_full_buy', '背包已满，无法购买', 0xff8f8f)
     return false
   }
@@ -6000,19 +6052,19 @@ function tryBuySpecialShopOffer(offerIndex: number): boolean {
 
   const id = nextId()
   const visualTier = toVisualTier(candidate.tier, candidate.star)
-  if (backpackSlot) {
-    backpackSystem.place(backpackSlot.col, backpackSlot.row, size, candidate.item.id, id)
-    void backpackView.addItem(id, candidate.item.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
-      backpackView!.setItemTier(id, visualTier)
-      drag?.refreshZone(backpackView!)
-    })
-  } else if (battleSlot) {
+  if (battleSlot) {
     battleSystem.place(battleSlot.col, battleSlot.row, size, candidate.item.id, id)
     void battleView.addItem(id, candidate.item.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
       battleView!.setItemTier(id, visualTier)
       drag?.refreshZone(battleView!)
     })
-    showHintToast('backpack_full_buy', '背包已满，已放入上阵区', 0xffd48f)
+  } else if (backpackSlot) {
+    backpackSystem.place(backpackSlot.col, backpackSlot.row, size, candidate.item.id, id)
+    void backpackView.addItem(id, candidate.item.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
+      backpackView!.setItemTier(id, visualTier)
+      drag?.refreshZone(backpackView!)
+    })
+    showHintToast('backpack_full_buy', '上阵区已满，已放入背包', 0xffd48f)
   }
 
   markShopPurchaseDone()
@@ -6059,6 +6111,7 @@ function openSpecialShopOverlay(stage: Container): void {
   goldInfo.anchor.set(0.5)
   goldInfo.x = CANVAS_W / 2
   goldInfo.y = 390
+  goldInfo.visible = false
   overlay.addChild(goldInfo)
 
   const cardsLayer = new Container()
@@ -6815,6 +6868,11 @@ function ensureSkillDraftSelection(stage: Container): void {
       if (child === bg || child === holdBtn) continue
       child.visible = !holding
     }
+    if (!holding) {
+      goldInfo.visible = false
+      forceLeaveBtn.visible = false
+      redrawOverlayStatus()
+    }
   }
 
   holdBtn.on('pointerdown', (e: FederatedPointerEvent) => {
@@ -6848,6 +6906,7 @@ function ensureSkillDraftSelection(stage: Container): void {
   forceLeaveText.x = actionBtnW / 2
   forceLeaveText.y = actionBtnH / 2
   forceLeaveBtn.addChild(forceLeaveBg, forceLeaveText)
+  forceLeaveBtn.visible = false
   overlay.addChild(forceLeaveBtn)
 
   let forceLeaveConfirmLayer: Container | null = null
@@ -6943,17 +7002,15 @@ function ensureSkillDraftSelection(stage: Container): void {
   })
 
   const redrawRerollBtn = () => {
-    const cost = Math.max(1, currentDay)
     const canReroll = !(draft?.rerolled === true)
-    const canAfford = (shopManager?.gold ?? 0) >= cost
-    const can = canReroll && canAfford
+    const can = canReroll
     rerollBg.clear()
     rerollBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
     rerollBg.fill({ color: can ? 0xffd86b : 0x8a6e4b, alpha: 0.95 })
     rerollBg.stroke({ color: can ? 0xffefad : 0xb89d78, width: 3, alpha: 0.95 })
     rerollText.style.fill = can ? 0x10213a : 0xd7c4a8
     rerollBtn.visible = canReroll
-    rerollText.text = `刷新  ${cost}G`
+    rerollText.text = '刷新'
     rerollText.x = actionBtnW / 2
     rerollText.y = actionBtnH / 2
   }
@@ -6969,20 +7026,13 @@ function ensureSkillDraftSelection(stage: Container): void {
 
   rerollBtn.on('pointerdown', (e: FederatedPointerEvent) => {
     e.stopPropagation()
-    if (!shopManager) return
     if (draft?.rerolled === true) return
-    const cost = Math.max(1, currentDay)
-    if (shopManager.gold < cost) {
-      showHintToast('no_gold_refresh', `金币不足，需${cost}G`, 0xff8f8f)
-      return
-    }
     const blocked = new Set(shownChoices.map((it) => it.id))
     const nextChoices = pickSkillChoicesNoOverlap(draft!.tier, currentDay, blocked)
     if (nextChoices.length < 2) {
       showHintToast('no_gold_refresh', '可刷新候选不足', 0xff8f8f)
       return
     }
-    shopManager.gold -= cost
     pendingSkillDraft = {
       day: currentDay,
       tier: draft!.tier,
@@ -7593,9 +7643,9 @@ function buyRandomBronzeToBoardOrBackpack(): void {
   }
 
   const size = normalizeSize(itemForced.size)
-  const backpackSlot = findFirstBackpackPlace(size)
-  const battleSlot = backpackSlot ? null : findFirstBattlePlace(size)
-  if (!backpackSlot && !battleSlot) {
+  const battleSlot = findFirstBattlePlace(size)
+  const backpackSlot = battleSlot ? null : findFirstBackpackPlace(size)
+  if (!battleSlot && !backpackSlot) {
     showHintToast('backpack_full_buy', '背包已满，无法购买', 0xff8f8f)
     refreshShopUI()
     return
@@ -7619,21 +7669,21 @@ function buyRandomBronzeToBoardOrBackpack(): void {
   markShopPurchaseDone()
   const id = nextId()
   const visualTier = toVisualTier(tierForced, starForced)
-  if (backpackSlot) {
-    backpackSystem.place(backpackSlot.col, backpackSlot.row, size, itemForced.id, id)
-    void backpackView.addItem(id, itemForced.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
-      backpackView!.setItemTier(id, visualTier)
-      drag?.refreshZone(backpackView!)
-    })
-    console.log(`[ShopScene] 购买(${tierForced}#${starForced})→背包 ${itemForced.name_cn} -${priced.finalPrice}G，金币: ${manager.gold}`)
-  } else if (battleSlot && battleSystem && battleView) {
+  if (battleSlot && battleSystem && battleView) {
     battleSystem.place(battleSlot.col, battleSlot.row, size, itemForced.id, id)
     void battleView.addItem(id, itemForced.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
       battleView!.setItemTier(id, visualTier)
       drag?.refreshZone(battleView!)
     })
-    showHintToast('backpack_full_buy', '背包已满，已放入上阵区', 0xffd48f)
     console.log(`[ShopScene] 购买(${tierForced}#${starForced})→上阵区 ${itemForced.name_cn} -${priced.finalPrice}G，金币: ${manager.gold}`)
+  } else if (backpackSlot) {
+    backpackSystem.place(backpackSlot.col, backpackSlot.row, size, itemForced.id, id)
+    void backpackView.addItem(id, itemForced.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
+      backpackView!.setItemTier(id, visualTier)
+      drag?.refreshZone(backpackView!)
+    })
+    showHintToast('backpack_full_buy', '上阵区已满，已放入背包', 0xffd48f)
+    console.log(`[ShopScene] 购买(${tierForced}#${starForced})→背包 ${itemForced.name_cn} -${priced.finalPrice}G，金币: ${manager.gold}`)
   }
   instanceToDefId.set(id, itemForced.id)
   instanceToTier.set(id, tierForced)
