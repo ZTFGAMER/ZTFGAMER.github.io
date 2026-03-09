@@ -30,17 +30,17 @@ function parseTierStar(raw?: string): 1 | 2 {
 }
 
 function tierScore(tier: TierName, star: 1 | 2): number {
-  if (tier === 'Bronze') return star === 2 ? 2 : 1
-  if (tier === 'Silver') return star === 2 ? 4 : 3
-  if (tier === 'Gold') return star === 2 ? 6 : 5
-  return 7
+  if (tier === 'Bronze') return 1
+  if (tier === 'Silver') return star === 2 ? 3 : 2
+  if (tier === 'Gold') return star === 2 ? 5 : 4
+  return star === 2 ? 7 : 6
 }
 
 function startTierScore(item: ItemDef): number {
   const start = parseTierName(item.starting_tier)
-  if (start === 'Silver') return 3
-  if (start === 'Gold') return 5
-  if (start === 'Diamond') return 7
+  if (start === 'Silver') return 2
+  if (start === 'Gold') return 4
+  if (start === 'Diamond') return 6
   return 1
 }
 

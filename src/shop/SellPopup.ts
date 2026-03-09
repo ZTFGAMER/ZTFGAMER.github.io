@@ -69,18 +69,18 @@ function parseTierStar(raw: string): 1 | 2 {
 
 function tierScoreFromRaw(raw: string): number {
   const tier = parseTierName(raw)
-  const star = tier === 'Diamond' ? 1 : parseTierStar(raw)
-  if (tier === 'Bronze') return star === 2 ? 2 : 1
-  if (tier === 'Silver') return star === 2 ? 4 : 3
-  if (tier === 'Gold') return star === 2 ? 6 : 5
-  return 7
+  const star = parseTierStar(raw)
+  if (tier === 'Bronze') return 1
+  if (tier === 'Silver') return star === 2 ? 3 : 2
+  if (tier === 'Gold') return star === 2 ? 5 : 4
+  return star === 2 ? 7 : 6
 }
 
 function startTierScoreFromItem(item: ItemDef): number {
   const tier = parseTierName(item.starting_tier || 'Bronze')
-  if (tier === 'Silver') return 3
-  if (tier === 'Gold') return 5
-  if (tier === 'Diamond') return 7
+  if (tier === 'Silver') return 2
+  if (tier === 'Gold') return 4
+  if (tier === 'Diamond') return 6
   return 1
 }
 
@@ -105,12 +105,12 @@ function pickTierValue(series: string, tierIndex: number): string {
 }
 
 function formatDescByTier(raw: string, tierIndex: number): string {
-  // 仅替换纯数值分档：10/20/30(/40)、1.5/2/2.5
-  return raw.replace(/\+?\d+(?:\.\d+)?(?:[\/|]\+?\d+(?:\.\d+)?)+/g, (m) => pickTierValue(m, tierIndex))
+  // 支持分档串：10/20/30、10|20|30、20%|30%
+  return raw.replace(/[+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)+/g, (m) => pickTierValue(m, tierIndex))
 }
 
 function formatDescArrowByTier(raw: string, fromTierIndex: number, toTierIndex: number): string {
-  return raw.replace(/\+?\d+(?:\.\d+)?(?:[\/|]\+?\d+(?:\.\d+)?)+/g, (m) => {
+  return raw.replace(/[+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)+/g, (m) => {
     const from = pickTierValue(m, fromTierIndex)
     const to = pickTierValue(m, toTierIndex)
     return `${from}->${to}`
@@ -571,8 +571,8 @@ export class SellPopup extends Container {
     const startScore = startTierScoreFromItem(item)
     const tierIndex = Math.max(0, tierScoreFromRaw(tierRaw) - startScore)
     const fromTier = parseTierName(upgradeFromTier ?? tierRaw) || tier
-    const fromStar = fromTier === 'Diamond' ? 1 : parseTierStar(upgradeFromTier ?? tierRaw)
-    const fromRaw = fromTier === 'Diamond' ? 'Diamond' : `${fromTier}#${fromStar}`
+    const fromStar = fromTier === 'Bronze' ? 1 : parseTierStar(upgradeFromTier ?? tierRaw)
+    const fromRaw = `${fromTier}#${fromStar}`
     const fromTierIndex = Math.max(0, tierScoreFromRaw(fromRaw) - startScore)
     const inUpgradePreview = Boolean(upgradeFromTier && fromTier !== tier)
     // 先更新字体，再计算布局

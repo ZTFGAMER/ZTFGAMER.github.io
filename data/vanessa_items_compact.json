@@ -6,7 +6,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze/Silver/Gold/Diamond",
+    "available_tiers": "Bronze",
     "heroes": "",
     "tags": "战士",
     "position": "",
@@ -15,11 +15,11 @@
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成10/20/35/60/100/180/240伤害。"
+        "cn": "攻击造成10|15|23|35|53|80|120伤害。"
       },
       {
         "en": "",
-        "cn": "使用时相邻护盾物品护盾+5/10/17/30/50/90/120。"
+        "cn": "使用时相邻护盾物品护盾+10|15|23|35|53|80|120。"
       }
     ],
     "icon": "item1",
@@ -27,8 +27,8 @@
       "item1"
     ],
     "attack_style": "旋转飞行",
-    "simple_desc": "每次使用后相邻护盾物品护盾提升",
-    "simple_desc_tiered": "使用时相邻护盾物品护盾+5|10|17|30|50|90|120"
+    "simple_desc": "使用后相邻物品护盾提升",
+    "simple_desc_tiered": "使用时相邻护盾物品护盾+10|15|23|35|53|80|120"
   },
   {
     "id": "578d9e51-a6c2-4c40-9dcd-60420ffe91c6",
@@ -37,7 +37,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze/Silver/Gold/Diamond",
+    "available_tiers": "Bronze",
     "heroes": "",
     "tags": "战士",
     "position": "",
@@ -46,7 +46,7 @@
     "skills": [
       {
         "en": "",
-        "cn": "获得15/30/50/90/150/270/360护盾。"
+        "cn": "获得20|30|45|68|102|153|230护盾。"
       }
     ],
     "icon": "item2",
@@ -61,7 +61,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze/Silver/Gold/Diamond",
+    "available_tiers": "Bronze",
     "heroes": "",
     "tags": "弓手",
     "position": "",
@@ -70,13 +70,13 @@
     "skills": [
       {
         "en": "",
-        "cn": "使用时相邻物品伤害+5/10/17/30/50/90/120，并补充2发弹药。"
+        "cn": "使用时相邻物品伤害+4|6|9|14|21|32|48，并补充1|2|3|4|5|6|7发弹药。"
       }
     ],
     "icon": "item3",
-    "attack_style": "不飞行",
+    "attack_style": "无",
     "simple_desc": "相邻物品伤害提升，并补充弹药",
-    "simple_desc_tiered": "使用时相邻物品伤害+5|10|17|30|50|90|120，并补充2发弹药"
+    "simple_desc_tiered": "使用时相邻物品伤害+4|6|9|14|21|32|48，并补充1|2|3|4|5|6|7发弹药"
   },
   {
     "id": "16e55d6c-d856-4820-a337-5f73332b8fe4",
@@ -85,7 +85,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze/Silver/Gold/Diamond",
+    "available_tiers": "Bronze",
     "heroes": "",
     "tags": "弓手",
     "position": "",
@@ -94,15 +94,11 @@
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成45/90/150/270/450/810/1080伤害。"
+        "cn": "攻击造成40|60|90|135|203|305|458伤害。"
       },
       {
         "en": "",
-        "cn": "使用时伤害+45/90/150/270/450/810/1080。"
-      },
-      {
-        "en": "",
-        "cn": "弹药:1。"
+        "cn": "每次使用后伤害提升，弹药:1。"
       }
     ],
     "icon": "item4",
@@ -111,7 +107,7 @@
       "item4_a"
     ],
     "simple_desc": "每次使用后伤害提升",
-    "simple_desc_tiered": "使用时伤害+45|90|150|270|450|810|1080"
+    "simple_desc_tiered": "使用时伤害+40|60|90|135|203|305|458"
   },
   {
     "id": "aa05e315-afdd-40ba-8149-3fd3fd3617ce",
@@ -120,7 +116,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze/Silver/Gold/Diamond",
+    "available_tiers": "Bronze",
     "heroes": "",
     "tags": "刺客",
     "position": "",
@@ -129,17 +125,17 @@
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成10/20/35/60/100/180/240伤害。"
+        "cn": "攻击造成8|12|18|27|41|62|93伤害。"
       },
       {
         "en": "",
-        "cn": "战斗开始时，所有物品伤害+5/10/17/30/50/90/120。"
+        "cn": "战斗开始时，所有物品伤害+8|12|18|27|41|62|93。"
       }
     ],
     "icon": "item5",
     "attack_style": "旋转飞行",
     "simple_desc": "所有物品伤害提升",
-    "simple_desc_tiered": "战斗开始时，所有物品伤害+5|10|17|30|50|90|120"
+    "simple_desc_tiered": "战斗开始时，所有物品伤害+8|12|18|27|41|62|93"
   },
   {
     "id": "4e61c6f3-4d31-4b29-97fb-691537b3a3a0",
@@ -148,7 +144,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze/Silver/Gold/Diamond",
+    "available_tiers": "Bronze",
     "heroes": "",
     "tags": "刺客",
     "position": "",
@@ -157,7 +153,7 @@
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成5/10/17/30/50/90/120伤害。"
+        "cn": "攻击造成8|12|18|27|41|62|93伤害。"
       },
       {
         "en": "",
@@ -179,7 +175,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
+    "available_tiers": "Silver",
     "heroes": "",
     "tags": "战士",
     "position": "",
@@ -188,17 +184,17 @@
     "skills": [
       {
         "en": "",
-        "cn": "获得30/60/100/180/270护盾。"
+        "cn": "获得20|30|45|68|102|153护盾。"
       },
       {
         "en": "",
-        "cn": "每次使用后护盾+30/60/100/180/270。"
+        "cn": "每次使用后护盾+20|30|45|68|102|153。"
       }
     ],
     "icon": "item7",
     "attack_style": "旋转飞行",
     "simple_desc": "每次使用后护盾提升",
-    "simple_desc_tiered": "每次使用后护盾+30|60|100|180|270"
+    "simple_desc_tiered": "每次使用后护盾+20|30|45|68|102|153"
   },
   {
     "id": "6631ae4c-ae28-46fc-ba6c-b8aa2555d261",
@@ -207,7 +203,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
+    "available_tiers": "Silver",
     "heroes": "",
     "tags": "弓手",
     "position": "",
@@ -216,11 +212,11 @@
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成50伤害。"
+        "cn": "攻击造成30伤害，弹药:4|5|6|7|8|9。"
       },
       {
         "en": "",
-        "cn": "使用时伤害+15，并打出所有弹药，弹药:4/5/6/7/8。"
+        "cn": "使用时伤害+10，并打出所有弹药。"
       }
     ],
     "icon": "item9",
@@ -229,7 +225,7 @@
       "item9_a"
     ],
     "simple_desc": "每次使用后伤害提升，并打出所有弹药",
-    "simple_desc_tiered": "使用时伤害+15，并打出所有弹药"
+    "simple_desc_tiered": "使用时伤害+10，并打出所有弹药"
   },
   {
     "id": "2d974fec-6038-417d-8831-1e7ea8d2fcde",
@@ -238,7 +234,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
+    "available_tiers": "Silver",
     "heroes": "",
     "tags": "刺客",
     "position": "",
@@ -247,7 +243,7 @@
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成20/40/65/120/180伤害。"
+        "cn": "攻击造成16|24|36|54|81|122伤害。"
       },
       {
         "en": "",
@@ -275,17 +271,17 @@
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成500伤害。"
+        "cn": "攻击造成100|150伤害。"
       },
       {
         "en": "",
-        "cn": "使用后所有护盾物品+100护盾。"
+        "cn": "使用后所有护盾物品+50|75护盾。"
       }
     ],
     "icon": "item13",
     "attack_style": "旋转飞行",
-    "simple_desc": "每次使用后所有护盾物品护盾提升",
-    "simple_desc_tiered": "每次使用后所有护盾物品+100护盾"
+    "simple_desc": "使用后所有护盾物品护盾提升",
+    "simple_desc_tiered": "使用后所有护盾物品+50|75护盾"
   },
   {
     "id": "ea7d8f3c-b0c8-4570-90de-4a706657f3f2",
@@ -294,7 +290,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Gold / 黄金",
-    "available_tiers": "Gold/Diamond",
+    "available_tiers": "Gold",
     "heroes": "",
     "tags": "战士",
     "position": "",
@@ -303,17 +299,17 @@
     "skills": [
       {
         "en": "",
-        "cn": "获得500/1000/1500护盾。"
+        "cn": "获得200|300|450|675护盾。"
       },
       {
         "en": "",
-        "cn": "每次使用后根据当前护盾值对对方造成伤害。"
+        "cn": "使用后根据当前护盾值对对方造成伤害。"
       }
     ],
     "icon": "item14",
     "attack_style": "旋转飞行",
-    "simple_desc": "每次使用后根据当前护盾值对对方造成伤害",
-    "simple_desc_tiered": "每次使用后根据当前护盾值对对方造成伤害"
+    "simple_desc": "根据当前护盾值对对方造成伤害",
+    "simple_desc_tiered": "使用后根据当前护盾值对对方造成伤害"
   },
   {
     "id": "7587058e-0db0-4d26-afa7-8cc19777c68c",
@@ -326,22 +322,22 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 2500,
-    "cooldown_tiers": "2500",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000",
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成500伤害。"
+        "cn": "攻击造成200|300伤害，弹药:3。"
       },
       {
         "en": "",
-        "cn": "每次使用后伤害翻倍，弹药:3。"
+        "cn": "使用后伤害翻倍。"
       }
     ],
     "icon": "item15",
     "attack_style": "旋转飞行",
-    "simple_desc": "每次使用后伤害翻倍",
-    "simple_desc_tiered": "每次使用后伤害翻倍"
+    "simple_desc": "使用后伤害翻倍",
+    "simple_desc_tiered": "使用后伤害翻倍"
   },
   {
     "id": "37ad7738-9773-4c30-8987-fc4ba70f5577",
@@ -350,7 +346,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Gold / 黄金",
-    "available_tiers": "Gold/Diamond",
+    "available_tiers": "Gold",
     "heroes": "",
     "tags": "弓手",
     "position": "",
@@ -359,11 +355,11 @@
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成150/300/450伤害。"
+        "cn": "攻击造成100|150|225|338伤害，弹药:2。"
       },
       {
         "en": "",
-        "cn": "使用其他弹药物品时连发次数+1，弹药:2。"
+        "cn": "使用其他弹药物品时，连发次数+1。"
       }
     ],
     "icon": "item16",
@@ -371,8 +367,8 @@
     "attack_variants": [
       "item16_a"
     ],
-    "simple_desc": "使用其他弹药物品时，连发次数增加",
-    "simple_desc_tiered": "使用其他弹药物品时，连发次数+1"
+    "simple_desc": "使用其他弹药物品时,连发次数增加",
+    "simple_desc_tiered": "使用其他弹药物品时,连发次数+1"
   },
   {
     "id": "aa88379b-caf0-48e4-8427-54aff2bcc0e3",
@@ -381,7 +377,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Gold / 黄金",
-    "available_tiers": "Gold/Diamond",
+    "available_tiers": "Gold",
     "heroes": "",
     "tags": "刺客",
     "position": "",
@@ -390,11 +386,11 @@
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成350/500/650伤害。"
+        "cn": "攻击造成240|300|390|525伤害。"
       },
       {
         "en": "",
-        "cn": "每次使用后伤害-20。"
+        "cn": "使用后伤害-20。"
       }
     ],
     "icon": "item17",
@@ -402,8 +398,8 @@
     "attack_variants": [
       "item17_a"
     ],
-    "simple_desc": "每次使用后伤害降低",
-    "simple_desc_tiered": "每次使用后伤害-20"
+    "simple_desc": "使用后伤害降低",
+    "simple_desc_tiered": "使用后伤害-20"
   },
   {
     "id": "35a85821-5a72-4b42-8f8e-129e6504cbd0",
@@ -425,13 +421,13 @@
       },
       {
         "en": "",
-        "cn": "造成目标最大生命值40%的伤害。"
+        "cn": "造成目标最大生命值20%|30%的伤害。"
       }
     ],
     "icon": "item18",
     "attack_style": "旋转飞行",
     "simple_desc": "造成百分比伤害",
-    "simple_desc_tiered": "造成目标最大生命值40%的伤害"
+    "simple_desc_tiered": "造成目标最大生命值20%|30%的伤害"
   },
   {
     "id": "5a1d3f01-744e-4a2b-bf93-0f8dcf6bf0e5",
@@ -440,7 +436,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
+    "available_tiers": "Silver",
     "heroes": "",
     "tags": "战士",
     "position": "",
@@ -449,7 +445,7 @@
     "skills": [
       {
         "en": "",
-        "cn": "获得45/90/150/270/432护盾。"
+        "cn": "获得30|45|68|102|153|230护盾。"
       },
       {
         "en": "",
@@ -468,7 +464,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
+    "available_tiers": "Silver",
     "heroes": "",
     "tags": "弓手",
     "position": "",
@@ -477,15 +473,11 @@
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成30/60/100/180/270伤害。"
+        "cn": "攻击造成16|24|36|54|81|122伤害，弹药:3。"
       },
       {
         "en": "",
         "cn": "弹药耗尽时造成5倍伤害。"
-      },
-      {
-        "en": "",
-        "cn": "弹药:3。"
       }
     ],
     "icon": "item20",
@@ -503,7 +495,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Silver / 白银",
-    "available_tiers": "Silver/Gold/Diamond",
+    "available_tiers": "Silver",
     "heroes": "",
     "tags": "刺客",
     "position": "",
@@ -512,7 +504,7 @@
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成20/40/65/120/180伤害。"
+        "cn": "攻击造成16|24|36|54|81|122伤害。"
       },
       {
         "en": "",
@@ -531,7 +523,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Gold / 黄金",
-    "available_tiers": "Gold/Diamond",
+    "available_tiers": "Gold",
     "heroes": "",
     "tags": "战士",
     "position": "",
@@ -540,7 +532,7 @@
     "skills": [
       {
         "en": "",
-        "cn": "获得100/200/300护盾。"
+        "cn": "获得80|120|180|270护盾。"
       },
       {
         "en": "",
@@ -559,7 +551,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Gold / 黄金",
-    "available_tiers": "Gold/Diamond",
+    "available_tiers": "Gold",
     "heroes": "",
     "tags": "弓手",
     "position": "",
@@ -568,15 +560,11 @@
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成600/1200/1800伤害。"
+        "cn": "攻击造成200|300|450|675伤害，弹药:1。"
       },
       {
         "en": "",
-        "cn": "补充弹药时伤害+600/1200/1800。"
-      },
-      {
-        "en": "",
-        "cn": "弹药:1。"
+        "cn": "补充弹药时伤害+200|300|450|675。"
       }
     ],
     "icon": "item23",
@@ -585,7 +573,7 @@
       "item23_a"
     ],
     "simple_desc": "补充弹药时伤害增加",
-    "simple_desc_tiered": "补充弹药时伤害+600|1200|1800"
+    "simple_desc_tiered": "补充弹药时伤害+200|300|450|675"
   },
   {
     "id": "fd21e723-cacf-40a0-b7fb-4078d6697a37",
@@ -594,7 +582,7 @@
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Gold / 黄金",
-    "available_tiers": "Gold/Diamond",
+    "available_tiers": "Gold",
     "heroes": "",
     "tags": "刺客",
     "position": "",
@@ -603,7 +591,7 @@
     "skills": [
       {
         "en": "",
-        "cn": "获得100/200/300护盾。"
+        "cn": "获得50|75|113|170护盾。"
       },
       {
         "en": "",
@@ -629,12 +617,15 @@
     "cooldown": 0,
     "cooldown_tiers": "无",
     "skills": [
-      { "en": "", "cn": "丢弃时，若非中立物品不少于5个，随机升级1个物品；否则丢弃失败。" }
+      {
+        "en": "",
+        "cn": "丢弃时随机升级1个物品。"
+      }
     ],
     "icon": "item25",
     "attack_style": "不飞行",
-    "simple_desc": "丢弃时非中立物品>=5则随机升级1个，否则丢弃失败",
-    "simple_desc_tiered": "丢弃时非中立物品>=5则随机升级1个，否则丢弃失败"
+    "simple_desc": "升级一个随机物品",
+    "simple_desc_tiered": "丢弃时随机升级1个物品"
   },
   {
     "id": "neutral_item_26_class_shift_stone",
@@ -650,12 +641,15 @@
     "cooldown": 0,
     "cooldown_tiers": "无",
     "skills": [
-      { "en": "", "cn": "拖动到目标物品上：将其转化为其他职业的同等级物品。" }
+      {
+        "en": "",
+        "cn": "拖动到目标物品上：将其转化为其他职业的同等级物品。"
+      }
     ],
     "icon": "item26",
     "attack_style": "不飞行",
-    "simple_desc": "拖到目标物品上转化为其他职业",
-    "simple_desc_tiered": "拖到目标物品上转化为其他职业"
+    "simple_desc": "将物品转化为其他职业",
+    "simple_desc_tiered": "拖动到特定物品上，将该物品转化为其他职业的物品"
   },
   {
     "id": "neutral_item_27_class_morph_stone",
@@ -671,12 +665,15 @@
     "cooldown": 0,
     "cooldown_tiers": "无",
     "skills": [
-      { "en": "", "cn": "拖动到目标物品上：将其转化为本职业其他同等级物品。" }
+      {
+        "en": "",
+        "cn": "拖动到目标物品上：将其转化为本职业其他同等级物品。"
+      }
     ],
     "icon": "item27",
     "attack_style": "不飞行",
-    "simple_desc": "拖到目标物品上转化为本职业其他物品",
-    "simple_desc_tiered": "拖到目标物品上转化为本职业其他物品"
+    "simple_desc": "将物品转化为本职业其他物品",
+    "simple_desc_tiered": "拖动到特定物品上，将该物品转化为本职业其他物品"
   },
   {
     "id": "neutral_item_28_skill_scroll",
@@ -692,11 +689,14 @@
     "cooldown": 0,
     "cooldown_tiers": "无",
     "skills": [
-      { "en": "", "cn": "丢弃时选择一个技能。" }
+      {
+        "en": "",
+        "cn": "丢弃时选择一个技能。"
+      }
     ],
     "icon": "item28",
     "attack_style": "不飞行",
-    "simple_desc": "丢弃时选择一个技能",
+    "simple_desc": "选择一个技能",
     "simple_desc_tiered": "丢弃时选择一个技能"
   },
   {
@@ -713,11 +713,14 @@
     "cooldown": 0,
     "cooldown_tiers": "无",
     "skills": [
-      { "en": "", "cn": "丢弃时打开折扣商店。" }
+      {
+        "en": "",
+        "cn": "丢弃时打开折扣商店。"
+      }
     ],
     "icon": "item29",
     "attack_style": "不飞行",
-    "simple_desc": "丢弃时打开折扣商店",
+    "simple_desc": "打开折扣商店",
     "simple_desc_tiered": "丢弃时打开折扣商店"
   },
   {
@@ -734,11 +737,14 @@
     "cooldown": 0,
     "cooldown_tiers": "无",
     "skills": [
-      { "en": "", "cn": "丢弃时选择一个事件。" }
+      {
+        "en": "",
+        "cn": "丢弃时选择一个事件。"
+      }
     ],
     "icon": "item30",
     "attack_style": "不飞行",
-    "simple_desc": "丢弃时选择一个事件",
+    "simple_desc": "选择一个事件",
     "simple_desc_tiered": "丢弃时选择一个事件"
   },
   {
@@ -755,12 +761,15 @@
     "cooldown": 0,
     "cooldown_tiers": "无",
     "skills": [
-      { "en": "", "cn": "丢弃时从升级石、转职石、变化石中选择1个。" }
+      {
+        "en": "",
+        "cn": "丢弃时从升级石、转职石、变化石中选择1个。"
+      }
     ],
     "icon": "item31",
     "attack_style": "不飞行",
-    "simple_desc": "丢弃时选择一块石头",
-    "simple_desc_tiered": "丢弃时选择一块石头"
+    "simple_desc": "选择一块石头",
+    "simple_desc_tiered": "丢弃时从升级石、转职石、变化石中选择1个"
   },
   {
     "id": "neutral_item_32_medal",
@@ -776,12 +785,15 @@
     "cooldown": 0,
     "cooldown_tiers": "无",
     "skills": [
-      { "en": "", "cn": "丢弃时选择一个特定职业的物品。" }
+      {
+        "en": "",
+        "cn": "丢弃时选择一个特定职业的物品。"
+      }
     ],
     "icon": "item32",
     "attack_style": "不飞行",
-    "simple_desc": "丢弃时选择一个职业物品",
-    "simple_desc_tiered": "丢弃时选择一个职业物品"
+    "simple_desc": "选择一个物品",
+    "simple_desc_tiered": "丢弃时选择一个特定职业的物品"
   },
   {
     "id": "neutral_item_33_blank_scroll",
@@ -797,11 +809,14 @@
     "cooldown": 0,
     "cooldown_tiers": "无",
     "skills": [
-      { "en": "", "cn": "丢弃时从技能卷轴、购物卷轴、冒险卷轴中选择1个。" }
+      {
+        "en": "",
+        "cn": "丢弃时从技能券、购物券和冒险券中选择1个。"
+      }
     ],
     "icon": "item33",
     "attack_style": "不飞行",
-    "simple_desc": "丢弃时选择一张卷轴",
-    "simple_desc_tiered": "丢弃时选择一张卷轴"
+    "simple_desc": "选择一张票券",
+    "simple_desc_tiered": "丢弃时从技能券、购物券和冒险券中选择1个"
   }
 ]

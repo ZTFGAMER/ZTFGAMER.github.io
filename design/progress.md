@@ -1,5 +1,335 @@
 # 大巴扎 — 开发进度记录
 
+### 本次对话追加（2026-03-10，匕首补回攻击描述并恢复直伤）
+
+- 用户需求：给匕首增加攻击力描述，伤害为 `8|12|18|27|41|62|93`。
+- 已完成：
+  - `data/vanessa_items.json`
+  - `data/vanessa_items_compact.json`
+  - 在 `匕首` 的 `skills` 中新增：`攻击造成8|12|18|27|41|62|93伤害。`（保留原有“战斗开始全体增伤”效果）。
+- 影响：`itemTierStats` 可重新从“造成X伤害”文本解析出匕首基础伤害，匕首恢复直接攻击能力。
+- 验证：`npm run build` 通过。
+- 当前阶段：该改动进入验收阶段，等待用户确认匕首实战已可造成伤害且开场增伤仍生效。
+
+### 本次对话追加（2026-03-10，排查非中立物品中无法造成伤害的条目）
+
+- 用户问题：`匕首为什么没有攻击能力了`，并追加要求排查“目前非中立物品中哪些不能造成伤害”。
+- 排查口径：以 `data/vanessa_items.json` 的当前技能文本为准，统计“自身没有任何伤害输出词条（造成伤害/百分比伤害/灼烧/剧毒）”的非中立物品。
+- 排查结果（7件）：`圆盾`、`弹药袋`、`匕首`、`长盾`、`头盔`、`英雄铠甲`、`暗影斗篷`。
+- 结论说明：上述物品当前定位为防御/辅助，不直接造成伤害；其中部分可通过增伤、充能、连发等方式间接提升队伍输出。
+- 当前阶段：问题定位完成，等待用户确认是否要把其中某些物品（如匕首）改回可直接攻击。
+
+### 本次对话追加（2026-03-09，全量联动回归与夜间批量验证）
+
+- 用户要求：继续自动化分析物品 Bug，并做“相互关联物品”的全量测试，不中途对话。
+- 已完成回归与自动化改造：
+  - 回归基线：`npm test` => `107 passed / 13 failed`（失败集中在测试契约与最新数据口径不一致）。
+  - `src/main.ts`
+    - 扩展自动战斗 URL 参数：`itemBattleId`、`itemBattleLv`、`itemBattleAllyId`、`itemBattleEnemyId`；
+    - 支持单物品与联动组合自动进入战斗（COMBAT）用于批量截图。
+- 已完成自动化批跑：
+  - 单物品：30/30 进入 COMBAT 并截图成功；
+    - 目录：`agent-sessions/202603092212-全物品战测/screenshots/items/`。
+  - 联动组合：18/18 进入 COMBAT 并截图成功（弹药/护盾/连发/百分比伤害等关键关联）；
+    - 目录：`agent-sessions/202603092247-全量联动回归/screenshots/relations/`。
+- 本轮结论：
+  - “网页自动化逐物品/联动物品战斗截图链路”已稳定可用；
+  - 当前主要待办是 13 条测试契约同步（并非截图链路阻断）。
+- 归档：
+  - `agent-sessions/202603092247-全量联动回归/report.md`
+  - `agent-sessions/202603092247-全量联动回归/bugs.md`
+  - `agent-sessions/202603092247-全量联动回归/coverage.md`
+
+### 本次对话追加（2026-03-09，全物品战斗截图跑通并全量产出）
+
+- 用户要求：持续推进，直到“每一个物品的战斗截图”可以正确跑完。
+- 已完成代码修正：
+  - `src/scenes/ShopScene.ts`
+    - 离开商店时若已存在 battle snapshot，不再误清空（修复 Soak/调试切场时 snapshot 被抹掉）。
+  - `src/main.ts`
+    - 新增 DEV 自动化入口：`itemBattleId` / `itemBattleLv` URL 参数可自动开战；
+    - 新增调试函数：`__listItemBattleTargets()` / `__startItemBattleTest()`。
+- 已完成自动化执行：
+  - 使用 Playwright 按物品逐个访问：`/?itemBattleId=<id>&itemBattleLv=7`；
+  - 每个物品等待进入战斗后截图，并校验 `__getGamePhase() === COMBAT`；
+  - 结果：`30/30` 物品成功进入战斗并产出截图。
+- 产物目录：
+  - `agent-sessions/202603092212-全物品战测/screenshots/items/`（共 30 张）
+- 备注：`npm test` 仍有 13 条失败（测试契约与最新数据口径差异），不影响本次“网页逐物品战斗截图可跑通”的验收结论。
+- 当前阶段：本阶段目标已达成（全物品战斗截图可稳定批量产出）。
+
+### 本次对话追加（2026-03-09，网页自动化全物品战测执行）
+
+- 用户指令：`直接用agent自动打开网页截图测试所有物品战斗的逻辑是否正确`。
+- 已执行：
+  - 按规程创建 session：`agent-sessions/202603092212-全物品战测/`；
+  - Playwright 网页自动化打开与截图：
+    - `agent-sessions/202603092212-全物品战测/screenshots/home.png`
+    - `agent-sessions/202603092212-全物品战测/screenshots/soak-end.png`
+    - `agent-sessions/202603092212-全物品战测/screenshots/soak-finished.png`
+  - 自动化逻辑回归：`npm test`（120 条中 107 通过、13 失败）。
+- 关键发现：
+  - Soak 自动战斗在网页端持续告警 `BattleScene 缺少战斗快照`，导致循环回退商店，无法作为稳定“全物品逐个战斗”验证通道；
+  - 失败用例集中在测试契约与最新数据/命名不同步（`CombatEngine` / `itemTierStats` / `ShopManager` / `DataLoader`）。
+- 归档：
+  - `agent-sessions/202603092212-全物品战测/report.md`
+  - `agent-sessions/202603092212-全物品战测/bugs.md`
+  - `agent-sessions/202603092212-全物品战测/coverage.md`
+- 当前阶段：自动化取证完成；下一步建议先修复 Soak 快照阻断与 13 条测试契约，再执行“按物品逐个战斗截图”的全量脚本。
+
+### 本次对话追加（2026-03-09，修复黄金弩机“使用其他弹药物品时连发+1”未触发）
+
+- 用户反馈：黄金弩机效果未生效。
+- 原因定位：`src/combat/CombatEngine.ts` 中该效果正则仅匹配“次数+数字”的窄格式，未覆盖当前文案（含逗号/“次数增加”）导致漏触发。
+- 已完成：`src/combat/CombatEngine.ts`
+  - 触发正则改为更宽容：`使用(其他)弹药物品时 ... (攻击/连发)次数(+数字|增加)`；
+  - 数值读取改为有兜底：未解析到明确数字时按 `+1` 处理，且取绝对值防止负号干扰。
+- 验证：`npm run build` 通过。
+- 当前阶段：该回归修复进入验收阶段，等待确认黄金弩机在“其他弹药物品触发时”可稳定获得连发增益。
+
+### 本次对话追加（2026-03-09，自动化全量物品逻辑回归执行）
+
+- 用户指令：自动跑一轮“所有物品逻辑是否正确”。
+- 已完成：按 `docs/AGENT.md` 建立 session 并执行全量自动化回归。
+  - Session：`agent-sessions/202603092207-物品逻辑全检/`
+  - 执行命令：`npm test`
+  - 结果：`120` 条用例中 `107` 通过、`13` 失败。
+- 主要失败聚类：
+  - 测试契约与当前数据不一致（`DataLoader.test.ts`、`ShopManager.test.ts`、`itemTierStats.test.ts`）；
+  - 物品名称变更未同步测试（`连发飞镖 -> 连发镖`、`超级弩机 -> 黄金弩机`）；
+  - `CombatEngine.test.ts` 多条规则断言基于旧文案/旧数值，需同步最新总表口径。
+- 产物归档：
+  - `agent-sessions/202603092207-物品逻辑全检/report.md`
+  - `agent-sessions/202603092207-物品逻辑全检/bugs.md`
+  - `agent-sessions/202603092207-物品逻辑全检/coverage.md`
+- 当前阶段：自动化检查完成并定位失败点；下一步建议进入“修测同步”阶段，先修测试契约再回归至全绿。
+
+### 本次对话追加（2026-03-09，修复黄金袖箭减伤与多处效果文案匹配回归）
+
+- 用户反馈：黄金袖箭“使用后伤害降低”未生效，并要求排查当前效果里未触发项。
+- 已完成：`src/combat/CombatEngine.ts`
+  - **黄金袖箭修复（核心）**
+    - `postUseDamageReduceLine` 保留触发后，减伤值改为 `Math.abs(...)` 再扣减，避免 `-20` 被判定为非正数导致不执行。
+  - **一并排查并修复的匹配回归**（统一补齐 `|` 分档支持）
+    - 冻结/减速触发增益匹配（伤害/灼烧/剧毒）；
+    - 触发加速时额外伤害匹配；
+    - 造成灼烧时给剧毒物品加成匹配；
+    - 造成剧毒时恢复/给灼烧物品加成匹配；
+    - 相邻物品攻击时额外伤害匹配；
+    - 每次攻击后伤害+、每次使用后护盾+、每次使用后相邻护盾增益匹配。
+- 结果：修复了“负号减伤不触发”与“部分 `|` 分档文案无法命中正则”的两类问题。
+- 验证：`npm run build` 通过。
+- 当前阶段：进入验收阶段，建议重点复测黄金袖箭、长盾、带分档触发词条的物品。
+
+### 本次对话追加（2026-03-09，百分比分档显示与计算修复）
+
+- 用户反馈：`切割镰刀` 在信息面板中显示 `20%|30%` 未按等级取值，且实战伤害看起来始终按 `20%` 计算。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小方案，本轮超时（`MCP error -32001: Request timed out`），按“分档解析补齐百分号支持”最小改动落地。
+- 已完成：
+  - `src/shop/SellPopup.ts`
+    - 分档替换正则升级为支持 `%` 与 `|`：`20%|30%` 可按当前等级正确替换为单值；
+    - 升级预览箭头文案同样支持百分比分档。
+  - `src/scenes/ShopScene.ts`
+    - 特殊商店描述分档解析同样补齐 `%` 支持，避免出现原始 `x%|y%` 串。
+  - `src/combat/CombatEngine.ts`
+    - 分档数值解析 `pickTierSeriesValue()` 支持去除 `%`；
+    - `tierValueFromLine()` 与“最大生命值百分比伤害”匹配正则补齐 `|` 与 `%`；
+    - 结果：`20%|30%` 会按等级索引命中对应档位，不再固定取首档 `20%`。
+- 验证：`npm run build` 通过。
+- 当前阶段：该百分比分档修复进入验收阶段，等待用户复测 `切割镰刀` 在钻石高等级下的显示与实战伤害。
+
+### 本次对话追加（2026-03-09，修复超级手雷“使用后伤害翻倍”失效）
+
+- 用户反馈：超级手雷使用后伤害未翻倍。
+- 原因定位：`src/combat/CombatEngine.ts` 触发判定仅匹配 `每次使用后伤害翻倍`，而当前数据文案为 `使用后伤害翻倍`，正则未命中。
+- 已完成：`src/combat/CombatEngine.ts`
+  - 伤害翻倍判定正则从 `每次使用后伤害翻倍` 调整为 `(?:每次)?使用后伤害翻倍`，兼容两种文案。
+- 验证：`npm run build` 通过。
+- 当前阶段：该回归修复进入验收阶段，等待用户确认超级手雷每次使用后伤害可继续翻倍增长。
+
+### 本次对话追加（2026-03-09，按用户要求改为购买/合成共用同一品质伪随机桶）
+
+- 用户要求：`合成和购买在一个桶里`。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 品质伪随机袋 key 从 `source + level + availableQualities` 调整为 `level + availableQualities`；
+  - 移除 `pickQualityByPseudoRandomBag()` 的 `source` 参数；
+  - 购买与合成调用统一走同一袋序列。
+- 验证：`npm run build` 通过。
+- 当前阶段：该口径调整进入验收阶段，重点确认购买与合成会共同消耗同一等级品质配额。
+
+### 本次对话追加（2026-03-09，修复Lv2/Lv4品质异常与弹药袋补弹回归）
+
+- 用户反馈：
+  - Day20 购买 Lv4 长时间没有黄金；
+  - Lv2 也出现长时间没有白银；
+  - 弹药袋无法为相邻物品补充弹药。
+- 已完成修复：
+  - `src/scenes/ShopScene.ts`
+    - 品质伪随机袋状态从“仅按 level”改为按 `source + level + availableQualities` 分桶（`quickbuy` 与 `synthesis` 独立序列）；
+    - 避免合成流程消耗购买流程的品质配额，导致购买端某品质长期缺失。
+  - `src/combat/CombatEngine.ts`
+    - 弹药补充触发正则修正，支持 `|` 分隔（原仅识别 `/`），恢复“补充1|2|...发弹药”文案的实际生效。
+- 验证：`npm run build` 通过。
+- 当前阶段：修复进入验收阶段，重点确认“Lv2白银/Lv4黄金恢复出现”与“弹药袋相邻补弹恢复”。
+
+### 本次对话追加（2026-03-09，物品测试点击后改为一次性添加全等级）
+
+- 用户需求：物品测试中点击某个物品后，直接获得该物品所有可能等级。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按现有品质/等级框架最小改动落地。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 将物品测试添加逻辑从“单次添加 1 个（1星）”改为“按 `qualityLevelRange` 循环添加全部可用等级”；
+  - 新增 `addAllPossibleLevelsForTest(def)`：按 `Lv[min..max]` 依次尝试放置，支持空间不足时部分成功并提示 `ok/total`；
+  - 物品测试面板文案与按钮同步：`添加 -> 全等级`，副标题改为“点击全等级添加所有可用等级”。
+- 验证：`npm run build` 通过。
+- 当前阶段：该调试能力改动进入验收阶段，等待用户确认点击后能批量生成同一物品各等级实例。
+
+### 本次对话追加（2026-03-09，按最新总表全量对齐物品数值）
+
+- 用户反馈：当前物品数值与提供总表不一致（例：尖刺金盾升级档位/数值异常）。
+- 用户追加要求：`其他所有数据你对一遍`，按表全量对齐。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小方案，本轮超时（`MCP error -32001: Request timed out`），按数据全量同步落地。
+- 已完成：
+  - `data/vanessa_items.json`
+  - `data/vanessa_items_compact.json`
+  - 对照用户总表，按 `name_cn` 全量同步核心字段：
+    - 品质/可用品质（`starting_tier` / `available_tiers`）
+    - 流派（`tags`）
+    - 速度/间隔（`cooldown` / `cooldown_tiers`）
+    - 数值技能文本（`skills[].cn`，含伤害/护盾/弹药/连发关键串）
+    - 简版/分档描述（`simple_desc` / `simple_desc_tiered`）
+  - 重点核对：`尖刺金盾` 护盾值已改为 `200|300|450|675`，不再是旧版 `500/1000/1500`。
+  - 兼容说明：已保留前序确认过的“折扣商店”命名，不回退为“特殊商店”。
+- 验证：`npm run build` 通过。
+- 当前阶段：该全量数值对齐进入验收阶段，等待用户复测关键卡（尖刺金盾/黄金弩机/超级手雷）与升级档位表现。
+
+### 本次对话追加（2026-03-09，购物卷轴二次使用改为强制刷新新店）
+
+- 用户反馈：同一天连续使用两张购物卷轴时，第二次打开的折扣商店与第一次完全相同。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改法，本轮超时（`MCP error -32001: Request timed out`），按最小行为修正落地。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 调整 `openSpecialShopFromNeutralScroll(stage)`：
+    - 每次使用购物卷轴都**强制重roll** `specialShopOffers`（不再复用已有3件）；
+    - 优先带 `prevOffers` 调用 `rollSpecialShopOffers(prevOffers)`，避免重复组合；
+    - 同时重置 `specialShopRefreshCount = 0`，把新卷轴视为新一轮商店会话；
+    - 若首轮重roll不足3件，自动回退再roll一次兜底。
+- 结果：同日第二张购物卷轴会打开新的折扣商店内容，不再与上一张完全一致。
+- 验证：`npm run build` 通过。
+- 当前阶段：该卷轴刷新修复进入验收阶段，等待用户实机连续使用两张购物卷轴验证。
+
+### 本次对话追加（2026-03-09，中立上限表三次更新：转职/变化/原石大幅上调）
+
+- 用户需求：按最新 Day1~20 表再次更新“单日中立上限 + 9类中立物品上限”。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按最小常量更新先落地。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 更新 `NEUTRAL_RANDOM_CAP_BY_DAY`：
+    - `upgrade_stone` -> `[0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5]`
+    - `class_shift_stone` -> `[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]`
+    - `class_morph_stone` -> `[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]`
+    - `raw_stone` -> `[0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38]`
+  - 其余项（`skill/shop/event/medal/blank`）与本次表一致，保持现值。
+  - `NEUTRAL_DAILY_ROLL_CAP_BY_DAY` 与本次表一致（`0,2,3,3,4,4,5,5,6...`），保持不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：该上限表更新进入验收阶段，等待用户复测 Day3+ 的转职/变化石与 Day2+ 原石上限曲线。
+
+### 本次对话追加（2026-03-09，升级石描述简化，逻辑保持门槛不变）
+
+- 用户需求：升级石描述改为“丢弃时随机升级1个物品”，但逻辑保持现状（非中立物品 `>=5` 才成功）。
+- 已完成：
+  - `data/vanessa_items.json`
+  - `data/vanessa_items_compact.json`
+    - 升级石 `skills.cn` 改为：`丢弃时随机升级1个物品。`
+    - `simple_desc` / `simple_desc_tiered` 同步改为：`丢弃时随机升级1个物品`
+- 未改动：`src/scenes/ShopScene.ts` 升级石门槛逻辑保持不变（仍为非中立物品数 `<5` 时丢弃失败）。
+- 当前阶段：文案调整进入验收阶段，等待确认“描述简化且实际规则仍按门槛执行”。
+
+### 本次对话追加（2026-03-09，品质伪随机袋实现：购买与随机合成共享）
+
+- 用户需求：提升“尽量伪随机”体验，目标是同等级下按固定窗口（示例10次）控制品质配额，窗口内顺序随机；并希望基础购买与随机合成统一口径。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 新增等级维度品质伪随机袋 `QUALITY_PSEUDO_RANDOM_STATE`；
+  - 新增 `pickQualityByPseudoRandomBag()` / `buildQualityPseudoRandomBag()`：
+    - 以 `qualityPseudoRandomWindowSize`（默认10）生成每窗口固定配额；
+    - 用最大余数分配法将概率转为整数配额；
+    - 每窗口打乱顺序后出牌；
+  - 快速购买品质抽取改为走伪随机袋（同等级）；
+  - 跨物品随机合成的“目标最低品质”抽取改为走同一伪随机袋，实现与购买共享节奏；
+  - 相关重置节点（读档/重开/场景销毁）统一清空伪随机袋状态。
+- 已完成：配置与类型
+  - `data/game_config.json`
+    - 新增 `qualityPseudoRandomWindowSize: 10`；
+    - 新增 `qualityPseudoRandomWeightsByLevel`（采用用户给定矩阵）。
+  - `src/items/ItemDef.ts`
+    - `shopRules` 类型新增 `qualityPseudoRandomWindowSize`、`qualityPseudoRandomWeightsByLevel`。
+- 验证：`npm run build` 通过。
+- 当前阶段：该伪随机方案进入验收阶段，重点观察同等级 10 次窗口内各品质计数是否符合配额、窗口内顺序是否仍随机。
+
+### 本次对话追加（2026-03-09，转职石/变化石转化结果增加品质下限）
+
+- 用户需求：转职石、变化石转化后，结果物品基础品质不能低于转化前（口径对齐随机进化“下限不降”）。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按最小侵入先落地。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 在 `convertPlacedItemKeepLevelWithArchetypeRule()` 中增加源物品基础品质下限：
+    - 读取源物品 `starting_tier` 作为 `srcMinTier`；
+    - 候选池新增过滤 `candidate.starting_tier >= srcMinTier`；
+    - 保持原有“同职业/异职业”规则、尺寸规则与等级不变。
+- 结果：转职石/变化石只会转成不低于原基础品质的候选物品。
+- 验证：`npm run build` 通过。
+- 当前阶段：该品质下限修正进入验收阶段，等待用户复测“转化前后基础品质不降级”。
+
+### 本次对话追加（2026-03-09，品质/等级解耦第一阶段落地）
+
+- 用户指令：`直接开搞`，按“品质与等级分离”推进实现。
+- 已完成（运行态桥接）：`src/scenes/ShopScene.ts`
+  - 新增实例级 `quality + level` 存储（`instanceToQuality` / `instanceToLevel`），并保留 legacy `tier/star` 作为兼容桥接输出；
+  - 新增 `shopRules.qualityLevelRange` 支持（默认：Bronze 1~7、Silver 2~7、Gold 4~7、Diamond 6~7）；
+  - 升级判定改为按 `quality` 的等级上限控制，不再直接绑定旧 `tier/star` 终点；
+  - 存档与战斗快照补充 `quality/level` 字段，并兼容旧档（无 `level` 时按旧 `tier/star` 自动迁移）。
+- 已完成（跨模块同步）：
+  - `src/combat/BattleSnapshotStore.ts`：快照实体新增可选 `quality/level`；
+  - `src/combat/CombatEngine.ts`：读取快照时优先使用 `level`，并同步新等级映射；
+  - `src/items/ItemDef.ts`：`shopRules` 类型新增 `qualityLevelRange`。
+- 已完成（数值配置接入）：`data/game_config.json`
+  - 快速购买品质权重（`quickBuyQualityWeightsByLevel`）按用户提供矩阵写入；
+  - 买卖价继续使用用户指定的 Lv1~Lv7 表。
+- 验证：`npm run build` 通过。
+- 当前阶段：进入验收阶段（重点检查：旧存档迁移、升级上限边界、快照/PVP 读写、快速购买品质权重表现）。
+
+### 本次对话追加（2026-03-09，等级/品质规则重排 + 概率与价格表更新）
+
+- 用户确认目标：按新口径重排等级层级（青铜最低Lv1、白银最低Lv2、黄金最低Lv4、钻石最低Lv6，最高Lv7），并按提供表更新品质概率与买卖价格。
+- 已完成（代码）：
+  - `src/scenes/ShopScene.ts`
+    - 等级映射改为：`Lv1=Bronze#1`、`Lv2~3=Silver#1/#2`、`Lv4~5=Gold#1/#2`、`Lv6~7=Diamond#1/#2`；
+    - 最低可出等级改为：青铜1、白银2、黄金4、钻石6；
+    - 快速购买新增按“等级->品质权重”二次抽取（读取 `quickBuyQualityWeightsByLevel`）。
+  - `src/shop/ShopManager.ts`
+    - 价格层级索引改为新等级映射；
+    - 取消“钻石强制1星”，改为“青铜固定1星、其余可1/2星”，支持钻石Lv6/Lv7双档价格。
+  - `src/scenes/BattleScene.ts`、`src/combat/CombatEngine.ts`、`src/grid/GridZone.ts`、`src/shop/SellPopup.ts`、`src/items/itemTierStats.ts`
+    - 全部同步新等级映射与起始等级（用于等级显示、分档索引、战斗统计与信息卡）。
+  - `src/items/ItemDef.ts`
+    - `shopRules` 类型新增 `quickBuyQualityWeightsByLevel`。
+- 已完成（配置）：`data/game_config.json`
+  - `quickBuyFixedPrice` 改为：`3/6/12/24/48/96/192`（对应 Lv1~Lv7）；
+  - `sellFixedPriceBySize` 改为：`3/5/10/18/36/64/128`（对应 Lv1~Lv7）；
+  - 新增 `quickBuyQualityWeightsByLevel`，按用户提供矩阵写入 Bronze/Silver/Gold/Diamond 各等级权重。
+- 验证：`npm run build` 通过。
+- 当前阶段：该规则重排进入验收阶段，重点验证“品质最低等级边界、Lv6/Lv7钻石档、快速购买品质分布、买卖价格曲线”。
+
+### 本次对话追加（2026-03-09，二次发布：Vercel 更新 + TestFlight 上传）
+
+- 用户指令：`更新vercel，打tf包`。
+- 已完成（Vercel）：
+  - 执行 `vercel --prod --yes` 成功，生产部署完成并切别名。
+  - Production：`https://bigbazzar-mw5u1x5to-zhengtengfeis-projects.vercel.app`
+  - Alias：`https://bigbazzar.vercel.app`
+- 已完成（TestFlight）：
+  - 执行 `npm run release:tf` 成功。
+  - 关键结果：`UPLOAD SUCCEEDED with no errors`；`Upload succeeded.`
+  - Delivery UUID：`a0aeca87-8f9c-4fa3-8ba5-cc5c521f3162`
+  - Build Number：`CURRENT_PROJECT_VERSION=22`（`21 -> 22`）
+- 当前阶段：发布与分发完成，等待用户在 Vercel 线上与 App Store Connect/TestFlight 构建处理页验收。
+
 ### 本次对话追加（2026-03-09，Vercel 生产更新 + TestFlight 打包上传）
 
 - 用户指令：`更新vercel，打tf包`。

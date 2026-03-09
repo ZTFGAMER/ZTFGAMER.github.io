@@ -45,6 +45,12 @@ type SoakTestStats = {
   lastBattleDay: number
 }
 
+type ItemBattleTarget = {
+  id: string
+  name_cn: string
+  tier: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
+}
+
 let soakRoundTimer: number | null = null
 let soakBattleEndTimer: number | null = null
 let soakPollTimer: number | null = null
@@ -78,6 +84,109 @@ function pickSoakDay(minDay: number, maxDay: number): number {
   const b = Math.max(a, Math.floor(maxDay))
   if (a === b) return a
   return a + Math.floor(Math.random() * (b - a + 1))
+}
+
+function parseTierName(raw: string): 'Bronze' | 'Silver' | 'Gold' | 'Diamond' {
+  if (raw.includes('Silver')) return 'Silver'
+  if (raw.includes('Gold')) return 'Gold'
+  if (raw.includes('Diamond')) return 'Diamond'
+  return 'Bronze'
+}
+
+function levelToTierStar(level: number): { tier: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'; star: 1 | 2 } {
+  const lv = Math.max(1, Math.min(7, Math.round(level)))
+  if (lv <= 1) return { tier: 'Bronze', star: 1 }
+  if (lv === 2) return { tier: 'Silver', star: 1 }
+  if (lv === 3) return { tier: 'Silver', star: 2 }
+  if (lv === 4) return { tier: 'Gold', star: 1 }
+  if (lv === 5) return { tier: 'Gold', star: 2 }
+  if (lv === 6) return { tier: 'Diamond', star: 1 }
+  return { tier: 'Diamond', star: 2 }
+}
+
+function listItemBattleTargets(): ItemBattleTarget[] {
+  const order: Record<'Bronze' | 'Silver' | 'Gold' | 'Diamond', number> = { Bronze: 0, Silver: 1, Gold: 2, Diamond: 3 }
+  return getAllItems()
+    .map((it) => ({ id: it.id, name_cn: it.name_cn, tier: parseTierName(it.starting_tier) }))
+    .sort((a, b) => {
+      const diff = (order[a.tier] ?? 0) - (order[b.tier] ?? 0)
+      if (diff !== 0) return diff
+      return a.name_cn.localeCompare(b.name_cn, 'zh-Hans-CN')
+    })
+}
+
+function startItemBattleTest(defId: string, level = 7, allyDefId?: string, enemyDefId?: string): boolean {
+  try {
+    const player = getAllItems().find((it) => it.id === defId)
+    if (!player) return false
+    const ally = allyDefId ? (getAllItems().find((it) => it.id === allyDefId) ?? null) : null
+    const enemy = (enemyDefId ? (getAllItems().find((it) => it.id === enemyDefId) ?? null) : null)
+      ?? getAllItems().find((it) => it.id !== defId && (it.damage + it.heal + it.shield + it.burn + it.poison + it.regen) > 0)
+      ?? player
+    const playerSize = normalizeSize(player.size)
+    const allySize = ally ? normalizeSize(ally.size) : null
+    const enemySize = normalizeSize(enemy.size)
+    const toW = (size: '1x1' | '2x1' | '3x1'): number => (size === '1x1' ? 1 : size === '2x1' ? 2 : 3)
+    const activeColCount = 6
+    const playerTier = levelToTierStar(level)
+    const enemyTier = levelToTierStar(Math.max(1, Math.min(7, Math.round(level))))
+    const normalizedLevel = Math.max(1, Math.min(7, Math.round(level))) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+    const playerEntities: BattleSnapshotBundle['entities'] = [
+      {
+        instanceId: `item-test-player-${player.id}`,
+        defId: player.id,
+        size: playerSize,
+        col: 0,
+        row: 0,
+        tier: playerTier.tier,
+        tierStar: playerTier.star,
+        quality: parseTierName(player.starting_tier),
+        level: normalizedLevel,
+      },
+    ]
+    if (ally && allySize) {
+      const playerW = toW(playerSize)
+      const allyCol = Math.min(activeColCount - toW(allySize), Math.max(0, playerW))
+      playerEntities.push({
+        instanceId: `item-test-ally-${ally.id}`,
+        defId: ally.id,
+        size: allySize,
+        col: allyCol,
+        row: 0,
+        tier: playerTier.tier,
+        tierStar: playerTier.star,
+        quality: parseTierName(ally.starting_tier),
+        level: normalizedLevel,
+      })
+    }
+
+    const snapshot: BattleSnapshotBundle = {
+      day: 20,
+      activeColCount,
+      createdAtMs: Date.now(),
+      entities: [
+        ...playerEntities,
+        {
+          instanceId: `item-test-enemy-${enemy.id}`,
+          defId: enemy.id,
+          size: enemySize,
+          col: Math.max(0, activeColCount - toW(enemySize)),
+          row: 0,
+          tier: enemyTier.tier,
+          tierStar: enemyTier.star,
+          quality: parseTierName(enemy.starting_tier),
+          level: normalizedLevel,
+        },
+      ],
+    }
+    if (SceneManager.currentName() !== 'shop') SceneManager.goto('shop')
+    setBattleSnapshot(snapshot)
+    SceneManager.goto('battle')
+    return true
+  } catch (err) {
+    console.warn('[ItemBattleTest] start failed', err)
+    return false
+  }
 }
 
 function createSoakSnapshot(day: number): BattleSnapshotBundle {
@@ -348,6 +457,8 @@ async function bootstrap(): Promise<void> {
       __startSoakTest?: (options?: Partial<SoakTestOptions>) => void
       __stopSoakTest?: () => void
       __getSoakStats?: () => SoakTestStats | null
+      __listItemBattleTargets?: () => ItemBattleTarget[]
+      __startItemBattleTest?: (defId: string, level?: number) => boolean
     }).__setGamePhase = (phase: GamePhase) => {
       PhaseManager.setPhase(phase)
       console.log(`[Debug] phase -> ${PhaseManager.getPhase()}`)
@@ -358,6 +469,8 @@ async function bootstrap(): Promise<void> {
       __startSoakTest?: (options?: Partial<SoakTestOptions>) => void
       __stopSoakTest?: () => void
       __getSoakStats?: () => SoakTestStats | null
+      __listItemBattleTargets?: () => ItemBattleTarget[]
+      __startItemBattleTest?: (defId: string, level?: number) => boolean
     }).__getGamePhase = () => PhaseManager.getPhase()
     ;(window as Window & {
       __setGamePhase?: (phase: GamePhase) => void
@@ -365,6 +478,8 @@ async function bootstrap(): Promise<void> {
       __startSoakTest?: (options?: Partial<SoakTestOptions>) => void
       __stopSoakTest?: () => void
       __getSoakStats?: () => SoakTestStats | null
+      __listItemBattleTargets?: () => ItemBattleTarget[]
+      __startItemBattleTest?: (defId: string, level?: number) => boolean
     }).__startSoakTest = (options?: Partial<SoakTestOptions>) => startSoakTest(options)
     ;(window as Window & {
       __setGamePhase?: (phase: GamePhase) => void
@@ -372,6 +487,8 @@ async function bootstrap(): Promise<void> {
       __startSoakTest?: (options?: Partial<SoakTestOptions>) => void
       __stopSoakTest?: () => void
       __getSoakStats?: () => SoakTestStats | null
+      __listItemBattleTargets?: () => ItemBattleTarget[]
+      __startItemBattleTest?: (defId: string, level?: number) => boolean
     }).__stopSoakTest = () => stopSoakTestInternal(true)
     ;(window as Window & {
       __setGamePhase?: (phase: GamePhase) => void
@@ -379,9 +496,40 @@ async function bootstrap(): Promise<void> {
       __startSoakTest?: (options?: Partial<SoakTestOptions>) => void
       __stopSoakTest?: () => void
       __getSoakStats?: () => SoakTestStats | null
+      __listItemBattleTargets?: () => ItemBattleTarget[]
+      __startItemBattleTest?: (defId: string, level?: number) => boolean
     }).__getSoakStats = () => getSoakStats()
+    ;(window as Window & {
+      __setGamePhase?: (phase: GamePhase) => void
+      __getGamePhase?: () => GamePhase
+      __startSoakTest?: (options?: Partial<SoakTestOptions>) => void
+      __stopSoakTest?: () => void
+      __getSoakStats?: () => SoakTestStats | null
+      __listItemBattleTargets?: () => ItemBattleTarget[]
+      __startItemBattleTest?: (defId: string, level?: number) => boolean
+    }).__listItemBattleTargets = () => listItemBattleTargets()
+    ;(window as Window & {
+      __setGamePhase?: (phase: GamePhase) => void
+      __getGamePhase?: () => GamePhase
+      __startSoakTest?: (options?: Partial<SoakTestOptions>) => void
+      __stopSoakTest?: () => void
+      __getSoakStats?: () => SoakTestStats | null
+      __listItemBattleTargets?: () => ItemBattleTarget[]
+      __startItemBattleTest?: (defId: string, level?: number) => boolean
+    }).__startItemBattleTest = (defId: string, level?: number) => startItemBattleTest(defId, level)
 
     const params = new URLSearchParams(window.location.search)
+    const itemBattleId = String(params.get('itemBattleId') ?? '').trim()
+    const itemBattleLvRaw = Number(params.get('itemBattleLv') ?? '')
+    const itemBattleAllyId = String(params.get('itemBattleAllyId') ?? '').trim()
+    const itemBattleEnemyId = String(params.get('itemBattleEnemyId') ?? '').trim()
+    const itemBattleLv = Number.isFinite(itemBattleLvRaw) ? itemBattleLvRaw : 7
+    if (itemBattleId) {
+      window.setTimeout(() => {
+        const ok = startItemBattleTest(itemBattleId, itemBattleLv, itemBattleAllyId || undefined, itemBattleEnemyId || undefined)
+        if (!ok) console.warn('[ItemBattleTest] auto start failed itemBattleId=', itemBattleId)
+      }, 60)
+    }
     if (params.get('soak') === '1' && params.get('soakAuto') === '1') {
       const rounds = Number(params.get('rounds') ?? '')
       const battleMs = Number(params.get('battleMs') ?? '')

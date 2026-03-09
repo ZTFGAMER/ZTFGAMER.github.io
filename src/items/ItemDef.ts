@@ -213,6 +213,25 @@ export interface GameConfig {
       ownedWeightMultiplier?: number
     }>
     quickBuyLevelChancesByDay?: number[][]
+    qualityLevelRange?: {
+      Bronze?: { min?: number; max?: number }
+      Silver?: { min?: number; max?: number }
+      Gold?: { min?: number; max?: number }
+      Diamond?: { min?: number; max?: number }
+    }
+    qualityPseudoRandomWindowSize?: number
+    qualityPseudoRandomWeightsByLevel?: {
+      Bronze?: number[]
+      Silver?: number[]
+      Gold?: number[]
+      Diamond?: number[]
+    }
+    quickBuyQualityWeightsByLevel?: {
+      Bronze?: number[]
+      Silver?: number[]
+      Gold?: number[]
+      Diamond?: number[]
+    }
     quickBuyNeutralChance?: number
     quickBuyNeutralStartDay?: number
     quickBuyNeutralPseudoRandomChances?: number[]

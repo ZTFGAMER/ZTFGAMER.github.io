@@ -27,7 +27,7 @@ import { getEventIconUrl, getItemIconUrl, getSkillIconUrl } from '@/core/assetPa
 import { getTierColor } from '@/config/colorPalette'
 import { createItemStatBadges } from '@/ui/itemStatBadges'
 import { PhaseManager } from '@/core/PhaseManager'
-import { clearBattleSnapshot, setBattleSnapshot, type BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
+import { clearBattleSnapshot, getBattleSnapshot, setBattleSnapshot, type BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 import { PvpContext } from '@/pvp/PvpContext'
 import { clearBattleOutcome, consumeBattleOutcome } from '@/combat/BattleOutcomeStore'
 import { BRONZE_SKILL_PICKS, getBronzeSkillById } from '@/skills/bronzeSkillConfig'
@@ -223,6 +223,8 @@ type SavedPlacedItem = {
   size: ItemSizeNorm
   col: number
   row: number
+  quality?: TierKey
+  level?: 1 | 2 | 3 | 4 | 5 | 6 | 7
   tier: TierKey
   tierStar: 1 | 2
   permanentDamageBonus: number
@@ -863,8 +865,10 @@ function buildBattleSnapshot(skillBarMoveStartAtMs?: number): BattleSnapshotBund
     ownerSkillIds: pickedSkills.map((s) => s.id),
     entities: snap.entities.map((it) => ({
       ...it,
-      tier: instanceToTier.get(it.instanceId) ?? 'Bronze',
+      tier: getInstanceTier(it.instanceId) ?? 'Bronze',
       tierStar: getInstanceTierStar(it.instanceId),
+      quality: getInstanceQuality(it.instanceId),
+      level: getInstanceLevel(it.instanceId),
       permanentDamageBonus: Math.max(0, Math.round(instanceToPermanentDamageBonus.get(it.instanceId) ?? 0)),
       baseStats: resolveInstanceBaseStats(it.instanceId),
     })),
@@ -876,8 +880,10 @@ function resolveInstanceBaseStats(instanceId: string): BattleSnapshotBundle['ent
   if (!defId) return undefined
   const def = getAllItems().find((it) => it.id === defId)
   if (!def) return undefined
-  const tier = instanceToTier.get(instanceId) ?? 'Bronze'
-  const star = getInstanceTierStar(instanceId)
+  const level = getInstanceLevel(instanceId)
+  const legacy = levelToTierStar(level)
+  const tier = legacy?.tier ?? 'Bronze'
+  const star = legacy?.star ?? 1
   const stats = resolveItemTierBaseStats(def, `${tier}#${star}`)
   const permanentBonus = Math.max(0, Math.round(instanceToPermanentDamageBonus.get(instanceId) ?? 0))
   return {
@@ -901,7 +907,9 @@ function captureShopState(): SavedShopState | null {
     size: it.size,
     col: it.col,
     row: it.row,
-    tier: instanceToTier.get(it.instanceId) ?? 'Bronze',
+    quality: getInstanceQuality(it.instanceId),
+    level: getInstanceLevel(it.instanceId),
+    tier: getInstanceTier(it.instanceId) ?? 'Bronze',
     tierStar: getInstanceTierStar(it.instanceId),
     permanentDamageBonus: Math.max(0, Math.round(instanceToPermanentDamageBonus.get(it.instanceId) ?? 0)),
   }))
@@ -1041,8 +1049,7 @@ function applySavedShopState(state: SavedShopState): void {
     for (const id of savedUnlocks) unlockedItemIds.add(id)
   }
   guaranteedNewUnlockTriggeredLevels.clear()
-  CROSS_SYNTH_MIN_TIER_CYCLE_CURSOR.clear()
-  CROSS_SYNTH_MIN_TIER_CYCLE_BAG.clear()
+  QUALITY_PSEUDO_RANDOM_STATE.clear()
   const savedGuaranteed = Array.isArray(state.guaranteedNewUnlockTriggeredLevels)
     ? state.guaranteedNewUnlockTriggeredLevels.filter((lv): lv is number => Number.isFinite(lv)).map((lv) => Math.round(lv))
     : []
@@ -1113,6 +1120,8 @@ function applySavedShopState(state: SavedShopState): void {
   battleSystem.clear()
   backpackSystem.clear()
   instanceToDefId.clear()
+  instanceToQuality.clear()
+  instanceToLevel.clear()
   instanceToTier.clear()
   instanceToTierStar.clear()
   instanceToPermanentDamageBonus.clear()
@@ -1120,11 +1129,16 @@ function applySavedShopState(state: SavedShopState): void {
   const restoreOne = (it: SavedPlacedItem, system: GridSystem, view: GridZone) => {
     system.place(it.col, it.row, it.size, it.defId, it.instanceId)
     instanceToDefId.set(it.instanceId, it.defId)
-    instanceToTier.set(it.instanceId, it.tier)
-    instanceToTierStar.set(it.instanceId, normalizeTierStar(it.tier, it.tierStar))
+    const migratedLevel = typeof it.level === 'number'
+      ? clampLevel(it.level)
+      : levelFromLegacyTierStar(it.tier, normalizeTierStar(it.tier, it.tierStar))
+    const migratedQuality = it.quality ?? deriveQualityByDefId(it.defId)
+    setInstanceQualityLevel(it.instanceId, it.defId, migratedQuality, migratedLevel)
     instanceToPermanentDamageBonus.set(it.instanceId, Math.max(0, Math.round(it.permanentDamageBonus ?? 0)))
-    view.addItem(it.instanceId, it.defId, it.size, it.col, it.row, toVisualTier(it.tier, normalizeTierStar(it.tier, it.tierStar))).then(() => {
-      view.setItemTier(it.instanceId, toVisualTier(it.tier, normalizeTierStar(it.tier, it.tierStar)))
+    const restoredTier = getInstanceTier(it.instanceId) ?? it.tier
+    const restoredStar = getInstanceTierStar(it.instanceId)
+    view.addItem(it.instanceId, it.defId, it.size, it.col, it.row, toVisualTier(restoredTier, restoredStar)).then(() => {
+      view.setItemTier(it.instanceId, toVisualTier(restoredTier, restoredStar))
       drag?.refreshZone(view)
     })
   }
@@ -1145,15 +1159,74 @@ let instCounter = 1
 const nextId = () => `inst-${instCounter++}`
 
 const instanceToDefId = new Map<string, string>()
+const instanceToQuality = new Map<string, TierKey>()
+const instanceToLevel = new Map<string, 1 | 2 | 3 | 4 | 5 | 6 | 7>()
 const instanceToTier = new Map<string, TierKey>()
 const instanceToTierStar = new Map<string, 1 | 2>()
 const instanceToPermanentDamageBonus = new Map<string, number>()
 
 function removeInstanceMeta(instanceId: string): void {
   instanceToDefId.delete(instanceId)
+  instanceToQuality.delete(instanceId)
+  instanceToLevel.delete(instanceId)
   instanceToTier.delete(instanceId)
   instanceToTierStar.delete(instanceId)
   instanceToPermanentDamageBonus.delete(instanceId)
+}
+
+function clampLevel(level: number): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+  return Math.max(1, Math.min(7, Math.round(level))) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+}
+
+function getQualityLevelRange(quality: TierKey): { min: 1 | 2 | 3 | 4 | 5 | 6 | 7; max: 1 | 2 | 3 | 4 | 5 | 6 | 7 } {
+  const cfg = getConfig().shopRules?.qualityLevelRange?.[quality]
+  const defaultMin = quality === 'Bronze' ? 1 : quality === 'Silver' ? 2 : quality === 'Gold' ? 4 : 6
+  const min = clampLevel(Number(cfg?.min ?? defaultMin))
+  const max = clampLevel(Number(cfg?.max ?? 7))
+  return { min, max: Math.max(min, max) as 1 | 2 | 3 | 4 | 5 | 6 | 7 }
+}
+
+function levelFromLegacyTierStar(tier: TierKey, star: 1 | 2): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+  return clampLevel(tierStarLevelIndex(tier, star) + 1)
+}
+
+function deriveQualityByDefId(defId: string): TierKey {
+  const def = getItemDefById(defId)
+  return parseTierName(def?.starting_tier ?? 'Bronze') ?? 'Bronze'
+}
+
+function setInstanceQualityLevel(instanceId: string, defId: string, quality?: TierKey, level?: number): void {
+  const q = quality ?? deriveQualityByDefId(defId)
+  const range = getQualityLevelRange(q)
+  const lv = clampLevel(level ?? range.min)
+  const boundedLevel = Math.max(range.min, Math.min(range.max, lv)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  instanceToQuality.set(instanceId, q)
+  instanceToLevel.set(instanceId, boundedLevel)
+  const legacy = levelToTierStar(boundedLevel)
+  if (legacy) {
+    instanceToTier.set(instanceId, legacy.tier)
+    instanceToTierStar.set(instanceId, legacy.star)
+  }
+}
+
+function getInstanceQuality(instanceId: string): TierKey {
+  const q = instanceToQuality.get(instanceId)
+  if (q) return q
+  const defId = instanceToDefId.get(instanceId)
+  if (!defId) return 'Bronze'
+  const derived = deriveQualityByDefId(defId)
+  instanceToQuality.set(instanceId, derived)
+  return derived
+}
+
+function getInstanceLevel(instanceId: string): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+  const lv = instanceToLevel.get(instanceId)
+  if (lv) return lv
+  const legacyTier = instanceToTier.get(instanceId) ?? 'Bronze'
+  const legacyStar = normalizeTierStar(legacyTier, instanceToTierStar.get(instanceId))
+  const migrated = levelFromLegacyTierStar(legacyTier, legacyStar)
+  instanceToLevel.set(instanceId, migrated)
+  return migrated
 }
 
 type UpgradeMatch = {
@@ -1971,15 +2044,24 @@ function openEventTestOverlay(): void {
   eventTestOverlay = overlay
 }
 
-function addSingleItemForTest(def: ItemDef): boolean {
-  const tier = parseTierName(def.starting_tier) ?? 'Bronze'
-  const star: 1 | 2 = 1
-  const ok = placeItemToInventoryOrBattle(def, tier, star)
-  if (!ok) {
+function addAllPossibleLevelsForTest(def: ItemDef): boolean {
+  const quality = parseTierName(def.starting_tier) ?? 'Bronze'
+  const range = getQualityLevelRange(quality)
+  let okCount = 0
+  for (let lv = range.min; lv <= range.max; lv++) {
+    const legacy = levelToTierStar(lv)
+    if (!legacy) continue
+    if (placeItemToInventoryOrBattle(def, legacy.tier, legacy.star)) okCount += 1
+  }
+  if (okCount <= 0) {
     showHintToast('backpack_full_buy', `[测试] 添加失败：${def.name_cn}（空间不足）`, 0xffb27a)
     return false
   }
-  showHintToast('no_gold_buy', `[测试] 已添加：${def.name_cn}`, 0x9be5ff)
+  const totalNeed = range.max - range.min + 1
+  const msg = okCount >= totalNeed
+    ? `[测试] 已添加：${def.name_cn} 全等级（Lv${range.min}-Lv${range.max}）`
+    : `[测试] 已添加：${def.name_cn} ${okCount}/${totalNeed} 个等级（空间不足）`
+  showHintToast('no_gold_buy', msg, 0x9be5ff)
   refreshShopUI()
   saveShopStateToStorage(captureShopState())
   return true
@@ -2022,7 +2104,7 @@ function openItemTestOverlay(): void {
   panel.addChild(title)
 
   const subtitle = new Text({
-    text: '点击“添加”将该物品放入背包/上阵区（1星）',
+    text: '点击“全等级”将该物品所有可用等级放入背包/上阵区',
     style: { fontSize: 20, fill: 0xa8bddf, fontFamily: 'Arial' },
   })
   subtitle.anchor.set(0.5)
@@ -2078,13 +2160,13 @@ function openItemTestOverlay(): void {
     b.fill({ color: 0x74dc9b, alpha: 0.98 })
     b.stroke({ color: 0x0d1426, width: 2, alpha: 0.95 })
     const t = new Text({
-      text: '添加',
+      text: '全等级',
       style: { fontSize: 16, fill: 0x0f1c33, fontFamily: 'Arial', fontWeight: 'bold' },
     })
     t.anchor.set(0.5)
     btn.on('pointerdown', (e) => {
       e.stopPropagation()
-      addSingleItemForTest(def)
+      addAllPossibleLevelsForTest(def)
     })
     btn.addChild(b, t)
     listCon.addChild(btn)
@@ -2380,7 +2462,7 @@ function canSynthesizePair(
 
 const TIER_ORDER: TierKey[] = ['Bronze', 'Silver', 'Gold', 'Diamond']
 function maxStarForTier(tier: TierKey): 1 | 2 {
-  return tier === 'Diamond' ? 1 : 2
+  return tier === 'Bronze' ? 1 : 2
 }
 
 function normalizeTierStar(tier: TierKey, star?: number): 1 | 2 {
@@ -2401,13 +2483,13 @@ function nextTierLevel(tier: TierKey, star: 1 | 2): { tier: TierKey, star: 1 | 2
 }
 
 function tierStarLevelIndex(tier: TierKey, star: 1 | 2): number {
-  const s = tier === 'Diamond' ? 1 : star
-  if (tier === 'Bronze' && s === 1) return 0
-  if (tier === 'Bronze' && s === 2) return 1
-  if (tier === 'Silver' && s === 1) return 2
-  if (tier === 'Silver' && s === 2) return 3
-  if (tier === 'Gold' && s === 1) return 4
-  if (tier === 'Gold' && s === 2) return 5
+  const s = normalizeTierStar(tier, star)
+  if (tier === 'Bronze') return 0
+  if (tier === 'Silver' && s === 1) return 1
+  if (tier === 'Silver' && s === 2) return 2
+  if (tier === 'Gold' && s === 1) return 3
+  if (tier === 'Gold' && s === 2) return 4
+  if (tier === 'Diamond' && s === 1) return 5
   return 6
 }
 
@@ -2424,63 +2506,11 @@ function getMinTierDropWeight(item: ItemDef, resultTier: TierKey, resultStar: 1 
   return Math.max(0, raw)
 }
 
-const CROSS_SYNTH_MIN_TIER_CYCLE_CURSOR = new Map<number, number>()
-const CROSS_SYNTH_MIN_TIER_CYCLE_BAG = new Map<number, TierKey[]>()
+const QUALITY_PSEUDO_RANDOM_STATE = new Map<string, { bag: TierKey[]; cursor: number }>()
 
-function gcd2(a: number, b: number): number {
-  let x = Math.abs(Math.round(a))
-  let y = Math.abs(Math.round(b))
-  while (y !== 0) {
-    const t = x % y
-    x = y
-    y = t
-  }
-  return x || 1
-}
-
-function getCrossSynthesisMinTierCycle(resultTier: TierKey, resultStar: 1 | 2): TierKey[] {
-  const cfg = getConfig().shopRules?.synthesisMinTierDropWeightsByResultLevel
-    ?? getConfig().shopRules?.minTierDropWeightsByResultLevel
-  const idx = tierStarLevelIndex(resultTier, resultStar)
-  const tiers: TierKey[] = ['Bronze', 'Silver', 'Gold', 'Diamond']
-  const scaled = tiers.map((tier) => {
-    const list = cfg?.[tier]
-    const raw = Array.isArray(list) ? list[idx] : undefined
-    const n = typeof raw === 'number' && Number.isFinite(raw) ? Math.max(0, raw) : 0
-    return Math.round(n * 100)
-  })
-  const positive = scaled.filter((v) => v > 0)
-  if (positive.length <= 0) return ['Bronze']
-  let g = positive[0]!
-  for (let i = 1; i < positive.length; i++) g = gcd2(g, positive[i]!)
-  const out: TierKey[] = []
-  for (let i = 0; i < tiers.length; i++) {
-    const cnt = Math.max(0, Math.round(scaled[i]! / g))
-    for (let k = 0; k < cnt; k++) out.push(tiers[i]!)
-  }
-  return out.length > 0 ? out : ['Bronze']
-}
-
-function pickCrossSynthesisDesiredMinTier(resultTier: TierKey, resultStar: 1 | 2): TierKey {
-  const level = tierStarLevelIndex(resultTier, resultStar) + 1
-  const cycle = getCrossSynthesisMinTierCycle(resultTier, resultStar)
-  if (cycle.length <= 0) return 'Bronze'
-  let cursor = CROSS_SYNTH_MIN_TIER_CYCLE_CURSOR.get(level) ?? 0
-  let bag = CROSS_SYNTH_MIN_TIER_CYCLE_BAG.get(level)
-  if (!bag || bag.length !== cycle.length || cursor >= bag.length) {
-    bag = [...cycle]
-    for (let i = bag.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      const t = bag[i]
-      bag[i] = bag[j]!
-      bag[j] = t!
-    }
-    CROSS_SYNTH_MIN_TIER_CYCLE_BAG.set(level, bag)
-    cursor = 0
-  }
-  const picked = bag[cursor] ?? bag[0] ?? 'Bronze'
-  CROSS_SYNTH_MIN_TIER_CYCLE_CURSOR.set(level, cursor + 1)
-  return picked
+function pickCrossSynthesisDesiredMinTier(resultTier: TierKey, resultStar: 1 | 2, available?: TierKey[]): TierKey {
+  const level = Math.max(1, Math.min(7, tierStarLevelIndex(resultTier, resultStar) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  return pickQualityByPseudoRandomBag(level, available ?? ['Bronze', 'Silver', 'Gold', 'Diamond'])
 }
 
 function pickItemByMinTierWeight(candidates: ItemDef[], resultTier: TierKey, resultStar: 1 | 2): ItemDef | null {
@@ -2511,7 +2541,8 @@ function pickCrossSynthesisResultWithCycle(
   _minStartingTier: TierKey,
 ): ItemDef | null {
   if (candidates.length <= 0) return null
-  const desiredMinTier = pickCrossSynthesisDesiredMinTier(resultTier, resultStar)
+  const availableMinTiers = Array.from(new Set(candidates.map((it) => parseTierName(it.starting_tier) ?? 'Bronze')))
+  const desiredMinTier = pickCrossSynthesisDesiredMinTier(resultTier, resultStar, availableMinTiers)
   let targetMinTier = desiredMinTier
   let pool = candidates.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === targetMinTier)
   if (pool.length <= 0) {
@@ -2545,12 +2576,15 @@ function maxTier(a: TierKey, b: TierKey): TierKey {
 }
 
 function getInstanceTier(instanceId: string): TierKey | undefined {
-  return instanceToTier.get(instanceId)
+  const level = getInstanceLevel(instanceId)
+  const legacy = levelToTierStar(level)
+  return legacy?.tier
 }
 
 function getInstanceTierStar(instanceId: string): 1 | 2 {
-  const tier = instanceToTier.get(instanceId) ?? 'Bronze'
-  return normalizeTierStar(tier, instanceToTierStar.get(instanceId))
+  const level = getInstanceLevel(instanceId)
+  const legacy = levelToTierStar(level)
+  return legacy?.star ?? 1
 }
 
 function toVisualTier(tier?: TierKey, star?: 1 | 2): string | undefined {
@@ -2963,8 +2997,7 @@ function applyPostBattleAutoCopy(snapshot: BattleSnapshotBundle): boolean {
       drag?.refreshZone(backpackView!)
     })
     instanceToDefId.set(newId, item.id)
-    instanceToTier.set(newId, entity.tier)
-    instanceToTierStar.set(newId, 1)
+    setInstanceQualityLevel(newId, item.id, parseTierName(item.starting_tier) ?? 'Bronze', levelFromLegacyTierStar(entity.tier, 1))
     instanceToPermanentDamageBonus.set(newId, 0)
     recordNeutralItemObtained(item.id)
     changed = true
@@ -3483,8 +3516,7 @@ function synthesizeTarget(
   })
 
   instanceToDefId.set(targetInstanceId, evolvedDef.id)
-  instanceToTier.set(targetInstanceId, upgradeTo.tier)
-  instanceToTierStar.set(targetInstanceId, upgradeTo.star)
+  setInstanceQualityLevel(targetInstanceId, evolvedDef.id, parseTierName(evolvedDef.starting_tier) ?? 'Bronze', resultLevel)
   if (eventExtra && dayEventState.extraUpgradeRemaining > 0) {
     dayEventState.extraUpgradeRemaining = Math.max(0, dayEventState.extraUpgradeRemaining - 1)
   }
@@ -4201,8 +4233,7 @@ function grantStarterItemsByClass(pick: StarterClass): void {
     }
 
     instanceToDefId.set(id, item.id)
-    instanceToTier.set(id, grant.tier)
-    instanceToTierStar.set(id, grant.star)
+    setInstanceQualityLevel(id, item.id, parseTierName(item.starting_tier) ?? 'Bronze', levelFromLegacyTierStar(grant.tier, grant.star))
     instanceToPermanentDamageBonus.set(id, 0)
     recordNeutralItemObtained(item.id)
     unlockedItemIds.add(item.id)
@@ -4760,8 +4791,7 @@ function placeItemToInventoryOrBattle(def: ItemDef, tier: TierKey, star: 1 | 2):
     })
   }
   instanceToDefId.set(id, def.id)
-  instanceToTier.set(id, tier)
-  instanceToTierStar.set(id, star)
+  setInstanceQualityLevel(id, def.id, parseTierName(def.starting_tier) ?? 'Bronze', levelFromLegacyTierStar(tier, star))
   instanceToPermanentDamageBonus.set(id, 0)
   recordNeutralItemObtained(def.id)
   unlockItemToPool(def.id)
@@ -4774,9 +4804,12 @@ function upgradePlacedItem(instanceId: string, zone: 'battle' | 'backpack', with
   if (!system || !view) return false
   const placed = system.getItem(instanceId)
   if (!placed) return false
-  const tier = instanceToTier.get(instanceId) ?? 'Bronze'
-  const star = getInstanceTierStar(instanceId)
-  const next = nextTierLevel(tier, star)
+  const level = getInstanceLevel(instanceId)
+  const quality = getInstanceQuality(instanceId)
+  const range = getQualityLevelRange(quality)
+  if (level >= range.max) return false
+  const nextLevel = clampLevel(level + 1)
+  const next = levelToTierStar(nextLevel)
   if (!next) return false
   const defId = instanceToDefId.get(instanceId)
   if (!defId) return false
@@ -4791,8 +4824,7 @@ function upgradePlacedItem(instanceId: string, zone: 'battle' | 'backpack', with
     view.setItemTier(instanceId, toVisualTier(next.tier, next.star))
     drag?.refreshZone(view)
   })
-  instanceToTier.set(instanceId, next.tier)
-  instanceToTierStar.set(instanceId, next.star)
+  setInstanceQualityLevel(instanceId, defId, quality, nextLevel)
   if (withFx) playTransformOrUpgradeFlashEffect(instanceId, zone)
   return true
 }
@@ -4803,9 +4835,12 @@ function convertAndUpgradePlacedItem(instanceId: string, zone: 'battle' | 'backp
   if (!system || !view) return false
   const placed = system.getItem(instanceId)
   if (!placed) return false
-  const tier = instanceToTier.get(instanceId) ?? 'Bronze'
-  const star = getInstanceTierStar(instanceId)
-  const next = nextTierLevel(tier, star)
+  const level = getInstanceLevel(instanceId)
+  const quality = getInstanceQuality(instanceId)
+  const range = getQualityLevelRange(quality)
+  if (level >= range.max) return false
+  const nextLevel = clampLevel(level + 1)
+  const next = levelToTierStar(nextLevel)
   if (!next) return false
   const sourceDef = getItemDefById(placed.defId)
   if (!sourceDef) return false
@@ -4826,8 +4861,7 @@ function convertAndUpgradePlacedItem(instanceId: string, zone: 'battle' | 'backp
     drag?.refreshZone(view)
   })
   instanceToDefId.set(instanceId, picked.id)
-  instanceToTier.set(instanceId, next.tier)
-  instanceToTierStar.set(instanceId, next.star)
+  setInstanceQualityLevel(instanceId, picked.id, parseTierName(picked.starting_tier) ?? 'Bronze', nextLevel)
   unlockItemToPool(picked.id)
   if (withFx) playTransformOrUpgradeFlashEffect(instanceId, zone)
   return true
@@ -4840,9 +4874,10 @@ function canUpgradePlacedItem(instanceId: string, zone: 'battle' | 'backpack'): 
   if (!placed) return false
   const def = getItemDefById(placed.defId)
   if (!def || isNeutralItemDef(def)) return false
-  const tier = instanceToTier.get(instanceId) ?? 'Bronze'
-  const star = getInstanceTierStar(instanceId)
-  return !!nextTierLevel(tier, star)
+  const quality = getInstanceQuality(instanceId)
+  const level = getInstanceLevel(instanceId)
+  const range = getQualityLevelRange(quality)
+  return level < range.max
 }
 
 function canConvertAndUpgradePlacedItem(instanceId: string, zone: 'battle' | 'backpack'): boolean {
@@ -4850,9 +4885,12 @@ function canConvertAndUpgradePlacedItem(instanceId: string, zone: 'battle' | 'ba
   if (!system) return false
   const placed = system.getItem(instanceId)
   if (!placed) return false
-  const tier = instanceToTier.get(instanceId) ?? 'Bronze'
-  const star = getInstanceTierStar(instanceId)
-  const next = nextTierLevel(tier, star)
+  const quality = getInstanceQuality(instanceId)
+  const level = getInstanceLevel(instanceId)
+  const range = getQualityLevelRange(quality)
+  if (level >= range.max) return false
+  const nextLevel = clampLevel(level + 1)
+  const next = levelToTierStar(nextLevel)
   if (!next) return false
   const sourceDef = getItemDefById(placed.defId)
   if (!sourceDef) return false
@@ -4888,9 +4926,10 @@ function convertPlacedItemKeepLevel(instanceId: string, zone: 'battle' | 'backpa
   if (!system || !view) return false
   const placed = system.getItem(instanceId)
   if (!placed) return false
-  const tier = instanceToTier.get(instanceId) ?? 'Bronze'
-  const star = getInstanceTierStar(instanceId)
-  const level = Math.max(1, Math.min(7, tierStarLevelIndex(tier, star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const level = getInstanceLevel(instanceId)
+  const legacy = levelToTierStar(level)
+  const tier = legacy?.tier ?? 'Bronze'
+  const star = legacy?.star ?? 1
   const candidates = collectPoolCandidatesByLevel(level)
     .filter((c) => normalizeSize(c.item.size) === placed.size)
     .map((c) => c.item)
@@ -4909,6 +4948,7 @@ function convertPlacedItemKeepLevel(instanceId: string, zone: 'battle' | 'backpa
     drag?.refreshZone(view)
   })
   instanceToDefId.set(instanceId, picked.id)
+  setInstanceQualityLevel(instanceId, picked.id, parseTierName(picked.starting_tier) ?? 'Bronze', level)
   unlockItemToPool(picked.id)
   if (withFx) playTransformOrUpgradeFlashEffect(instanceId, zone)
   return true
@@ -4919,15 +4959,11 @@ function upgradeLowestLevelItemsOnce(): number {
   if (all.length <= 0) return 0
   let minLevel = Number.POSITIVE_INFINITY
   for (const one of all) {
-    const tier = instanceToTier.get(one.item.instanceId) ?? 'Bronze'
-    const star = getInstanceTierStar(one.item.instanceId)
-    minLevel = Math.min(minLevel, tierStarLevelIndex(tier, star) + 1)
+    minLevel = Math.min(minLevel, getInstanceLevel(one.item.instanceId))
   }
   let changed = 0
   for (const one of all) {
-    const tier = instanceToTier.get(one.item.instanceId) ?? 'Bronze'
-    const star = getInstanceTierStar(one.item.instanceId)
-    const lv = tierStarLevelIndex(tier, star) + 1
+    const lv = getInstanceLevel(one.item.instanceId)
     if (lv !== minLevel) continue
     if (upgradePlacedItem(one.item.instanceId, one.zone, true)) changed += 1
   }
@@ -4986,13 +5022,13 @@ function getNeutralSpecialKind(item: ItemDef): NeutralSpecialKind | null {
 }
 
 const NEUTRAL_RANDOM_CAP_BY_DAY: Record<NeutralSpecialKind, number[]> = {
-  upgrade_stone: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6],
-  class_shift_stone: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
-  class_morph_stone: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
+  upgrade_stone: [0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5],
+  class_shift_stone: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+  class_morph_stone: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
   skill_scroll: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
   shop_scroll: [0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7],
   event_scroll: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
-  raw_stone: [0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6],
+  raw_stone: [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38],
   medal: [0, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
   blank_scroll: [0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6],
 }
@@ -5689,15 +5725,18 @@ function convertPlacedItemKeepLevelWithArchetypeRule(
   if (!srcDef || isNeutralItemDef(srcDef)) return false
   const srcArch = toSkillArchetype(getPrimaryArchetype(srcDef.tags))
   if (srcArch !== 'warrior' && srcArch !== 'archer' && srcArch !== 'assassin') return false
+  const srcMinTier = parseTierName(srcDef.starting_tier) ?? 'Bronze'
 
-  const tier = instanceToTier.get(instanceId) ?? 'Bronze'
-  const star = getInstanceTierStar(instanceId)
-  const level = Math.max(1, Math.min(7, tierStarLevelIndex(tier, star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const level = getInstanceLevel(instanceId)
+  const legacy = levelToTierStar(level)
+  const tier = legacy?.tier ?? 'Bronze'
+  const star = legacy?.star ?? 1
   const candidates = collectPoolCandidatesByLevel(level)
     .filter((c) => normalizeSize(c.item.size) === placed.size)
     .map((c) => c.item)
     .filter((it) => it.id !== placed.defId)
     .filter((it) => !isNeutralItemDef(it))
+    .filter((it) => compareTier(parseTierName(it.starting_tier) ?? 'Bronze', srcMinTier) >= 0)
     .filter((it) => {
       const arch = toSkillArchetype(getPrimaryArchetype(it.tags))
       if (arch !== 'warrior' && arch !== 'archer' && arch !== 'assassin') return false
@@ -5717,6 +5756,7 @@ function convertPlacedItemKeepLevelWithArchetypeRule(
     drag?.refreshZone(view)
   })
   instanceToDefId.set(instanceId, picked.id)
+  setInstanceQualityLevel(instanceId, picked.id, parseTierName(picked.starting_tier) ?? 'Bronze', level)
   unlockItemToPool(picked.id)
   if (withFx) playTransformOrUpgradeFlashEffect(instanceId, zone)
   return true
@@ -5742,8 +5782,10 @@ function openEventDraftFromNeutralScroll(stage: Container): boolean {
 }
 
 function openSpecialShopFromNeutralScroll(stage: Container): boolean {
+  const prevOffers = specialShopOffers.length > 0 ? [...specialShopOffers] : undefined
+  specialShopRefreshCount = 0
+  specialShopOffers = rollSpecialShopOffers(prevOffers)
   if (specialShopOffers.length !== 3) {
-    specialShopRefreshCount = 0
     specialShopOffers = rollSpecialShopOffers()
   }
   if (specialShopOffers.length !== 3) return false
@@ -7137,7 +7179,7 @@ function resolveTierSeriesTextByStar(item: ItemDef, tier: TierKey, star: 1 | 2, 
 }
 
 function resolveSkillLineByTierStar(item: ItemDef, tier: TierKey, star: 1 | 2, line: string): string {
-  return line.replace(/(\d+(?:\.\d+)?(?:[\/|]\d+(?:\.\d+)?)+)/g, (raw) => resolveTierSeriesTextByStar(item, tier, star, raw))
+  return line.replace(/([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)+)/g, (raw) => resolveTierSeriesTextByStar(item, tier, star, raw))
 }
 
 function getSpecialShopSimpleDesc(item: ItemDef, tier: TierKey, star: 1 | 2): string {
@@ -7246,8 +7288,7 @@ function tryBuySpecialShopOffer(offerIndex: number): boolean {
   markShopPurchaseDone()
   offer.purchased = true
   instanceToDefId.set(id, candidate.item.id)
-  instanceToTier.set(id, candidate.tier)
-  instanceToTierStar.set(id, candidate.star)
+  setInstanceQualityLevel(id, candidate.item.id, parseTierName(candidate.item.starting_tier) ?? 'Bronze', candidate.level)
   instanceToPermanentDamageBonus.set(id, 0)
   recordNeutralItemObtained(candidate.item.id)
   unlockItemToPool(candidate.item.id)
@@ -8332,20 +8373,20 @@ type PoolCandidate = {
 
 function levelToTierStar(level: number): { tier: TierKey; star: 1 | 2 } | null {
   if (level === 1) return { tier: 'Bronze', star: 1 }
-  if (level === 2) return { tier: 'Bronze', star: 2 }
-  if (level === 3) return { tier: 'Silver', star: 1 }
-  if (level === 4) return { tier: 'Silver', star: 2 }
-  if (level === 5) return { tier: 'Gold', star: 1 }
-  if (level === 6) return { tier: 'Gold', star: 2 }
-  if (level === 7) return { tier: 'Diamond', star: 1 }
+  if (level === 2) return { tier: 'Silver', star: 1 }
+  if (level === 3) return { tier: 'Silver', star: 2 }
+  if (level === 4) return { tier: 'Gold', star: 1 }
+  if (level === 5) return { tier: 'Gold', star: 2 }
+  if (level === 6) return { tier: 'Diamond', star: 1 }
+  if (level === 7) return { tier: 'Diamond', star: 2 }
   return null
 }
 
 function getAllowedLevelsByStartingTier(tier: TierKey): Array<1 | 2 | 3 | 4 | 5 | 6 | 7> {
   if (tier === 'Bronze') return [1, 2, 3, 4, 5, 6, 7]
-  if (tier === 'Silver') return [3, 4, 5, 6, 7]
-  if (tier === 'Gold') return [5, 6, 7]
-  return [7]
+  if (tier === 'Silver') return [2, 3, 4, 5, 6, 7]
+  if (tier === 'Gold') return [4, 5, 6, 7]
+  return [6, 7]
 }
 
 function getUnlockPoolBuyPriceByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): number {
@@ -8705,6 +8746,79 @@ function getQuickBuyLevelWeightsByDay(day: number): [number, number, number, num
   ]
 }
 
+function getQuickBuyQualityWeightsByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): Record<TierKey, number> {
+  const rules = getConfig().shopRules as {
+    qualityPseudoRandomWeightsByLevel?: Record<TierKey, number[]>
+    quickBuyQualityWeightsByLevel?: Record<TierKey, number[]>
+  } | undefined
+  const rows = rules?.qualityPseudoRandomWeightsByLevel ?? rules?.quickBuyQualityWeightsByLevel
+  if (!rows) {
+    return { Bronze: 1, Silver: 1, Gold: 1, Diamond: 1 }
+  }
+  return {
+    Bronze: Math.max(0, Number(rows.Bronze?.[level - 1] ?? 0)),
+    Silver: Math.max(0, Number(rows.Silver?.[level - 1] ?? 0)),
+    Gold: Math.max(0, Number(rows.Gold?.[level - 1] ?? 0)),
+    Diamond: Math.max(0, Number(rows.Diamond?.[level - 1] ?? 0)),
+  }
+}
+
+function buildQualityPseudoRandomBag(level: 1 | 2 | 3 | 4 | 5 | 6 | 7, available: TierKey[]): TierKey[] {
+  const qualityOrder: TierKey[] = ['Bronze', 'Silver', 'Gold', 'Diamond']
+  const availableSet = new Set(available)
+  const base = getQuickBuyQualityWeightsByLevel(level)
+  const weighted = qualityOrder
+    .map((q) => ({ q, w: availableSet.has(q) ? Math.max(0, Number(base[q] ?? 0)) : 0 }))
+    .filter((it) => it.w > 0)
+  if (weighted.length <= 0) return available.length > 0 ? [...available] : ['Bronze']
+
+  const windowSizeRaw = Number((getConfig().shopRules as { qualityPseudoRandomWindowSize?: number } | undefined)?.qualityPseudoRandomWindowSize ?? 10)
+  const windowSize = Math.max(1, Math.round(windowSizeRaw))
+  const total = weighted.reduce((sum, it) => sum + it.w, 0)
+  const rawCounts = weighted.map((it) => (it.w / total) * windowSize)
+  const counts = rawCounts.map((v) => Math.floor(v))
+  let remain = windowSize - counts.reduce((sum, n) => sum + n, 0)
+  const fracOrder = rawCounts
+    .map((v, i) => ({ i, f: v - Math.floor(v) }))
+    .sort((a, b) => b.f - a.f)
+  for (let i = 0; i < fracOrder.length && remain > 0; i++, remain--) {
+    counts[fracOrder[i]!.i] = (counts[fracOrder[i]!.i] ?? 0) + 1
+  }
+
+  const bag: TierKey[] = []
+  for (let i = 0; i < weighted.length; i++) {
+    const q = weighted[i]!.q
+    const c = Math.max(0, counts[i] ?? 0)
+    for (let k = 0; k < c; k++) bag.push(q)
+  }
+  for (let i = bag.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const t = bag[i]
+    bag[i] = bag[j]!
+    bag[j] = t!
+  }
+  return bag.length > 0 ? bag : [weighted[0]!.q]
+}
+
+function pickQualityByPseudoRandomBag(
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7,
+  available: TierKey[],
+): TierKey {
+  const qualityOrder: TierKey[] = ['Bronze', 'Silver', 'Gold', 'Diamond']
+  const filteredAvailable = qualityOrder.filter((q) => available.includes(q))
+  const availableList: TierKey[] = filteredAvailable.length > 0 ? filteredAvailable : ['Bronze']
+  const key = `${level}:${availableList.join('|')}`
+  let state = QUALITY_PSEUDO_RANDOM_STATE.get(key)
+  if (!state || state.cursor >= state.bag.length) {
+    state = { bag: buildQualityPseudoRandomBag(level, availableList), cursor: 0 }
+    QUALITY_PSEUDO_RANDOM_STATE.set(key, state)
+  }
+  const picked = state.bag[state.cursor] ?? state.bag[0] ?? 'Bronze'
+  state.cursor += 1
+  if (availableList.includes(picked)) return picked
+  return availableList[0]!
+}
+
 function collectNeutralQuickBuyCandidates(): PoolCandidate[] {
   if (!battleSystem || !backpackSystem) return []
   const out: PoolCandidate[] = []
@@ -8840,7 +8954,15 @@ function rollNextQuickBuyOffer(force = false): PoolCandidate | null {
     nextQuickBuyOffer = null
     return null
   }
-  const rawPicked = levelCandidates[Math.floor(Math.random() * levelCandidates.length)] ?? null
+  const byQuality: Record<TierKey, PoolCandidate[]> = { Bronze: [], Silver: [], Gold: [], Diamond: [] }
+  for (const c of levelCandidates) {
+    const q = parseTierName(c.item.starting_tier) ?? 'Bronze'
+    byQuality[q].push(c)
+  }
+  const availableQualities = (Object.keys(byQuality) as TierKey[]).filter((q) => byQuality[q].length > 0)
+  const pickedQuality = pickQualityByPseudoRandomBag(pickedLevel, availableQualities)
+  const qualityPool = byQuality[pickedQuality].length > 0 ? byQuality[pickedQuality] : levelCandidates
+  const rawPicked = qualityPool[Math.floor(Math.random() * qualityPool.length)] ?? null
   if (!rawPicked) {
     nextQuickBuyOffer = null
     return null
@@ -8978,8 +9100,7 @@ function buyRandomBronzeToBoardOrBackpack(): void {
     console.log(`[ShopScene] 购买(${tierForced}#${starForced})→背包 ${itemForced.name_cn} -${priced.finalPrice}G，金币: ${manager.gold}`)
   }
   instanceToDefId.set(id, itemForced.id)
-  instanceToTier.set(id, tierForced)
-  instanceToTierStar.set(id, starForced)
+  setInstanceQualityLevel(id, itemForced.id, parseTierName(itemForced.starting_tier) ?? 'Bronze', levelFromLegacyTierStar(tierForced, starForced))
   instanceToPermanentDamageBonus.set(id, 0)
   recordNeutralItemObtained(itemForced.id)
   updateNeutralPseudoRandomCounterOnPurchase(itemForced)
@@ -9046,8 +9167,7 @@ function grantSkill20DailyBronzeItemIfNeeded(): void {
     drag?.refreshZone(backpackView!)
   })
   instanceToDefId.set(id, picked.id)
-  instanceToTier.set(id, 'Bronze')
-  instanceToTierStar.set(id, 1)
+  setInstanceQualityLevel(id, picked.id, parseTierName(picked.starting_tier) ?? 'Bronze', 1)
   instanceToPermanentDamageBonus.set(id, 0)
   recordNeutralItemObtained(picked.id)
   unlockItemToPool(picked.id)
@@ -10387,8 +10507,7 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
           drag?.refreshZone(battleView!)
         })
       instanceToDefId.set(id, slot.item.id)
-      instanceToTier.set(id, slot.tier)
-      instanceToTierStar.set(id, 1)
+      setInstanceQualityLevel(id, slot.item.id, parseTierName(slot.item.starting_tier) ?? 'Bronze', 1)
       instanceToPermanentDamageBonus.set(id, 0)
       recordNeutralItemObtained(slot.item.id)
       unlockItemToPool(slot.item.id)
@@ -10430,8 +10549,7 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
         drag?.refreshZone(backpackView!)
       })
     instanceToDefId.set(id, slot.item.id)
-    instanceToTier.set(id, slot.tier)
-    instanceToTierStar.set(id, 1)
+    setInstanceQualityLevel(id, slot.item.id, parseTierName(slot.item.starting_tier) ?? 'Bronze', 1)
     instanceToPermanentDamageBonus.set(id, 0)
     recordNeutralItemObtained(slot.item.id)
     unlockItemToPool(slot.item.id)
@@ -11398,8 +11516,7 @@ export const ShopScene: Scene = {
       neutralRandomCategoryPool = []
       neutralDailyRollCountByDay.clear()
       guaranteedNewUnlockTriggeredLevels.clear()
-      CROSS_SYNTH_MIN_TIER_CYCLE_CURSOR.clear()
-      CROSS_SYNTH_MIN_TIER_CYCLE_BAG.clear()
+      QUALITY_PSEUDO_RANDOM_STATE.clear()
       nextQuickBuyOffer = null
       syncUnlockPoolToManager()
       grantSkill20DailyBronzeItemIfNeeded()
@@ -11495,7 +11612,7 @@ export const ShopScene: Scene = {
     offDebugCfg = null
     offPhaseChange?.()
     offPhaseChange = null
-    if (pendingBattleTransition || PvpContext.isActive()) {
+    if (pendingBattleTransition || PvpContext.isActive() || getBattleSnapshot()) {
       savedShopState = captureShopState()
       saveShopStateToStorage(savedShopState)
       pendingBattleTransition = false
@@ -11554,8 +11671,7 @@ export const ShopScene: Scene = {
     neutralRandomCategoryPool = []
     neutralDailyRollCountByDay.clear()
     guaranteedNewUnlockTriggeredLevels.clear()
-    CROSS_SYNTH_MIN_TIER_CYCLE_CURSOR.clear()
-    CROSS_SYNTH_MIN_TIER_CYCLE_BAG.clear()
+    QUALITY_PSEUDO_RANDOM_STATE.clear()
     nextQuickBuyOffer = null
     starterClass    = null
     starterGranted  = false

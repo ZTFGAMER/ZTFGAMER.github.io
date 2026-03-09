@@ -171,19 +171,19 @@ function parseTierStar(raw: string): 1 | 2 {
 
 function tierScoreFromRaw(raw: string): number {
   const tier = parseTierName(raw)
-  const star = tier === 'Diamond' ? 1 : parseTierStar(raw)
-  if (tier === 'Bronze') return star === 2 ? 2 : 1
-  if (tier === 'Silver') return star === 2 ? 4 : 3
-  if (tier === 'Gold') return star === 2 ? 6 : 5
-  return 7
+  const star = parseTierStar(raw)
+  if (tier === 'Bronze') return 1
+  if (tier === 'Silver') return star === 2 ? 3 : 2
+  if (tier === 'Gold') return star === 2 ? 5 : 4
+  return star === 2 ? 7 : 6
 }
 
 function startTierScore(def: ItemDef | null): number {
   if (!def) return 1
   const tier = parseTierName(def.starting_tier || 'Bronze')
-  if (tier === 'Silver') return 3
-  if (tier === 'Gold') return 5
-  if (tier === 'Diamond') return 7
+  if (tier === 'Silver') return 2
+  if (tier === 'Gold') return 4
+  if (tier === 'Diamond') return 6
   return 1
 }
 
@@ -218,7 +218,7 @@ function pickTierSeriesValue(series: string, tierIndex: number): number {
   const parts = series.split(/[\/|]/).map((v) => v.trim()).filter(Boolean)
   if (parts.length === 0) return 0
   const idx = Math.max(0, Math.min(parts.length - 1, tierIndex))
-  const n = Number((parts[idx] ?? '').replace(/^\+/, ''))
+  const n = Number((parts[idx] ?? '').replace(/^\+/, '').replace(/%$/u, ''))
   return Number.isFinite(n) ? n : 0
 }
 
@@ -226,17 +226,17 @@ type EnemyTier = 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
 type EnemyStar = 1 | 2
 
 function tierStarToRaw(tier: EnemyTier, star: EnemyStar): string {
-  return tier === 'Diamond' ? 'Diamond' : `${tier}#${star}`
+  return `${tier}#${star}`
 }
 
 function qualityScoreToTierStar(score: number): { tier: EnemyTier; star: EnemyStar } {
   const s = Math.max(1, Math.min(7, Math.round(score)))
-  if (s >= 7) return { tier: 'Diamond', star: 1 }
-  if (s >= 6) return { tier: 'Gold', star: 2 }
-  if (s >= 5) return { tier: 'Gold', star: 1 }
-  if (s >= 4) return { tier: 'Silver', star: 2 }
-  if (s >= 3) return { tier: 'Silver', star: 1 }
-  if (s >= 2) return { tier: 'Bronze', star: 2 }
+  if (s >= 7) return { tier: 'Diamond', star: 2 }
+  if (s >= 6) return { tier: 'Diamond', star: 1 }
+  if (s >= 5) return { tier: 'Gold', star: 2 }
+  if (s >= 4) return { tier: 'Gold', star: 1 }
+  if (s >= 3) return { tier: 'Silver', star: 2 }
+  if (s >= 2) return { tier: 'Silver', star: 1 }
   return { tier: 'Bronze', star: 1 }
 }
 
@@ -1327,8 +1327,15 @@ export class CombatEngine {
 
   private toRunner(entity: BattleSnapshotEntity, idPrefix: string): CombatItemRunner {
     const def = this.findItemDef(entity.defId)
-    const tierStar: 1 | 2 = entity.tier === 'Diamond' ? 1 : (entity.tierStar === 2 ? 2 : 1)
-    const tierRaw = entity.tier === 'Diamond' ? 'Diamond' : `${entity.tier}#${tierStar}`
+    const level = Math.max(1, Math.min(7, Math.round(entity.level ?? 0)))
+    const tierStarFromLevel = qualityScoreToTierStar(level)
+    const fallbackTierStar: { tier: EnemyTier; star: EnemyStar } = {
+      tier: (entity.tier ?? 'Bronze') as EnemyTier,
+      star: (entity.tier === 'Bronze' ? 1 : (entity.tierStar === 2 ? 2 : 1)) as EnemyStar,
+    }
+    const tierStarResolved = entity.level ? tierStarFromLevel : fallbackTierStar
+    const tierStar: 1 | 2 = tierStarResolved.star
+    const tierRaw = `${tierStarResolved.tier}#${tierStarResolved.star}`
     const snapBase = entity.baseStats
     const tierStats = def ? resolveItemTierBaseStats(def, tierRaw) : null
     const tierIndex = tierIndexFromRaw(def, tierRaw)
@@ -1545,7 +1552,7 @@ export class CombatEngine {
       const available = parseAvailableTiers(def.available_tiers)
       const desiredTier = (p.tier ?? 'Bronze') as EnemyTier
       const tier = (available.includes(desiredTier) ? desiredTier : (available[0] ?? 'Bronze')) as EnemyTier
-      const star = (tier === 'Diamond' ? 1 : (p.star ?? 1)) as EnemyStar
+      const star = (tier === 'Bronze' ? 1 : (p.star === 2 ? 2 : 1)) as EnemyStar
 
       for (let k = 0; k < w; k++) occ[p.col + k] = true
       serial++
@@ -1598,7 +1605,7 @@ export class CombatEngine {
   }
 
   private tierValueFromLine(line: string, tierIndex: number): number {
-    const m = line.match(/(\+?\d+(?:\.\d+)?(?:[\/|]\+?\d+(?:\.\d+)?)*)/)
+    const m = line.match(/([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*)/)
     if (!m?.[1]) return 0
     return pickTierSeriesValue(m[1], tierIndex)
   }
@@ -2016,9 +2023,10 @@ export class CombatEngine {
         this.enqueueOneAttackFrom(owner)
       }
 
-      const ammoTriggerLine = lines.find((s) => /使用(?:其他)?弹药物品时(?:攻击|连发)次数\+\d+(?:[\/|]\d+)*/.test(s))
+      const ammoTriggerLine = lines.find((s) => /使用(?:其他)?弹药物品时.*(?:攻击|连发)次数(?:\+[\d|/]+|增加)/.test(s))
       if (ammoTriggerLine && attacker.runtime.ammoMax > 0) {
-        const v = Math.max(1, Math.round(this.tierValueFromLine(ammoTriggerLine, tIdx)))
+        const parsed = Math.round(this.tierValueFromLine(ammoTriggerLine, tIdx))
+        const v = Math.max(1, Math.abs(parsed || 1))
         owner.runtime.bonusMulticast += v
       }
     }
@@ -2338,21 +2346,21 @@ export class CombatEngine {
       for (const line of lines) {
         const v = Math.round(this.tierValueFromLine(line, tIdx))
         if (v <= 0) continue
-        if (/冻结.*\+\d+(?:\/\d+)*伤害/.test(line) && this.isDamageBonusEligible(item)) item.runtime.tempDamageBonus += v
-        if (/冻结.*\+\d+(?:\/\d+)*灼烧/.test(line)) item.baseStats.burn += v
-        if (/冻结.*\+\d+(?:\/\d+)*剧毒/.test(line)) item.baseStats.poison += v
+        if (/冻结.*\+\d+(?:[\/|]\d+)*伤害/.test(line) && this.isDamageBonusEligible(item)) item.runtime.tempDamageBonus += v
+        if (/冻结.*\+\d+(?:[\/|]\d+)*灼烧/.test(line)) item.baseStats.burn += v
+        if (/冻结.*\+\d+(?:[\/|]\d+)*剧毒/.test(line)) item.baseStats.poison += v
       }
     }
     if (ctrl.slow > 0) {
       for (const line of lines) {
         const v = Math.round(this.tierValueFromLine(line, tIdx))
         if (v <= 0) continue
-        if (/减速.*\+\d+(?:\/\d+)*伤害/.test(line) && this.isDamageBonusEligible(item)) item.runtime.tempDamageBonus += v
-        if (/减速.*\+\d+(?:\/\d+)*灼烧/.test(line)) item.baseStats.burn += v
+        if (/减速.*\+\d+(?:[\/|]\d+)*伤害/.test(line) && this.isDamageBonusEligible(item)) item.runtime.tempDamageBonus += v
+        if (/减速.*\+\d+(?:[\/|]\d+)*灼烧/.test(line)) item.baseStats.burn += v
       }
     }
     if (ctrl.haste > 0) {
-      const line = lines.find((s) => /触发加速时.*额外造成\d+(?:\/\d+)*伤害/.test(s))
+      const line = lines.find((s) => /触发加速时.*额外造成\d+(?:[\/|]\d+)*伤害/.test(s))
       if (line) {
         const v = Math.round(this.tierValueFromLine(line, tIdx))
         if (v > 0) {
@@ -2497,7 +2505,7 @@ export class CombatEngine {
       })
 
       // 造成灼烧时：剧毒物品 +X 剧毒
-      const line = lines.find((s) => /造成灼烧时.*剧毒物品\+\d+(?:\/\d+)*/.test(s))
+      const line = lines.find((s) => /造成灼烧时.*剧毒物品\+\d+(?:[\/|]\d+)*/.test(s))
       if (line) {
         const v = Math.round(this.tierValueFromLine(line, tIdx))
         if (v > 0) {
@@ -2540,7 +2548,7 @@ export class CombatEngine {
       }
 
       // 造成剧毒时恢复
-      const healLine = lines.find((s) => /造成剧毒时恢复\+?\d+(?:\/\d+)*/.test(s))
+      const healLine = lines.find((s) => /造成剧毒时恢复\+?\d+(?:[\/|]\d+)*/.test(s))
       if (healLine) {
         const heal = Math.round(this.tierValueFromLine(healLine, tIdx))
         if (heal > 0 && sourceHero.hp > 0) {
@@ -2562,7 +2570,7 @@ export class CombatEngine {
       }
 
       // 造成剧毒时：灼烧物品 +X 灼烧
-      const poisonToBurnLine = lines.find((s) => /造成剧毒时.*灼烧物品\+\d+(?:\/\d+)*/.test(s))
+      const poisonToBurnLine = lines.find((s) => /造成剧毒时.*灼烧物品\+\d+(?:[\/|]\d+)*/.test(s))
       if (poisonToBurnLine) {
         const v = Math.round(this.tierValueFromLine(poisonToBurnLine, tIdx))
         if (v > 0) {
@@ -2611,9 +2619,9 @@ export class CombatEngine {
     // 目标最大生命值百分比伤害
     const maxHpLine = lines.find((s) => /最大生命值.*%.*伤害/.test(s))
     if (maxHpLine) {
-      const m = maxHpLine.match(/(\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)*)%/)
+      const m = maxHpLine.match(/([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)+)/)
       if (m?.[1]) {
-        const pct = m[1].includes('/') ? pickTierSeriesValue(m[1], tIdx) : Number(m[1])
+        const pct = /[\/|]/.test(m[1]) ? pickTierSeriesValue(m[1], tIdx) : Number(m[1].replace(/%$/u, ''))
         if (Number.isFinite(pct) && pct > 0) {
           damageAfterBonus += Math.round(targetHero.maxHp * (pct / 100))
         }
@@ -2625,7 +2633,7 @@ export class CombatEngine {
       if (ally.side !== item.side || ally.id === item.id) continue
       if (!this.isAdjacentById(ally.id, item.id)) continue
       const allyDef = this.findItemDef(ally.defId)
-      const allyLine = this.skillLines(allyDef).find((s) => /相邻物品攻击时.*造成\d+(?:\/\d+)*伤害/.test(s))
+      const allyLine = this.skillLines(allyDef).find((s) => /相邻物品攻击时.*造成\d+(?:[\/|]\d+)*伤害/.test(s))
       if (!allyLine) continue
       const v = Math.round(this.tierValueFromLine(allyLine, this.tierIndex(allyDef, ally.tier)))
       if (v > 0) damageAfterBonus += v
@@ -2702,7 +2710,7 @@ export class CombatEngine {
       item.baseStats.multicast = Math.max(1, item.baseStats.multicast - 1)
     }
 
-    const refillAmmoLine = lines.find((s) => /补充\d+(?:\/\d+)*(?:发)?弹药/.test(s))
+    const refillAmmoLine = lines.find((s) => /补充\d+(?:[\/|]\d+)*(?:发)?弹药/.test(s))
     if (refillAmmoLine) {
       const gain = (() => {
         const m = refillAmmoLine.match(/补充\s*(\d+(?:[\/|]\d+)*)\s*(?:发)?弹药/)
@@ -2719,19 +2727,19 @@ export class CombatEngine {
       }
     }
 
-    const postAttackDamageLine = lines.find((s) => /每次攻击后伤害\+\d+(?:\/\d+)*/.test(s))
+    const postAttackDamageLine = lines.find((s) => /每次攻击后伤害\+\d+(?:[\/|]\d+)*/.test(s))
     if (postAttackDamageLine) {
       const v = Math.round(this.tierValueFromLine(postAttackDamageLine, tIdx)) * useRepeatCount
       if (v > 0 && this.isDamageBonusEligible(item)) item.baseStats.damage += v
     }
 
-    const postUseShieldLine = lines.find((s) => /每次使用后护盾\+\d+(?:\/\d+)*/.test(s))
+    const postUseShieldLine = lines.find((s) => /每次使用后护盾\+\d+(?:[\/|]\d+)*/.test(s))
     if (postUseShieldLine) {
       const v = Math.round(this.tierValueFromLine(postUseShieldLine, tIdx)) * useRepeatCount
       if (v > 0) item.baseStats.shield += v
     }
 
-    const adjacentShieldGrowLine = lines.find((s) => /每次使用后相邻护盾物品\+\d+(?:\/\d+)*护盾/.test(s))
+    const adjacentShieldGrowLine = lines.find((s) => /每次使用后相邻护盾物品\+\d+(?:[\/|]\d+)*护盾/.test(s))
     if (adjacentShieldGrowLine) {
       const v = Math.round(this.tierValueFromLine(adjacentShieldGrowLine, tIdx)) * useRepeatCount
       if (v > 0) {
@@ -2744,7 +2752,7 @@ export class CombatEngine {
       }
     }
 
-    if (lines.some((s) => /每次使用后伤害翻倍/.test(s)) && this.isDamageBonusEligible(item)) {
+    if (lines.some((s) => /(?:每次)?使用后伤害翻倍/.test(s)) && this.isDamageBonusEligible(item)) {
       for (let i = 0; i < useRepeatCount; i++) item.baseStats.damage = Math.max(0, item.baseStats.damage * 2)
     }
 
@@ -2766,9 +2774,9 @@ export class CombatEngine {
       item.baseStats.cooldownMs = Math.max(Math.max(minMs, this.minReducedCdMsFor(item)), item.baseStats.cooldownMs - reduceMs * useRepeatCount)
     }
 
-    const postUseDamageReduceLine = lines.find((s) => /使用后伤害-\d+/.test(s))
+    const postUseDamageReduceLine = lines.find((s) => /(?:每次)?使用后伤害-[\d|/]+/.test(s))
     if (postUseDamageReduceLine) {
-      const v = Math.round(this.tierValueFromLine(postUseDamageReduceLine, tIdx)) * useRepeatCount
+      const v = Math.abs(Math.round(this.tierValueFromLine(postUseDamageReduceLine, tIdx))) * useRepeatCount
       if (v > 0) item.baseStats.damage = Math.max(1, item.baseStats.damage - v)
     }
 

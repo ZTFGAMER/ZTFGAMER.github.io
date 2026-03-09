@@ -275,11 +275,11 @@ function addBattleItemTriggerCount(
 function parseTierLevel(tierRaw: string): number {
   const tier = `${tierRaw}`
   const m = tier.match(/#(\d+)/)
-  const star = Math.max(1, Math.min(2, Number(m?.[1] ?? 1) || 1))
-  if (tier.includes('Silver')) return star + 2
-  if (tier.includes('Gold')) return star + 4
-  if (tier.includes('Diamond')) return 7
-  return star
+  const star = Math.max(1, Math.min(2, Number(m?.[1] ?? 1) || 1)) as 1 | 2
+  if (tier.includes('Diamond')) return star + 5
+  if (tier.includes('Gold')) return star + 3
+  if (tier.includes('Silver')) return star + 1
+  return 1
 }
 
 function parseBaseTier(raw?: string): 'Bronze' | 'Silver' | 'Gold' | 'Diamond' {

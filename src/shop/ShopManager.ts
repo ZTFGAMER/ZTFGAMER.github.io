@@ -12,14 +12,14 @@ export type TierKey = typeof TIER_ORDER[number]
 export type TierStar = 1 | 2
 
 function getTierStarLevelIndex(tier: TierKey, star: TierStar): number {
-  const actualStar = tier === 'Diamond' ? 1 : star
-  if (tier === 'Bronze' && actualStar === 1) return 0
-  if (tier === 'Bronze' && actualStar === 2) return 1
-  if (tier === 'Silver' && actualStar === 1) return 2
-  if (tier === 'Silver' && actualStar === 2) return 3
-  if (tier === 'Gold' && actualStar === 1) return 4
-  if (tier === 'Gold' && actualStar === 2) return 5
-  return 6 // Diamond#1
+  const actualStar = tier === 'Bronze' ? 1 : (star === 2 ? 2 : 1)
+  if (tier === 'Bronze') return 0
+  if (tier === 'Silver' && actualStar === 1) return 1
+  if (tier === 'Silver' && actualStar === 2) return 2
+  if (tier === 'Gold' && actualStar === 1) return 3
+  if (tier === 'Gold' && actualStar === 2) return 4
+  if (tier === 'Diamond' && actualStar === 1) return 5
+  return 6 // Diamond#2
 }
 
 export function getDailyGoldForDay(config: GameConfig, day: number): number {
@@ -90,7 +90,7 @@ export class ShopManager {
   /** 计算出售价格（优先固定表；缺失时回退旧比例） */
   getSellPrice(item: ItemDef, tierOverride?: TierKey, starOverride: TierStar = 1): number {
     const tier = tierOverride ?? 'Bronze'
-    const star = tier === 'Diamond' ? 1 : starOverride
+    const star = tier === 'Bronze' ? 1 : (starOverride === 2 ? 2 : 1)
     const fixedBySize = this.config.shopRules?.sellFixedPriceBySize
     const size = normalizeSize(item.size)
     const sizeKey = size === '1x1' ? 'small' : size === '2x1' ? 'medium' : 'large'
@@ -117,10 +117,11 @@ export class ShopManager {
   /** 计算指定品质/星级购买价（用于快捷购买与出售回收估值） */
   getTierStarPrice(item: ItemDef, tier: TierKey, star: TierStar = 1): number {
     const base = this.getItemPrice(item, tier)
-    const key = `${tier}#${tier === 'Diamond' ? 1 : star}`
+    const actualStar = tier === 'Bronze' ? 1 : (star === 2 ? 2 : 1)
+    const key = `${tier}#${actualStar}`
     const mulCfg = this.config.shopRules?.quickBuyPriceMultiplier
     const mulRaw = mulCfg?.[key]
-    const defaultMul = tier === 'Diamond' ? 1 : (star === 2 ? 2 : 1)
+    const defaultMul = actualStar === 2 ? 2 : 1
     const mul = (typeof mulRaw === 'number' && Number.isFinite(mulRaw) && mulRaw > 0) ? mulRaw : defaultMul
     return Math.max(1, Math.round(base * mul))
   }
@@ -281,7 +282,7 @@ export class ShopManager {
     const minTier = extractTier(item.starting_tier)
     const list = cfg[minTier]
     if (!Array.isArray(list) || list.length <= 0) return 1
-    const levelIdx = getTierStarLevelIndex(resultTier, resultTier === 'Diamond' ? 1 : resultStar)
+    const levelIdx = getTierStarLevelIndex(resultTier, resultTier === 'Bronze' ? 1 : resultStar)
     const raw = list[levelIdx]
     if (typeof raw !== 'number' || !Number.isFinite(raw)) return 1
     return Math.max(0, raw)
