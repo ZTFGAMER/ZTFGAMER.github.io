@@ -7,7 +7,8 @@
 
 import {
   Container, Graphics, Text, Sprite,
-  Assets, Texture, Rectangle, Ticker, type FederatedPointerEvent,
+  Assets, Texture, Rectangle, Ticker,
+  type FederatedPointerEvent, type DestroyOptions,
 } from 'pixi.js'
 import type { ShopSlot } from './ShopManager'
 import { normalizeSize } from '@/items/ItemDef'
@@ -413,5 +414,10 @@ export class ShopPanelView extends Container {
     if (!this.upgradeHintTick) return
     Ticker.shared.remove(this.upgradeHintTick)
     this.upgradeHintTick = null
+  }
+
+  override destroy(options?: DestroyOptions): void {
+    this.stopUpgradeHintAnim()
+    super.destroy(options)
   }
 }

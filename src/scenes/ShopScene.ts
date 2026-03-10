@@ -12589,10 +12589,10 @@ export const ShopScene: Scene = {
     }
     _resetDrag()
 
-    if (shopPanel)    stage.removeChild(shopPanel)
+    if (shopPanel)    { stage.removeChild(shopPanel); shopPanel.destroy({ children: true }); shopPanel = null }
     if (sellPopup)    stage.removeChild(sellPopup)
-    if (battleView)   stage.removeChild(battleView)
-    if (backpackView) stage.removeChild(backpackView)
+    if (battleView)   { stage.removeChild(battleView); battleView.destroy({ children: true }); battleView = null }
+    if (backpackView) { stage.removeChild(backpackView); backpackView.destroy({ children: true }); backpackView = null }
     if (battleZoneTitleText) stage.removeChild(battleZoneTitleText)
     if (backpackZoneTitleText) stage.removeChild(backpackZoneTitleText)
     if (shopAreaBg)   stage.removeChild(shopAreaBg)

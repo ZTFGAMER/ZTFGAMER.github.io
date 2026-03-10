@@ -14,6 +14,7 @@ import {
   Container, Graphics, Sprite, Text,
   Assets, Texture, Rectangle, Ticker,
   type FederatedPointerEvent,
+  type DestroyOptions,
 } from 'pixi.js'
 import type { ItemSizeNorm, PlacedItem } from './GridSystem'
 import { getAllItems, getConfig as getGameConfig } from '@/core/DataLoader'
@@ -1405,6 +1406,23 @@ export class GridZone extends Container {
     const ammoMaxY = node.starBadgeBg.y - node.ammoBadge.height - 4
     node.ammoBadge.x = node.container.x + frameInset + (frameW - node.ammoBadge.width) / 2
     node.ammoBadge.y = node.starBadgeBg.visible ? Math.min(ammoBaseY, ammoMaxY) : ammoBaseY
+  }
+
+  override destroy(options?: DestroyOptions): void {
+    // 清理所有 Ticker 回调，防止场景切换后回调继续访问已销毁的对象
+    if (this.upgradeHintTick) {
+      Ticker.shared.remove(this.upgradeHintTick)
+      this.upgradeHintTick = null
+    }
+    for (const tick of this.itemFxTicks) Ticker.shared.remove(tick)
+    this.itemFxTicks.clear()
+    for (const tick of this.squeezeTicks.values()) Ticker.shared.remove(tick)
+    this.squeezeTicks.clear()
+    for (const tick of this.previewTicks.values()) Ticker.shared.remove(tick)
+    this.previewTicks.clear()
+    // 清空 nodes，使进行中的异步 loadIcon/loadGuideArrows 的 guard 生效
+    this.nodes.clear()
+    super.destroy(options)
   }
 
 }
