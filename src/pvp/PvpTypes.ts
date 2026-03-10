@@ -35,6 +35,7 @@ export interface PvpSession {
   currentOpponentPlayerIndex?: number    // 当天实际对手的 playerIndex（bye 轮由 host 解析后下发）
   initialHp: number                       // 初始血量（房主创建时设定）
   myEliminationRank?: number              // 被淘汰时的排名（1=冠军，仅非 host 淘汰时填入）
+  predictedElimination?: boolean         // 本地预判被淘汰，等待 round_summary 确认中
 }
 
 /**

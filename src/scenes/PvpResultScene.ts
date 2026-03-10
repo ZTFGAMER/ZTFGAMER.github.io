@@ -65,6 +65,21 @@ function buildContent(): void {
   const session = PvpContext.getSession()
   const hasRealRankings = !!(session?.rankings && session.rankings.length > 0)
   const isEliminatedView = !hasRealRankings && !!(session?.myEliminationRank)
+  // 本地预判已淘汰，但 round_summary 还未到达（排名未知）
+  const isPendingElimination = !hasRealRankings && !session?.myEliminationRank && !!(session?.predictedElimination)
+
+  // ── 预判等待状态：仅显示"结算中"，等 round_summary 到达后自动重建 ──
+  if (isPendingElimination) {
+    const waitT = new Text({
+      text: '结算中...',
+      style: { fill: 0x556677, fontSize: 36, align: 'center' },
+    })
+    waitT.anchor.set(0.5, 0.5)
+    waitT.x = CANVAS_W / 2
+    waitT.y = CANVAS_H / 2
+    root.addChild(waitT)
+    return
+  }
 
   // ── 标题 ──────────────────────────────────────────────
   const titleText = new Text({
@@ -295,7 +310,7 @@ export const PvpResultScene: Scene = {
       fadeIn = true
     }
 
-    // 检测 myEliminationRank 是否新到达（预判淘汰提前进入此页，round_summary 确认后刷新）
+    // 检测 myEliminationRank 是否新到达（预判路径：round_summary 确认后从"结算中"刷新为真实结果）
     const currentElimRank = PvpContext.getSession()?.myEliminationRank
     if (currentElimRank !== undefined && currentElimRank !== renderedElimRank) {
       renderedElimRank = currentElimRank
@@ -303,6 +318,7 @@ export const PvpResultScene: Scene = {
       root.alpha = 0
       fadeAlpha = 0
       fadeIn = true
+      return
     }
 
     if (fadeIn) {

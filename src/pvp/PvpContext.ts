@@ -366,6 +366,7 @@ export const PvpContext = {
       const damage = Math.max(1, Math.round(session.currentDay))
       if (myHp - damage <= 0) {
         console.log('[PvpContext] 本地预判淘汰，等待 round_summary 确认')
+        session.predictedElimination = true
         currentDayPhase = 'shop1'
         SceneManager.goto('pvp-result')
         return
