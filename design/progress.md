@@ -1,5 +1,42 @@
 # 大巴扎 — 开发进度记录
 
+#### 验收优化追加（2026-03-10，空白卷轴单可选时直接刷对应卷轴）
+
+- 用户补充：直接购买链路下，若空白卷轴仅有1个可选卷轴，不应继续刷空白卷轴，应直接刷对应卷轴。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 在 `rewriteNeutralRandomPick()` 中新增口径：当 `blank_scroll` 可选卷轴仅剩1种时，直接改写为该具体卷轴（技能/购物/冒险卷轴）。
+  - 多可选时保持原行为，继续使用空白卷轴选择流程。
+- 验证：`npm run build` 通过。
+
+#### 验收优化追加（2026-03-10，蝶剑多连发时神行靴同步多次触发）
+
+- 用户反馈：蝶剑连发 5 次时，神行靴只触发 1 次；期望神行靴按连发次数同步触发。
+- 已完成：`src/combat/CombatEngine.ts`
+  - 刺客触发神行靴逻辑由“每次使用仅触发1次”改为“按本次连发次数 `useRepeatCount` 逐次入队”；
+  - 保持“神行靴之间不互相连锁”约束不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：该修复进入验收阶段，等待用户确认蝶剑5连发可带动神行靴5次触发。
+
+#### 验收优化追加（2026-03-10，神行靴互相连锁触发关闭）
+
+- 用户反馈：多个神行靴会彼此叠加触发。
+- 已完成：`src/combat/CombatEngine.ts`
+  - 在刺客触发“使用刺客物品时立即使用此物品”逻辑中，增加来源过滤：
+    - 若本次来源本身就是神行靴同类词条（`使用刺客物品时立即使用此物品`），则不再继续触发其他神行靴；
+    - 仍保留“其他刺客物品”对神行靴的正常触发。
+- 验证：`npm run build` 通过。
+- 当前阶段：该修复进入验收阶段，等待用户确认多神行靴场景不再互相连锁。
+
+#### 验收优化追加（2026-03-10，TestFlight 打包上传）
+
+- 用户需求：打 TF 包。
+- 已完成：执行 `npm run release:tf` 全流程（build web -> xcodegen -> archive -> export -> upload）。
+- 结果：
+  - `xcrun altool` 返回 `No errors uploading archive`；
+  - TestFlight 流程完成，`CURRENT_PROJECT_VERSION=24`。
+- 产物路径：`ios/build/export-testflight/BigBazzar.ipa`、`ios/build/BigBazzar.xcarchive`。
+- 当前阶段：等待用户在 App Store Connect/TestFlight 后台确认处理完成与可见性。
+
 ### 本次对话追加（2026-03-10，异步PVP新玩法：每天三段式）
 
 - **设计决策**：

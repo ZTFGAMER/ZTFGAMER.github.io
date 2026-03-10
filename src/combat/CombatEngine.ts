@@ -2664,12 +2664,13 @@ export class CombatEngine {
       : Math.max(tickMsCfg, this.effectiveCooldownMs(item) / Math.max(1, useRepeatCount))
     const shotIntervalTick = Math.max(1, Math.round(shotIntervalMs / tickMsCfg))
 
-    if (sourceArch === '刺客') {
+    const sourceIsAssassinBoot = this.hasLine(def, /使用刺客物品时立即使用此物品/)
+    if (sourceArch === '刺客' && !sourceIsAssassinBoot) {
       for (const ally of this.items) {
         if (ally.side !== item.side || ally.id === item.id) continue
         const allyDef = this.findItemDef(ally.defId)
         if (!this.hasLine(allyDef, /使用刺客物品时立即使用此物品/)) continue
-        this.enqueueExtraTriggeredUse(ally)
+        for (let n = 0; n < useRepeatCount; n++) this.enqueueExtraTriggeredUse(ally)
       }
     }
 

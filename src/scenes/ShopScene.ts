@@ -5235,6 +5235,21 @@ function rewriteNeutralRandomPick(item: ItemDef): ItemDef {
   if (!isNeutralItemDef(item)) return item
   const kind = getNeutralSpecialKind(item)
   if (!kind) return item
+
+  if (kind === 'blank_scroll') {
+    const scrollKinds: NeutralSpecialKind[] = ['skill_scroll', 'shop_scroll', 'event_scroll']
+    const availableScrollKinds = scrollKinds.filter((k) => isNeutralKindRandomAvailable(k))
+    if (availableScrollKinds.length === 1) {
+      const only = availableScrollKinds[0]
+      const onlyName = only === 'skill_scroll'
+        ? '技能卷轴'
+        : only === 'shop_scroll'
+          ? '购物卷轴'
+          : '冒险卷轴'
+      return getItemDefByCn(onlyName) ?? item
+    }
+  }
+
   const replacementKind = getNeutralReplacementKindForRandom(kind)
   if (!replacementKind) return item
   if (!isNeutralKindRandomAvailable(replacementKind)) return item
