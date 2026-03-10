@@ -6,6 +6,12 @@ import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 
 export type PvpMode = 'async' | 'sync-a'
 
+/**
+ * 异步PVP每天内的阶段：
+ * shop1 → wild1 → shop2 → wild2 → shop3 → pvp
+ */
+export type PvpDayPhase = 'shop1' | 'wild1' | 'shop2' | 'wild2' | 'shop3' | 'pvp'
+
 export interface PvpPlayer {
   peerId: string
   nickname: string
@@ -56,7 +62,7 @@ export function getOpponentFromAlive(myIndex: number, alivePlayers: number[], da
 
 export type PvpMsgToHost =
   | { type: 'join'; nickname: string }
-  | { type: 'snapshot_ready'; day: number; snapshot: BattleSnapshotBundle }
+  | { type: 'snapshot_ready'; day: number; snapshot: BattleSnapshotBundle; isFinal?: boolean }
   | { type: 'wins_report'; wins: number }
   | { type: 'battle_sync_ready'; day: number }
   | { type: 'round_result'; day: number; winner: 'player' | 'enemy' | 'draw'; survivingDamage: number }

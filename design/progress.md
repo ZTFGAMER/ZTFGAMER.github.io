@@ -1,5 +1,41 @@
 # 大巴扎 — 开发进度记录
 
+### 本次对话追加（2026-03-10，异步PVP新玩法：每天三段式）
+
+- **设计决策**：
+  - 每天结构：Shop1 → 野怪1 → Shop2 → 野怪2 → Shop3 → PVP
+  - 野怪阵容：复用 PVE `enemyTeachingByDay` 模板（零额外内容）
+  - 野怪HP惩罚：无，仅PVP轮败者扣HP
+  - 日收入：Shop1保底1×，野怪胜利各+½×，上限2×
+  - PVP快照：Shop1/2/3各提交一次；优先级 Shop3>Shop2>Shop1>上日快照
+  - 全程无等待：每玩家独立推进，PVP立即分发可用快照
+  - PVP配对：维持圆形轮转不变
+
+- **已完成**：
+  - `src/pvp/PvpTypes.ts`：新增 `PvpDayPhase` 类型；`snapshot_ready` 消息增加 `isFinal` 字段
+  - `src/pvp/PvpContext.ts`：
+    - 新增 `currentDayPhase` 状态变量
+    - 新增 `pendingWildGoldBonus` 状态
+    - `onPlayerReady()` 按阶段路由（shop1/2→野怪战；shop3→等待PVP对手）
+    - `onBattleComplete()` 按阶段路由（wild1/2→发奖励→下一商店；pvp→原有HP/天数逻辑）
+    - 新增公开方法：`getCurrentDayPhase`, `isMidDayShopPhase`, `isWildRound`, `consumePendingWildGoldBonus`, `onShopReady`
+    - 新增私有函数：`startWildBattle`（构造不含PVP字段的快照→BattleScene走PVE路径）, `grantWildBonus`
+    - Shop3 阶段触发本地60s倒计时（`onShopReady`）
+  - `src/pvp/PvpRoom.ts`：
+    - `daySnapshots` 替换为 `latestDaySnapshots`（滚动覆盖，shop3覆盖shop2覆盖shop1）
+    - `dispatchedDays` 替换为 `dispatchedPlayersByDay`（按玩家粒度防重）
+    - `hostDispatchSnapshots`（等所有人）替换为 `hostDispatchToPlayer`（按玩家即时分发）
+    - `submitSnapshot()` 增加 `isFinal` 参数
+    - 快照兜底链：当天最新 > 昨日快照 > 空快照
+    - `hostForceDispatchAll()` 安全兜底（10分钟超时）
+  - `src/scenes/ShopScene.ts`：
+    - `onEnter` 中间商店阶段（shop2/3）调用 `setDay(currentDay)`（同天=不发收入）并消费野怪奖励
+    - 注册 autoSubmit 后调用 `PvpContext.onShopReady()`
+  - **不影响PVE**：BattleScene零改动；PvpContext.isActive()=false时走原有PVE路径
+
+- **验证**：`npx tsc --noEmit` 通过，`npm run build` 成功
+- **待验收**：联机实测整套三段式流程
+
 ### 本次对话追加（2026-03-10，更新 GHE + Vercel 生产部署 + TestFlight 上传）
 
 - 用户指令：`更新ghe，上传vercel，打tf包`。

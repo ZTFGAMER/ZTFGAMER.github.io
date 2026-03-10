@@ -32,10 +32,11 @@ export class PvpRoom {
   // 游戏是否已开始（开始后锁定房间，拒绝迟到加入）
   private gameStarted = false
   // Per-day snapshot collection (host only)
-  private daySnapshots = new Map<number, Map<number, BattleSnapshotBundle>>()
+  // 存储每位玩家当天最新提交的快照（shop1→shop2→shop3 滚动覆盖，最新优先）
+  private latestDaySnapshots = new Map<number, Map<number, BattleSnapshotBundle>>()
   private dayCountdownTimer: ReturnType<typeof setTimeout> | null = null
-  // 已派发过的天数（防止重复派发同一天快照）
-  private dispatchedDays = new Set<number>()
+  // 已对每位玩家派发过对手快照的记录（day → Set<playerIndex>），防止重复派发
+  private dispatchedPlayersByDay = new Map<number, Set<number>>()
   // 已发给每位客户端的对手快照（day → playerIndex → opponentSnap）
   // 用于处理竞态：客户端战斗比宿主慢时迟到提交，宿主补发对手快照
   private dispatchedOpponentSnaps = new Map<number, Map<number, BattleSnapshotBundle>>()
@@ -176,19 +177,20 @@ export class PvpRoom {
       this.broadcastRoomState()
       this.onRoomStateChange?.(this._players)
     } else if (msg.type === 'snapshot_ready') {
-      // 迟到快照处理：该天已派发但客户端可能错过了 opponent_snapshot（竞态），补发一次
-      if (this.dispatchedDays.has(msg.day)) {
-        const player = this._players.find((p) => p.peerId === peerId)
-        const opponentSnap = player ? this.dispatchedOpponentSnaps.get(msg.day)?.get(player.index) : undefined
-        if (opponentSnap && player) {
-          console.log('[PvpRoom] 迟到快照补发 opponent_snapshot day=' + msg.day + ' → player[' + player.index + '] ' + player.nickname)
+      const player = this._players.find((p) => p.peerId === peerId)
+      if (!player) { console.warn('[PvpRoom] snapshot_ready: unknown peerId', peerId); return }
+
+      // 迟到最终快照：该玩家已分发过对手快照，补发一次（竞态保护）
+      const alreadyDispatched = this.dispatchedPlayersByDay.get(msg.day)?.has(player.index)
+      if (alreadyDispatched && msg.isFinal) {
+        const opponentSnap = this.dispatchedOpponentSnaps.get(msg.day)?.get(player.index)
+        if (opponentSnap) {
+          console.log('[PvpRoom] 迟到最终快照补发 day=' + msg.day + ' → player[' + player.index + '] ' + player.nickname)
           this.sendToPlayer(player.index, { type: 'opponent_snapshot', day: msg.day, snapshot: opponentSnap })
-        } else {
-          console.warn('[PvpRoom] 忽略已派发天快照（无补发数据）day=' + msg.day + ' from peerId=' + peerId)
         }
         return
       }
-      this.hostReceiveSnapshot(peerId, msg.day, msg.snapshot)
+      this.hostReceiveSnapshot(peerId, msg.day, msg.snapshot, msg.isFinal ?? false)
     } else if (msg.type === 'wins_report') {
       const player = this._players.find((p) => p.peerId === peerId)
       if (player) {
@@ -314,167 +316,148 @@ export class PvpRoom {
   // ----------------------------------------------------------------
   hostStartDay(day: number): void {
     if (!this.isHost) return
-    this.daySnapshots.set(day, new Map())
+    this.latestDaySnapshots.set(day, new Map())
+    this.dispatchedPlayersByDay.set(day, new Set())
 
     const countdownMs = DEFAULT_COUNTDOWN_MS
     this.broadcastToClients({ type: 'day_ready', day, countdownMs })
     this.onDayReady?.(day, countdownMs)
 
-    // 倒计时结束后强制分发（超时未提交的用 AI 替代）
+    // 安全兜底：10分钟后对所有尚未收到分发的存活玩家强制用昨日快照分发
     if (this.dayCountdownTimer) clearTimeout(this.dayCountdownTimer)
     this.dayCountdownTimer = setTimeout(() => {
-      this.hostDispatchSnapshots(day)
-    }, countdownMs + 5000) // 5s 额外等待缓冲
+      this.hostForceDispatchAll(day)
+    }, 600_000)
+  }
+
+  /** 安全兜底：强制向所有未分发的存活玩家派发（使用可用的最佳快照） */
+  private hostForceDispatchAll(day: number): void {
+    if (!this.isHost) return
+    const aliveHumans = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
+    const dispatched = this.dispatchedPlayersByDay.get(day) ?? new Set()
+    for (const player of aliveHumans) {
+      if (!dispatched.has(player.index)) {
+        console.log('[PvpRoom] 兜底分发 day=' + day + ' player[' + player.index + ']')
+        this.hostDispatchToPlayer(player.index, day)
+      }
+    }
   }
 
   // ----------------------------------------------------------------
-  // 房主：收到某个玩家的快照
+  // 房主：收到某个玩家的快照（中间或最终）
   // ----------------------------------------------------------------
-  private hostReceiveSnapshot(peerId: string, day: number, snapshot: BattleSnapshotBundle): void {
+  private hostReceiveSnapshot(peerId: string, day: number, snapshot: BattleSnapshotBundle, isFinal = false): void {
     if (!this.isHost) return
     const player = this._players.find((p) => p.peerId === peerId)
     if (!player) { console.warn('[PvpRoom] hostReceiveSnapshot: unknown peerId', peerId); return }
 
-    const map = this.daySnapshots.get(day) ?? new Map<number, BattleSnapshotBundle>()
-    this.daySnapshots.set(day, map)
-    map.set(player.index, snapshot)
-
-    const readyIndices = Array.from(map.keys())
-    console.log('[PvpRoom] 收到快照 day=' + day + ' from player[' + player.index + '] ' + player.nickname + ' readyIndices=' + JSON.stringify(readyIndices))
-
-    // 广播"已准备"状态
-    this.broadcastToClients({ type: 'player_status', day, readyIndices })
-    this.onPlayerStatusUpdate?.(day, readyIndices)
-
-    // 检查所有存活真人玩家是否都已提交（淘汰玩家不再等待）
-    const humanPlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
-    const allReady = humanPlayers.every((p) => map.has(p.index))
-    if (allReady) {
-      console.log('[PvpRoom] 所有存活真人玩家已提交，分发快照')
-      if (this.dayCountdownTimer) clearTimeout(this.dayCountdownTimer)
-      this.hostDispatchSnapshots(day)
-    }
+    this.hostStoreAndMaybeDispatch(player.index, day, snapshot, isFinal)
   }
 
   /** 房主提交自己的快照 */
-  hostSubmitSnapshot(day: number, snapshot: BattleSnapshotBundle): void {
+  hostSubmitSnapshot(day: number, snapshot: BattleSnapshotBundle, isFinal = false): void {
     if (!this.isHost) return
-    // 忽略已派发天数（防重派发保护）
-    if (this.dispatchedDays.has(day)) {
-      console.warn('[PvpRoom] 忽略已派发天快照（host路径）day=' + day)
-      return
-    }
-    const map = this.daySnapshots.get(day) ?? new Map<number, BattleSnapshotBundle>()
-    this.daySnapshots.set(day, map)
-    map.set(0, snapshot)
+    this.hostStoreAndMaybeDispatch(0, day, snapshot, isFinal)
+  }
 
-    const readyIndices = Array.from(map.keys())
-    console.log('[PvpRoom] 房主提交快照 day=' + day + ' readyIndices=' + JSON.stringify(readyIndices))
-    this.broadcastToClients({ type: 'player_status', day, readyIndices })
-    this.onPlayerStatusUpdate?.(day, readyIndices)
+  /** 更新快照并在 isFinal 时立即对该玩家分发 */
+  private hostStoreAndMaybeDispatch(playerIndex: number, day: number, snapshot: BattleSnapshotBundle, isFinal: boolean): void {
+    // 始终更新 latestDaySnapshots（shop1→shop2→shop3 覆盖）
+    const map = this.latestDaySnapshots.get(day) ?? new Map<number, BattleSnapshotBundle>()
+    this.latestDaySnapshots.set(day, map)
+    map.set(playerIndex, snapshot)
 
-    const humanPlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
-    const allReady = humanPlayers.every((p) => map.has(p.index))
-    if (allReady) {
-      console.log('[PvpRoom] 所有存活真人玩家已提交（host路径），分发快照')
-      if (this.dayCountdownTimer) clearTimeout(this.dayCountdownTimer)
-      this.hostDispatchSnapshots(day)
+    console.log('[PvpRoom] 收到' + (isFinal ? '最终' : '中间') + '快照 day=' + day + ' player[' + playerIndex + '] isFinal=' + isFinal)
+
+    if (isFinal) {
+      // 最终快照：更新昨日存档（供后续天数的兜底）并立即分发
+      this.playerLastSnapshots.set(playerIndex, snapshot)
+      this.hostDispatchToPlayer(playerIndex, day)
     }
   }
 
   // ----------------------------------------------------------------
-  // 房主：分发快照给每个玩家
-  // 顺序：先发所有客户端，最后触发房主自身
-  // 理由：房主的 onOpponentSnapshot 回调会同步跳转场景，放最后避免影响客户端发送
+  // 房主：向单个玩家分发 PVP 对手快照（即时分发，无需等待所有人）
+  // 快照优先级：当天最新提交 > 昨日快照 > 空快照
   // ----------------------------------------------------------------
-  private hostDispatchSnapshots(day: number): void {
+  private hostDispatchToPlayer(playerIndex: number, day: number): void {
     if (!this.isHost) return
+    if (this.eliminatedSet.has(playerIndex)) return
 
-    // 防重派发：同一天只派发一次
-    if (this.dispatchedDays.has(day)) {
-      console.warn('[PvpRoom] hostDispatchSnapshots: day=' + day + ' 已派发，跳过')
+    // 防重派发：同一天同一玩家只分发一次
+    if (!this.dispatchedPlayersByDay.has(day)) this.dispatchedPlayersByDay.set(day, new Set())
+    const dispatched = this.dispatchedPlayersByDay.get(day)!
+    if (dispatched.has(playerIndex)) {
+      console.warn('[PvpRoom] 已分发，跳过 day=' + day + ' player[' + playerIndex + ']')
       return
     }
-    this.dispatchedDays.add(day)
+    dispatched.add(playerIndex)
 
-    const map = this.daySnapshots.get(day) ?? new Map()
-
-    // 为未提交的真人玩家用空快照补全（断线保护）
-    for (const player of this._players) {
-      if (!map.has(player.index)) {
-        console.log('[PvpRoom] player[' + player.index + '] ' + player.nickname + ' 未提交，用空快照补全')
-        map.set(player.index, this.makeEmptySnapshot(day))
-      }
-    }
-
-    // 记录每个客户端应收到的对手快照，用于迟到提交时补发
-    const dayOpponentSnaps = new Map<number, BattleSnapshotBundle>()
-    this.dispatchedOpponentSnaps.set(day, dayOpponentSnaps)
-
-    // 当天存活玩家列表（升序），收缩配对算法所用；同时存入 dayAliveIndices 供 hostProcessRoundEnd 使用
+    // 计算当天存活玩家列表并记录（供 hostProcessRoundEnd 对称使用）
     const aliveIndices = this._players
       .filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
       .map((p) => p.index)
       .sort((a, b) => a - b)
-    this.dayAliveIndices.set(day, aliveIndices)
-    console.log('[PvpRoom] day=' + day + ' aliveIndices=' + JSON.stringify(aliveIndices))
-
-    // 第一步：向所有存活客户端发送 opponent_snapshot（已淘汰玩家跳过）
-    for (const player of this._players) {
-      if (player.index === 0 || player.isAi) continue
-      if (this.eliminatedSet.has(player.index)) continue
-      const opponentIdx = getOpponentFromAlive(player.index, aliveIndices, day - 1)
-      let opponentSnap: BattleSnapshotBundle
-      let resolvedOpponentIdx = opponentIdx
-      if (opponentIdx < 0) {
-        const bye = this.getByeOpponentSnap(map, player.index, day)
-        opponentSnap = bye.snap
-        resolvedOpponentIdx = bye.ownerIndex
-      } else {
-        opponentSnap = map.get(opponentIdx) ?? this.getGhostOrEmpty(day)
-      }
-      console.log('[PvpRoom] 分发→client player[' + player.index + '] ' + player.nickname + ' vs opponent[' + resolvedOpponentIdx + '] entities=' + opponentSnap.entities.length)
-      dayOpponentSnaps.set(player.index, opponentSnap)
-      this.sendToPlayer(player.index, { type: 'opponent_snapshot', day, snapshot: opponentSnap, opponentPlayerIndex: resolvedOpponentIdx >= 0 ? resolvedOpponentIdx : undefined })
+    if (!this.dayAliveIndices.has(day)) {
+      this.dayAliveIndices.set(day, aliveIndices)
     }
 
-    // 第二步：最后触发房主自身（放最后，防止同步场景跳转影响上方发送循环）
-    let hostOpponentSnap: BattleSnapshotBundle
-    let resolvedHostOpponentIdx: number
-    if (this.eliminatedSet.has(0)) {
-      // host 已被淘汰，不参与本轮战斗，跳过自身触发
-      resolvedHostOpponentIdx = -1
-      hostOpponentSnap = this.makeEmptySnapshot(day)
+    const latestMap = this.latestDaySnapshots.get(day) ?? new Map<number, BattleSnapshotBundle>()
+    const opponentIdx = getOpponentFromAlive(playerIndex, aliveIndices, day - 1)
+
+    let opponentSnap: BattleSnapshotBundle
+    let resolvedOpponentIdx = opponentIdx
+
+    if (opponentIdx < 0) {
+      // 轮空：从当天已提交的快照中随机选一位存活玩家（排除自身）
+      const candidates = [...latestMap.entries()].filter(([idx]) => idx !== playerIndex && !this.eliminatedSet.has(idx))
+      if (candidates.length > 0) {
+        const [ownerIdx, snap] = candidates[Math.floor(Math.random() * candidates.length)]!
+        opponentSnap = snap
+        resolvedOpponentIdx = ownerIdx
+      } else {
+        // 退到昨日快照兜底
+        opponentSnap = this.playerLastSnapshots.get(playerIndex) ?? this.getGhostOrEmpty(day)
+        resolvedOpponentIdx = -1
+      }
     } else {
-      const hostOpponentIdx = getOpponentFromAlive(0, aliveIndices, day - 1)
-      resolvedHostOpponentIdx = hostOpponentIdx
-      if (hostOpponentIdx < 0) {
-        const bye = this.getByeOpponentSnap(map, 0, day)
-        hostOpponentSnap = bye.snap
-        resolvedHostOpponentIdx = bye.ownerIndex
-      } else {
-        hostOpponentSnap = map.get(hostOpponentIdx) ?? this.getGhostOrEmpty(day)
+      // 常规对战：使用对手当天最新快照，若无则用昨日快照
+      opponentSnap = latestMap.get(opponentIdx)
+        ?? this.playerLastSnapshots.get(opponentIdx)
+        ?? this.getGhostOrEmpty(day)
+
+      if (!latestMap.has(opponentIdx)) {
+        console.log('[PvpRoom] player[' + playerIndex + '] 使用对手昨日快照 (opponent[' + opponentIdx + '] 未提交当天快照)')
       }
-      console.log('[PvpRoom] 分发→host vs opponent[' + resolvedHostOpponentIdx + '] entities=' + hostOpponentSnap.entities.length)
-      this.onOpponentSnapshot?.(day, hostOpponentSnap, resolvedHostOpponentIdx >= 0 ? resolvedHostOpponentIdx : undefined)
     }
 
-    // 删除前将本轮快照存入 playerLastSnapshots，供淘汰时填入幽灵快照池
-    for (const [playerIdx, snap] of map.entries()) {
-      this.playerLastSnapshots.set(playerIdx, snap)
+    console.log('[PvpRoom] 即时分发→player[' + playerIndex + '] vs opponent[' + resolvedOpponentIdx + '] entities=' + opponentSnap.entities.length)
+
+    // 记录已分发快照（用于迟到补发）
+    if (!this.dispatchedOpponentSnaps.has(day)) this.dispatchedOpponentSnaps.set(day, new Map())
+    this.dispatchedOpponentSnaps.get(day)!.set(playerIndex, opponentSnap)
+
+    if (playerIndex === 0) {
+      // Host 自身触发放最后，防止同步场景跳转影响其他逻辑
+      this.onOpponentSnapshot?.(day, opponentSnap, resolvedOpponentIdx >= 0 ? resolvedOpponentIdx : undefined)
+    } else {
+      this.sendToPlayer(playerIndex, {
+        type: 'opponent_snapshot',
+        day,
+        snapshot: opponentSnap,
+        opponentPlayerIndex: resolvedOpponentIdx >= 0 ? resolvedOpponentIdx : undefined,
+      })
     }
-    // 清理当天快照数据（节省内存；防重派发已由 dispatchedDays 保护）
-    this.daySnapshots.delete(day)
   }
 
   // ----------------------------------------------------------------
-  // 客户端：提交快照
+  // 客户端：提交快照（isFinal=true 表示 Shop3 最终快照，触发立即分发）
   // ----------------------------------------------------------------
-  submitSnapshot(day: number, snapshot: BattleSnapshotBundle): void {
+  submitSnapshot(day: number, snapshot: BattleSnapshotBundle, isFinal = false): void {
     if (this.isHost) {
-      this.hostSubmitSnapshot(day, snapshot)
+      this.hostSubmitSnapshot(day, snapshot, isFinal)
     } else {
-      this.sendToHost({ type: 'snapshot_ready', day, snapshot })
+      this.sendToHost({ type: 'snapshot_ready', day, snapshot, isFinal })
     }
   }
 
@@ -604,25 +587,6 @@ export class PvpRoom {
     return { day, activeColCount: 1, createdAtMs: Date.now(), entities: [] }
   }
 
-  /**
-   * Bye 轮对手快照：从当天存活玩家的提交中随机选一个（排除自身）。
-   * 保证 bye 玩家永远面对真实阵容，而非空对手。
-   * 返回 { snap, ownerIndex }，ownerIndex 用于在客户端显示真实昵称。
-   */
-  private getByeOpponentSnap(
-    map: Map<number, BattleSnapshotBundle>,
-    byePlayerIndex: number,
-    day: number,
-  ): { snap: BattleSnapshotBundle; ownerIndex: number } {
-    const candidates = [...map.entries()]
-      .filter(([idx]) => idx !== byePlayerIndex && !this.eliminatedSet.has(idx))
-    if (candidates.length > 0) {
-      const [ownerIndex, snap] = candidates[Math.floor(Math.random() * candidates.length)]!
-      return { snap, ownerIndex }
-    }
-    return { snap: this.getGhostOrEmpty(day), ownerIndex: -1 }
-  }
-
   /** Called at end of each round to report result (winner + survivingDamage) */
   reportRoundResult(day: number, winner: 'player' | 'enemy' | 'draw', survivingDamage: number): void {
     if (this.isHost) {
@@ -688,18 +652,8 @@ export class PvpRoom {
       }
     }
 
-    // 淘汰后重新检查：若有待派发的天，其快照已被所有存活玩家提交，立即派发（解决竞态：D+1 快照先于淘汰处理到达）
-    if (newlyEliminated.length > 0) {
-      for (const [pendingDay, pendingMap] of this.daySnapshots.entries()) {
-        if (this.dispatchedDays.has(pendingDay)) continue
-        const humanAlivePlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
-        if (humanAlivePlayers.every((p) => pendingMap.has(p.index))) {
-          console.log('[PvpRoom] 淘汰后重新检查 day=' + pendingDay + '：所有存活玩家已提交，立即派发')
-          if (this.dayCountdownTimer) clearTimeout(this.dayCountdownTimer)
-          this.hostDispatchSnapshots(pendingDay)
-        }
-      }
-    }
+    // 淘汰后重新检查：若有玩家已提交最终快照但等待分发，立即触发（解决竞态）
+    // 新机制下，分发是按玩家独立触发的，淘汰后不需要重新扫描
 
     // 构造所有玩家上局快照 map（用于客户端查看阵容）
     const snapshots: Record<number, BattleSnapshotBundle> = {}
@@ -742,5 +696,7 @@ export class PvpRoom {
     this.clientConn?.close()
     this.peerConn.destroy()
     this.dispatchedOpponentSnaps.clear()
+    this.latestDaySnapshots.clear()
+    this.dispatchedPlayersByDay.clear()
   }
 }

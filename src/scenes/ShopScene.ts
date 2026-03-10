@@ -287,6 +287,7 @@ type SavedShopState = {
 
 let pendingBattleTransition = false
 let pendingAdvanceToNextDay = false
+let pvpReadyLocked = false
 let pendingSkillBarMoveStartAtMs: number | null = null
 let savedShopState: SavedShopState | null = null
 
@@ -582,10 +583,12 @@ function restartRunFromBeginning(): void {
   savedShopState = null
   pendingBattleTransition = false
   pendingAdvanceToNextDay = false
+  pvpReadyLocked = false
   window.location.reload()
 }
 
 function isShopInputEnabled(): boolean {
+  if (pvpReadyLocked) return false
   return PhaseManager.isShopInputEnabled()
 }
 
@@ -10766,8 +10769,10 @@ function buildPvpPlayerListContent(overlay: Container): void {
     nameT.y = 14
     rowCon.addChild(nameT)
 
+    const gold = snapshots[player.index]?.playerGold
+    const goldStr = gold !== undefined ? `  💰 ${gold}G` : ''
     const statusT = new Text({
-      text: eliminated ? '已淘汰' : '存活中',
+      text: (eliminated ? '已淘汰' : '存活中') + goldStr,
       style: { fill: eliminated ? 0x665544 : 0x4a9966, fontSize: 17 },
     })
     statusT.anchor.set(0, 0)
@@ -10895,6 +10900,7 @@ export function clearPvpShopState(): void {
   savedShopState = null
   pendingBattleTransition = false
   pendingAdvanceToNextDay = false
+  pvpReadyLocked = false
 }
 
 // ============================================================
@@ -10921,9 +10927,12 @@ export const ShopScene: Scene = {
           setBattleSnapshot(snapshot)
           pendingBattleTransition = true
           pendingAdvanceToNextDay = true
+          pvpReadyLocked = true
           PvpContext.onPlayerReady()
         }
       })
+      // 通知 PvpContext 商店已就绪（shop3 阶段会启动本地倒计时）
+      PvpContext.onShopReady()
     }
 
     battlePassivePrevStats.clear()
@@ -11576,6 +11585,7 @@ export const ShopScene: Scene = {
       pendingAdvanceToNextDay = true
       // PVP 模式：提交快照给对手，等待对方快照，不走本地过渡动画
       if (PvpContext.isActive()) {
+        pvpReadyLocked = true
         PvpContext.onPlayerReady()
         phaseBtnHandle?.setLabel('等待...')
         phaseBtnHandle?.redraw(true)
@@ -11804,7 +11814,17 @@ export const ShopScene: Scene = {
       applySavedShopState(restoredState)
       savedShopState = null
       if (pendingAdvanceToNextDay || PvpContext.isActive()) {
-        setDay(currentDay + 1)
+        if (PvpContext.isActive() && PvpContext.isMidDayShopPhase()) {
+          // PVP 中间商店阶段（shop2/shop3）：刷新卡池但不发放基础日收入
+          setDay(currentDay)  // 同一天 → setDay 内部不触发收入逻辑
+          const wildBonus = PvpContext.consumePendingWildGoldBonus()
+          if (wildBonus > 0 && shopManager) {
+            shopManager.gold += wildBonus
+            console.log('[ShopScene] 野怪奖励 +' + wildBonus + 'G')
+          }
+        } else {
+          setDay(currentDay + 1)
+        }
         applyPostBattleEffects(battleOutcome?.snapshot ?? null)
         pendingAdvanceToNextDay = false
       }
@@ -11938,6 +11958,7 @@ export const ShopScene: Scene = {
     offDebugCfg = null
     offPhaseChange?.()
     offPhaseChange = null
+    pvpReadyLocked = false
     if (pendingBattleTransition || PvpContext.isActive() || getBattleSnapshot()) {
       savedShopState = captureShopState()
       saveShopStateToStorage(savedShopState)
