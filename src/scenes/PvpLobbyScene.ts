@@ -404,7 +404,7 @@ function drawCreateRoomView(): void {
     btn.eventMode = 'static'
     btn.cursor = 'pointer'
     btn.on('pointerdown', () => {
-      createRoomInitialHp = Math.min(20, Math.max(1, createRoomInitialHp + delta))
+      createRoomInitialHp = Math.max(1, createRoomInitialHp + delta)
       hpValT.text = String(createRoomInitialHp)
     })
     btn.on('pointerover', () => { btn.alpha = 0.75 })
