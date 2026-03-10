@@ -1,5 +1,25 @@
 # 大巴扎 — 开发进度记录
 
+#### 验收优化追加（2026-03-10，版本号升级 0.1.2 并发布）
+
+- 用户需求：版本更新为 `0.1.2`，并上传 GHE + Vercel。
+- 已完成：
+  - `package.json` / `package-lock.json` 版本更新为 `0.1.2`；
+  - `src/scenes/MenuScene.ts` 版本文案更新为 `v0.1.2`；
+  - `ios/project.yml` 的 `MARKETING_VERSION` 同步为 `0.1.2`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待提交到 GHE 并完成 Vercel 线上验收。
+
+#### 验收优化追加（2026-03-10，GridZone 图标/箭头异步竞态导致空指针）
+
+- 用户反馈：线上出现大量 `Cannot read properties of null (reading 'x'/'set')`，并伴随图标与提示箭头加载失败。
+- 根因定位：`GridZone` 的 `loadIcon/loadGuideArrows` 为异步，旧节点销毁后若同 `instanceId` 重建，旧异步回调仍会操作已销毁节点；同时 `playItemAcquireFx` 在节点提前销毁时仍继续 tick 写入 transform，触发空指针。
+- 已完成：`src/grid/GridZone.ts`
+  - `loadIcon()` / `loadGuideArrows()` 增加强校验：`this.nodes.get(instanceId) === node`，并检查节点未销毁；
+  - `playItemAcquireFx()` tick 增加节点存活判断，节点销毁时立即停止 tick 并回收 FX。
+- 验证：`npm run build` 通过。
+- 当前阶段：该稳定性修复进入验收阶段，等待用户确认线上图标/箭头与过渡动画不再报空指针。
+
 #### 验收优化追加（2026-03-10，木弓“每次使用后伤害提升”生效修复）
 
 - 用户反馈：木弓每次使用伤害增加未生效。

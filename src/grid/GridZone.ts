@@ -596,6 +596,14 @@ export class GridZone extends Container {
     const durationMs = 240
     const start = Date.now()
     const tick = () => {
+      const nodeAlive = !node.container.destroyed
+      if (!nodeAlive) {
+        Ticker.shared.remove(tick)
+        this.itemFxTicks.delete(tick)
+        fx.parent?.removeChild(fx)
+        fx.destroy()
+        return
+      }
       const t = Math.min(1, (Date.now() - start) / durationMs)
       const ease = 1 - Math.pow(1 - t, 3)
       node.container.alpha = Math.min(1, 0.18 + ease * 0.82)
@@ -674,7 +682,8 @@ export class GridZone extends Container {
   private async loadGuideArrows(instanceId: string, node: ItemNode): Promise<void> {
     try {
       const textures = await ensureGuideArrowTextures()
-      if (!this.nodes.has(instanceId)) return
+      if (this.nodes.get(instanceId) !== node) return
+      if (node.upgradeArrow.destroyed || node.crossUpgradeArrow.destroyed) return
       applyArrowTexture(node.upgradeArrow, textures.same)
       applyArrowTexture(node.crossUpgradeArrow, this.crossGuideArrowMode === 'convert' ? textures.convert : textures.cross)
     } catch (err) {
@@ -701,8 +710,9 @@ export class GridZone extends Container {
     const url = getItemIconUrl(defId)
     try {
       const tex = await Assets.load<Texture>(url)
-      if (!this.nodes.has(instanceId)) return
-      const sp   = node.sprite!
+      if (this.nodes.get(instanceId) !== node) return
+      const sp = node.sprite
+      if (!sp || sp.destroyed || node.container.destroyed) return
       sp.texture = tex
       sp.alpha   = 1
       node.bg.alpha = 0.6
