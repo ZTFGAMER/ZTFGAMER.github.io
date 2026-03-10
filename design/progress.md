@@ -1,5 +1,24 @@
 # 大巴扎 — 开发进度记录
 
+#### PVP 修复：淘汰即离线（2026-03-10）
+
+- **问题**：等待面板显示已淘汰玩家（IIII），存活玩家（🐒🐕🐱）反而消失；根因是 `round_summary` 延迟到达，等待面板不监听 `eliminatedPlayers` 变化。
+- **方案**：「淘汰即离线」—— 被淘汰玩家收到 `round_summary` 确认淘汰后，直接跳转 `pvp-result`，不再进入观战模式。
+- **已完成**：
+  - `PvpTypes.ts`：`PvpSession` 新增 `myEliminationRank?: number`
+  - `PvpContext.ts`：淘汰时计算排名 → non-host 调 `room.destroy()` 断开连接 → `goto('pvp-result')`；host 保留 room 仅切场景
+  - `PvpResultScene.ts`：新增 `isEliminatedView` 分支，用 `playerHps` 快照正确显示各玩家血量；标题改"你已被淘汰"；summary 显示"第N名淘汰"
+  - `EventBus.ts`：移除 `'pvp-spectator'` 类型
+  - `main.ts`：移除 `PvpSpectatorScene` import 及注册
+  - 删除 `PvpSpectatorScene.ts`（~260行）
+- **副作用修复**：Host 端无需改动（`eliminatedSet` 已正确排除淘汰玩家不纳入 `battle_sync_ready`）
+- **验证**：`tsc --noEmit` 通过，无类型错误
+- **遗留修复（同批）**：
+  - `PvpRoom.ts`：新增 `roundEndProcessedDays` Set，`hostProcessRoundEnd` 入口加重入守卫，修复 `round_summary` 双触发问题
+  - `PvpContext.ts`：新增 `onEliminatedPlayersUpdate` 回调；`onRoundSummary` 更新 eliminatedPlayers 后触发回调；`endSession` 清理回调
+  - `ShopScene.ts`：注册 `onEliminatedPlayersUpdate` → `refreshPvpWaitingPanel()`；`onExit` 清理回调
+- **待验收**：线上多人对局中触发淘汰，确认淘汰玩家直接进结算页，其余玩家等待面板正常，不再出现 `eliminated=[2][2]`
+
 #### 验收优化追加（2026-03-10，版本号升级 0.1.2 并发布）
 
 - 用户需求：版本更新为 `0.1.2`，并上传 GHE + Vercel。

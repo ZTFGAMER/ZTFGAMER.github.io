@@ -50,6 +50,7 @@ export class PvpRoom {
   private ghostSnapshots: BattleSnapshotBundle[] = []
   private playerLastSnapshots = new Map<number, BattleSnapshotBundle>()  // 每位玩家最新快照，用于淘汰后的幽灵对手
   private roundResultsByDay = new Map<number, Map<number, { winner: 'player' | 'enemy' | 'draw'; survivingDamage: number }>>()
+  private roundEndProcessedDays = new Set<number>()  // 防止 hostProcessRoundEnd 重入
   // day → 该天分发快照时的存活玩家 index 列表（升序），供 hostProcessRoundEnd 对称使用
   private dayAliveIndices = new Map<number, number[]>()
   // 淘汰顺序记录：按淘汰先后排列 playerIndex，第一个元素为最先被淘汰的玩家
@@ -668,6 +669,11 @@ export class PvpRoom {
   }
 
   private hostProcessRoundEnd(day: number): void {
+    if (this.roundEndProcessedDays.has(day)) {
+      console.warn('[PvpRoom] hostProcessRoundEnd day=' + day + ' 重复调用，已忽略')
+      return
+    }
+    this.roundEndProcessedDays.add(day)
     const results = this.roundResultsByDay.get(day)
     if (!results) return
     const hpMap: Record<number, number> = {}

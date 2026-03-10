@@ -11569,6 +11569,10 @@ export const ShopScene: Scene = {
             pvpWaitingPanel = null
           }
         }
+        // eliminatedPlayers 变化时立即刷新等待面板（round_summary 延迟到达时的兜底）
+        PvpContext.onEliminatedPlayersUpdate = () => {
+          refreshPvpWaitingPanel()
+        }
       }
     }
 
@@ -12613,6 +12617,7 @@ export const ShopScene: Scene = {
     }
     PvpContext.onUrgeReceived = null
     PvpContext.onBeforeBattleTransition = null
+    PvpContext.onEliminatedPlayersUpdate = null
     pvpUrgeCooldownSet.clear()
     if (btnRow)       stage.removeChild(btnRow)
     if (dayDebugCon)  stage.removeChild(dayDebugCon)

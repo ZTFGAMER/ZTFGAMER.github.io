@@ -16,6 +16,8 @@ let fadeAlpha = 0
 let fadeIn = true
 /** 已渲染时 session.rankings 的引用；非 null 说明已用真实排名渲染过一次 */
 let renderedRankings: object | null = null
+/** 已渲染时的 myEliminationRank；用于检测 round_summary 确认淘汰后刷新（预判路径） */
+let renderedElimRank: number | undefined = undefined
 
 const RANK_LABELS  = ['第一名', '第二名', '第三名', '第四名']
 const RANK_COLORS  = [0xffd700, 0xc0c0c0, 0xcd7f32, 0x778899]
@@ -60,23 +62,25 @@ function buildContent(): void {
   topGlow.circle(CANVAS_W / 2, 0, 240).fill({ color: 0xffd700, alpha: 0.05 })
   root.addChild(topGlow)
 
+  const session = PvpContext.getSession()
+  const hasRealRankings = !!(session?.rankings && session.rankings.length > 0)
+  const isEliminatedView = !hasRealRankings && !!(session?.myEliminationRank)
+
   // ── 标题 ──────────────────────────────────────────────
   const titleText = new Text({
-    text: '对战结束',
-    style: { fill: 0xffd86b, fontSize: 56, fontWeight: 'bold', align: 'center' },
+    text: isEliminatedView ? '你已被淘汰' : '对战结束',
+    style: { fill: isEliminatedView ? 0xcc8844 : 0xffd86b, fontSize: 56, fontWeight: 'bold', align: 'center' },
   })
   titleText.anchor.set(0.5, 0)
   titleText.x = CANVAS_W / 2
   titleText.y = 90
   root.addChild(titleText)
 
+  const decoColor = isEliminatedView ? 0xcc8844 : 0xffd86b
   const decoG = new Graphics()
-  decoG.rect(CANVAS_W / 2 - 80, 166, 160, 2).fill({ color: 0xffd86b, alpha: 0.5 })
-  decoG.rect(CANVAS_W / 2 - 16, 164, 32, 4).fill({ color: 0xffd86b })
+  decoG.rect(CANVAS_W / 2 - 80, 166, 160, 2).fill({ color: decoColor, alpha: 0.5 })
+  decoG.rect(CANVAS_W / 2 - 16, 164, 32, 4).fill({ color: decoColor })
   root.addChild(decoG)
-
-  const session = PvpContext.getSession()
-  const hasRealRankings = !!(session?.rankings && session.rankings.length > 0)
 
   // ── 排名列表 ──────────────────────────────────────────
   type RankEntry = { nickname: string; wins: number | null; isMe: boolean; winsKnown: boolean }
@@ -98,11 +102,19 @@ function buildContent(): void {
           winsKnown: isSurvivor,  // false 表示已淘汰，显示"已淘汰"
         })
       })
+    } else if (isEliminatedView) {
+      // 只显示已淘汰的玩家（含自己），按淘汰顺序逆序（最晚淘汰=排名最好排在前）
+      // 存活玩家排名未定，不列入列表，仅在下方显示"N名玩家仍在对战"
+      ;[...session.eliminatedPlayers].reverse().forEach((idx) => {
+        const p = session.players.find((p2) => p2.index === idx)
+        if (!p || p.isAi) return
+        entries.push({ nickname: p.nickname, wins: 0, isMe: idx === session.myIndex, winsKnown: false })
+      })
     } else {
-      // 排名尚未到达：自己 HP 准确，其他人显示"结算中"
+      // 我存活但 game_over 未到：自己 HP 准确，其他人显示"结算中"
       entries.push({
         nickname: session.players.find((p) => p.index === session.myIndex)?.nickname ?? '我',
-        wins: session.playerHps?.[session.myIndex] ?? 0,   // 用 HP 而非胜场数
+        wins: session.playerHps?.[session.myIndex] ?? 0,
         isMe: true,
         winsKnown: true,
       })
@@ -121,10 +133,20 @@ function buildContent(): void {
 
   const listStartY = 210
 
+  // isEliminatedView 时排名从 aliveCount+1 开始（存活玩家占据前几名，排名未定）
+  const elimRankOffset = isEliminatedView && session
+    ? session.players.filter(p => !p.isAi).length - session.eliminatedPlayers.length
+    : 0
+
   entries.forEach((entry, i) => {
-    const rowH = i === 0 ? 155 : 120
-    const rowY = listStartY + (i === 0 ? rowH / 2 : 155 + (i - 1) * 128 + rowH / 2)
-    const rowW = i === 0 ? 560 : 520
+    // ri：真实名次 index（0=第一名），用于样式和标签
+    const ri = i + elimRankOffset
+    const rowH = ri === 0 ? 155 : 120
+    const rowW = ri === 0 ? 560 : 520
+    // rowY：行中心 Y；isEliminatedView 所有行等高（均 120px），normal view 第一行特大
+    const rowY = elimRankOffset > 0
+      ? listStartY + rowH / 2 + i * 128
+      : listStartY + (i === 0 ? rowH / 2 : 155 + (i - 1) * 128 + rowH / 2)
 
     const rowCon = new Container()
     rowCon.x = CANVAS_W / 2
@@ -132,39 +154,38 @@ function buildContent(): void {
 
     const glow = new Graphics()
     glow.roundRect(-rowW / 2 - 2, -rowH / 2 - 2, rowW + 4, rowH + 4, 16)
-      .fill({ color: RANK_BORDER[i] ?? 0x445566, alpha: entry.isMe ? 0.6 : 0.2 })
+      .fill({ color: RANK_BORDER[ri] ?? 0x445566, alpha: entry.isMe ? 0.6 : 0.2 })
     rowCon.addChild(glow)
 
     const rowBg = new Graphics()
-    rowBg.roundRect(-rowW / 2, -rowH / 2, rowW, rowH, 14).fill({ color: RANK_BG[i] ?? 0x111122 })
+    rowBg.roundRect(-rowW / 2, -rowH / 2, rowW, rowH, 14).fill({ color: RANK_BG[ri] ?? 0x111122 })
     rowCon.addChild(rowBg)
 
     const stripe = new Graphics()
-    stripe.roundRect(-rowW / 2, -rowH / 2, 6, rowH, 14).fill({ color: RANK_COLORS[i] ?? 0x445566 })
+    stripe.roundRect(-rowW / 2, -rowH / 2, 6, rowH, 14).fill({ color: RANK_COLORS[ri] ?? 0x445566 })
     rowCon.addChild(stripe)
 
     const rankT = new Text({
-      text: RANK_LABELS[i] ?? `第${i + 1}名`,
-      style: { fill: RANK_COLORS[i] ?? 0x778899, fontSize: i === 0 ? 22 : 18, fontWeight: 'bold' },
+      text: RANK_LABELS[ri] ?? `第${ri + 1}名`,
+      style: { fill: RANK_COLORS[ri] ?? 0x778899, fontSize: ri === 0 ? 22 : 18, fontWeight: 'bold' },
     })
     rankT.anchor.set(0, 0.5)
     rankT.x = -rowW / 2 + 22
-    rankT.y = i === 0 ? -22 : -16
+    rankT.y = ri === 0 ? -22 : -16
     rowCon.addChild(rankT)
 
     const nameT = new Text({
       text: entry.nickname + (entry.isMe ? '（我）' : ''),
-      style: { fill: entry.isMe ? 0xffd86b : 0xddeeff, fontSize: i === 0 ? 32 : 26, fontWeight: entry.isMe ? 'bold' : 'normal' },
+      style: { fill: entry.isMe ? 0xffd86b : 0xddeeff, fontSize: ri === 0 ? 32 : 26, fontWeight: entry.isMe ? 'bold' : 'normal' },
     })
     nameT.anchor.set(0, 0.5)
     nameT.x = -rowW / 2 + 22
-    nameT.y = i === 0 ? 10 : 8
+    nameT.y = ri === 0 ? 10 : 8
     rowCon.addChild(nameT)
 
     // winsKnown=true 表示存活（显示 HP），winsKnown=false 表示已淘汰
     const isEliminated = !entry.winsKnown
     const winsLabel = entry.wins === null ? '断线' : isEliminated ? '已淘汰' : `${entry.wins} HP`
-    // HP color thresholds: green ≥ 4, yellow ≥ 2, gray otherwise
     const wins = entry.wins ?? 0
     const winsColor = entry.wins === null
       ? 0x556677
@@ -173,7 +194,7 @@ function buildContent(): void {
         : (isEliminated ? 0x886655 : (wins >= 4 ? 0x7fff7f : (wins >= 2 ? 0xffd86b : 0xaabbcc)))
     const winsT = new Text({
       text: winsLabel,
-      style: { fill: winsColor, fontSize: i === 0 ? 36 : 28, fontWeight: 'bold' },
+      style: { fill: winsColor, fontSize: ri === 0 ? 36 : 28, fontWeight: 'bold' },
     })
     winsT.anchor.set(1, 0.5)
     winsT.x = rowW / 2 - 20
@@ -188,17 +209,24 @@ function buildContent(): void {
   // ── 总结 ──────────────────────────────────────────────
   if (session) {
     const myHpVal = session.playerHps?.[session.myIndex] ?? session.wins
-    const myRank = entries.findIndex((e) => e.isMe) + 1
+    const myRank = isEliminatedView
+      ? (session.myEliminationRank ?? (entries.findIndex((e) => e.isMe) + 1 + elimRankOffset))
+      : (entries.findIndex((e) => e.isMe) + 1)
 
-    const summaryY = listStartY + 155 + (entries.length - 1) * 128 + 80
+    const summaryY = isEliminatedView
+      ? listStartY + entries.length * 128 + 40
+      : listStartY + 155 + (entries.length - 1) * 128 + 80
 
     const summaryBg = new Graphics()
     summaryBg.roundRect(CANVAS_W / 2 - 240, summaryY - 36, 480, 72, 14).fill({ color: 0x1a2035 })
     root.addChild(summaryBg)
 
+    const rankLabel = RANK_LABELS[myRank - 1] ?? `第${myRank}名`
     const summaryT = new Text({
-      text: `HP剩余 ${myHpVal}  ·  第 ${myRank} 名`,
-      style: { fill: 0x99bbdd, fontSize: 24, align: 'center' },
+      text: isEliminatedView
+        ? rankLabel
+        : `HP剩余 ${myHpVal}  ·  ${rankLabel}`,
+      style: { fill: isEliminatedView ? (RANK_COLORS[myRank - 1] ?? 0x778899) : 0x99bbdd, fontSize: isEliminatedView ? 28 : 24, fontWeight: isEliminatedView ? 'bold' : 'normal', align: 'center' },
     })
     summaryT.anchor.set(0.5, 0.5)
     summaryT.x = CANVAS_W / 2
@@ -236,6 +264,7 @@ export const PvpResultScene: Scene = {
     fadeAlpha = 0
     fadeIn = true
     renderedRankings = PvpContext.getSession()?.rankings ?? null
+    renderedElimRank = PvpContext.getSession()?.myEliminationRank
 
     buildContent()
 
@@ -250,6 +279,7 @@ export const PvpResultScene: Scene = {
       root = null
     }
     renderedRankings = null
+    renderedElimRank = undefined
   },
 
   update(dt: number) {
@@ -259,6 +289,16 @@ export const PvpResultScene: Scene = {
     const currentRankings = PvpContext.getSession()?.rankings ?? null
     if (currentRankings && currentRankings !== renderedRankings) {
       renderedRankings = currentRankings
+      buildContent()
+      root.alpha = 0
+      fadeAlpha = 0
+      fadeIn = true
+    }
+
+    // 检测 myEliminationRank 是否新到达（预判淘汰提前进入此页，round_summary 确认后刷新）
+    const currentElimRank = PvpContext.getSession()?.myEliminationRank
+    if (currentElimRank !== undefined && currentElimRank !== renderedElimRank) {
+      renderedElimRank = currentElimRank
       buildContent()
       root.alpha = 0
       fadeAlpha = 0

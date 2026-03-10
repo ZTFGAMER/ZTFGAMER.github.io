@@ -80,7 +80,7 @@ export type GameEvents = {
 };
 
 export type StatusType = 'burn' | 'poison' | 'regen' | 'freeze' | 'haste' | 'slow';
-export type SceneName  = 'shop' | 'battle' | 'result' | 'menu' | 'pvp-lobby' | 'pvp-result' | 'pvp-spectator';
+export type SceneName  = 'shop' | 'battle' | 'result' | 'menu' | 'pvp-lobby' | 'pvp-result';
 
 type Listener<T> = (payload: T) => void;
 

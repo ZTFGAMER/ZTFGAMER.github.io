@@ -196,12 +196,25 @@ export const PvpContext = {
         }
       })
       console.log('[PvpContext] round_summary day=' + day + ' hpMap=' + JSON.stringify(hpMap) + ' eliminated=' + JSON.stringify(newlyEliminated))
-      // 我被淘汰：停止倒计时，进入观赛模式（保持连接以接收后续 round_summary / game_over）
+      // 通知等待面板刷新（eliminatedPlayers 已更新）
+      if (newlyEliminated.length > 0) PvpContext.onEliminatedPlayersUpdate?.()
+      // 我被淘汰：记录排名，立即离开（host 保留 room 继续管理对局）
       if (newlyEliminated.includes(session.myIndex)) {
-        console.log('[PvpContext] 我被淘汰，进入观赛模式')
         stopCountdown()
         autoSubmitCallback = null
-        SceneManager.goto('pvp-spectator')
+        // 计算淘汰名次：存活人数 + 1（eliminatedPlayers 此时已包含自己）
+        const totalHumans = session.players.filter(p => !p.isAi).length
+        session.myEliminationRank = totalHumans - (session.eliminatedPlayers.length - 1)
+        console.log('[PvpContext] 我被淘汰，排名=' + session.myEliminationRank + ' isHost=' + room?.isHost)
+        if (!room?.isHost) {
+          // 非 host：断开连接（host 端 handlePeerDisconnect 会标记 connected=false，eliminatedSet 已排除）
+          room?.destroy()
+          room = null
+        }
+        // 若已提前（本地预判）跳转到 pvp-result，update 循环会检测 myEliminationRank 变化并刷新，无需重复 goto
+        if (SceneManager.currentName() !== 'pvp-result') {
+          SceneManager.goto('pvp-result')
+        }
       }
     }
 
@@ -299,6 +312,9 @@ export const PvpContext = {
   /** 跳转战斗前触发（ShopScene 用于主动清理等待面板） */
   onBeforeBattleTransition: null as (() => void) | null,
 
+  /** eliminatedPlayers 更新后触发（ShopScene 用于刷新等待面板） */
+  onEliminatedPlayersUpdate: null as (() => void) | null,
+
   /** Returns current PVP mode */
   getPvpMode(): import('./PvpTypes').PvpMode | null {
     return session?.pvpMode ?? null
@@ -342,6 +358,19 @@ export const PvpContext = {
 
     // host 侧 onRoundSummary 可能已同步更新 eliminatedPlayers，若已淘汰则不再 goto('shop')
     if (session.eliminatedPlayers.includes(session.myIndex)) return
+
+    // 非 host 客户端本地预判：若本轮负且 HP 会归零，跳过商店直接等待 round_summary 确认
+    // 扣血公式与 host 一致：Math.max(1, Math.round(day))
+    if (!room?.isHost && pendingRoundWinner === 'enemy') {
+      const myHp = session.playerHps?.[session.myIndex] ?? session.initialHp
+      const damage = Math.max(1, Math.round(session.currentDay))
+      if (myHp - damage <= 0) {
+        console.log('[PvpContext] 本地预判淘汰，等待 round_summary 确认')
+        currentDayPhase = 'shop1'
+        SceneManager.goto('pvp-result')
+        return
+      }
+    }
 
     if (nextDay > (getConfig().pvpRules?.maxRounds ?? 30) + 2) {
       // 安全兜底：超过 maxRounds（PvpRoom 应更早触发 game_over）
@@ -423,6 +452,7 @@ export const PvpContext = {
     pendingSyncStartDay = 0
     syncReadyIndices = []
     PvpContext.onUrgeReceived = null
+    PvpContext.onEliminatedPlayersUpdate = null
     pendingSurvivingDamage = 0
     pendingRoundWinner = 'draw'
     currentDayPhase = 'shop1'

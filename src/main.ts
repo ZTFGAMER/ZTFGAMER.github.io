@@ -10,7 +10,6 @@ import { BattleScene, getBattleFxPerfStats }  from '@/scenes/BattleScene'
 import { MenuScene }    from '@/scenes/MenuScene'
 import { PvpLobbyScene } from '@/scenes/PvpLobbyScene'
 import { PvpResultScene } from '@/scenes/PvpResultScene'
-import { PvpSpectatorScene } from '@/scenes/PvpSpectatorScene'
 import { validateData, getAllItems, getConfig } from '@/core/DataLoader'
 import { setApp, setStageLayout } from '@/core/AppContext'
 import { clearStoredConfig } from '@/config/debugConfig'
@@ -448,7 +447,6 @@ async function bootstrap(): Promise<void> {
   SceneManager.register(BattleScene)
   SceneManager.register(PvpLobbyScene)
   SceneManager.register(PvpResultScene)
-  SceneManager.register(PvpSpectatorScene)
   SceneManager.goto('menu')
 
   if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
