@@ -3224,6 +3224,15 @@ export class CombatEngine {
       if (v > 0 && this.isDamageBonusEligible(item)) item.baseStats.damage += v
     }
 
+    // 文案型口径兼容：如「每次使用后伤害提升，弹药:1」未给出明确增量时，按该物品当前档位基础攻击值增长
+    if (!postAttackDamageLine && lines.some((s) => /每次使用后伤害提升/.test(s)) && this.isDamageBonusEligible(item)) {
+      const attackLine = lines.find((s) => /攻击造成\d+(?:[\/|]\d+)*伤害/.test(s))
+      if (attackLine) {
+        const grow = Math.max(0, Math.round(this.tierValueFromLine(attackLine, tIdx))) * useRepeatCount
+        if (grow > 0) item.baseStats.damage += grow
+      }
+    }
+
     const postUseShieldLine = lines.find((s) => /每次使用后护盾\+\d+(?:[\/|]\d+)*/.test(s))
     if (postUseShieldLine) {
       const v = Math.round(this.tierValueFromLine(postUseShieldLine, tIdx)) * useRepeatCount
