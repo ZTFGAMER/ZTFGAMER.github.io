@@ -27,6 +27,7 @@ export interface PvpSession {
   playerHps: Record<number, number>       // playerIndex → current HP
   eliminatedPlayers: number[]             // playerIndices eliminated (HP ≤ 0)
   currentOpponentPlayerIndex?: number    // 当天实际对手的 playerIndex（bye 轮由 host 解析后下发）
+  initialHp: number                       // 初始血量（房主创建时设定）
 }
 
 /**
@@ -62,13 +63,13 @@ export type PvpMsgToHost =
 
 export type PvpMsgToClient =
   | { type: 'room_state'; players: Omit<PvpPlayer, 'peerId'>[]; maxPlayers: number }
-  | { type: 'game_start'; myIndex: number; totalPlayers: number; countdownMs: number }
+  | { type: 'game_start'; myIndex: number; totalPlayers: number; countdownMs: number; initialHp: number }
   | { type: 'day_ready'; day: number; countdownMs: number }
   | { type: 'player_status'; day: number; readyIndices: number[] }
   | { type: 'opponent_snapshot'; day: number; snapshot: BattleSnapshotBundle; opponentPlayerIndex?: number }
   | { type: 'game_over'; rankings: { nickname: string; wins: number | null; index: number }[] }
   | { type: 'battle_sync_start'; day: number }
-  | { type: 'round_summary'; day: number; hpMap: Record<number, number>; newlyEliminated: number[] }
+  | { type: 'round_summary'; day: number; hpMap: Record<number, number>; newlyEliminated: number[]; snapshots: Record<number, BattleSnapshotBundle> }
 
 export type PvpMsg = PvpMsgToHost | PvpMsgToClient
 

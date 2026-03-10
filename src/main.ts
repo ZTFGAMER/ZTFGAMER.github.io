@@ -432,13 +432,14 @@ async function bootstrap(): Promise<void> {
   bgSprite.height = BASE_H
   bgSprite.zIndex = -100
   bgSprite.eventMode = 'none'
+  bgSprite.tint = 0x1a1a2e  // 先用深色占位，避免背景图加载前闪白
   app.stage.addChildAt(bgSprite, 0)
   try {
     const tex = await Assets.load<Texture>(getSceneImageUrl('background.png'))
+    bgSprite.tint = 0xffffff  // 恢复正常着色
     bgSprite.texture = tex
   } catch (err) {
     console.warn('[main] 背景图加载失败，使用纯色背景兜底', err)
-    bgSprite.tint = 0x1a1a2e
   }
 
   // 5. 注册场景 & 启动
@@ -548,6 +549,12 @@ async function bootstrap(): Promise<void> {
   app.ticker.add((ticker) => {
     const dt = ticker.deltaMS / 1000
     SceneManager.update(dt)
+  })
+
+  // 首帧渲染完成后移除启动遮罩，避免白屏闪烁
+  app.ticker.addOnce(() => {
+    const cover = document.getElementById('boot-cover')
+    if (cover) cover.remove()
   })
 
 }

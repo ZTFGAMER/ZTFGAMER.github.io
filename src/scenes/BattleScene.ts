@@ -57,6 +57,7 @@ let damageStatsRowsCon: Container | null = null
 let damageStatsTabPlayerBtn: Container | null = null
 let damageStatsTabEnemyBtn: Container | null = null
 let sceneFadeOverlay: Graphics | null = null
+let battleIntroCover: Graphics | null = null
 let heroHudG: Graphics | null = null
 let enemyHpInfoCon: Container | null = null
 let playerHpInfoCon: Container | null = null
@@ -1024,13 +1025,27 @@ function tickBattleIntro(dtMs: number): boolean {
   if (!root) return true
   if (battleIntroDurationMs <= 0) {
     root.alpha = 1
+    if (battleIntroCover) {
+      battleIntroCover.parent?.removeChild(battleIntroCover)
+      battleIntroCover.destroy()
+      battleIntroCover = null
+    }
     return true
   }
   battleIntroElapsedMs += Math.max(0, dtMs)
   const p = Math.max(0, Math.min(1, battleIntroElapsedMs / battleIntroDurationMs))
   const eased = 1 - Math.pow(1 - p, 3)
   root.alpha = eased
-  return p >= 1
+  if (battleIntroCover) battleIntroCover.alpha = 1 - eased
+  if (p >= 1) {
+    if (battleIntroCover) {
+      battleIntroCover.parent?.removeChild(battleIntroCover)
+      battleIntroCover.destroy()
+      battleIntroCover = null
+    }
+    return true
+  }
+  return false
 }
 
 function beginBattleExitTransition(): void {
@@ -2395,6 +2410,15 @@ export const BattleScene: Scene = {
     battleExitTransitionDurationMs = 0
     root.alpha = battleIntroDurationMs > 0 ? 0 : 1
 
+    // 入场遮罩：覆盖底层 bgSprite，与 root 淡入交叉渐变，防止背景闪现
+    if (battleIntroDurationMs > 0) {
+      battleIntroCover = new Graphics()
+      battleIntroCover.rect(0, 0, CANVAS_W, CANVAS_H)
+      battleIntroCover.fill({ color: 0x000000 })
+      battleIntroCover.eventMode = 'none'
+      stage.addChild(battleIntroCover)
+    }
+
     titleText = new Text({
       text: '战斗阶段',
       style: { fontSize: 36, fill: 0xffe2a8, fontFamily: 'Arial', fontWeight: 'bold' },
@@ -2864,6 +2888,11 @@ export const BattleScene: Scene = {
     damageStatsTabEnemyBtn = null
     battleEndMask = null
     sceneFadeOverlay = null
+    if (battleIntroCover) {
+      battleIntroCover.parent?.removeChild(battleIntroCover)
+      battleIntroCover.destroy()
+      battleIntroCover = null
+    }
     heroHudG = null
     enemyHpInfoCon = null
     playerHpInfoCon = null

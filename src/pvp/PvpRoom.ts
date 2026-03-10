@@ -28,6 +28,7 @@ export class PvpRoom {
   private _myIndex = 0
   private _totalPlayers = 4
   private _maxPlayers = 4
+  private _initialHp = 6
   // 游戏是否已开始（开始后锁定房间，拒绝迟到加入）
   private gameStarted = false
   // Per-day snapshot collection (host only)
@@ -50,6 +51,8 @@ export class PvpRoom {
   private roundResultsByDay = new Map<number, Map<number, { winner: 'player' | 'enemy' | 'draw'; survivingDamage: number }>>()
   // day → 该天分发快照时的存活玩家 index 列表（升序），供 hostProcessRoundEnd 对称使用
   private dayAliveIndices = new Map<number, number[]>()
+  // 淘汰顺序记录：按淘汰先后排列 playerIndex，第一个元素为最先被淘汰的玩家
+  private eliminationOrder: number[] = []
 
   pvpMode: PvpMode = 'async'
   // Mode A: sync-ready tracking per day
@@ -64,21 +67,23 @@ export class PvpRoom {
   onOpponentSnapshot?: (day: number, snapshot: BattleSnapshotBundle, opponentPlayerIndex?: number) => void
   onGameOver?: (rankings: { nickname: string; wins: number | null; index: number }[]) => void
   onError?: (msg: string) => void
-  onRoundSummary?: (day: number, hpMap: Record<number, number>, newlyEliminated: number[]) => void
+  onRoundSummary?: (day: number, hpMap: Record<number, number>, newlyEliminated: number[], snapshots: Record<number, BattleSnapshotBundle>) => void
 
   get players(): PvpPlayer[] { return this._players }
   get myIndex(): number { return this._myIndex }
   get maxPlayers(): number { return this._maxPlayers }
+  get initialHp(): number { return this._initialHp }
   get isHost(): boolean { return this.role === 'host' }
 
   // ----------------------------------------------------------------
   // 创建房间（房主调用）
   // ----------------------------------------------------------------
-  async createRoom(roomCode: string, nickname: string, maxPlayers: number): Promise<void> {
+  async createRoom(roomCode: string, nickname: string, maxPlayers: number, initialHp = 6): Promise<void> {
     this.role = 'host'
 
     this._maxPlayers = maxPlayers
     this._totalPlayers = maxPlayers
+    this._initialHp = initialHp
 
     await this.peerConn.create(roomCode)
 
@@ -213,7 +218,15 @@ export class PvpRoom {
 
   private handlePeerDisconnect(peerId: string): void {
     const player = this._players.find((p) => p.peerId === peerId)
-    if (player) player.connected = false
+    if (player) {
+      if (!this.gameStarted) {
+        // 游戏未开始：直接移除玩家，避免残留断线玩家占据槽位
+        this._players = this._players.filter((p) => p.peerId !== peerId)
+      } else {
+        // 游戏进行中：标记断线以支持同名玩家重连
+        player.connected = false
+      }
+    }
     this.hostConns.delete(peerId)
     this.broadcastRoomState()
     this.onRoomStateChange?.(this._players)
@@ -235,6 +248,7 @@ export class PvpRoom {
       case 'game_start':
         this._myIndex = msg.myIndex
         this._totalPlayers = msg.totalPlayers
+        this._initialHp = msg.initialHp
         this.onGameStart?.(msg.myIndex, msg.totalPlayers)
         break
       case 'day_ready':
@@ -253,7 +267,7 @@ export class PvpRoom {
         this.onBattleSyncStart?.(msg.day)
         break
       case 'round_summary':
-        this.onRoundSummary?.(msg.day, msg.hpMap, msg.newlyEliminated)
+        this.onRoundSummary?.(msg.day, msg.hpMap, msg.newlyEliminated, msg.snapshots)
         break
     }
   }
@@ -270,7 +284,7 @@ export class PvpRoom {
     this._totalPlayers = this._players.length
 
     // Initialize HP for all players
-    const initHp = getConfig().pvpRules?.initialHp ?? 6
+    const initHp = this._initialHp
     this._players.forEach((p) => this.playerHps.set(p.index, initHp))
 
     // 广播房间状态
@@ -284,6 +298,7 @@ export class PvpRoom {
         myIndex: player.index,
         totalPlayers: this._totalPlayers,
         countdownMs: DEFAULT_COUNTDOWN_MS,
+        initialHp: this._initialHp,
       })
     })
 
@@ -662,10 +677,14 @@ export class PvpRoom {
       if ((this.playerHps.get(player.index) ?? 0) <= 0) {
         this.eliminatedSet.add(player.index)
         newlyEliminated.push(player.index)
+        // 记录淘汰顺序（先被淘汰的在前）
+        if (!this.eliminationOrder.includes(player.index)) {
+          this.eliminationOrder.push(player.index)
+        }
         // 从缓存的最新快照中取该玩家的阵容存入幽灵池
         const lastSnap = this.playerLastSnapshots.get(player.index)
         if (lastSnap) this.ghostSnapshots.push(lastSnap)
-        console.log('[PvpRoom] player[' + player.index + '] eliminated at day=' + day)
+        console.log('[PvpRoom] player[' + player.index + '] eliminated at day=' + day + ' eliminationOrder=' + JSON.stringify(this.eliminationOrder))
       }
     }
 
@@ -682,9 +701,15 @@ export class PvpRoom {
       }
     }
 
+    // 构造所有玩家上局快照 map（用于客户端查看阵容）
+    const snapshots: Record<number, BattleSnapshotBundle> = {}
+    for (const [idx, snap] of this.playerLastSnapshots.entries()) {
+      snapshots[idx] = snap
+    }
+
     console.log('[PvpRoom] hostProcessRoundEnd day=' + day + ' hpMap=' + JSON.stringify(hpMap) + ' newlyEliminated=' + JSON.stringify(newlyEliminated))
-    this.broadcastToClients({ type: 'round_summary', day, hpMap, newlyEliminated })
-    this.onRoundSummary?.(day, hpMap, newlyEliminated)
+    this.broadcastToClients({ type: 'round_summary', day, hpMap, newlyEliminated, snapshots })
+    this.onRoundSummary?.(day, hpMap, newlyEliminated, snapshots)
 
     // Check game over
     const cfg = getConfig()
@@ -692,8 +717,18 @@ export class PvpRoom {
     // 只统计存活的真人玩家数量（AI 不计入胜负）
     const survivorCount = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index)).length
     if (survivorCount <= 1 || day >= maxRounds) {
-      // Use HP as win score for rankings
-      this._players.forEach((p) => this.playerWins.set(p.index, this.playerHps.get(p.index) ?? 0))
+      // 排名分数：存活玩家用"总人数 + 剩余HP"保证高于所有淘汰玩家；
+      // 淘汰玩家用淘汰顺序索引（越晚淘汰 = 索引越大 = 分数越高 = 排名越靠前）
+      this._players.forEach((p) => {
+        if (!this.eliminatedSet.has(p.index)) {
+          // 存活者：totalPlayers + hp 保证分数高于任何淘汰玩家（最大淘汰索引 < totalPlayers - 1）
+          this.playerWins.set(p.index, this._players.length + (this.playerHps.get(p.index) ?? 0))
+        } else {
+          // 淘汰者：eliminationOrder 中索引越大表示越晚被淘汰，排名越好
+          const elimPos = this.eliminationOrder.indexOf(p.index)
+          this.playerWins.set(p.index, elimPos) // 0=最先淘汰(最差)，N-1=最后淘汰(较好)
+        }
+      })
       this.hostTryBroadcastGameOver()
     }
   }
