@@ -11545,14 +11545,14 @@ export const ShopScene: Scene = {
           pendingBattleTransition = true
           pendingAdvanceToNextDay = true
           pvpReadyLocked = true
-          PvpContext.onPlayerReady()
           if (PvpContext.getPvpMode() === 'sync-a') showPvpWaitingPanel(stage)
+          PvpContext.onPlayerReady()
         }
       })
       // 通知 PvpContext 商店已就绪（shop3 阶段会启动本地倒计时）
       PvpContext.onShopReady()
 
-      // sync-a：注册催促通知回调
+      // sync-a：注册回调
       if (PvpContext.getPvpMode() === 'sync-a') {
         pvpUrgeCooldownSet.clear()
         PvpContext.onUrgeReceived = (fromPlayerIndex, fromNickname) => {
@@ -11560,6 +11560,14 @@ export const ShopScene: Scene = {
           const fromPlayer = session?.players.find(p => p.index === fromPlayerIndex)
           const name = fromPlayer?.nickname ?? fromNickname
           showHintToast('pvp_urge', `⏰ ${name} 在催你出战！`, 0xffd86b)
+        }
+        // 跳转战斗前主动清理等待面板（防止面板残留到战斗场景）
+        PvpContext.onBeforeBattleTransition = () => {
+          if (pvpWaitingPanel) {
+            pvpWaitingPanel.parent?.removeChild(pvpWaitingPanel)
+            pvpWaitingPanel.destroy({ children: true })
+            pvpWaitingPanel = null
+          }
         }
       }
     }
@@ -12279,10 +12287,11 @@ export const ShopScene: Scene = {
       // PVP 模式：提交快照给对手，等待对方快照，不走本地过渡动画
       if (PvpContext.isActive()) {
         pvpReadyLocked = true
-        PvpContext.onPlayerReady()
         phaseBtnHandle?.setLabel('等待...')
         phaseBtnHandle?.redraw(true)
+        // sync-a：先建面板再调 onPlayerReady，防止 host 同步触发 goto('battle') 后面板才加入
         if (PvpContext.getPvpMode() === 'sync-a') showPvpWaitingPanel(stage)
+        PvpContext.onPlayerReady()
         return
       }
       beginBattleStartTransition()
@@ -12603,6 +12612,7 @@ export const ShopScene: Scene = {
       pvpWaitingPanel = null
     }
     PvpContext.onUrgeReceived = null
+    PvpContext.onBeforeBattleTransition = null
     pvpUrgeCooldownSet.clear()
     if (btnRow)       stage.removeChild(btnRow)
     if (dayDebugCon)  stage.removeChild(dayDebugCon)

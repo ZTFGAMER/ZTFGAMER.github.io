@@ -296,6 +296,9 @@ export const PvpContext = {
   /** sync-a：收到催促通知时触发（由 ShopScene 设置） */
   onUrgeReceived: null as ((fromPlayerIndex: number, fromNickname: string) => void) | null,
 
+  /** 跳转战斗前触发（ShopScene 用于主动清理等待面板） */
+  onBeforeBattleTransition: null as (() => void) | null,
+
   /** Returns current PVP mode */
   getPvpMode(): import('./PvpTypes').PvpMode | null {
     return session?.pvpMode ?? null
@@ -496,6 +499,9 @@ function grantWildBonus(won: boolean): void {
 // ----------------------------------------------------------------
 
 function applyOpponentSnapshot(day: number, opponentSnap: BattleSnapshotBundle): void {
+  // 跳转前主动清理等待面板（防止面板在 onPlayerReady 同步触发 goto 时还未加入 stage）
+  PvpContext.onBeforeBattleTransition?.()
+  PvpContext.onBeforeBattleTransition = null
   const mySnap = getBattleSnapshot()
   if (!mySnap) {
     console.warn('[PvpContext] 无法获取我方快照，以空阵容参战')
