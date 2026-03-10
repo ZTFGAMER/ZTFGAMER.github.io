@@ -597,8 +597,8 @@ function drawModeSelectView(): void {
   if (!root) return
 
   const modes: { mode: PvpMode; label: string; sub: string; color: number; border: number }[] = [
-    { mode: 'async',  label: '巴扎异步对战', sub: '经典模式·双方独立结算', color: 0x12213a, border: 0x5b8def },
-    { mode: 'sync-a', label: '即时同步对战', sub: '双端同步启动·确定性模拟', color: 0x1a2a12, border: 0x4caf50 },
+    { mode: 'async', label: '巴扎对战（伪）', sub: '野怪闯关·异步联机', color: 0x12213a, border: 0x5b8def },
+    { mode: 'sync-a', label: '同步对战', sub: '实时联机·同步对战', color: 0x1a2a12, border: 0x4caf50 },
   ]
 
   modes.forEach((m, i) => {

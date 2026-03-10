@@ -266,10 +266,10 @@ export const MenuScene: Scene = {
     root.addChild(pvpLabel)
 
     // 三个 PVP 模式按钮（标签底部约 pvpSepY+42，按钮光效顶部需留 14px 间距）
-    const pvpBtn1 = makePvpModeBtn('巴扎异步对战', '经典模式 · 双方独立结算', 0x5b8def, 0x12213a, pvpSepY + 106, 'async')
+    const pvpBtn1 = makePvpModeBtn('巴扎对战（伪）', '野怪闯关 · 异步联机', 0x5b8def, 0x12213a, pvpSepY + 106, 'async')
     root.addChild(pvpBtn1)
 
-    const pvpBtn2 = makePvpModeBtn('即时同步对战',   '双端同步启动 · 确定性模拟',  0x4caf50, 0x0f1f10, pvpSepY + 220, 'sync-a')
+    const pvpBtn2 = makePvpModeBtn('同步对战', '实时联机 · 同步对战', 0x4caf50, 0x0f1f10, pvpSepY + 220, 'sync-a')
     root.addChild(pvpBtn2)
 
     // ── 底部 ──────────────────────────────────────────────
