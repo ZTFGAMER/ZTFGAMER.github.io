@@ -69,6 +69,8 @@ export class PvpRoom {
   onGameOver?: (rankings: { nickname: string; wins: number | null; index: number }[]) => void
   onError?: (msg: string) => void
   onRoundSummary?: (day: number, hpMap: Record<number, number>, newlyEliminated: number[], snapshots: Record<number, BattleSnapshotBundle>) => void
+  onSyncReadyUpdate?: (day: number, readyIndices: number[]) => void
+  onUrgeNotify?: (fromPlayerIndex: number, fromNickname: string) => void
 
   get players(): PvpPlayer[] { return this._players }
   get myIndex(): number { return this._myIndex }
@@ -204,11 +206,30 @@ export class PvpRoom {
       const day = msg.day
       if (!this.daySyncReadyPlayers.has(day)) this.daySyncReadyPlayers.set(day, new Set())
       this.daySyncReadyPlayers.get(day)!.add(player.index)
+      // 广播当前就绪状态给所有人
+      const readyIndices = Array.from(this.daySyncReadyPlayers.get(day)!)
+      this.broadcastToClients({ type: 'sync_ready_update', day, readyIndices })
+      this.onSyncReadyUpdate?.(day, readyIndices)
       const humanPlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
       if (humanPlayers.every((p) => this.daySyncReadyPlayers.get(day)?.has(p.index))) {
-        console.log('[PvpRoom] 所有玩家 sync-ready，广播 battle_sync_start day=' + day)
+        console.log('[PvpRoom] 所有玩家 sync-ready，统一分发当日快照 + 广播 battle_sync_start day=' + day)
+        // 统一分发：所有人当日快照已到齐，保证对战的都是今日最新阵容
+        for (const p of humanPlayers) {
+          this.hostDispatchToPlayer(p.index, day)
+        }
         this.broadcastToClients({ type: 'battle_sync_start', day })
         this.onBattleSyncStart?.(day)
+      }
+    } else if (msg.type === 'urge') {
+      const fromPlayer = this._players.find((p) => p.peerId === peerId)
+      if (!fromPlayer) return
+      const target = this._players.find((p) => p.index === msg.targetPlayerIndex)
+      if (!target) return
+      if (target.index === 0) {
+        // 催促 host 自身
+        this.onUrgeNotify?.(fromPlayer.index, fromPlayer.nickname)
+      } else {
+        this.sendToPlayer(target.index, { type: 'urge_notify', fromPlayerIndex: fromPlayer.index, fromNickname: fromPlayer.nickname })
       }
     } else if (msg.type === 'round_result') {
       const player = this._players.find((p) => p.peerId === peerId)
@@ -270,6 +291,12 @@ export class PvpRoom {
         break
       case 'round_summary':
         this.onRoundSummary?.(msg.day, msg.hpMap, msg.newlyEliminated, msg.snapshots)
+        break
+      case 'sync_ready_update':
+        this.onSyncReadyUpdate?.(msg.day, msg.readyIndices)
+        break
+      case 'urge_notify':
+        this.onUrgeNotify?.(msg.fromPlayerIndex, msg.fromNickname)
         break
     }
   }
@@ -360,7 +387,7 @@ export class PvpRoom {
     this.hostStoreAndMaybeDispatch(0, day, snapshot, isFinal)
   }
 
-  /** 更新快照并在 isFinal 时立即对该玩家分发 */
+  /** 更新快照并在 isFinal 时分发（sync-a：等全员提交后统一分发；async：立即分发） */
   private hostStoreAndMaybeDispatch(playerIndex: number, day: number, snapshot: BattleSnapshotBundle, isFinal: boolean): void {
     // 始终更新 latestDaySnapshots（shop1→shop2→shop3 覆盖）
     const map = this.latestDaySnapshots.get(day) ?? new Map<number, BattleSnapshotBundle>()
@@ -370,9 +397,16 @@ export class PvpRoom {
     console.log('[PvpRoom] 收到' + (isFinal ? '最终' : '中间') + '快照 day=' + day + ' player[' + playerIndex + '] isFinal=' + isFinal)
 
     if (isFinal) {
-      // 最终快照：更新昨日存档（供后续天数的兜底）并立即分发
+      // 最终快照：更新昨日存档（供后续天数的兜底）
       this.playerLastSnapshots.set(playerIndex, snapshot)
-      this.hostDispatchToPlayer(playerIndex, day)
+
+      if (this.pvpMode === 'sync-a') {
+        // sync-a：不立即分发，等所有存活玩家提交后在 notifySyncReady 时统一分发
+        // 确保所有人拿到的都是当日最新阵容
+      } else {
+        // async：立即分发（先提交先战斗）
+        this.hostDispatchToPlayer(playerIndex, day)
+      }
     }
   }
 
@@ -559,14 +593,36 @@ export class PvpRoom {
     if (this.isHost) {
       if (!this.daySyncReadyPlayers.has(day)) this.daySyncReadyPlayers.set(day, new Set())
       this.daySyncReadyPlayers.get(day)!.add(0)
+      // 广播当前就绪状态
+      const readyIndices = Array.from(this.daySyncReadyPlayers.get(day)!)
+      this.broadcastToClients({ type: 'sync_ready_update', day, readyIndices })
+      this.onSyncReadyUpdate?.(day, readyIndices)
       const humanPlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
       if (humanPlayers.every((p) => this.daySyncReadyPlayers.get(day)?.has(p.index))) {
-        console.log('[PvpRoom] 所有玩家 sync-ready（host路径），广播 battle_sync_start day=' + day)
+        console.log('[PvpRoom] 所有玩家 sync-ready（host路径），统一分发当日快照 + 广播 battle_sync_start day=' + day)
+        // 统一分发：此时所有人当日快照已到齐，所有玩家对战的都是今日最新阵容
+        for (const p of humanPlayers) {
+          this.hostDispatchToPlayer(p.index, day)
+        }
         this.broadcastToClients({ type: 'battle_sync_start', day })
         this.onBattleSyncStart?.(day)
       }
     } else {
       this.sendToHost({ type: 'battle_sync_ready', day })
+    }
+  }
+
+  /** 催促某个玩家（client/host 均可调用） */
+  sendUrge(targetPlayerIndex: number): void {
+    if (this.isHost) {
+      // host 催促别人：直接发给目标
+      const target = this._players.find((p) => p.index === targetPlayerIndex)
+      if (!target || target.isAi) return
+      const me = this._players.find((p) => p.index === 0)
+      if (!me) return
+      this.sendToPlayer(target.index, { type: 'urge_notify', fromPlayerIndex: 0, fromNickname: me.nickname })
+    } else {
+      this.sendToHost({ type: 'urge', targetPlayerIndex })
     }
   }
 

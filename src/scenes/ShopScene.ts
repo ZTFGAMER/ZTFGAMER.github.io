@@ -87,6 +87,7 @@ let skillTestOverlay: Container       | null = null
 let eventTestOverlay: Container       | null = null
 let itemTestOverlay:  Container       | null = null
 let pvpPlayerListOverlay: Container  | null = null
+let pvpWaitingPanel:      Container  | null = null
 let hintToastCon:     Container       | null = null
 let hintToastBg:      Graphics        | null = null
 let hintToastText:    Text            | null = null
@@ -99,7 +100,7 @@ let unlockRevealLayer: Container | null = null
 let unlockRevealTickFn: (() => void) | null = null
 let unlockRevealActive = false
 
-type ToastReason = 'no_gold_buy' | 'no_gold_refresh' | 'backpack_full_buy' | 'backpack_full_transfer'
+type ToastReason = 'no_gold_buy' | 'no_gold_refresh' | 'backpack_full_buy' | 'backpack_full_transfer' | 'pvp_urge'
 
 // 商店拖拽状态
 let shopDragFloater:   Container    | null = null
@@ -288,6 +289,8 @@ type SavedShopState = {
 let pendingBattleTransition = false
 let pendingAdvanceToNextDay = false
 let pvpReadyLocked = false
+// sync-a 催促冷却：每轮对同一玩家只能催一次
+let pvpUrgeCooldownSet = new Set<number>()
 let pendingSkillBarMoveStartAtMs: number | null = null
 let savedShopState: SavedShopState | null = null
 
@@ -11308,6 +11311,205 @@ function buildPvpPlayerListContent(overlay: Container): void {
 }
 
 // ============================================================
+// sync-a 等待面板：按准备后显示，所有人就绪后自动消失
+// 展示玩家就绪状态 + 催促 + 偷看上局阵容
+// ============================================================
+
+function showPvpWaitingPanel(stage: Container): void {
+  if (pvpWaitingPanel) {
+    pvpWaitingPanel.destroy({ children: true })
+    stage.removeChild(pvpWaitingPanel)
+  }
+  const panel = new Container()
+  panel.zIndex = 200
+  pvpWaitingPanel = panel
+  stage.addChild(panel)
+  buildPvpWaitingPanelContent(panel)
+}
+
+function refreshPvpWaitingPanel(): void {
+  if (!pvpWaitingPanel) return
+  buildPvpWaitingPanelContent(pvpWaitingPanel)
+}
+
+function buildPvpWaitingPanelContent(panel: Container): void {
+  panel.removeChildren()
+
+  const session = PvpContext.getSession()
+  if (!session) return
+
+  const readySet = new Set(PvpContext.getSyncReadyIndices())
+  const snapshots = PvpContext.getLastPlayerSnapshots()
+  const alivePlayers = session.players.filter(p => !session.eliminatedPlayers.includes(p.index))
+  const totalAlive = alivePlayers.length
+  const readyCount = alivePlayers.filter(p => readySet.has(p.index)).length
+
+  // ── 半透明背景遮罩（阻止商店交互）──
+  const mask = new Graphics()
+  mask.rect(0, 0, CANVAS_W, CANVAS_H).fill({ color: 0x000000, alpha: 0.6 })
+  mask.eventMode = 'static'  // 拦截点击，锁定商店
+  panel.addChild(mask)
+
+  // ── 面板主体 ──
+  const PANEL_H = Math.min(110 + alivePlayers.length * 90 + 24, CANVAS_H - 160)
+  const PANEL_Y = (CANVAS_H - PANEL_H) / 2
+  const PANEL_X = 30
+  const PANEL_W = CANVAS_W - 60
+
+  const panelBg = new Graphics()
+  panelBg.roundRect(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 20)
+    .fill({ color: 0x080f1a })
+  panelBg.roundRect(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, 20)
+    .stroke({ color: readyCount === totalAlive ? 0x44cc88 : 0x2a3d5c, width: 2 })
+  panelBg.eventMode = 'static'
+  panel.addChild(panelBg)
+
+  // ── 标题 ──
+  const titleT = new Text({
+    text: readyCount === totalAlive ? '全员就绪！' : `等待其他玩家... (${readyCount}/${totalAlive})`,
+    style: {
+      fill: readyCount === totalAlive ? 0x44ee99 : 0xffd86b,
+      fontSize: 30,
+      fontWeight: 'bold',
+    },
+  })
+  titleT.anchor.set(0.5, 0)
+  titleT.x = CANVAS_W / 2
+  titleT.y = PANEL_Y + 18
+  panel.addChild(titleT)
+
+  // ── 玩家列表 ──
+  const ROW_H = 76
+  const ROW_GAP = 8
+  const ROW_W = PANEL_W - 32
+  let cursorY = PANEL_Y + 66
+
+  alivePlayers.forEach((player) => {
+    const isReady = readySet.has(player.index)
+    const isMe = player.index === session.myIndex
+    const hasSnap = !!snapshots[player.index]
+
+    const rowCon = new Container()
+    rowCon.x = PANEL_X + 16
+    rowCon.y = cursorY
+
+    // 行背景
+    const rowBg = new Graphics()
+    rowBg.roundRect(0, 0, ROW_W, ROW_H, 12)
+      .fill({ color: isMe ? 0x14102a : (isReady ? 0x0d1e12 : 0x10192a) })
+    rowBg.roundRect(0, 0, ROW_W, ROW_H, 12)
+      .stroke({ color: isMe ? 0x6644aa : (isReady ? 0x336644 : 0x1c2e44), width: 1 })
+    rowCon.addChild(rowBg)
+
+    // 就绪状态图标
+    const iconT = new Text({
+      text: isReady ? '✅' : '⏳',
+      style: { fontSize: 28 },
+    })
+    iconT.anchor.set(0.5, 0.5)
+    iconT.x = 28
+    iconT.y = ROW_H / 2
+    rowCon.addChild(iconT)
+
+    // 名字
+    const nameT = new Text({
+      text: player.nickname + (isMe ? ' (我)' : ''),
+      style: {
+        fill: isMe ? 0xffd86b : (isReady ? 0x88eebb : 0xccddf0),
+        fontSize: 26,
+        fontWeight: isMe ? 'bold' : 'normal',
+      },
+    })
+    nameT.anchor.set(0, 0.5)
+    nameT.x = 56
+    nameT.y = ROW_H / 2
+    rowCon.addChild(nameT)
+
+    // 右侧按钮区
+    const BTN_W = 88
+    const BTN_H = 40
+    const btnX = ROW_W - BTN_W - 10
+
+    if (!isMe && !isReady) {
+      // 催促按钮
+      const onCooldown = pvpUrgeCooldownSet.has(player.index)
+      const urgeBtnCon = new Container()
+      urgeBtnCon.x = btnX
+      urgeBtnCon.y = (ROW_H - BTN_H) / 2
+
+      const urgeBg = new Graphics()
+      urgeBg.roundRect(0, 0, BTN_W, BTN_H, 10)
+        .fill({ color: onCooldown ? 0x1a2030 : 0x7c2020, alpha: 0.95 })
+      urgeBg.roundRect(0, 0, BTN_W, BTN_H, 10)
+        .stroke({ color: onCooldown ? 0x2a3040 : 0xcc4422, width: 1.5 })
+      urgeBtnCon.addChild(urgeBg)
+
+      const urgeT = new Text({
+        text: onCooldown ? '已催' : '催 ⏰',
+        style: {
+          fill: onCooldown ? 0x445566 : 0xff8866,
+          fontSize: 20,
+          fontWeight: 'bold',
+        },
+      })
+      urgeT.anchor.set(0.5, 0.5)
+      urgeT.x = BTN_W / 2
+      urgeT.y = BTN_H / 2
+      urgeBtnCon.addChild(urgeT)
+
+      if (!onCooldown) {
+        urgeBtnCon.eventMode = 'static'
+        urgeBtnCon.cursor = 'pointer'
+        urgeBtnCon.on('pointerdown', (e) => {
+          e.stopPropagation()
+          pvpUrgeCooldownSet.add(player.index)
+          PvpContext.sendUrge(player.index)
+          refreshPvpWaitingPanel()
+        })
+        urgeBtnCon.on('pointerover', () => { urgeBg.alpha = 0.75 })
+        urgeBtnCon.on('pointerout', () => { urgeBg.alpha = 1 })
+      }
+      rowCon.addChild(urgeBtnCon)
+    } else if (!isMe && hasSnap) {
+      // 偷看阵容按钮（已就绪 or 自己）
+      const peekBtnCon = new Container()
+      peekBtnCon.x = btnX
+      peekBtnCon.y = (ROW_H - BTN_H) / 2
+
+      const peekBg = new Graphics()
+      peekBg.roundRect(0, 0, BTN_W, BTN_H, 10)
+        .fill({ color: 0x0f2238, alpha: 0.95 })
+      peekBg.roundRect(0, 0, BTN_W, BTN_H, 10)
+        .stroke({ color: 0x2255aa, width: 1.5 })
+      peekBtnCon.addChild(peekBg)
+
+      const peekT = new Text({
+        text: '看阵容 👀',
+        style: { fill: 0x5599ee, fontSize: 18, fontWeight: 'bold' },
+      })
+      peekT.anchor.set(0.5, 0.5)
+      peekT.x = BTN_W / 2
+      peekT.y = BTN_H / 2
+      peekBtnCon.addChild(peekT)
+
+      peekBtnCon.eventMode = 'static'
+      peekBtnCon.cursor = 'pointer'
+      peekBtnCon.on('pointerdown', (e) => {
+        e.stopPropagation()
+        pvpPlayerListExpandedIndex = pvpPlayerListExpandedIndex === player.index ? -1 : player.index
+        openPvpPlayerListOverlay()
+      })
+      peekBtnCon.on('pointerover', () => { peekBg.alpha = 0.75 })
+      peekBtnCon.on('pointerout', () => { peekBg.alpha = 1 })
+      rowCon.addChild(peekBtnCon)
+    }
+
+    panel.addChild(rowCon)
+    cursorY += ROW_H + ROW_GAP
+  })
+}
+
+// ============================================================
 // PVP 结束后清理残留的 in-memory 状态，防止 PVP 存档污染 PVE 商店
 // 由 PvpContext.endSession() 调用
 // ============================================================
@@ -11344,10 +11546,22 @@ export const ShopScene: Scene = {
           pendingAdvanceToNextDay = true
           pvpReadyLocked = true
           PvpContext.onPlayerReady()
+          if (PvpContext.getPvpMode() === 'sync-a') showPvpWaitingPanel(stage)
         }
       })
       // 通知 PvpContext 商店已就绪（shop3 阶段会启动本地倒计时）
       PvpContext.onShopReady()
+
+      // sync-a：注册催促通知回调
+      if (PvpContext.getPvpMode() === 'sync-a') {
+        pvpUrgeCooldownSet.clear()
+        PvpContext.onUrgeReceived = (fromPlayerIndex, fromNickname) => {
+          const session = PvpContext.getSession()
+          const fromPlayer = session?.players.find(p => p.index === fromPlayerIndex)
+          const name = fromPlayer?.nickname ?? fromNickname
+          showHintToast('pvp_urge', `⏰ ${name} 在催你出战！`, 0xffd86b)
+        }
+      }
     }
 
     battlePassivePrevStats.clear()
@@ -12068,6 +12282,7 @@ export const ShopScene: Scene = {
         PvpContext.onPlayerReady()
         phaseBtnHandle?.setLabel('等待...')
         phaseBtnHandle?.redraw(true)
+        if (PvpContext.getPvpMode() === 'sync-a') showPvpWaitingPanel(stage)
         return
       }
       beginBattleStartTransition()
@@ -12382,6 +12597,13 @@ export const ShopScene: Scene = {
       pvpPlayerListOverlay.destroy({ children: true })
       pvpPlayerListOverlay = null
     }
+    if (pvpWaitingPanel) {
+      stage.removeChild(pvpWaitingPanel)
+      pvpWaitingPanel.destroy({ children: true })
+      pvpWaitingPanel = null
+    }
+    PvpContext.onUrgeReceived = null
+    pvpUrgeCooldownSet.clear()
     if (btnRow)       stage.removeChild(btnRow)
     if (dayDebugCon)  stage.removeChild(dayDebugCon)
     if (settingsBtn)  stage.removeChild(settingsBtn)
@@ -12554,6 +12776,15 @@ export const ShopScene: Scene = {
         livesText.text = next
         livesText.style.fill = myHp <= 2 ? 0xff6a6a : 0xffd4d4
         livesText.x = CANVAS_W - livesText.width - 18
+      }
+    }
+    // sync-a 等待面板：就绪状态变化时刷新
+    if (pvpWaitingPanel) {
+      const cur = PvpContext.getSyncReadyIndices()
+      const curKey = cur.slice().sort().join(',')
+      if ((pvpWaitingPanel as any)._lastReadyKey !== curKey) {
+        ;(pvpWaitingPanel as any)._lastReadyKey = curKey
+        refreshPvpWaitingPanel()
       }
     }
   },

@@ -84,13 +84,18 @@ function buildContent(): void {
 
   if (session) {
     if (hasRealRankings) {
-      // 真实排名（已从 game_over 收到，已按 wins 降序）
+      // 真实排名（已从 game_over 收到，已按复合分数降序）
+      // 复合分数：存活者 = totalPlayers + remainingHP，淘汰者 = eliminationOrder index（< totalPlayers）
+      const totalPlayers = session.players.length
       session.rankings!.forEach((r) => {
+        // 解码复合分数：>= totalPlayers 表示存活，实际 HP = wins - totalPlayers
+        const isSurvivor = r.wins !== null && r.wins >= totalPlayers
+        const displayHp = isSurvivor ? r.wins! - totalPlayers : 0
         entries.push({
           nickname: r.nickname,
-          wins: r.wins,
+          wins: isSurvivor ? displayHp : 0,
           isMe: r.index === session.myIndex,
-          winsKnown: r.wins !== null,
+          winsKnown: isSurvivor,  // false 表示已淘汰，显示"已淘汰"
         })
       })
     } else {
@@ -156,9 +161,9 @@ function buildContent(): void {
     nameT.y = i === 0 ? 10 : 8
     rowCon.addChild(nameT)
 
-    // HP display: entry.wins now stores HP (set by hostProcessRoundEnd)
-    const isEliminated = entry.wins !== null && entry.winsKnown && entry.wins <= 0
-    const winsLabel = entry.wins === null ? '断线' : entry.winsKnown ? (isEliminated ? '已淘汰' : `${entry.wins} HP`) : '结算中...'
+    // winsKnown=true 表示存活（显示 HP），winsKnown=false 表示已淘汰
+    const isEliminated = !entry.winsKnown
+    const winsLabel = entry.wins === null ? '断线' : isEliminated ? '已淘汰' : `${entry.wins} HP`
     // HP color thresholds: green ≥ 4, yellow ≥ 2, gray otherwise
     const wins = entry.wins ?? 0
     const winsColor = entry.wins === null

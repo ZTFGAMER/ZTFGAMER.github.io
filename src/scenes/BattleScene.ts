@@ -2687,16 +2687,9 @@ export const BattleScene: Scene = {
     console.log(`[BattleScene] 进入战斗场景 day=${snapshot.day} entities=${snapshot.entities.length} cols=${snapshot.activeColCount}`)
 
     // PVP sync mode setup
-    const pvpMode = PvpContext.getPvpMode()
-    syncAStarted = pvpMode !== 'sync-a'  // false only for sync-a; true for all others (allows engine.update)
-
-    if (pvpMode === 'sync-a') {
-      // Notify PvpContext we're ready; start battle when all players are ready
-      PvpContext.notifyBattleSyncReady(battleDay, () => {
-        syncAStarted = true
-        battleIntroElapsedMs = 0  // reset intro so it starts fresh
-      })
-    }
+    // sync-a 的同步已在商店阶段完成（所有人 battle_sync_ready 后才 goto('battle')）
+    // 进入战斗场景时直接启动引擎
+    syncAStarted = true
 
     const board = engine.getBoardState()
     bootstrapBattleStatEntriesFromBoard()

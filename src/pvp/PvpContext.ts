@@ -38,6 +38,11 @@ let pendingDayReadyAt = 0   // 非 0 表示有待展示的 day_ready，值为到
 
 // Mode A: sync-start pending
 let syncStartCallbacks = new Map<number, (() => void)>() // day → callback
+// sync-a: 收到对手快照后缓存，等 battle_sync_start 再跳转
+let pendingOpponentSnap: import('@/combat/BattleSnapshotStore').BattleSnapshotBundle | null = null
+let pendingSyncStartDay = 0  // battle_sync_start 比 opponent_snapshot 先到时记录
+// sync-a: 当前轮各玩家就绪状态
+let syncReadyIndices: number[] = []
 
 // ---------- 每天阶段状态 ----------
 // shop1 → wild1 → shop2 → wild2 → shop3 → pvp
@@ -126,6 +131,20 @@ export const PvpContext = {
       if (session && opponentPlayerIndex !== undefined) {
         session.currentOpponentPlayerIndex = opponentPlayerIndex
       }
+
+      if (!isAsyncMode()) {
+        // sync-a：缓存快照，等 battle_sync_start 再进入战斗场景
+        // （若 battle_sync_start 已先到，则立即应用）
+        if (pendingSyncStartDay === day) {
+          pendingSyncStartDay = 0
+          stopCountdown()
+          applyOpponentSnapshot(day, opponentSnap)
+        } else {
+          pendingOpponentSnap = opponentSnap
+        }
+        return
+      }
+
       stopCountdown()
       applyOpponentSnapshot(day, opponentSnap)
     }
@@ -146,6 +165,20 @@ export const PvpContext = {
     pvpRoom.onBattleSyncStart = (day) => {
       const cb = syncStartCallbacks.get(day)
       if (cb) { cb(); syncStartCallbacks.delete(day) }
+
+      if (!isAsyncMode() && session) {
+        if (pendingOpponentSnap) {
+          // 正常路径：快照已缓存，立即应用并进入战斗
+          const snap = pendingOpponentSnap
+          pendingOpponentSnap = null
+          pendingSyncStartDay = 0
+          stopCountdown()
+          applyOpponentSnapshot(session.currentDay, snap)
+        } else {
+          // 边缘情况：battle_sync_start 比 opponent_snapshot 先到，记录等待
+          pendingSyncStartDay = day
+        }
+      }
     }
 
     pvpRoom.onRoundSummary = (day, hpMap, newlyEliminated, snapshots) => {
@@ -170,6 +203,14 @@ export const PvpContext = {
         autoSubmitCallback = null
         SceneManager.goto('pvp-spectator')
       }
+    }
+
+    pvpRoom.onSyncReadyUpdate = (_day, readyIndices) => {
+      syncReadyIndices = readyIndices
+    }
+
+    pvpRoom.onUrgeNotify = (fromPlayerIndex, fromNickname) => {
+      PvpContext.onUrgeReceived?.(fromPlayerIndex, fromNickname)
     }
 
     // 初始化 HP（使用 session.initialHp，fallback 6）
@@ -198,8 +239,9 @@ export const PvpContext = {
     console.log('[PvpContext] onPlayerReady phase=' + currentDayPhase + ' day=' + session.currentDay + ' entities=' + mySnap.entities.length)
 
     if (!isAsyncMode()) {
-      // sync-a：原有逻辑，提交最终快照后等待 Host 下发对手快照
+      // sync-a：提交最终快照 + 立即发 sync_ready，停留商店等所有人准备好
       room.submitSnapshot(session.currentDay, mySnap, true)
+      room.notifySyncReady(session.currentDay)
       stopCountdown()
       return
     }
@@ -239,6 +281,20 @@ export const PvpContext = {
   getLastPlayerSnapshots(): Record<number, import('@/combat/BattleSnapshotStore').BattleSnapshotBundle> {
     return lastPlayerSnapshots
   },
+
+  /** sync-a：获取当前轮已就绪的 playerIndex 列表 */
+  getSyncReadyIndices(): number[] {
+    return syncReadyIndices
+  },
+
+  /** sync-a：催促某个玩家 */
+  sendUrge(targetPlayerIndex: number): void {
+    if (!active || !room) return
+    room.sendUrge(targetPlayerIndex)
+  },
+
+  /** sync-a：收到催促通知时触发（由 ShopScene 设置） */
+  onUrgeReceived: null as ((fromPlayerIndex: number, fromNickname: string) => void) | null,
 
   /** Returns current PVP mode */
   getPvpMode(): import('./PvpTypes').PvpMode | null {
@@ -360,6 +416,10 @@ export const PvpContext = {
     active = false
     pendingDayReadyAt = 0
     syncStartCallbacks.clear()
+    pendingOpponentSnap = null
+    pendingSyncStartDay = 0
+    syncReadyIndices = []
+    PvpContext.onUrgeReceived = null
     pendingSurvivingDamage = 0
     pendingRoundWinner = 'draw'
     currentDayPhase = 'shop1'

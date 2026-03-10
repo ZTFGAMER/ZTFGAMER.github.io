@@ -66,6 +66,7 @@ export type PvpMsgToHost =
   | { type: 'wins_report'; wins: number }
   | { type: 'battle_sync_ready'; day: number }
   | { type: 'round_result'; day: number; winner: 'player' | 'enemy' | 'draw'; survivingDamage: number }
+  | { type: 'urge'; targetPlayerIndex: number }
 
 export type PvpMsgToClient =
   | { type: 'room_state'; players: Omit<PvpPlayer, 'peerId'>[]; maxPlayers: number }
@@ -76,6 +77,8 @@ export type PvpMsgToClient =
   | { type: 'game_over'; rankings: { nickname: string; wins: number | null; index: number }[] }
   | { type: 'battle_sync_start'; day: number }
   | { type: 'round_summary'; day: number; hpMap: Record<number, number>; newlyEliminated: number[]; snapshots: Record<number, BattleSnapshotBundle> }
+  | { type: 'sync_ready_update'; day: number; readyIndices: number[] }
+  | { type: 'urge_notify'; fromPlayerIndex: number; fromNickname: string }
 
 export type PvpMsg = PvpMsgToHost | PvpMsgToClient
 
