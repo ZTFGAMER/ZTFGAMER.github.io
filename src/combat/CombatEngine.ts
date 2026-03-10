@@ -47,6 +47,7 @@ interface CombatItemRunner {
     currentChargeMs: number
     pendingChargeMs: number
     tempDamageBonus: number
+    damageScale: number
     bonusMulticast: number
     executeCount: number
     ammoMax: number
@@ -111,7 +112,18 @@ interface PendingChargePulse {
   gainMs: number
 }
 
+interface PendingAmmoRefill {
+  dueTick: number
+  sourceItemId: string
+  targetItemId: string
+  gainAmmo: number
+  chargeMs: number
+}
+
 const DEBUG_SHIELD_CHARGE = false
+const HERO_MAX_HP_CAP = 999999
+const HERO_SHIELD_CAP = 999999
+const ITEM_DAMAGE_CAP = 999999
 
 interface CombatStartOptions {
   enemyDisabled?: boolean
@@ -329,7 +341,7 @@ export interface CombatBoardItem {
 }
 
 const FALLBACK_CD_MS = 3000
-const MIN_REDUCED_CD_MS = 500
+const MIN_REDUCED_CD_MS = 100
 
 type CombatRuntimeOverride = {
   burnTickMs?: number
@@ -442,6 +454,7 @@ export class CombatEngine {
   private pendingHits: PendingHit[] = []
   private pendingItemFires: PendingItemFire[] = []
   private pendingChargePulses: PendingChargePulse[] = []
+  private pendingAmmoRefills: PendingAmmoRefill[] = []
   private lastQueuedFireTickByItem: Map<string, number> = new Map()
   private playerSkillIds = new Set<string>()
   private enemySkillIds = new Set<string>()
@@ -455,6 +468,9 @@ export class CombatEngine {
   private skillEnemyHalfShieldCdTriggered = false
   private skillFirstAmmoEmptyTriggeredBySide: Record<'player' | 'enemy', boolean> = { player: false, enemy: false }
   private skill47ReviveTriggeredBySide: Record<'player' | 'enemy', boolean> = { player: false, enemy: false }
+  private deathMarkCheckUsedBySide: Record<'player' | 'enemy', boolean> = { player: false, enemy: false }
+  private unyieldingTriggeredBySide: Record<'player' | 'enemy', boolean> = { player: false, enemy: false }
+  private heroInvincibleMsBySide: Record<'player' | 'enemy', number> = { player: 0, enemy: 0 }
   private skill86UseCountBySide: Record<'player' | 'enemy', number> = { player: 0, enemy: 0 }
   private skillExecuteDamageBonus = 0
   private skillEnemyExecuteDamageBonus = 0
@@ -514,6 +530,9 @@ export class CombatEngine {
     this.skillEnemyHalfShieldCdTriggered = false
     this.skillFirstAmmoEmptyTriggeredBySide = { player: false, enemy: false }
     this.skill47ReviveTriggeredBySide = { player: false, enemy: false }
+    this.deathMarkCheckUsedBySide = { player: false, enemy: false }
+    this.unyieldingTriggeredBySide = { player: false, enemy: false }
+    this.heroInvincibleMsBySide = { player: 0, enemy: 0 }
     this.skill86UseCountBySide = { player: 0, enemy: 0 }
     this.skillExecuteDamageBonus = 0
     this.skillEnemyExecuteDamageBonus = 0
@@ -532,6 +551,7 @@ export class CombatEngine {
 
     this.applyPickedSkillBattleStartEffects()
     this.applyBattleStartEffects()
+    this.clampCombatCaps()
 
     this.phase = 'INIT'
   }
@@ -645,9 +665,10 @@ export class CombatEngine {
   getRuntimeState(): CombatItemRuntimeState[] {
     return this.items.map((it) => ({
       ...(() => {
-        const baseDamage = Math.max(0, it.baseStats.damage + it.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(it))
         const skillMul = this.skillDamageMultiplier(it)
-        let runtimeDamage = baseDamage
+        const baseDamageRaw = Math.max(0, it.baseStats.damage + this.runtimeGlobalDamageBonus(it))
+        const baseDamageUnscaled = Math.max(0, Math.round(baseDamageRaw * skillMul))
+        let runtimeDamage = this.scaledDamage(it, baseDamageUnscaled + it.runtime.tempDamageBonus)
         const def = this.findItemDef(it.defId)
         if (def && this.skillLines(def).some((s) => /相邻回旋镖时伤害翻倍/.test(s))) {
           const hasAdjacentSame = this.items.some((other) =>
@@ -658,7 +679,96 @@ export class CombatEngine {
           )
           if (hasAdjacentSame) runtimeDamage *= 2
         }
-        runtimeDamage = Math.max(0, Math.round(runtimeDamage * skillMul))
+        if (def) {
+          const tIdx = this.tierIndex(def, it.tier)
+          const lines = this.skillLines(def)
+          const sourceHero = it.side === 'player' ? this.playerHero : this.enemyHero
+          const targetHero = it.side === 'player' ? this.enemyHero : this.playerHero
+          if (lines.some((s) => /等同于当前自身护盾值|根据当前护盾值对对方造成伤害/.test(s))) {
+            runtimeDamage += Math.max(0, sourceHero.shield)
+          }
+          const maxHpLine = lines.find((s) => /最大生命值.*%.*伤害/.test(s) && !/摧毁自身/.test(s) && !/第一次攻击/.test(s))
+          if (maxHpLine) {
+            const m = maxHpLine.match(/最大生命值\s*([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*)\s*的伤害/)
+            if (m?.[1]) {
+              const pct = /[\/|]/.test(m[1]) ? pickTierSeriesValue(m[1], tIdx) : Number(m[1].replace(/%$/u, ''))
+              if (Number.isFinite(pct) && pct > 0) {
+                runtimeDamage += Math.round(targetHero.maxHp * (pct / 100))
+              }
+            }
+          }
+          const firstHitLine = lines.find((s) => /第一次攻击额外造成目标最大生命值\d+(?:[\/|]\d+)*%的伤害/.test(s))
+          if (firstHitLine && it.runtime.executeCount < 1) {
+            const pct = Math.max(0, this.tierValueFromLine(firstHitLine, tIdx))
+            if (pct > 0) runtimeDamage += Math.round(targetHero.maxHp * (pct / 100))
+          }
+          const selfHpPctLine = lines.find((s) => /额外造成自身当前生命值\d+(?:[\/|]\d+)*%的伤害/.test(s))
+          if (selfHpPctLine) {
+            const pct = Math.max(0, this.tierValueFromLine(selfHpPctLine, tIdx))
+            if (pct > 0) runtimeDamage += Math.round(sourceHero.hp * (pct / 100))
+          }
+          const selfMaxHpPctLine = lines.find((s) => /额外造成自身最大生命值\d+(?:[\/|]\d+)*%的伤害/.test(s))
+          if (selfMaxHpPctLine) {
+            const pct = Math.max(0, this.tierValueFromLine(selfMaxHpPctLine, tIdx))
+            if (pct > 0) runtimeDamage += Math.round(sourceHero.maxHp * (pct / 100))
+          }
+          if (lines.some((s) => /如果这是唯一的伤害物品[，,]?造成3倍伤害/.test(s))) {
+            const attackers = this.items.filter((other) => other.side === it.side && this.isDamageItemForUniqueCheck(other))
+            if (attackers.length === 1) runtimeDamage = Math.max(0, runtimeDamage * 3)
+          }
+          const emptyAmmoBurstLine = lines.find((s) => /弹药耗尽时造成\d+(?:[\/|]\d+)*倍伤害/.test(s))
+          if (emptyAmmoBurstLine && it.runtime.ammoMax > 0 && it.runtime.ammoCurrent > 0) {
+            const emptyAmmoBurstMul = Math.max(1, this.tierValueFromLine(emptyAmmoBurstLine, tIdx))
+            const phantomCount = this.items.filter((other) => {
+              if (other.side !== it.side) return false
+              if (other.id === it.id) return false
+              const otherDef = this.findItemDef(other.defId)
+              return this.skillLines(otherDef).some((line) => /弹药物品伤害\+\d+(?:[\/|]\d+)*，弹药消耗翻倍/.test(line))
+            }).length
+            const ammoSpendPerUse = 1 + phantomCount
+            const willEmptyAmmoThisUse = it.runtime.ammoCurrent - ammoSpendPerUse <= 0
+            if (willEmptyAmmoThisUse && emptyAmmoBurstMul > 1) {
+              runtimeDamage = Math.max(0, Math.round(runtimeDamage * emptyAmmoBurstMul))
+            }
+          }
+          const explode = lines.find((s) => /弹药耗尽时摧毁自身.*最大生命值.*%.*伤害/.test(s))
+          if (explode) {
+            const pctSeries = explode.match(/最大生命值\s*([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*)\s*的伤害/)
+            const pct = pctSeries?.[1]
+              ? (/[\/|]/.test(pctSeries[1]) ? pickTierSeriesValue(pctSeries[1], tIdx) : Number(pctSeries[1].replace(/%$/u, '')))
+              : 0
+            if (pct > 0) runtimeDamage = Math.max(runtimeDamage, Math.round(targetHero.maxHp * (pct / 100)))
+          }
+        }
+        runtimeDamage = Math.max(0, Math.min(ITEM_DAMAGE_CAP, Math.round(runtimeDamage)))
+        let runtimeHeal = Math.max(0, it.baseStats.heal)
+        let runtimeShield = Math.max(0, it.baseStats.shield + this.shieldGainBonusForItem(it))
+        if (def) {
+          const tIdx = this.tierIndex(def, it.tier)
+          const lines = this.skillLines(def)
+          const sourceHero = it.side === 'player' ? this.playerHero : this.enemyHero
+          const maxHpHealLine = lines.find((s) => /恢复最大生命值\s*[+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*\s*的生命值/.test(s))
+          if (maxHpHealLine) {
+            const pct = Math.max(0, this.tierValueFromLine(maxHpHealLine, tIdx)) / 100
+            if (pct > 0) runtimeHeal += Math.max(0, Math.round(sourceHero.maxHp * pct))
+          }
+          if (lines.some((s) => /获得护盾[，,]?等于当前生命值/.test(s))) {
+            runtimeShield = Math.max(0, Math.round(sourceHero.hp))
+          } else {
+            runtimeShield = Math.max(0, this.scaleShieldGain(it.side, runtimeShield))
+          }
+          const unyieldingLine = lines.find((s) => /濒死时获得3秒无敌.*最大生命值.*%.*护盾/.test(s))
+          if (unyieldingLine) {
+            const m = unyieldingLine.match(/最大生命值\s*([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*)\s*的护盾/)
+            if (m?.[1]) {
+              const pct = /[\/|]/.test(m[1]) ? pickTierSeriesValue(m[1], tIdx) : Number(m[1].replace(/%$/u, ''))
+              if (Number.isFinite(pct) && pct > 0) {
+                const shield = this.scaleShieldGain(it.side, Math.round(sourceHero.maxHp * (pct / 100)))
+                runtimeShield = Math.max(runtimeShield, Math.max(0, shield))
+              }
+            }
+          }
+        }
         return {
           id: it.id,
           side: it.side,
@@ -673,8 +783,8 @@ export class CombatEngine {
           slowMs: it.runtime.modifiers.slowMs,
           hasteMs: it.runtime.modifiers.hasteMs,
           damage: runtimeDamage,
-          heal: Math.max(0, it.baseStats.heal),
-          shield: Math.max(0, it.baseStats.shield + this.shieldGainBonusForItem(it)),
+          heal: Math.max(0, runtimeHeal),
+          shield: Math.max(0, Math.min(HERO_SHIELD_CAP, runtimeShield)),
           burn: Math.max(0, it.baseStats.burn),
           poison: Math.max(0, it.baseStats.poison),
           multicast: (() => {
@@ -706,6 +816,7 @@ export class CombatEngine {
     this.pendingHits = []
     this.pendingItemFires = []
     this.pendingChargePulses = []
+    this.pendingAmmoRefills = []
     this.lastQueuedFireTickByItem.clear()
     this.playerSkillIds.clear()
     this.enemySkillIds.clear()
@@ -719,6 +830,9 @@ export class CombatEngine {
     this.skillEnemyHalfShieldCdTriggered = false
     this.skillFirstAmmoEmptyTriggeredBySide = { player: false, enemy: false }
     this.skill47ReviveTriggeredBySide = { player: false, enemy: false }
+    this.deathMarkCheckUsedBySide = { player: false, enemy: false }
+    this.unyieldingTriggeredBySide = { player: false, enemy: false }
+    this.heroInvincibleMsBySide = { player: 0, enemy: 0 }
     this.skill86UseCountBySide = { player: 0, enemy: 0 }
     this.skillExecuteDamageBonus = 0
     this.skillEnemyExecuteDamageBonus = 0
@@ -751,6 +865,24 @@ export class CombatEngine {
 
   private oppositeSide(side: 'player' | 'enemy'): 'player' | 'enemy' {
     return side === 'player' ? 'enemy' : 'player'
+  }
+
+  private isHeroInvincible(side: 'player' | 'enemy'): boolean {
+    return (this.heroInvincibleMsBySide[side] ?? 0) > 0
+  }
+
+  private itemArchetype(def: ItemDef | null): string {
+    return getPrimaryArchetypeTag(def?.tags ?? '')
+  }
+
+  private hasLine(def: ItemDef | null, regex: RegExp): boolean {
+    return this.skillLines(def).some((s) => regex.test(s))
+  }
+
+  private isItemDestroyImmune(item: CombatItemRunner): boolean {
+    const def = this.findItemDef(item.defId)
+    const lines = this.skillLines(def)
+    return lines.some((s) => /无敌|不可摧毁/.test(s))
   }
 
   private rollEnemySkillIds(snapshot: BattleSnapshotBundle): Set<string> {
@@ -860,6 +992,12 @@ export class CombatEngine {
     return item.baseStats.damage > 0 && !this.isShieldItem(item)
   }
 
+  private isDamageItemForUniqueCheck(item: CombatItemRunner): boolean {
+    if (this.isDamageBonusEligible(item)) return true
+    const def = this.findItemDef(item.defId)
+    return this.skillLines(def).some((s) => /弹药耗尽时摧毁自身.*最大生命值.*%.*伤害/.test(s))
+  }
+
   private cooldownReductionPct(item: CombatItemRunner): number {
     const side = item.side
     let pct = 0
@@ -870,10 +1008,25 @@ export class CombatEngine {
     if (this.hasSkill(side, 'skill40')) pct += 0.1
     if (this.hasSkill(side, 'skill26') && ((side === 'player' ? this.skillPlayerHalfShieldCdTriggered : this.skillEnemyHalfShieldCdTriggered)) && this.isShieldItem(item)) pct += 0.15
     if (this.hasSkill(side, 'skill60') && !this.hasAnyShieldItems(side)) pct += 0.1
+
+    const selfDef = this.findItemDef(item.defId)
+    const selfArch = this.itemArchetype(selfDef)
+    if (selfArch === '刺客') {
+      for (const owner of this.items) {
+        if (owner.side !== side) continue
+        const def = this.findItemDef(owner.defId)
+        const line = this.skillLines(def).find((s) => /刺客物品间隔缩短\d+(?:[\/|]\d+)*%/.test(s))
+        if (!line) continue
+        const tIdx = this.tierIndex(def, owner.tier)
+        const reducedPct = Math.max(0, this.tierValueFromLine(line, tIdx)) / 100
+        pct += reducedPct
+      }
+    }
     return Math.max(0, Math.min(0.95, pct))
   }
 
   private effectiveCooldownMs(item: CombatItemRunner): number {
+    if (item.baseStats.cooldownMs <= 0) return 0
     const pct = this.cooldownReductionPct(item)
     const reduced = Math.round(item.baseStats.cooldownMs * (1 - pct))
     return Math.max(this.minReducedCdMsFor(item), reduced)
@@ -892,6 +1045,29 @@ export class CombatEngine {
     if (this.hasSkill(side, 'skill27') && this.effectiveCooldownMs(item) < 2500) bonus += 20
     if (this.hasSkill(side, 'skill37')) bonus += Math.floor(Math.max(0, this.heroOf(side).shield) / 10)
     return bonus
+  }
+
+  private itemDamageScale(item: CombatItemRunner): number {
+    return Math.max(0, item.runtime.damageScale || 1)
+  }
+
+  private scaledDamage(item: CombatItemRunner, value: number): number {
+    const scaled = Math.max(0, Math.round(Math.max(0, value) * this.itemDamageScale(item)))
+    return Math.min(ITEM_DAMAGE_CAP, scaled)
+  }
+
+  private clampHeroState(hero: HeroState): void {
+    hero.maxHp = Math.max(1, Math.min(HERO_MAX_HP_CAP, Math.round(hero.maxHp)))
+    hero.hp = Math.max(0, Math.min(hero.maxHp, Math.round(hero.hp)))
+    hero.shield = Math.max(0, Math.min(HERO_SHIELD_CAP, Math.round(hero.shield)))
+  }
+
+  private clampCombatCaps(): void {
+    this.clampHeroState(this.playerHero)
+    this.clampHeroState(this.enemyHero)
+    for (const item of this.items) {
+      item.baseStats.damage = Math.max(0, Math.min(ITEM_DAMAGE_CAP, Math.round(item.baseStats.damage)))
+    }
   }
 
   private uniqueDamageItem(side: 'player' | 'enemy'): CombatItemRunner | null {
@@ -1095,6 +1271,46 @@ export class CombatEngine {
 
   private handleHeroHpThresholdTriggers(side: 'player' | 'enemy', hpBefore: number, hpAfter: number): void {
     const hero = side === 'player' ? this.playerHero : this.enemyHero
+    if (hpBefore > 0 && hpAfter <= 0 && !this.unyieldingTriggeredBySide[side]) {
+      const guard = this.items.find((it) => {
+        if (it.side !== side) return false
+        const def = this.findItemDef(it.defId)
+        return this.skillLines(def).some((s) => /濒死时获得3秒无敌.*最大生命值.*%.*护盾/.test(s))
+      })
+      if (guard) {
+        const def = this.findItemDef(guard.defId)
+        const line = this.skillLines(def).find((s) => /濒死时获得3秒无敌.*最大生命值.*%.*护盾/.test(s))
+        let pct = 0
+        if (line) {
+          const tIdx = this.tierIndex(def, guard.tier)
+          const m = line.match(/最大生命值\s*([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*)\s*的护盾/)
+          if (m?.[1]) {
+            pct = /[\/|]/.test(m[1]) ? pickTierSeriesValue(m[1], tIdx) : Number(m[1].replace(/%$/u, ''))
+            pct = Math.max(0, pct)
+          }
+        }
+        this.unyieldingTriggeredBySide[side] = true
+        hero.hp = 1
+        this.heroInvincibleMsBySide[side] = Math.max(this.heroInvincibleMsBySide[side], 3000)
+        if (pct > 0) {
+          const gainShield = this.scaleShieldGain(side, Math.round(hero.maxHp * (pct / 100)))
+          if (gainShield > 0) {
+            hero.shield += gainShield
+            EventBus.emit('battle:gain_shield', {
+              targetId: hero.id,
+              sourceItemId: guard.id,
+              amount: gainShield,
+              targetType: 'hero',
+              targetSide: hero.side,
+              sourceType: 'item',
+              sourceSide: side,
+            })
+          }
+        }
+        hpAfter = hero.hp
+      }
+    }
+
     const threshold = hero.maxHp * 0.5
     if (!(hpBefore > threshold && hpAfter <= threshold)) return
 
@@ -1216,9 +1432,30 @@ export class CombatEngine {
     return all[0] ?? null
   }
 
-  private applyDirectSkillDamage(sourceSide: 'player' | 'enemy', panel: number, sourceSkillId: string): void {
+  private applyDirectSkillDamage(
+    sourceSide: 'player' | 'enemy',
+    panel: number,
+    sourceSkillId: string,
+    sourceType: 'system' | 'item' = 'system',
+  ): void {
     const targetHero = sourceSide === 'player' ? this.enemyHero : this.playerHero
     if (panel <= 0 || targetHero.hp <= 0) return
+    if (this.isHeroInvincible(targetHero.side)) {
+      EventBus.emit('battle:take_damage', {
+        targetId: targetHero.id,
+        sourceItemId: sourceSkillId,
+        amount: panel,
+        isCrit: false,
+        type: 'normal',
+        targetType: 'hero',
+        targetSide: targetHero.side,
+        sourceType,
+        sourceSide,
+        baseDamage: panel,
+        finalDamage: 0,
+      })
+      return
+    }
     let remaining = panel
     const hpBefore = targetHero.hp
     if (targetHero.shield > 0) {
@@ -1238,11 +1475,14 @@ export class CombatEngine {
       type: 'normal',
       targetType: 'hero',
       targetSide: targetHero.side,
-      sourceType: 'system',
+      sourceType,
       sourceSide,
       baseDamage: panel,
       finalDamage: remaining,
     })
+    if (remaining > 0) {
+      this.applyWanJianGrowthOnAnyDamage(sourceSide)
+    }
     if (targetHero.hp === 0) {
       EventBus.emit('battle:unit_die', {
         unitId: targetHero.id,
@@ -1325,6 +1565,37 @@ export class CombatEngine {
     }
   }
 
+  private applyWanJianGrowthOnAnyDamage(sourceSide: 'player' | 'enemy'): void {
+    for (const owner of this.items) {
+      if (owner.side !== sourceSide) continue
+      if (!this.isDamageBonusEligible(owner)) continue
+      const def = this.findItemDef(owner.defId)
+      const line = this.skillLines(def).find((s) => /造成任意伤害时此物品伤害\+\d+(?:[\/|]\d+)*/.test(s))
+      if (!line) continue
+      const v = Math.max(0, Math.round(this.tierValueFromLine(line, this.tierIndex(def, owner.tier))))
+      if (v > 0) owner.baseStats.damage += v
+    }
+  }
+
+  private tryDeathMarkExecution(sourceSide: 'player' | 'enemy', targetHero: HeroState): void {
+    if (this.deathMarkCheckUsedBySide[sourceSide]) return
+    const marker = this.items.find((it) => {
+      if (it.side !== sourceSide) return false
+      const def = this.findItemDef(it.defId)
+      return this.skillLines(def).some((s) => /生命值低于.*直接斩杀/.test(s))
+    })
+    if (!marker) return
+    const def = this.findItemDef(marker.defId)
+    const line = this.skillLines(def).find((s) => /生命值低于.*直接斩杀/.test(s))
+    if (!line) return
+    const pct = Math.max(0, this.tierValueFromLine(line, this.tierIndex(def, marker.tier)))
+    if (pct <= 0) return
+    if (targetHero.maxHp <= 0 || targetHero.hp <= 0) return
+    if (targetHero.hp / targetHero.maxHp > pct / 100) return
+    this.deathMarkCheckUsedBySide[sourceSide] = true
+    this.enqueueExtraTriggeredUse(marker)
+  }
+
   private toRunner(entity: BattleSnapshotEntity, idPrefix: string): CombatItemRunner {
     const def = this.findItemDef(entity.defId)
     const level = Math.max(1, Math.min(7, Math.round(entity.level ?? 0)))
@@ -1365,6 +1636,7 @@ export class CombatEngine {
         currentChargeMs: 0,
         pendingChargeMs: 0,
         tempDamageBonus: 0,
+        damageScale: 1,
         bonusMulticast: 0,
         executeCount: 0,
         ammoMax,
@@ -1501,6 +1773,7 @@ export class CombatEngine {
         currentChargeMs: 0,
         pendingChargeMs: 0,
         tempDamageBonus: 0,
+        damageScale: 1,
         bonusMulticast: 0,
         executeCount: 0,
         ammoMax,
@@ -1791,6 +2064,7 @@ export class CombatEngine {
       const allWeaponDamageLine = lines.find(
         (s) => /(?:武器|物品)伤害\+\d+(?:[\/|]\d+)*/.test(s)
           && !/相邻/.test(s)
+          && !/所有刺客物品/.test(s)
           && !/其他武器攻击时该(?:武器|物品)伤害\+/.test(s),
       )
       if (allWeaponDamageLine) {
@@ -1802,6 +2076,30 @@ export class CombatEngine {
             ally.baseStats.damage += v
           }
         }
+      }
+
+      const allAssassinDamageLine = lines.find((s) => /所有刺客物品伤害\+\d+(?:[\/|]\d+)*/.test(s))
+      if (allAssassinDamageLine) {
+        const v = Math.round(this.tierValueFromLine(allAssassinDamageLine, tIdx))
+        if (v > 0) {
+          for (const ally of this.items) {
+            if (ally.side !== owner.side) continue
+            if (!this.isDamageBonusEligible(ally)) continue
+            const allyDef = this.findItemDef(ally.defId)
+            if (this.itemArchetype(allyDef) !== '刺客') continue
+            ally.baseStats.damage += v
+          }
+        }
+      }
+
+      const scoutLine = lines.find((s) => /上阵区每有1件其他刺客物品[，,]?连发次数\+1/.test(s))
+      if (scoutLine) {
+        const n = this.items.filter((ally) => {
+          if (ally.side !== owner.side || ally.id === owner.id) return false
+          const allyDef = this.findItemDef(ally.defId)
+          return this.itemArchetype(allyDef) === '刺客'
+        }).length
+        if (n > 0) owner.baseStats.multicast += n
       }
 
       const adjacentAmmoCapLine = lines.find((s) => /相邻物品\+\d+(?:[\/|]\+?\d+)*最大弹药量/.test(s))
@@ -1824,7 +2122,57 @@ export class CombatEngine {
         }
       }
 
-      const rightMulticastLine = lines.find((s) => /右侧的攻击物品连发次数\+\d+(?:[\/|]\d+)*/.test(s))
+      const adjacentAmmoCapLine2 = lines.find((s) => /相邻弹药物品最大弹药量\+\d+(?:[\/|]\d+)*/.test(s))
+      if (adjacentAmmoCapLine2) {
+        const v = Math.round(this.tierValueFromLine(adjacentAmmoCapLine2, tIdx))
+        if (v > 0) {
+          for (const ally of this.items) {
+            if (ally.side !== owner.side || ally.id === owner.id) continue
+            if (!this.isAdjacentByFootprint(ally, owner)) continue
+            if (ally.runtime.ammoMax <= 0) continue
+            ally.runtime.ammoMax += v
+            ally.runtime.ammoCurrent = Math.min(ally.runtime.ammoMax, ally.runtime.ammoCurrent + v)
+          }
+        }
+      }
+
+      const scopeLine = lines.find((s) => /相邻伤害物品伤害\+\d+(?:[\/|]\d+)*%/.test(s))
+      if (scopeLine) {
+        const pct = Math.max(0, this.tierValueFromLine(scopeLine, tIdx)) / 100
+        if (pct > 0) {
+          for (const ally of this.items) {
+            if (ally.side !== owner.side || ally.id === owner.id) continue
+            if (!this.isAdjacentByFootprint(ally, owner)) continue
+            if (!this.isDamageBonusEligible(ally)) continue
+            ally.runtime.damageScale *= (1 + pct)
+          }
+        }
+      }
+
+      const phantomLine = lines.find((s) => /弹药物品伤害\+\d+(?:[\/|]\d+)*/.test(s) && /弹药消耗翻倍/.test(s))
+      if (phantomLine) {
+        const v = Math.round(this.tierValueFromLine(phantomLine, tIdx))
+        if (v > 0) {
+          for (const ally of this.items) {
+            if (ally.side !== owner.side) continue
+            if (!this.isAmmoItem(ally)) continue
+            if (!this.isDamageBonusEligible(ally)) continue
+            ally.baseStats.damage += v
+          }
+        }
+      }
+
+      const hpBoostLine = lines.find((s) => /最大生命值\+\d+(?:[\/|]\d+)*%/.test(s))
+      if (hpBoostLine) {
+        const pct = Math.max(0, this.tierValueFromLine(hpBoostLine, tIdx)) / 100
+        if (pct > 0) {
+          const hero = this.heroOf(owner.side)
+          hero.maxHp = Math.max(1, Math.round(hero.maxHp * (1 + pct)))
+          hero.hp = Math.max(1, Math.round(hero.hp * (1 + pct)))
+        }
+      }
+
+      const rightMulticastLine = lines.find((s) => /右侧的(?:攻击|伤害)物品连发次数\+\d+(?:[\/|]\d+)*/.test(s))
       if (rightMulticastLine) {
         const v = Math.max(0, Math.round(this.tierValueFromLine(rightMulticastLine, tIdx)))
         if (v > 0) {
@@ -1893,6 +2241,22 @@ export class CombatEngine {
       sourceItemId: source.id,
       extraTriggered: true,
     })
+  }
+
+  private removeItemFromBattle(itemId: string): void {
+    const removed = this.items.find((it) => it.id === itemId)
+    this.items = this.items.filter((it) => it.id !== itemId)
+    this.pendingItemFires = this.pendingItemFires.filter((f) => f.sourceItemId !== itemId)
+    this.pendingChargePulses = this.pendingChargePulses.filter((p) => p.sourceItemId !== itemId && p.targetItemId !== itemId)
+    this.pendingAmmoRefills = this.pendingAmmoRefills.filter((p) => p.sourceItemId !== itemId && p.targetItemId !== itemId)
+    this.pendingHits = this.pendingHits.filter((h) => h.sourceItemId !== itemId)
+    this.lastQueuedFireTickByItem.delete(itemId)
+    if (removed) {
+      EventBus.emit('battle:unit_die', {
+        unitId: itemId,
+        side: removed.side,
+      })
+    }
   }
 
   private applyOnAmmoRefilledDamageGrowth(target: CombatItemRunner, gainedAmmo: number): void {
@@ -1977,8 +2341,8 @@ export class CombatEngine {
   }
 
   private enqueueOneAttackFrom(source: CombatItemRunner): void {
-    const baseDamage = Math.max(0, source.baseStats.damage + this.runtimeGlobalDamageBonus(source))
-    const damage = Math.max(0, baseDamage + source.runtime.tempDamageBonus)
+    const baseDamage = this.scaledDamage(source, source.baseStats.damage + this.runtimeGlobalDamageBonus(source))
+    const damage = this.scaledDamage(source, source.baseStats.damage + source.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(source))
     if (damage <= 0) return
     this.pendingHits.push({
       dueTick: this.tickIndex,
@@ -1987,7 +2351,7 @@ export class CombatEngine {
       defId: source.defId,
       baseDamage,
       damage,
-      attackerDamageAtQueue: Math.max(0, source.baseStats.damage + source.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(source)),
+      attackerDamageAtQueue: this.scaledDamage(source, source.baseStats.damage + source.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(source)),
       crit: source.baseStats.crit,
     })
   }
@@ -2123,8 +2487,11 @@ export class CombatEngine {
 
   private stepOneTick(tickMs: number): void {
     this.tickIndex += 1
+    this.heroInvincibleMsBySide.player = Math.max(0, this.heroInvincibleMsBySide.player - tickMs)
+    this.heroInvincibleMsBySide.enemy = Math.max(0, this.heroInvincibleMsBySide.enemy - tickMs)
     this.resolveQueuedItemFiresForCurrentTick()
     this.resolveQueuedChargePulsesForCurrentTick()
+    this.resolveQueuedAmmoRefillsForCurrentTick()
     const queue: CombatItemRunner[] = []
     for (const item of this.items) {
       if (item.baseStats.cooldownMs <= 0) continue
@@ -2198,6 +2565,9 @@ export class CombatEngine {
 
     this.processStatusPeriodicByTick()
     this.resolvePendingHitsForCurrentTick()
+    this.tryDeathMarkExecution('player', this.enemyHero)
+    this.tryDeathMarkExecution('enemy', this.playerHero)
+    this.clampCombatCaps()
   }
 
   private resolveQueuedChargePulsesForCurrentTick(): void {
@@ -2208,6 +2578,18 @@ export class CombatEngine {
       const target = this.items.find((it) => it.id === one.targetItemId)
       if (!target) continue
       this.chargeItemByMs(target, one.gainMs)
+    }
+  }
+
+  private resolveQueuedAmmoRefillsForCurrentTick(): void {
+    if (!this.pendingAmmoRefills.length) return
+    const due = this.pendingAmmoRefills.filter((p) => p.dueTick <= this.tickIndex)
+    this.pendingAmmoRefills = this.pendingAmmoRefills.filter((p) => p.dueTick > this.tickIndex)
+    for (const one of due) {
+      const target = this.items.find((it) => it.id === one.targetItemId)
+      if (!target) continue
+      this.refillAmmoAndTriggerGrowth(target, one.gainAmmo)
+      if (one.chargeMs > 0) this.chargeItemByMs(target, one.chargeMs)
     }
   }
 
@@ -2255,6 +2637,7 @@ export class CombatEngine {
     const def = this.findItemDef(item.defId)
     const lines = this.skillLines(def)
     const tIdx = this.tierIndex(def, item.tier)
+    const sourceArch = this.itemArchetype(def)
     const isAllAmmoShot = lines.some((s) => /(?:一次)?打出所有弹药/.test(s))
     const emptyAmmoBurstLine = lines.find((s) => /弹药耗尽时造成\d+(?:[\/|]\d+)*倍伤害/.test(s))
     const emptyAmmoBurstMul = emptyAmmoBurstLine
@@ -2280,6 +2663,15 @@ export class CombatEngine {
       ? tickMsCfg
       : Math.max(tickMsCfg, this.effectiveCooldownMs(item) / Math.max(1, useRepeatCount))
     const shotIntervalTick = Math.max(1, Math.round(shotIntervalMs / tickMsCfg))
+
+    if (sourceArch === '刺客') {
+      for (const ally of this.items) {
+        if (ally.side !== item.side || ally.id === item.id) continue
+        const allyDef = this.findItemDef(ally.defId)
+        if (!this.hasLine(allyDef, /使用刺客物品时立即使用此物品/)) continue
+        this.enqueueExtraTriggeredUse(ally)
+      }
+    }
 
     EventBus.emit('battle:item_trigger', {
       itemId: item.defId,
@@ -2379,7 +2771,10 @@ export class CombatEngine {
 
     if (item.baseStats.shield > 0 && sourceHero.hp > 0) {
       const rawShieldPanel = item.baseStats.shield + this.shieldGainBonusForItem(item)
-      const shieldPanel = this.scaleShieldGain(item.side, rawShieldPanel)
+      let shieldPanel = this.scaleShieldGain(item.side, rawShieldPanel)
+      if (lines.some((s) => /获得护盾[，,]?等于当前生命值/.test(s))) {
+        shieldPanel = Math.max(0, Math.round(sourceHero.hp))
+      }
       sourceHero.shield += shieldPanel
       this.debugShieldChargeLog('shield_gain_happened', {
         tick: this.tickIndex,
@@ -2453,18 +2848,30 @@ export class CombatEngine {
         }
       }
     }
-    if (item.baseStats.heal > 0 && sourceHero.hp > 0) {
-      sourceHero.hp = Math.min(sourceHero.maxHp, sourceHero.hp + item.baseStats.heal)
-      EventBus.emit('battle:heal', {
-        targetId: sourceHero.id,
-        sourceItemId: item.id,
-        amount: item.baseStats.heal,
-        isRegen: false,
-        targetType: 'hero',
-        targetSide: sourceHero.side,
-        sourceType: 'item',
-        sourceSide: item.side,
-      })
+    const maxHpHealLine = lines.find((s) => /恢复最大生命值\s*[+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*\s*的生命值/.test(s))
+    const maxHpHealAmount = (() => {
+      if (!maxHpHealLine) return 0
+      const pct = Math.max(0, this.tierValueFromLine(maxHpHealLine, tIdx)) / 100
+      if (pct <= 0) return 0
+      return Math.max(0, Math.round(sourceHero.maxHp * pct))
+    })()
+
+    if ((item.baseStats.heal > 0 || maxHpHealAmount > 0) && sourceHero.hp > 0) {
+      const totalHeal = Math.max(0, item.baseStats.heal + maxHpHealAmount)
+      const realHeal = Math.max(0, Math.min(sourceHero.maxHp - sourceHero.hp, totalHeal))
+      if (realHeal > 0) {
+        sourceHero.hp += realHeal
+        EventBus.emit('battle:heal', {
+          targetId: sourceHero.id,
+          sourceItemId: item.id,
+          amount: realHeal,
+          isRegen: false,
+          targetType: 'hero',
+          targetSide: sourceHero.side,
+          sourceType: 'item',
+          sourceSide: item.side,
+        })
+      }
       const cleansePct = Math.max(0, rv('healCleansePct', getConfig().combatRuntime.healCleansePct))
       const clearLayer = Math.max(0, Math.ceil(item.baseStats.heal * cleansePct))
       if (clearLayer > 0) {
@@ -2598,8 +3005,9 @@ export class CombatEngine {
 
     const baseDamageRaw = Math.max(0, item.baseStats.damage + this.runtimeGlobalDamageBonus(item))
     const skillMul = this.skillDamageMultiplier(item)
-    const baseDamage = Math.max(0, Math.round(baseDamageRaw * skillMul))
-    let damageAfterBonus = Math.max(0, baseDamage + item.runtime.tempDamageBonus)
+    const baseDamageUnscaled = Math.max(0, Math.round(baseDamageRaw * skillMul))
+    const baseDamage = this.scaledDamage(item, baseDamageUnscaled)
+    let damageAfterBonus = this.scaledDamage(item, baseDamageUnscaled + item.runtime.tempDamageBonus)
 
     const adjacentBoomerangDouble = lines.some((s) => /相邻回旋镖时伤害翻倍/.test(s))
     if (adjacentBoomerangDouble) {
@@ -2617,15 +3025,35 @@ export class CombatEngine {
       damageAfterBonus += Math.max(0, sourceHero.shield)
     }
     // 目标最大生命值百分比伤害
-    const maxHpLine = lines.find((s) => /最大生命值.*%.*伤害/.test(s))
+    const maxHpLine = lines.find((s) => /最大生命值.*%.*伤害/.test(s) && !/摧毁自身/.test(s) && !/第一次攻击/.test(s))
     if (maxHpLine) {
-      const m = maxHpLine.match(/([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)+)/)
+      const m = maxHpLine.match(/最大生命值\s*([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*)\s*的伤害/)
       if (m?.[1]) {
         const pct = /[\/|]/.test(m[1]) ? pickTierSeriesValue(m[1], tIdx) : Number(m[1].replace(/%$/u, ''))
         if (Number.isFinite(pct) && pct > 0) {
           damageAfterBonus += Math.round(targetHero.maxHp * (pct / 100))
         }
       }
+    }
+
+    const firstHitLine = lines.find((s) => /第一次攻击额外造成目标最大生命值\d+(?:[\/|]\d+)*%的伤害/.test(s))
+    const firstHitBonus = (() => {
+      if (!firstHitLine || item.runtime.executeCount > 1) return 0
+      const pct = Math.max(0, this.tierValueFromLine(firstHitLine, tIdx))
+      if (pct <= 0) return 0
+      return Math.round(targetHero.maxHp * (pct / 100))
+    })()
+
+    const selfHpPctLine = lines.find((s) => /额外造成自身当前生命值\d+(?:[\/|]\d+)*%的伤害/.test(s))
+    if (selfHpPctLine) {
+      const pct = Math.max(0, this.tierValueFromLine(selfHpPctLine, tIdx))
+      if (pct > 0) damageAfterBonus += Math.round(sourceHero.hp * (pct / 100))
+    }
+
+    const selfMaxHpPctLine = lines.find((s) => /额外造成自身最大生命值\d+(?:[\/|]\d+)*%的伤害/.test(s))
+    if (selfMaxHpPctLine) {
+      const pct = Math.max(0, this.tierValueFromLine(selfMaxHpPctLine, tIdx))
+      if (pct > 0) damageAfterBonus += Math.round(sourceHero.maxHp * (pct / 100))
     }
 
     // 邻接被动：相邻物品攻击时，攻击造成 X 伤害
@@ -2649,9 +3077,16 @@ export class CombatEngine {
       }
       let progressiveUseBonus = 0
       for (let i = 0; i < fireCount; i++) {
-        let shotDamage = Math.max(0, damageAfterBonus + progressiveUseBonus)
+        let shotDamage = Math.max(0, damageAfterBonus + this.scaledDamage(item, progressiveUseBonus))
+        if (i === 0 && firstHitBonus > 0) {
+          shotDamage = Math.max(0, shotDamage + firstHitBonus)
+        }
         if (isLastShotDoubleTriggered && i === fireCount - 1) {
           shotDamage = Math.max(0, shotDamage * 2)
+        }
+        if (lines.some((s) => /如果这是唯一的伤害物品[，,]?造成3倍伤害/.test(s))) {
+          const attackers = this.items.filter((it) => it.side === item.side && this.isDamageItemForUniqueCheck(it))
+          if (attackers.length === 1) shotDamage = Math.max(0, shotDamage * 3)
         }
         if (willEmptyAmmoThisUse && emptyAmmoBurstMul > 1) {
           shotDamage = Math.max(0, Math.round(shotDamage * emptyAmmoBurstMul))
@@ -2663,7 +3098,7 @@ export class CombatEngine {
           defId: item.defId,
           baseDamage,
           damage: shotDamage,
-          attackerDamageAtQueue: Math.max(0, item.baseStats.damage + item.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(item)),
+          attackerDamageAtQueue: this.scaledDamage(item, item.baseStats.damage + item.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(item)),
           lockAttackerDelta: true,
           crit: item.baseStats.crit,
         })
@@ -2674,10 +3109,35 @@ export class CombatEngine {
       }
     }
 
+    if (lines.some((s) => /摧毁敌人的1件物品/.test(s))) {
+      const enemies = this.items
+        .filter((it) => it.side !== item.side)
+        .filter((it) => !this.isItemDestroyImmune(it))
+      if (enemies.length > 0) {
+        const rng = makeSeededRng(this.seedFrom(item.id, this.tickIndex))
+        const picked = enemies[Math.floor(rng() * enemies.length)]
+        if (picked) {
+          EventBus.emit('battle:item_destroy', {
+            sourceItemId: item.id,
+            sourceSide: item.side,
+            targetItemId: picked.id,
+            targetSide: picked.side,
+          })
+          this.removeItemFromBattle(picked.id)
+        }
+      }
+    }
+
     if (item.runtime.ammoMax > 0) {
       const ammoBefore = item.runtime.ammoCurrent
+      const phantomCount = this.items.filter((it) => {
+        if (it.side !== item.side) return false
+        const def2 = this.findItemDef(it.defId)
+        return this.hasLine(def2, /弹药物品伤害\+\d+(?:[\/|]\d+)*[，,]?弹药消耗翻倍/)
+      }).length
+      const singleUseCost = Math.max(1, 1 + phantomCount)
       if (isAllAmmoShot) item.runtime.ammoCurrent = Math.max(0, item.runtime.ammoCurrent - fireCount)
-      else item.runtime.ammoCurrent = Math.max(0, item.runtime.ammoCurrent - 1)
+      else item.runtime.ammoCurrent = Math.max(0, item.runtime.ammoCurrent - singleUseCost)
       const ammoSpent = Math.max(0, ammoBefore - item.runtime.ammoCurrent)
       const becameEmpty = ammoBefore > 0 && item.runtime.ammoCurrent <= 0
       if (this.hasSkill(item.side, 'skill9') && !this.skillFirstAmmoEmptyTriggeredBySide[item.side] && becameEmpty) {
@@ -2704,6 +3164,24 @@ export class CombatEngine {
           ally.baseStats.damage += 50
         }
       }
+
+      if (becameEmpty) {
+        for (const owner of this.items) {
+          if (owner.side !== item.side) continue
+          const ownerDef = this.findItemDef(owner.defId)
+          const line = this.skillLines(ownerDef).find((s) => /任意物品弹药耗尽时为其补充\d+(?:[\/|]\d+)*发弹药并充能\d+(?:[\/|]\d+)*秒/.test(s))
+          if (!line) continue
+          const gain = Math.max(0, Math.round(this.tierValueFromLine(line, this.tierIndex(ownerDef, owner.tier))))
+          if (gain <= 0) continue
+          this.pendingAmmoRefills.push({
+            dueTick: this.tickIndex + 1,
+            sourceItemId: owner.id,
+            targetItemId: item.id,
+            gainAmmo: gain,
+            chargeMs: 1000,
+          })
+        }
+      }
     }
 
     if (lines.some((s) => /连发次数-1/.test(s))) {
@@ -2718,13 +3196,25 @@ export class CombatEngine {
         return Math.max(0, Math.round(pickTierSeriesValue(m[1], tIdx))) * useRepeatCount
       })()
       if (gain > 0) {
+        const allTeamRefill = /为其他物品补充\d+(?:[\/|]\d+)*发弹药/.test(refillAmmoLine)
         for (const ally of this.items) {
           if (ally.side !== item.side || ally.id === item.id) continue
-          if (!this.isAdjacentByFootprint(ally, item)) continue
+          if (!allTeamRefill && !this.isAdjacentByFootprint(ally, item)) continue
           if (ally.runtime.ammoMax <= 0) continue
           this.refillAmmoAndTriggerGrowth(ally, gain)
         }
       }
+    }
+
+    const selfDestroyExplodeLine = lines.find((s) => /弹药耗尽时摧毁自身.*最大生命值.*%.*伤害/.test(s))
+    if (selfDestroyExplodeLine && item.runtime.ammoMax > 0 && item.runtime.ammoCurrent <= 0) {
+      const pctSeries = selfDestroyExplodeLine.match(/最大生命值\s*([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*)\s*的伤害/)
+      const pct = pctSeries?.[1]
+        ? (/[\/|]/.test(pctSeries[1]) ? pickTierSeriesValue(pctSeries[1], tIdx) : Number(pctSeries[1].replace(/%$/u, '')))
+        : 0
+      if (pct > 0) this.applyDirectSkillDamage(item.side, Math.round(targetHero.maxHp * (pct / 100)), item.id, 'item')
+      this.removeItemFromBattle(item.id)
+      return
     }
 
     const postAttackDamageLine = lines.find((s) => /每次攻击后伤害\+\d+(?:[\/|]\d+)*/.test(s))
@@ -2982,30 +3472,36 @@ export class CombatEngine {
       let resolvedBaseDamage = hit.baseDamage
       let resolvedDamage = hit.damage
       if (attacker && !hit.lockAttackerDelta && typeof hit.attackerDamageAtQueue === 'number') {
-        const currentAttackerDamage = Math.max(0, attacker.baseStats.damage + attacker.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(attacker))
+        const currentAttackerDamage = this.scaledDamage(attacker, attacker.baseStats.damage + attacker.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(attacker))
         const delta = currentAttackerDamage - hit.attackerDamageAtQueue
         if (delta !== 0) {
           resolvedBaseDamage = Math.max(0, hit.baseDamage + delta)
           resolvedDamage = Math.max(0, hit.damage + delta)
         }
       }
+      resolvedBaseDamage = Math.max(0, Math.min(ITEM_DAMAGE_CAP, Math.round(resolvedBaseDamage)))
+      resolvedDamage = Math.max(0, Math.min(ITEM_DAMAGE_CAP, Math.round(resolvedDamage)))
       const targetHero = hit.side === 'player' ? this.enemyHero : this.playerHero
       if (targetHero.hp <= 0) continue
       const critRoll = makeSeededRng(this.seedFrom(hit.defId, this.tickIndex * 1000 + hitIdx))() * 100
       const isCrit = critRoll < hit.crit
       const critMult = getConfig().combatRuntime.critMultiplier
-      const panel = isCrit ? Math.round(resolvedDamage * critMult) : resolvedDamage
+      const panel = Math.max(0, Math.min(ITEM_DAMAGE_CAP, isCrit ? Math.round(resolvedDamage * critMult) : resolvedDamage))
 
       let remaining = panel
       const hpBefore = targetHero.hp
-      if (targetHero.shield > 0) {
-        const blocked = Math.min(targetHero.shield, remaining)
-        targetHero.shield -= blocked
-        remaining -= blocked
-      }
-      if (remaining > 0) {
-        targetHero.hp = Math.max(0, targetHero.hp - remaining)
-        this.handleHeroHpThresholdTriggers(targetHero.side, hpBefore, targetHero.hp)
+      if (!this.isHeroInvincible(targetHero.side)) {
+        if (targetHero.shield > 0) {
+          const blocked = Math.min(targetHero.shield, remaining)
+          targetHero.shield -= blocked
+          remaining -= blocked
+        }
+        if (remaining > 0) {
+          targetHero.hp = Math.max(0, targetHero.hp - remaining)
+          this.handleHeroHpThresholdTriggers(targetHero.side, hpBefore, targetHero.hp)
+        }
+      } else {
+        remaining = 0
       }
 
       EventBus.emit('battle:take_damage', {
@@ -3027,11 +3523,13 @@ export class CombatEngine {
       }
 
       if (remaining > 0) {
+        this.applyWanJianGrowthOnAnyDamage(hit.side)
         if (attacker) {
           this.applyOnDealDamageLifesteal(attacker, remaining)
           this.applyOnDealDamageSkillTriggers(attacker)
           this.applyAdjacentAttackDamageGrowth(attacker)
         }
+        this.tryDeathMarkExecution(hit.side, targetHero)
       }
 
       if (targetHero.hp === 0) {
@@ -3099,6 +3597,7 @@ export class CombatEngine {
     const ePanel = panelDamage
 
     const applyOne = (hero: HeroState, panel: number): { panel: number; hpDamage: number } => {
+      if (this.isHeroInvincible(hero.side)) return { panel, hpDamage: 0 }
       const hpBefore = hero.hp
       let remaining = panel
       if (hero.shield > 0) {
@@ -3149,6 +3648,7 @@ export class CombatEngine {
       sourceSide: 'system',
       finalDamage: e.hpDamage,
     })
+    this.clampCombatCaps()
   }
 
   private processStatusPeriodicByTick(): void {
@@ -3182,6 +3682,7 @@ export class CombatEngine {
   private applyBurnTick(hero: HeroState): void {
     const layer = hero.burn
     if (layer <= 0 || hero.hp <= 0) return
+    if (this.isHeroInvincible(hero.side)) return
     let hpDamage = layer
     const shieldFactor = Math.max(0, rv('burnShieldFactor', getConfig().combatRuntime.burnShieldFactor))
     if (hero.shield > 0) {
@@ -3226,6 +3727,7 @@ export class CombatEngine {
   private applyPoisonTick(hero: HeroState): void {
     const layer = hero.poison
     if (layer <= 0 || hero.hp <= 0) return
+    if (this.isHeroInvincible(hero.side)) return
     const hpBefore = hero.hp
     hero.hp = Math.max(0, hero.hp - layer)
     this.handleHeroHpThresholdTriggers(hero.side, hpBefore, hero.hp)

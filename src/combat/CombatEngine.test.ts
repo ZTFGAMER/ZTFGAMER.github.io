@@ -31,7 +31,7 @@ const SKILL_LINE_CONTRACT_PATTERNS: RegExp[] = [
   /使用相邻物品时(?:额外|立即)使用此物品。?$/,
   /受到攻击时(?:额外|立即)使用此物品。?$/,
   /补充弹药时伤害\+\d+(?:[\/|]\d+)*。?$/,
-  /右侧的攻击物品连发次数\+\d+(?:[\/|]\d+)*。?$/,
+  /右侧的(?:攻击|伤害)物品连发次数\+\d+(?:[\/|]\d+)*。?$/,
 ]
 
 function allSkillLinesFromItems(): string[] {
@@ -820,6 +820,232 @@ describe('CombatEngine', () => {
 
     expect(baseDamages.length).toBeGreaterThanOrEqual(2)
     expect(baseDamages[1]).toBeGreaterThan(baseDamages[0] ?? 0)
+  })
+
+  it('瞄准镜增伤作为额外乘区，使用内增伤同样被放大', () => {
+    const scope = getAllItems().find((it) => it.name_cn === '瞄准镜')
+    const handXbow = getAllItems().find((it) => it.name_cn === '手弩')
+    expect(scope).toBeTruthy()
+    expect(handXbow).toBeTruthy()
+
+    const snapshot: BattleSnapshotBundle = {
+      day: 6,
+      activeColCount: 4,
+      createdAtMs: 123,
+      entities: [
+        { instanceId: 'scope-holder', defId: scope!.id, tier: 'Gold', tierStar: 1, size: '1x1', col: 0, row: 0 },
+        { instanceId: 'scope-hand-xbow', defId: handXbow!.id, tier: 'Silver', tierStar: 1, size: '1x1', col: 1, row: 0 },
+      ],
+    }
+
+    const amounts: number[] = []
+    const off = EventBus.on('battle:take_damage', (e) => {
+      if (e.type !== 'normal') return
+      if (!e.sourceItemId.includes('scope-hand-xbow')) return
+      amounts.push(e.amount)
+    })
+
+    const engine = new CombatEngine()
+    engine.start(snapshot, { enemyDisabled: true })
+    for (let i = 0; i < 1200; i++) {
+      engine.update(1 / 60)
+      if (amounts.length >= 2) break
+    }
+    off()
+
+    expect(amounts.length).toBeGreaterThanOrEqual(2)
+    expect(amounts[0]).toBe(36)
+    expect(amounts[1]).toBe(48)
+  })
+
+  it('力量宝石会按最大生命值百分比额外回血（不止1点）', () => {
+    const powerGem = getAllItems().find((it) => it.name_cn === '力量宝石')
+    expect(powerGem).toBeTruthy()
+
+    const snapshot: BattleSnapshotBundle = {
+      day: 8,
+      activeColCount: 4,
+      createdAtMs: 123,
+      entities: [
+        { instanceId: 'power-gem', defId: powerGem!.id, tier: 'Gold', tierStar: 1, size: '1x1', col: 0, row: 0 },
+      ],
+    }
+
+    const healAmounts: number[] = []
+    const off = EventBus.on('battle:heal', (e) => {
+      if (e.sourceItemId.includes('power-gem')) healAmounts.push(e.amount)
+    })
+
+    const engine = new CombatEngine()
+    engine.start(snapshot, { enemyDisabled: true })
+    ;(engine as any).playerHero.hp = 10
+    for (let i = 0; i < 1400; i++) {
+      engine.update(1 / 60)
+      if (healAmounts.some((v) => v >= 2)) break
+    }
+    off()
+
+    expect(healAmounts.some((v) => v >= 2)).toBe(true)
+  })
+
+  it('力量宝石每次使用仅触发1次合并回血跳字', () => {
+    const powerGem = getAllItems().find((it) => it.name_cn === '力量宝石')
+    expect(powerGem).toBeTruthy()
+
+    const snapshot: BattleSnapshotBundle = {
+      day: 8,
+      activeColCount: 4,
+      createdAtMs: 123,
+      entities: [
+        { instanceId: 'power-gem-once', defId: powerGem!.id, tier: 'Gold', tierStar: 1, size: '1x1', col: 0, row: 0 },
+      ],
+    }
+
+    const healAmounts: number[] = []
+    const off = EventBus.on('battle:heal', (e) => {
+      if (e.sourceItemId.includes('power-gem-once')) healAmounts.push(e.amount)
+    })
+
+    const engine = new CombatEngine()
+    engine.start(snapshot, { enemyDisabled: true })
+    ;(engine as any).playerHero.hp = 10
+    for (let i = 0; i < 300; i++) {
+      engine.update(1 / 60)
+      const rt = engine.getRuntimeState().find((it) => it.id.includes('power-gem-once'))
+      if ((rt?.executeCount ?? 0) >= 1) break
+    }
+    off()
+
+    expect(healAmounts.length).toBe(1)
+    expect(healAmounts[0]).toBeGreaterThanOrEqual(2)
+  })
+
+  it('火药桶在场时狙击步枪不应触发“唯一伤害物品3倍”', () => {
+    const sniper = getAllItems().find((it) => it.name_cn === '狙击步枪')
+    const barrel = getAllItems().find((it) => it.name_cn === '火药桶')
+    expect(sniper).toBeTruthy()
+    expect(barrel).toBeTruthy()
+
+    const snapshot: BattleSnapshotBundle = {
+      day: 8,
+      activeColCount: 5,
+      createdAtMs: 123,
+      entities: [
+        { instanceId: 'sniper-main', defId: sniper!.id, tier: 'Gold', tierStar: 1, size: '1x1', col: 0, row: 0 },
+        { instanceId: 'barrel-side', defId: barrel!.id, tier: 'Silver', tierStar: 1, size: '1x1', col: 1, row: 0 },
+      ],
+    }
+
+    let sniperBaseDamage = -1
+    const off = EventBus.on('battle:take_damage', (e) => {
+      if (e.type !== 'normal') return
+      if (!e.sourceItemId.includes('sniper-main')) return
+      if (sniperBaseDamage < 0) sniperBaseDamage = e.baseDamage ?? -1
+    })
+
+    const engine = new CombatEngine()
+    engine.start(snapshot, { enemyDisabled: true })
+    for (let i = 0; i < 1200; i++) {
+      engine.update(1 / 60)
+      if (sniperBaseDamage > 0) break
+    }
+    off()
+
+    expect(sniperBaseDamage).toBe(200)
+  })
+
+  it('藏刃匕首仅首次攻击第一下有额外百分比伤害', () => {
+    const hiddenDagger = getAllItems().find((it) => it.name_cn === '藏刃匕首')
+    expect(hiddenDagger).toBeTruthy()
+
+    const snapshot: BattleSnapshotBundle = {
+      day: 8,
+      activeColCount: 4,
+      createdAtMs: 123,
+      entities: [
+        { instanceId: 'hidden-dagger', defId: hiddenDagger!.id, tier: 'Gold', tierStar: 1, size: '1x1', col: 0, row: 0 },
+      ],
+    }
+
+    const hitDamages: number[] = []
+    const off = EventBus.on('battle:take_damage', (e) => {
+      if (e.type !== 'normal') return
+      if (!e.sourceItemId.includes('hidden-dagger')) return
+      hitDamages.push(e.amount)
+    })
+
+    const engine = new CombatEngine()
+    engine.start(snapshot, { enemyDisabled: true })
+    for (let i = 0; i < 2600; i++) {
+      engine.update(1 / 60)
+      if (hitDamages.length >= 3) break
+    }
+    off()
+
+    expect(hitDamages.length).toBeGreaterThanOrEqual(3)
+    expect(hitDamages[0]).toBeGreaterThan(hitDamages[1] ?? 0)
+    expect(hitDamages[1]).toBe(hitDamages[2])
+  })
+
+  it('藏刃匕首首次攻击后面板伤害立即回落为基础值', () => {
+    const hiddenDagger = getAllItems().find((it) => it.name_cn === '藏刃匕首')
+    expect(hiddenDagger).toBeTruthy()
+
+    const snapshot: BattleSnapshotBundle = {
+      day: 8,
+      activeColCount: 4,
+      createdAtMs: 123,
+      entities: [
+        { instanceId: 'hidden-dagger-ui', defId: hiddenDagger!.id, tier: 'Gold', tierStar: 1, size: '1x1', col: 0, row: 0 },
+      ],
+    }
+
+    const engine = new CombatEngine()
+    engine.start(snapshot, { enemyDisabled: true })
+
+    const before = engine.getRuntimeState().find((it) => it.id.includes('hidden-dagger-ui'))?.damage ?? 0
+    for (let i = 0; i < 1200; i++) {
+      engine.update(1 / 60)
+      const rt = engine.getRuntimeState().find((it) => it.id.includes('hidden-dagger-ui'))
+      if ((rt?.executeCount ?? 0) >= 1) break
+    }
+    const after = engine.getRuntimeState().find((it) => it.id.includes('hidden-dagger-ui'))?.damage ?? 0
+
+    expect(before).toBeGreaterThan(after)
+  })
+
+  it('护臂对刺客开场增伤只生效一次（不翻倍）', () => {
+    const bracer = getAllItems().find((it) => it.name_cn === '护臂')
+    const hiddenDagger = getAllItems().find((it) => it.name_cn === '藏刃匕首')
+    expect(bracer).toBeTruthy()
+    expect(hiddenDagger).toBeTruthy()
+
+    const snapshot: BattleSnapshotBundle = {
+      day: 8,
+      activeColCount: 5,
+      createdAtMs: 123,
+      entities: [
+        { instanceId: 'bracer-owner', defId: bracer!.id, tier: 'Silver', tierStar: 1, size: '1x1', col: 0, row: 0 },
+        { instanceId: 'hidden-dagger-buff', defId: hiddenDagger!.id, tier: 'Gold', tierStar: 1, size: '1x1', col: 1, row: 0 },
+      ],
+    }
+
+    let firstBaseDamage = -1
+    const off = EventBus.on('battle:take_damage', (e) => {
+      if (e.type !== 'normal') return
+      if (!e.sourceItemId.includes('hidden-dagger-buff')) return
+      if (firstBaseDamage < 0) firstBaseDamage = e.baseDamage ?? -1
+    })
+
+    const engine = new CombatEngine()
+    engine.start(snapshot, { enemyDisabled: true })
+    for (let i = 0; i < 1200; i++) {
+      engine.update(1 / 60)
+      if (firstBaseDamage > 0) break
+    }
+    off()
+
+    expect(firstBaseDamage).toBe(104)
   })
 
   it('连发飞镖3连发会触发3次“相邻物品攻击后全体增伤”', () => {

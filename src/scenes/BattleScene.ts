@@ -75,6 +75,8 @@ let offHealEvent: (() => void) | null = null
 let offStatusApplyEvent: (() => void) | null = null
 let offStatusRemoveEvent: (() => void) | null = null
 let offFatigueStartEvent: (() => void) | null = null
+let offUnitDieEvent: (() => void) | null = null
+let offItemDestroyEvent: (() => void) | null = null
 let onStageTapHidePopup: (() => void) | null = null
 let itemInfoPopup: SellPopup | null = null
 let selectedItemId: string | null = null
@@ -143,6 +145,9 @@ let droppedProjectileCount = 0
 let droppedFloatingNumberCount = 0
 let projectileUseCursor = 1
 const sourceNextDamageVisualAtMs = new Map<string, number>()
+const playerMountedItemIds = new Set<string>()
+const enemyMountedItemIds = new Set<string>()
+const pendingDestroyedItemDueMs = new Map<string, number>()
 
 export type BattleFxPerfStats = {
   activeFx: number
@@ -1923,7 +1928,7 @@ function resolveBattleSettlement(): void {
   if (PvpContext.isActive()) {
     PvpContext.recordBattleResult(winner, engine?.getResult()?.survivingDamage ?? 1)
   }
-  const after = (!PvpContext.isActive() && winner === 'enemy') ? deductLife() : before
+  const after = (!PvpContext.isActive() && winner === 'enemy') ? deductLife(battleDay) : before
   const shouldAddTrophy = !PvpContext.isActive() && (winner === 'player' || winner === 'draw')
   const trophyAfter = shouldAddTrophy ? addWinTrophy(trophyTarget) : trophyBefore
   if (!PvpContext.isActive()) {
@@ -1955,7 +1960,7 @@ function resolveBattleSettlement(): void {
   if (PvpContext.isActive()) {
     const pvpSession = PvpContext.getSession()
     const myHp = pvpSession?.playerHps?.[pvpSession?.myIndex ?? -1] ?? 6
-    const damage = winner === 'enemy' ? (result?.survivingDamage ?? 1) : 0
+    const damage = winner === 'enemy' ? Math.max(1, Math.round(battleDay)) : 0
     const hpAfter = Math.max(0, myHp - damage)
     settlementLifeText.text = '⚔️ PVP 对战'
     settlementLifeText.style.fill = 0x99bbdd
@@ -1970,7 +1975,7 @@ function resolveBattleSettlement(): void {
     }
   } else {
     settlementLifeText.text = delta < 0
-      ? `❤️ ${before.current}/${before.max} -> ${after.current}/${after.max} (-1)`
+      ? `❤️ ${before.current}/${before.max} -> ${after.current}/${after.max} (-${Math.abs(delta)})`
       : `❤️ ${after.current}/${after.max}`
     settlementLifeText.style.fill = after.current <= 1 ? 0xff6a6a : 0xffd4d4
     settlementTrophyText.text = (winner === 'player' || winner === 'draw')
@@ -2147,6 +2152,21 @@ function applyZoneVisualStyle(zone: GridZone): void {
 async function mountZoneItems(zone: GridZone, items: CombatBoardItem[]): Promise<void> {
   for (const it of items) {
     await zone.addItem(it.id, it.defId, it.size, it.col, it.row, it.tier)
+    if (it.side === 'player') playerMountedItemIds.add(it.id)
+    else enemyMountedItemIds.add(it.id)
+  }
+}
+
+function syncRemovedZoneItems(zone: GridZone, side: 'player' | 'enemy', items: CombatBoardItem[]): void {
+  const mounted = side === 'player' ? playerMountedItemIds : enemyMountedItemIds
+  const alive = new Set(items.map((it) => it.id))
+  for (const id of Array.from(mounted)) {
+    if (alive.has(id)) continue
+    const due = pendingDestroyedItemDueMs.get(id)
+    if (typeof due === 'number' && battlePresentationMs < due) continue
+    zone.removeItem(id)
+    mounted.delete(id)
+    pendingDestroyedItemDueMs.delete(id)
   }
 }
 
@@ -2706,6 +2726,16 @@ export const BattleScene: Scene = {
       tryPulseItem(e.sourceItemId, e.side)
       pushBattleLog(`开火 ${e.side === 'player' ? '我方' : '敌方'} ${e.itemId} x${e.multicast}`)
     })
+    offItemDestroyEvent = EventBus.on('battle:item_destroy', (e) => {
+      tryPulseItem(e.sourceItemId, e.sourceSide)
+      const from = getItemCenterById(e.sourceItemId, e.sourceSide) ?? getHeroBarCenter(e.sourceSide)
+      const to = getItemCenterById(e.targetItemId, e.targetSide) ?? getHeroBarCenter(e.targetSide)
+      const destroyOrbColor = getBattleOrbColor('hp')
+      spawnProjectile(from, to, destroyOrbColor, () => {
+        tryPulseItem(e.targetItemId, e.targetSide)
+      }, e.sourceItemId)
+      pushBattleLog(`摧毁弹道 ${e.sourceSide === 'player' ? '我方' : '敌方'} -> ${e.targetSide === 'player' ? '我方' : '敌方'}物品`)
+    })
     offDamageEvent = EventBus.on('battle:take_damage', (e) => {
       if (engine) {
         const boardNow = engine.getBoardState()
@@ -2854,6 +2884,13 @@ export const BattleScene: Scene = {
       if (getDebugCfg('toastEnabled') < 0.5 || getDebugCfg('toastShowFatigueStart') < 0.5) return
       showFatigueToast('加时赛风暴来袭')
     })
+    offUnitDieEvent = EventBus.on('battle:unit_die', (e) => {
+      if (e.unitId === 'hero_player' || e.unitId === 'hero_enemy') return
+      const side = e.side === 'enemy' ? 'enemy' : 'player'
+      tryPulseItem(e.unitId, side)
+      pendingDestroyedItemDueMs.set(e.unitId, battlePresentationMs + 180)
+      pushBattleLog(`摧毁 ${side === 'enemy' ? '敌方' : '我方'} 物品`)
+    })
     pushBattleLog('战斗开始')
   },
   onExit() {
@@ -2919,6 +2956,8 @@ export const BattleScene: Scene = {
     offStatusApplyEvent?.(); offStatusApplyEvent = null
     offStatusRemoveEvent?.(); offStatusRemoveEvent = null
     offFatigueStartEvent?.(); offFatigueStartEvent = null
+    offUnitDieEvent?.(); offUnitDieEvent = null
+    offItemDestroyEvent?.(); offItemDestroyEvent = null
     itemInfoPopup = null
     selectedItemId = null
     selectedItemSide = null
@@ -2960,6 +2999,9 @@ export const BattleScene: Scene = {
     droppedFloatingNumberCount = 0
     activeFx.length = 0
     sourceNextDamageVisualAtMs.clear()
+    playerMountedItemIds.clear()
+    enemyMountedItemIds.clear()
+    pendingDestroyedItemDueMs.clear()
     for (const [, st] of pulseStates) {
       st.node?.visual.scale.set(1)
       if (st.flash.parent) st.flash.parent.removeChild(st.flash)
@@ -3031,6 +3073,8 @@ export const BattleScene: Scene = {
       if (!enemyPresentationVisible && battleSkillDetailPopupCon?.visible) hideBattleSkillDetailPopup()
     }
     const runtimeById = new Map(runtime.map((it) => [it.id, it]))
+    syncRemovedZoneItems(playerZone, 'player', playerItems)
+    syncRemovedZoneItems(enemyZone, 'enemy', enemyItems)
     if (tickChanged || pulseActive) {
       drawCooldownOverlay(playerZone, playerCdOverlay, playerItems, runtimeChargePercentById)
       drawCooldownOverlay(enemyZone, enemyCdOverlay, enemyItems, runtimeChargePercentById)

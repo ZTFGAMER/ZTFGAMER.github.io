@@ -626,9 +626,8 @@ export class PvpRoom {
       const myResult = results.get(player.index)
       const lost = myResult?.winner === 'enemy'
       if (lost) {
-        // Opponent's survivingDamage is what the opponent reported as winner
-        const opponentResult = opponentIdx >= 0 ? results.get(opponentIdx) : undefined
-        const damage = opponentResult?.survivingDamage ?? (getConfig().pvpRules?.baseDamage ?? 1)
+        void opponentIdx
+        const damage = Math.max(1, Math.round(day))
         const currentHp = this.playerHps.get(player.index) ?? 0
         const newHp = Math.max(0, currentHp - damage)
         this.playerHps.set(player.index, newHp)

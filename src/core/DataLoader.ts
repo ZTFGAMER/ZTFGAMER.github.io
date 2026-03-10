@@ -8,7 +8,6 @@ import type { GameConfig, ItemDef } from '@/items/ItemDef'
 // Vite 支持直接 import JSON（resolveJsonModule）
 import rawConfig   from '../../data/game_config.json'
 import rawItems    from '../../data/vanessa_items.json'
-import rawItemsCompact from '../../data/vanessa_items_compact.json'
 
 // ---- GameConfig ---- //
 // game_config.json 是一个数组，每条是一个 ConfigEntry
@@ -205,9 +204,7 @@ export function getConfig(): GameConfig {
 
 export function getAllItems(): ItemDef[] {
   if (!_items) {
-    const mode = getConfig().gameplayModeValues?.compactMode
-    const useCompact = mode?.enabled === true && mode.itemSet === 'compact'
-    const all = (useCompact ? rawItemsCompact : rawItems) as unknown as unknown[]
+    const all = rawItems as unknown as unknown[]
     const out: ItemDef[] = []
     for (const raw of all) {
       const it = normalizeItem(raw)

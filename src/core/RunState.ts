@@ -2,7 +2,7 @@ export const SHOP_STATE_STORAGE_KEY = 'bigbazzar_shop_state_v1'
 
 const LIFE_STATE_STORAGE_KEY = 'bigbazzar_life_state_v1'
 const LIFE_STATE_STORAGE_VERSION = 1
-const DEFAULT_MAX_LIVES = 5
+const DEFAULT_MAX_LIVES = 30
 const TROPHY_STATE_STORAGE_KEY = 'bigbazzar_trophy_state_v1'
 const TROPHY_STATE_STORAGE_VERSION = 1
 const DEFAULT_WIN_TARGET = 10
@@ -96,7 +96,11 @@ export function getLifeState(): LifeState {
     }
     const current = Number(parsed.state.current)
     const max = Number(parsed.state.max)
-    return saveLifeState(clampLives(current, max))
+    const normalized = clampLives(current, max)
+    if (normalized.max < DEFAULT_MAX_LIVES) {
+      return saveLifeState({ current: DEFAULT_MAX_LIVES, max: DEFAULT_MAX_LIVES })
+    }
+    return saveLifeState(normalized)
   } catch {
     return saveLifeState({ current: DEFAULT_MAX_LIVES, max: DEFAULT_MAX_LIVES })
   }
@@ -106,9 +110,10 @@ export function setLifeState(current: number, max: number): LifeState {
   return saveLifeState({ current, max })
 }
 
-export function deductLife(): LifeState {
+export function deductLife(amount = 1): LifeState {
   const state = getLifeState()
-  return saveLifeState({ current: state.current - 1, max: state.max })
+  const dmg = Number.isFinite(amount) ? Math.max(0, Math.round(amount)) : 1
+  return saveLifeState({ current: state.current - dmg, max: state.max })
 }
 
 export function resetLifeState(max = DEFAULT_MAX_LIVES): LifeState {

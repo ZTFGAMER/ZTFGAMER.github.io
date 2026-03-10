@@ -2071,6 +2071,22 @@ function addAllPossibleLevelsForTest(def: ItemDef): boolean {
   return true
 }
 
+function addMinLevelForTest(def: ItemDef): boolean {
+  const quality = parseTierName(def.starting_tier) ?? 'Bronze'
+  const range = getQualityLevelRange(quality)
+  const legacy = levelToTierStar(range.min)
+  if (!legacy) return false
+  const ok = placeItemToInventoryOrBattle(def, legacy.tier, legacy.star)
+  if (!ok) {
+    showHintToast('backpack_full_buy', `[测试] 添加失败：${def.name_cn}（空间不足）`, 0xffb27a)
+    return false
+  }
+  showHintToast('no_gold_buy', `[测试] 已添加：${def.name_cn} 最低等级（Lv${range.min}）`, 0x9be5ff)
+  refreshShopUI()
+  saveShopStateToStorage(captureShopState())
+  return true
+}
+
 function openItemTestOverlay(): void {
   closeItemTestOverlay()
   const stage = getApp().stage
@@ -2108,7 +2124,7 @@ function openItemTestOverlay(): void {
   panel.addChild(title)
 
   const subtitle = new Text({
-    text: '点击“全等级”将该物品所有可用等级放入背包/上阵区',
+    text: '点击“最低级/全等级”可添加该物品最低等级或全部可用等级',
     style: { fontSize: 20, fill: 0xa8bddf, fontFamily: 'Arial' },
   })
   subtitle.anchor.set(0.5)
@@ -2154,26 +2170,47 @@ function openItemTestOverlay(): void {
     label.y = y - label.height / 2
     listCon.addChild(label)
 
-    const btn = new Container()
-    btn.x = 214
-    btn.y = y
-    btn.eventMode = 'static'
-    btn.cursor = 'pointer'
-    const b = new Graphics()
-    b.roundRect(-40, -14, 80, 28, 10)
-    b.fill({ color: 0x74dc9b, alpha: 0.98 })
-    b.stroke({ color: 0x0d1426, width: 2, alpha: 0.95 })
-    const t = new Text({
+    const minBtn = new Container()
+    minBtn.x = 136
+    minBtn.y = y
+    minBtn.eventMode = 'static'
+    minBtn.cursor = 'pointer'
+    const minBg = new Graphics()
+    minBg.roundRect(-36, -14, 72, 28, 10)
+    minBg.fill({ color: 0x96c7ff, alpha: 0.98 })
+    minBg.stroke({ color: 0x0d1426, width: 2, alpha: 0.95 })
+    const minText = new Text({
+      text: '最低级',
+      style: { fontSize: 14, fill: 0x0f1c33, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    minText.anchor.set(0.5)
+    minBtn.on('pointerdown', (e) => {
+      e.stopPropagation()
+      addMinLevelForTest(def)
+    })
+    minBtn.addChild(minBg, minText)
+    listCon.addChild(minBtn)
+
+    const allBtn = new Container()
+    allBtn.x = 220
+    allBtn.y = y
+    allBtn.eventMode = 'static'
+    allBtn.cursor = 'pointer'
+    const allBg = new Graphics()
+    allBg.roundRect(-40, -14, 80, 28, 10)
+    allBg.fill({ color: 0x74dc9b, alpha: 0.98 })
+    allBg.stroke({ color: 0x0d1426, width: 2, alpha: 0.95 })
+    const allText = new Text({
       text: '全等级',
       style: { fontSize: 16, fill: 0x0f1c33, fontFamily: 'Arial', fontWeight: 'bold' },
     })
-    t.anchor.set(0.5)
-    btn.on('pointerdown', (e) => {
+    allText.anchor.set(0.5)
+    allBtn.on('pointerdown', (e) => {
       e.stopPropagation()
       addAllPossibleLevelsForTest(def)
     })
-    btn.addChild(b, t)
-    listCon.addChild(btn)
+    allBtn.addChild(allBg, allText)
+    listCon.addChild(allBtn)
   }
   refreshListScroll()
 
@@ -2456,7 +2493,9 @@ function canSynthesizePair(
   if (!sourceDef || !targetDef) return false
   if (isNeutralItemDef(sourceDef) || isNeutralItemDef(targetDef)) return false
   if (sourceTier !== targetTier || sourceStar !== targetStar) return false
-  if (!nextTierLevel(sourceTier, sourceStar)) return false
+  if (!nextTierLevel(sourceTier, sourceStar)) {
+    return canUseLv7MorphSynthesis(sourceDefId, targetDefId, sourceTier, sourceStar, targetTier, targetStar)
+  }
   if (sourceDefId === targetDefId) return true
   const sourceArch = getPrimaryArchetype(sourceDef.tags)
   const targetArch = getPrimaryArchetype(targetDef.tags)
@@ -2476,8 +2515,36 @@ function normalizeTierStar(tier: TierKey, star?: number): 1 | 2 {
   return max
 }
 
+function isLv7TierStar(tier: TierKey, star: 1 | 2): boolean {
+  return tier === 'Diamond' && normalizeTierStar(tier, star) === 2
+}
+
+function canUseLv7MorphSynthesis(
+  sourceDefId: string,
+  targetDefId: string,
+  sourceTier: TierKey,
+  sourceStar: 1 | 2,
+  targetTier: TierKey,
+  targetStar: 1 | 2,
+): boolean {
+  if (!isLv7TierStar(sourceTier, sourceStar) || !isLv7TierStar(targetTier, targetStar)) return false
+  const sourceDef = getItemDefById(sourceDefId)
+  const targetDef = getItemDefById(targetDefId)
+  if (!sourceDef || !targetDef) return false
+  if (isNeutralItemDef(sourceDef) || isNeutralItemDef(targetDef)) return false
+  if (sourceDefId === targetDefId) return true
+  const sourceArch = toSkillArchetype(getPrimaryArchetype(sourceDef.tags))
+  const targetArch = toSkillArchetype(getPrimaryArchetype(targetDef.tags))
+  if (sourceArch !== 'warrior' && sourceArch !== 'archer' && sourceArch !== 'assassin') return false
+  if (targetArch !== 'warrior' && targetArch !== 'archer' && targetArch !== 'assassin') return false
+  return sourceArch === targetArch
+}
+
 function nextTierLevel(tier: TierKey, star: 1 | 2): { tier: TierKey, star: 1 | 2 } | null {
-  if (tier === 'Diamond') return null
+  if (tier === 'Diamond') {
+    const s = normalizeTierStar(tier, star)
+    return s < maxStarForTier(tier) ? { tier, star: 2 } : null
+  }
   if (star < maxStarForTier(tier)) return { tier, star: 2 }
   const idx = TIER_ORDER.indexOf(tier)
   if (idx < 0 || idx >= TIER_ORDER.length - 1) return null
@@ -3165,7 +3232,8 @@ function refreshBackpackSynthesisGuideArrows(
   excludeInstanceId?: string,
 ): void {
   if (!backpackView || !battleView) return
-  if (!defId || !tier || tier === 'Diamond') {
+  const canLv7Morph = !!defId && !!tier && canUseLv7MorphSynthesis(defId, defId, tier, star, tier, star)
+  if (!defId || !tier || (!nextTierLevel(tier, star) && !canLv7Morph)) {
     backpackView.setDragGuideArrows([])
     battleView.setDragGuideArrows([])
     return
@@ -3174,6 +3242,11 @@ function refreshBackpackSynthesisGuideArrows(
   const battleGuide = isBattleZoneNoSynthesisEnabled()
     ? { sameIds: [], crossIds: [] }
     : collectSynthesisGuideIds(battleSystem, defId, tier, star, excludeInstanceId)
+  if (canLv7Morph) {
+    backpackView.setDragGuideArrows([], [...backpackGuide.sameIds, ...backpackGuide.crossIds], 'convert')
+    battleView.setDragGuideArrows([], [...battleGuide.sameIds, ...battleGuide.crossIds], 'convert')
+    return
+  }
   backpackView.setDragGuideArrows(backpackGuide.sameIds, backpackGuide.crossIds)
   battleView.setDragGuideArrows(battleGuide.sameIds, battleGuide.crossIds)
 }
@@ -3559,12 +3632,24 @@ function showSynthesisHoverInfo(
   if (!battleSystem || !backpackSystem || !sellPopup || !shopManager) return
   const sourceDef = getItemDefById(sourceDefId)
   if (!sourceDef) return
-  const upgradeTo = nextTierLevel(sourceTier, sourceStar)
-  if (!upgradeTo) return
-
   const system = target.zone === 'battle' ? battleSystem : backpackSystem
   const targetItem = system.getItem(target.instanceId)
   if (!targetItem) return
+  const targetTier = getInstanceTier(target.instanceId) ?? sourceTier
+  const targetStar = getInstanceTierStar(target.instanceId)
+  const lv7MorphMode = canUseLv7MorphSynthesis(sourceDefId, targetItem.defId, sourceTier, sourceStar, targetTier, targetStar)
+  if (lv7MorphMode) {
+    const morphStone = getItemDefByCn('变化石') ?? sourceDef
+    const customDisplay: ItemInfoCustomDisplay = {
+      overrideName: '变化石（Lv7转化）',
+      lines: ['将两个Lv7物品转化为同职业其他Lv7物品', '松手后需二次确认，再进入2选1变化'],
+      suppressStats: true,
+    }
+    sellPopup.show(morphStone, 0, 'none', 'Bronze#1', undefined, 'detailed', undefined, customDisplay)
+    return
+  }
+  const upgradeTo = nextTierLevel(sourceTier, sourceStar)
+  if (!upgradeTo) return
   const isSameItem = sourceDefId === targetItem.defId
   const mode = isSameItem ? 'same_archetype' : 'cross_archetype'
   const key = `${sourceDefId}|${sourceTier}|${sourceStar}|${target.instanceId}|${mode}`
@@ -5026,12 +5111,12 @@ function getNeutralSpecialKind(item: ItemDef): NeutralSpecialKind | null {
 }
 
 const NEUTRAL_RANDOM_CAP_BY_DAY: Record<NeutralSpecialKind, number[]> = {
-  upgrade_stone: [0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5],
+  upgrade_stone: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   class_shift_stone: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
   class_morph_stone: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
   skill_scroll: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
-  shop_scroll: [0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7],
-  event_scroll: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
+  shop_scroll: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  event_scroll: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
   raw_stone: [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38],
   medal: [0, 1, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
   blank_scroll: [0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6],
@@ -5505,6 +5590,8 @@ function showNeutralChoiceOverlay(
   stage: Container,
   titleText: string,
   candidates: NeutralChoiceCandidate[],
+  onConfirmPick?: (candidate: NeutralChoiceCandidate) => boolean,
+  displayMode: 'default' | 'special_shop_like' = 'default',
 ): boolean {
   const showSimple = shouldShowSimpleDescriptions()
   const uniq = candidates.filter((one, idx, arr) => arr.findIndex((it) => it.item.id === one.item.id) === idx).slice(0, 3)
@@ -5525,11 +5612,11 @@ function showNeutralChoiceOverlay(
 
   const title = new Text({
     text: titleText,
-    style: { fontSize: 40, fill: 0xfff2cf, fontFamily: 'Arial', fontWeight: 'bold' },
+    style: { fontSize: 42, fill: 0xfff2cf, fontFamily: 'Arial', fontWeight: 'bold' },
   })
   title.anchor.set(0.5)
   title.x = CANVAS_W / 2
-  title.y = 220
+  title.y = 228
   overlay.addChild(title)
 
   const hint = new Text({
@@ -5538,15 +5625,15 @@ function showNeutralChoiceOverlay(
   })
   hint.anchor.set(0.5)
   hint.x = CANVAS_W / 2
-  hint.y = 270
+  hint.y = 286
   overlay.addChild(hint)
 
-  const cardW = 186
+  const cardW = 238
   const cardH = 470
-  const gap = 18
-  const totalW = uniq.length * cardW + (uniq.length - 1) * gap
+  const gapX = uniq.length === 2 ? 50 : 16
+  const totalW = uniq.length * cardW + (uniq.length - 1) * gapX
   const startX = (CANVAS_W - totalW) / 2
-  const cardY = 560
+  const cardY = 580
 
   const closeOverlay = () => {
     if (overlay.parent) overlay.parent.removeChild(overlay)
@@ -5557,88 +5644,204 @@ function showNeutralChoiceOverlay(
     saveShopStateToStorage(captureShopState())
   }
 
-  let selectedIdx = -1
+  let selectedIdx = uniq.length === 1 ? 0 : -1
   const redrawList: Array<() => void> = []
 
   uniq.forEach((cand, idx) => {
     const card = new Container()
-    card.x = startX + idx * (cardW + gap)
+    card.x = startX + idx * (cardW + gapX)
     card.y = cardY
     card.eventMode = 'static'
     card.cursor = 'pointer'
     card.hitArea = new Rectangle(0, 0, cardW, cardH)
 
-    const cardBg = new Graphics()
-    card.addChild(cardBg)
+    const border = new Graphics()
+    border.roundRect(0, 0, cardW, cardH, 24)
+    border.fill({ color: 0x18263e, alpha: 0.96 })
+    border.stroke({ color: 0x7cc6ff, width: 3, alpha: 1 })
+    card.addChild(border)
 
-    const level = String(Math.max(1, Math.min(7, tierStarLevelIndex(cand.tier, cand.star) + 1)))
-    const icon = createGuideItemCard(cand.item, level, getGuideFrameTierByLevel(level))
-    icon.x = Math.round((cardW - icon.width) / 2)
-    icon.y = 90
-    card.addChild(icon)
+    const selectedFrame = new Graphics()
+    selectedFrame.roundRect(3, 3, cardW - 6, cardH - 6, 22)
+    selectedFrame.stroke({ color: 0xffe28a, width: 5, alpha: 1 })
+    selectedFrame.visible = false
+    card.addChild(selectedFrame)
+
+    const showShopLike = displayMode === 'special_shop_like'
+    const baseTier = parseTierName(cand.item.starting_tier) ?? 'Bronze'
+    const levelNum = tierStarLevelIndex(cand.tier, cand.star) + 1
+    let descStartY = 244
+
+    if (showShopLike) {
+      const icon = new Sprite(Texture.WHITE)
+      icon.width = 132
+      icon.height = 132
+      icon.x = (cardW - icon.width) / 2
+      icon.y = 20
+      icon.alpha = 0
+      card.addChild(icon)
+      void Assets.load<Texture>(getItemIconUrl(cand.item.id)).then((tex) => {
+        icon.texture = tex
+        icon.alpha = 1
+      }).catch(() => {
+        // ignore load error in runtime
+      })
+    } else {
+      const level = String(Math.max(1, Math.min(7, levelNum)))
+      const icon = createGuideItemCard(cand.item, level, getGuideFrameTierByLevel(level))
+      icon.x = Math.round((cardW - icon.width) / 2)
+      icon.y = 108
+      card.addChild(icon)
+    }
 
     const name = new Text({
       text: cand.item.name_cn,
-      style: { fontSize: 28, fill: 0xeaf4ff, fontFamily: 'Arial', fontWeight: 'bold', wordWrap: true, wordWrapWidth: cardW - 20, align: 'center' },
+      style: { fontSize: showShopLike ? 26 : 30, fill: 0xf5f8ff, fontFamily: 'Arial', fontWeight: 'bold', wordWrap: true, wordWrapWidth: cardW - 24, align: 'center' },
     })
     name.anchor.set(0.5, 0)
     name.x = cardW / 2
-    name.y = 238
+    name.y = showShopLike ? 168 : 198
     card.addChild(name)
 
+    const tierPill = new Graphics()
+    if (showShopLike) {
+      const tierFill = baseTier === 'Bronze'
+        ? 0x7f6839
+        : baseTier === 'Silver'
+          ? 0x5c6678
+          : baseTier === 'Gold'
+            ? 0x8f6a2d
+            : 0x2f5f86
+      tierPill.roundRect(0, 0, 116, 38, 12)
+      tierPill.fill({ color: tierFill, alpha: 0.96 })
+      tierPill.stroke({ color: getTierColor(baseTier), width: 2, alpha: 0.95 })
+      tierPill.x = (cardW - 116) / 2
+      tierPill.y = 208
+      card.addChild(tierPill)
+
+      const tier = new Text({
+        text: `${tierCnFromTier(baseTier)}Lv${levelNum}`,
+        style: { fontSize: 24, fill: 0xfff4d0, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      tier.anchor.set(0.5)
+      tier.x = cardW / 2
+      tier.y = tierPill.y + 19
+      card.addChild(tier)
+
+      const tierStats = resolveItemTierBaseStats(cand.item, `${cand.tier}#${cand.star}`)
+      const damageValue = Math.max(0, Math.round(tierStats.damage))
+      const shieldValue = Math.max(0, Math.round(tierStats.shield))
+      const cooldownMs = Math.max(0, Math.round(tierStats.cooldownMs))
+      const mainStatText = damageValue > 0
+        ? `✦伤害${damageValue}`
+        : shieldValue > 0
+          ? `🛡护盾${shieldValue}`
+          : '◈被动'
+      const mainStatColor = damageValue > 0 ? 0xff7a82 : shieldValue > 0 ? 0xffd983 : 0x86b8ff
+      const speedText = cooldownMs > 0
+        ? `⏱速度${getSpecialShopSpeedTierText(cooldownMs)}`
+        : '⏱被动'
+
+      const ammoLine = (cand.item.skills ?? [])
+        .map((s) => String(s.cn ?? '').trim())
+        .find((s) => /弹药\s*[:：]\s*\d+/.test(s))
+      const ammo = ammoLine ? ammoValueFromLineByStar(cand.item, cand.tier, cand.star, ammoLine) : 0
+
+      const statEntries: Array<{ text: string; color: number }> = [
+        { text: mainStatText, color: mainStatColor },
+        { text: speedText, color: 0x70b2ff },
+      ]
+      if (ammo > 0) statEntries.push({ text: `◉弹药${ammo}`, color: 0xffd36b })
+
+      const statStartY = 258
+      const statGapY = 34
+      for (let si = 0; si < statEntries.length; si++) {
+        const entry = statEntries[si]!
+        const line = new Text({
+          text: entry.text,
+          style: { fontSize: 24, fill: entry.color, fontFamily: 'Arial', fontWeight: 'bold' },
+        })
+        line.anchor.set(0.5, 0)
+        line.x = cardW / 2
+        line.y = statStartY + si * statGapY
+        card.addChild(line)
+      }
+
+      const divider = new Graphics()
+      const dividerY = statStartY + statEntries.length * statGapY + 2
+      divider.moveTo(12, dividerY)
+      divider.lineTo(cardW - 12, dividerY)
+      divider.stroke({ color: 0x4a5f88, width: 1.5, alpha: 0.95 })
+      card.addChild(divider)
+      descStartY = dividerY + 14
+    }
+
     const simpleDesc = new Text({
-      text: getNeutralChoiceSimpleDesc(cand.item),
+      text: showShopLike
+        ? getSpecialShopShownDesc(cand.item, cand.tier, cand.star, false)
+        : getNeutralChoiceSimpleDesc(cand.item),
       style: {
-        fontSize: 20,
-        fill: 0xbfd0ea,
+        fontSize: showShopLike ? 20 : 24,
+        fill: showShopLike ? 0xcad7f5 : 0xffefc8,
         fontFamily: 'Arial',
-        fontWeight: 'bold',
+        fontWeight: showShopLike ? 'normal' : 'bold',
         wordWrap: true,
         breakWords: true,
-        wordWrapWidth: cardW - 34,
-        align: 'center',
+        wordWrapWidth: cardW - (showShopLike ? 24 : 28),
+        lineHeight: showShopLike ? 28 : 32,
+        align: showShopLike ? 'left' : 'center',
       },
     })
-    simpleDesc.anchor.set(0.5, 0)
-    simpleDesc.x = cardW / 2
-    simpleDesc.y = 312
+    if (showShopLike) {
+      simpleDesc.x = 12
+      simpleDesc.y = descStartY
+    } else {
+      simpleDesc.anchor.set(0.5, 0)
+      simpleDesc.x = cardW / 2
+      simpleDesc.y = 244
+    }
     card.addChild(simpleDesc)
 
     const detailDesc = new Text({
-      text: getNeutralChoiceDetailDesc(cand.item),
+      text: showShopLike
+        ? getSpecialShopShownDesc(cand.item, cand.tier, cand.star, true)
+        : getNeutralChoiceDetailDesc(cand.item),
       style: {
-        fontSize: 20,
-        fill: 0x9fe3b9,
+        fontSize: showShopLike ? 20 : 24,
+        fill: showShopLike ? 0xf2f7ff : 0x9fe3b9,
         fontFamily: 'Arial',
-        fontWeight: 'bold',
+        fontWeight: showShopLike ? 'normal' : 'bold',
         wordWrap: true,
         breakWords: true,
-        wordWrapWidth: cardW - 34,
-        align: 'center',
+        wordWrapWidth: cardW - (showShopLike ? 24 : 28),
+        lineHeight: showShopLike ? 28 : 32,
+        align: showShopLike ? 'left' : 'center',
       },
     })
-    detailDesc.anchor.set(0.5, 0)
-    detailDesc.x = cardW / 2
-    detailDesc.y = 312
+    if (showShopLike) {
+      detailDesc.x = 12
+      detailDesc.y = descStartY
+    } else {
+      detailDesc.anchor.set(0.5, 0)
+      detailDesc.x = cardW / 2
+      detailDesc.y = 244
+    }
     detailDesc.visible = false
     card.addChild(detailDesc)
 
     const pick = new Text({
       text: '点击选择',
-      style: { fontSize: 24, fill: 0x8fe6b2, fontFamily: 'Arial', fontWeight: 'bold' },
+      style: { fontSize: 28, fill: 0x8fe6b2, fontFamily: 'Arial', fontWeight: 'bold' },
     })
     pick.anchor.set(0.5)
     pick.x = cardW / 2
-    pick.y = 440
+    pick.y = cardH - 46
     pick.visible = false
     card.addChild(pick)
 
     const redraw = () => {
       const selected = selectedIdx === idx
-      cardBg.clear()
-      cardBg.roundRect(0, 0, cardW, cardH, 20)
-      cardBg.fill({ color: selected ? 0x223a5f : 0x18263e, alpha: 0.96 })
-      cardBg.stroke({ color: selected ? 0xaee0ff : 0x8ec6ff, width: selected ? 4 : 3, alpha: 1 })
+      selectedFrame.visible = selected
       simpleDesc.visible = showSimple && !selected
       detailDesc.visible = !showSimple || selected
       pick.visible = selected
@@ -5653,8 +5856,10 @@ function showNeutralChoiceOverlay(
         redrawList.forEach((fn) => fn())
         return
       }
-      const ok = placeItemToInventoryOrBattle(cand.item, cand.tier, cand.star)
-      if (!ok) showHintToast('backpack_full_buy', '上阵区和背包已满，无法获得该物品', 0xff8f8f)
+      const ok = onConfirmPick
+        ? onConfirmPick(cand)
+        : placeItemToInventoryOrBattle(cand.item, cand.tier, cand.star)
+      if (!ok && !onConfirmPick) showHintToast('backpack_full_buy', '上阵区和背包已满，无法获得该物品', 0xff8f8f)
       closeOverlay()
     })
 
@@ -5714,10 +5919,39 @@ function showNeutralChoiceOverlay(
   return true
 }
 
-function convertPlacedItemKeepLevelWithArchetypeRule(
+function collectArchetypeRuleTransformCandidates(
   instanceId: string,
   zone: 'battle' | 'backpack',
   rule: 'same' | 'other',
+  minBaseTier?: TierKey,
+): ItemDef[] {
+  const system = zone === 'battle' ? battleSystem : backpackSystem
+  const placed = system?.getItem(instanceId)
+  if (!placed) return []
+  const srcDef = getItemDefById(placed.defId)
+  if (!srcDef || isNeutralItemDef(srcDef)) return []
+  const srcArch = toSkillArchetype(getPrimaryArchetype(srcDef.tags))
+  if (srcArch !== 'warrior' && srcArch !== 'archer' && srcArch !== 'assassin') return []
+  return getAllItems()
+    .filter((it) => it.id !== placed.defId)
+    .filter((it) => !isNeutralItemDef(it))
+    .filter((it) => normalizeSize(it.size) === placed.size)
+    .filter((it) => {
+      if (!minBaseTier) return true
+      const tier = parseTierName(it.starting_tier) ?? 'Bronze'
+      return compareTier(tier, minBaseTier) >= 0
+    })
+    .filter((it) => {
+      const arch = toSkillArchetype(getPrimaryArchetype(it.tags))
+      if (arch !== 'warrior' && arch !== 'archer' && arch !== 'assassin') return false
+      return rule === 'same' ? arch === srcArch : arch !== srcArch
+    })
+}
+
+function transformPlacedItemKeepLevelTo(
+  instanceId: string,
+  zone: 'battle' | 'backpack',
+  nextDef: ItemDef,
   withFx = false,
 ): boolean {
   const system = zone === 'battle' ? battleSystem : backpackSystem
@@ -5725,43 +5959,24 @@ function convertPlacedItemKeepLevelWithArchetypeRule(
   if (!system || !view) return false
   const placed = system.getItem(instanceId)
   if (!placed) return false
-  const srcDef = getItemDefById(placed.defId)
-  if (!srcDef || isNeutralItemDef(srcDef)) return false
-  const srcArch = toSkillArchetype(getPrimaryArchetype(srcDef.tags))
-  if (srcArch !== 'warrior' && srcArch !== 'archer' && srcArch !== 'assassin') return false
-  const srcMinTier = parseTierName(srcDef.starting_tier) ?? 'Bronze'
-
+  if (normalizeSize(nextDef.size) !== placed.size) return false
   const level = getInstanceLevel(instanceId)
   const legacy = levelToTierStar(level)
   const tier = legacy?.tier ?? 'Bronze'
   const star = legacy?.star ?? 1
-  const candidates = collectPoolCandidatesByLevel(level)
-    .filter((c) => normalizeSize(c.item.size) === placed.size)
-    .map((c) => c.item)
-    .filter((it) => it.id !== placed.defId)
-    .filter((it) => !isNeutralItemDef(it))
-    .filter((it) => compareTier(parseTierName(it.starting_tier) ?? 'Bronze', srcMinTier) >= 0)
-    .filter((it) => {
-      const arch = toSkillArchetype(getPrimaryArchetype(it.tags))
-      if (arch !== 'warrior' && arch !== 'archer' && arch !== 'assassin') return false
-      return rule === 'same' ? arch === srcArch : arch !== srcArch
-    })
-  const picked = candidates[Math.floor(Math.random() * candidates.length)]
-  if (!picked) return false
-
   system.remove(instanceId)
-  if (!system.place(placed.col, placed.row, placed.size, picked.id, instanceId)) {
+  if (!system.place(placed.col, placed.row, placed.size, nextDef.id, instanceId)) {
     system.place(placed.col, placed.row, placed.size, placed.defId, instanceId)
     return false
   }
   view.removeItem(instanceId)
-  void view.addItem(instanceId, picked.id, placed.size, placed.col, placed.row, toVisualTier(tier, star)).then(() => {
+  void view.addItem(instanceId, nextDef.id, placed.size, placed.col, placed.row, toVisualTier(tier, star)).then(() => {
     view.setItemTier(instanceId, toVisualTier(tier, star))
     drag?.refreshZone(view)
   })
-  instanceToDefId.set(instanceId, picked.id)
-  setInstanceQualityLevel(instanceId, picked.id, parseTierName(picked.starting_tier) ?? 'Bronze', level)
-  unlockItemToPool(picked.id)
+  instanceToDefId.set(instanceId, nextDef.id)
+  setInstanceQualityLevel(instanceId, nextDef.id, parseTierName(nextDef.starting_tier) ?? 'Bronze', level)
+  unlockItemToPool(nextDef.id)
   if (withFx) playTransformOrUpgradeFlashEffect(instanceId, zone)
   return true
 }
@@ -5845,8 +6060,12 @@ function applyNeutralDiscardEffect(source: ItemDef, stage: Container): boolean {
         return oneKind ? isNeutralKindRandomAvailable(oneKind) : true
       })
       .map((item) => ({ item, tier: 'Bronze' as TierKey, star: 1 as const }))
+    if (picks.length <= 0) {
+      showHintToast('no_gold_buy', '原石：当前无可选物品', 0xffb27a)
+      return true
+    }
     const ok = showNeutralChoiceOverlay(stage, '选择一块石头', picks)
-    if (!ok) showHintToast('no_gold_buy', '原石：可选物品不足', 0xffb27a)
+    if (!ok) showHintToast('no_gold_buy', '原石：当前无可选物品', 0xffb27a)
     return true
   }
   if (kind === 'blank_scroll') {
@@ -5856,8 +6075,12 @@ function applyNeutralDiscardEffect(source: ItemDef, stage: Container): boolean {
         return oneKind ? isNeutralKindRandomAvailable(oneKind) : true
       })
       .map((item) => ({ item, tier: 'Bronze' as TierKey, star: 1 as const }))
+    if (picks.length <= 0) {
+      showHintToast('no_gold_buy', '空白卷轴：当前无可选物品', 0xffb27a)
+      return true
+    }
     const ok = showNeutralChoiceOverlay(stage, '选择一张卷轴', picks)
-    if (!ok) showHintToast('no_gold_buy', '空白卷轴：可选物品不足', 0xffb27a)
+    if (!ok) showHintToast('no_gold_buy', '空白卷轴：当前无可选物品', 0xffb27a)
     return true
   }
   if (kind === 'medal') {
@@ -5869,7 +6092,141 @@ function applyNeutralDiscardEffect(source: ItemDef, stage: Container): boolean {
   return false
 }
 
-function applyNeutralStoneTargetEffect(sourceDef: ItemDef, target: SynthesisTarget): boolean {
+function buildStoneTransformChoices(target: SynthesisTarget, rule: 'same' | 'other'): NeutralChoiceCandidate[] {
+  const targetTier = getInstanceTier(target.instanceId) ?? 'Bronze'
+  const targetLevel = getInstanceLevel(target.instanceId)
+  const targetStar = getInstanceTierStar(target.instanceId)
+  const poolAllTier = collectArchetypeRuleTransformCandidates(target.instanceId, target.zone, rule)
+  const availableFirstTiers = Array.from(new Set(poolAllTier.map((it) => parseTierName(it.starting_tier) ?? 'Bronze')))
+  const firstTier = availableFirstTiers.length > 0
+    ? pickQualityByPseudoRandomBag(targetLevel, availableFirstTiers)
+    : null
+  const firstPool = firstTier
+    ? poolAllTier.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === firstTier)
+    : []
+  const first = pickRandomElements(firstPool, 1)[0]
+  const poolForSecond = first ? poolAllTier.filter((it) => it.id !== first.id) : [...poolAllTier]
+  const availableSecondTiers = Array.from(new Set(poolForSecond.map((it) => parseTierName(it.starting_tier) ?? 'Bronze')))
+  const secondTier = availableSecondTiers.length > 0
+    ? pickQualityByPseudoRandomBag(targetLevel, availableSecondTiers)
+    : null
+  const secondPool = secondTier
+    ? poolForSecond.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === secondTier)
+    : []
+  const second = pickRandomElements(secondPool, 1)[0]
+  return [first, second]
+    .filter((it): it is ItemDef => !!it)
+    .map((item) => ({ item, tier: targetTier, star: targetStar }))
+}
+
+function showLv7MorphSynthesisConfirmOverlay(
+  stage: Container,
+  onConfirm: () => void,
+  onCancel?: () => void,
+): void {
+  setTransitionInputEnabled(false)
+  setBaseShopPrimaryButtonsVisible(false)
+
+  const overlay = new Container()
+  overlay.zIndex = 3600
+  overlay.eventMode = 'static'
+  overlay.hitArea = new Rectangle(0, 0, CANVAS_W, CANVAS_H)
+
+  const mask = new Graphics()
+  mask.rect(0, 0, CANVAS_W, CANVAS_H)
+  mask.fill({ color: 0x070d1d, alpha: 0.92 })
+  overlay.addChild(mask)
+
+  const panel = new Graphics()
+  const panelW = 548
+  const panelH = 390
+  panel.roundRect((CANVAS_W - panelW) / 2, 430, panelW, panelH, 24)
+  panel.fill({ color: 0x13233d, alpha: 0.98 })
+  panel.stroke({ color: 0x79b6ff, width: 3, alpha: 0.98 })
+  overlay.addChild(panel)
+
+  const title = new Text({
+    text: 'Lv7顶级转化确认',
+    style: { fontSize: 42, fill: 0xfff2cf, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  title.anchor.set(0.5)
+  title.x = CANVAS_W / 2
+  title.y = 500
+  overlay.addChild(title)
+
+  const desc = new Text({
+    text: '将消耗两个Lv7物品，并触发变化石效果\n从同职业Lv7候选中选择1个进行转化',
+    style: { fontSize: 28, fill: 0xcfe2ff, fontFamily: 'Arial', fontWeight: 'bold', align: 'center', lineHeight: 40 },
+  })
+  desc.anchor.set(0.5)
+  desc.x = CANVAS_W / 2
+  desc.y = 610
+  overlay.addChild(desc)
+
+  const closeOverlay = (confirmed: boolean) => {
+    if (overlay.parent) overlay.parent.removeChild(overlay)
+    overlay.destroy({ children: true })
+    setTransitionInputEnabled(true)
+    applyPhaseInputLock()
+    if (confirmed) onConfirm()
+    else onCancel?.()
+  }
+
+  const confirmBtn = new Container()
+  confirmBtn.eventMode = 'static'
+  confirmBtn.cursor = 'pointer'
+  confirmBtn.x = CANVAS_W / 2 - 108
+  confirmBtn.y = 742
+  const confirmBg = new Graphics()
+  confirmBg.roundRect(0, 0, 216, 74, 16)
+  confirmBg.fill({ color: 0x6dd3ff, alpha: 0.96 })
+  confirmBg.stroke({ color: 0xb8e8ff, width: 3, alpha: 1 })
+  const confirmTxt = new Text({
+    text: '确认转化',
+    style: { fontSize: 30, fill: 0x10203a, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  confirmTxt.anchor.set(0.5)
+  confirmTxt.x = 108
+  confirmTxt.y = 37
+  confirmBtn.addChild(confirmBg, confirmTxt)
+  confirmBtn.on('pointerdown', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    closeOverlay(true)
+  })
+  overlay.addChild(confirmBtn)
+
+  const cancelBtn = new Container()
+  cancelBtn.eventMode = 'static'
+  cancelBtn.cursor = 'pointer'
+  cancelBtn.x = CANVAS_W / 2 - 108
+  cancelBtn.y = 826
+  const cancelBg = new Graphics()
+  cancelBg.roundRect(0, 0, 216, 74, 16)
+  cancelBg.fill({ color: 0x25344d, alpha: 0.9 })
+  cancelBg.stroke({ color: 0x5d7597, width: 3, alpha: 1 })
+  const cancelTxt = new Text({
+    text: '取消',
+    style: { fontSize: 30, fill: 0xc9d6ef, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  cancelTxt.anchor.set(0.5)
+  cancelTxt.x = 108
+  cancelTxt.y = 37
+  cancelBtn.addChild(cancelBg, cancelTxt)
+  cancelBtn.on('pointerdown', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    closeOverlay(false)
+  })
+  overlay.addChild(cancelBtn)
+
+  overlay.on('pointerdown', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    closeOverlay(false)
+  })
+
+  stage.addChild(overlay)
+}
+
+function applyNeutralStoneTargetEffect(sourceDef: ItemDef, target: SynthesisTarget, stage: Container): boolean {
   const kind = getNeutralSpecialKind(sourceDef)
   if (kind !== 'class_shift_stone' && kind !== 'class_morph_stone') return false
   const system = target.zone === 'battle' ? battleSystem : backpackSystem
@@ -5878,13 +6235,21 @@ function applyNeutralStoneTargetEffect(sourceDef: ItemDef, target: SynthesisTarg
   const targetDef = getItemDefById(placed.defId)
   if (!targetDef || !isValidNeutralStoneTarget(sourceDef, targetDef)) return false
   const rule = kind === 'class_shift_stone' ? 'other' : 'same'
-  const ok = convertPlacedItemKeepLevelWithArchetypeRule(target.instanceId, target.zone, rule, true)
-  if (!ok) {
+  const choices = buildStoneTransformChoices(target, rule)
+  if (choices.length <= 0) {
     showHintToast('no_gold_buy', kind === 'class_shift_stone' ? '转职石：该目标当前无法转化' : '变化石：该目标当前无法转化', 0xffb27a)
     return false
   }
-  showHintToast('no_gold_buy', kind === 'class_shift_stone' ? '转职石：已转化目标物品' : '变化石：已转化目标物品', 0x9be5ff)
-  return true
+  const title = kind === 'class_shift_stone' ? '选择转职方向' : '选择变化方向'
+  return showNeutralChoiceOverlay(stage, title, choices, (picked) => {
+    const ok = transformPlacedItemKeepLevelTo(target.instanceId, target.zone, picked.item, true)
+    if (!ok) {
+      showHintToast('no_gold_buy', kind === 'class_shift_stone' ? '转职石：该目标当前无法转化' : '变化石：该目标当前无法转化', 0xffb27a)
+      return false
+    }
+    showHintToast('no_gold_buy', kind === 'class_shift_stone' ? '转职石：已转化目标物品' : '变化石：已转化目标物品', 0x9be5ff)
+    return true
+  }, 'special_shop_like')
 }
 
 function applyFutureEventEffectsOnNewDay(day: number): void {
@@ -10369,6 +10734,43 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
 
   if (synthTarget) {
     const targetItem = getSynthesisTargetItem(synthTarget)
+    const targetTier = getInstanceTier(synthTarget.instanceId) ?? slot.tier
+    const targetStar = getInstanceTierStar(synthTarget.instanceId)
+    const lv7MorphMode = !!targetItem && canUseLv7MorphSynthesis(slot.item.id, targetItem.defId, slot.tier, 1, targetTier, targetStar)
+    if (lv7MorphMode) {
+      showLv7MorphSynthesisConfirmOverlay(stage, () => {
+        const choices = buildStoneTransformChoices(synthTarget, 'same')
+        if (choices.length <= 0) {
+          showHintToast('backpack_full_buy', 'Lv7转化：当前无可用候选', 0xffb27a)
+          refreshShopUI()
+          return
+        }
+        const opened = showNeutralChoiceOverlay(stage, '选择变化方向', choices, (picked) => {
+          const buyRet = tryBuyShopSlotWithSkill(slot)
+          if (!buyRet.ok) {
+            showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
+            refreshShopUI()
+            return false
+          }
+          markShopPurchaseDone()
+          const ok = transformPlacedItemKeepLevelTo(synthTarget.instanceId, synthTarget.zone, picked.item, true)
+          if (!ok) {
+            showHintToast('backpack_full_buy', 'Lv7转化失败', 0xff8f8f)
+            refreshShopUI()
+            return false
+          }
+          showHintToast('no_gold_buy', 'Lv7合成：已触发变化石效果', 0x9be5ff)
+          refreshShopUI()
+          return true
+        }, 'special_shop_like')
+        if (!opened) {
+          showHintToast('backpack_full_buy', 'Lv7转化：当前无可用候选', 0xffb27a)
+          refreshShopUI()
+        }
+      })
+      _resetDrag()
+      return
+    }
     const isCrossId = !!targetItem && targetItem.defId !== slot.item.id
     if (isCrossId) {
       const targetDef = targetItem ? getItemDefById(targetItem.defId) : null
@@ -10376,8 +10778,6 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
         _resetDrag()
         return
       }
-      const targetTier = getInstanceTier(synthTarget.instanceId) ?? slot.tier
-      const targetStar = getInstanceTierStar(synthTarget.instanceId)
       const upgradeTo = nextTierLevel(slot.tier, 1)
       if (!upgradeTo) {
         _resetDrag()
@@ -11154,7 +11554,7 @@ export const ShopScene: Scene = {
       if (sourceDef && isNeutralTargetStone(sourceDef)) {
         const target = findNeutralStoneTargetWithDragProbe(sourceDef, anchorGx, anchorGy, size)
         if (!target) return false
-        const ok = applyNeutralStoneTargetEffect(sourceDef, target)
+        const ok = applyNeutralStoneTargetEffect(sourceDef, target, stage)
         if (!ok) return false
         homeSystem.remove(instanceId)
         removeInstanceMeta(instanceId)
@@ -11168,7 +11568,7 @@ export const ShopScene: Scene = {
       if (
         isBattleZoneNoSynthesisEnabled()
         && homeView === backpackView
-        && fromTier !== 'Diamond'
+        && (!!nextTierLevel(fromTier, fromStar) || canUseLv7MorphSynthesis(defId, defId, fromTier, fromStar, fromTier, fromStar))
         && isPointInZoneArea(battleView, anchorGx, anchorGy)
       ) {
         const blockedBattleSynth = findBattleSynthesisTargetWithDragProbeIgnoringNoSynthesis(defId, fromTier, fromStar, anchorGx, anchorGy, size)
@@ -11178,15 +11578,78 @@ export const ShopScene: Scene = {
       }
 
       // 1.5) 拖到同装备同品质目标物品：执行合成（优先于挤出/普通落位）
-      if (fromTier !== 'Diamond') {
+      const canLv7Morph = canUseLv7MorphSynthesis(defId, defId, fromTier, fromStar, fromTier, fromStar)
+      if (nextTierLevel(fromTier, fromStar) || canLv7Morph) {
         const synthTarget = findSynthesisTargetWithDragProbe(defId, fromTier, fromStar, anchorGx, anchorGy, size)
         if (synthTarget) {
           const targetItem = getSynthesisTargetItem(synthTarget)
+          const targetTier = getInstanceTier(synthTarget.instanceId) ?? fromTier
+          const targetStar = getInstanceTierStar(synthTarget.instanceId)
+          const lv7MorphMode = !!targetItem && canUseLv7MorphSynthesis(defId, targetItem.defId, fromTier, fromStar, targetTier, targetStar)
+          if (lv7MorphMode) {
+            showLv7MorphSynthesisConfirmOverlay(stage, () => {
+              const choices = buildStoneTransformChoices(synthTarget, 'same')
+              if (choices.length <= 0) {
+                showHintToast('backpack_full_buy', 'Lv7转化：当前无可用候选', 0xffb27a)
+                restoreDraggedItemToZone(
+                  instanceId,
+                  defId,
+                  size,
+                  fromTier,
+                  fromStar,
+                  originCol,
+                  originRow,
+                  homeSystem,
+                  homeView,
+                )
+                refreshShopUI()
+                return
+              }
+              const opened = showNeutralChoiceOverlay(stage, '选择变化方向', choices, (picked) => {
+                const ok = transformPlacedItemKeepLevelTo(synthTarget.instanceId, synthTarget.zone, picked.item, true)
+                if (!ok) {
+                  showHintToast('backpack_full_buy', 'Lv7转化失败', 0xff8f8f)
+                  return false
+                }
+                removeInstanceMeta(instanceId)
+                showHintToast('no_gold_buy', 'Lv7合成：已触发变化石效果', 0x9be5ff)
+                refreshShopUI()
+                return true
+              }, 'special_shop_like')
+              if (!opened) {
+                showHintToast('backpack_full_buy', 'Lv7转化：当前无可用候选', 0xffb27a)
+                restoreDraggedItemToZone(
+                  instanceId,
+                  defId,
+                  size,
+                  fromTier,
+                  fromStar,
+                  originCol,
+                  originRow,
+                  homeSystem,
+                  homeView,
+                )
+                refreshShopUI()
+              }
+            }, () => {
+              restoreDraggedItemToZone(
+                instanceId,
+                defId,
+                size,
+                fromTier,
+                fromStar,
+                originCol,
+                originRow,
+                homeSystem,
+                homeView,
+              )
+              refreshShopUI()
+            })
+            return true
+          }
           if (targetItem && targetItem.defId !== defId) {
             const targetDef = getItemDefById(targetItem.defId)
             if (!targetDef) return false
-            const targetTier = getInstanceTier(synthTarget.instanceId) ?? fromTier
-            const targetStar = getInstanceTierStar(synthTarget.instanceId)
             const upgradeTo = nextTierLevel(fromTier, fromStar)
             if (!upgradeTo) return false
             const runCrossSynthesis = () => {
@@ -11310,7 +11773,8 @@ export const ShopScene: Scene = {
         return
       }
 
-      if (!defId || !tier || tier === 'Diamond') {
+      const canLv7Morph = !!defId && !!tier && canUseLv7MorphSynthesis(defId, defId, tier, star, tier, star)
+      if (!defId || !tier || (!nextTierLevel(tier, star) && !canLv7Morph)) {
         drag?.setSqueezeSuppressed(false)
         clearBackpackSynthesisGuideArrows()
         if (item && sellPopup) {

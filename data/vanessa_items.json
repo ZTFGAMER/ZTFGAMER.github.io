@@ -35,7 +35,7 @@
     "name_en": "",
     "name_cn": "圆盾",
     "type": "Item / 物品",
-    "size": "Medium / 中型",
+    "size": "Small / 小型",
     "starting_tier": "Bronze / 青铜",
     "available_tiers": "Bronze",
     "heroes": "",
@@ -83,14 +83,14 @@
     "name_en": "",
     "name_cn": "木弓",
     "type": "Item / 物品",
-    "size": "Medium / 中型",
+    "size": "Small / 小型",
     "starting_tier": "Bronze / 青铜",
     "available_tiers": "Bronze",
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "cooldown": 6000,
+    "cooldown_tiers": "6000|4000",
     "skills": [
       {
         "en": "",
@@ -142,18 +142,18 @@
     "name_en": "",
     "name_cn": "连发镖",
     "type": "Item / 物品",
-    "size": "Medium / 中型",
+    "size": "Small / 小型",
     "starting_tier": "Bronze / 青铜",
     "available_tiers": "Bronze",
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "cooldown": 2500,
+    "cooldown_tiers": "2500",
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成8|12|18|27|41|62|93伤害。"
+        "cn": "攻击造成4|6|9|14|21|32|48伤害。"
       },
       {
         "en": "",
@@ -288,7 +288,7 @@
     "name_en": "",
     "name_cn": "尖刺金盾",
     "type": "Item / 物品",
-    "size": "Medium / 中型",
+    "size": "Small / 小型",
     "starting_tier": "Gold / 黄金",
     "available_tiers": "Gold",
     "heroes": "",
@@ -344,7 +344,7 @@
     "name_en": "",
     "name_cn": "黄金弩机",
     "type": "Item / 物品",
-    "size": "Medium / 中型",
+    "size": "Small / 小型",
     "starting_tier": "Gold / 黄金",
     "available_tiers": "Gold",
     "heroes": "",
@@ -381,8 +381,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 600,
-    "cooldown_tiers": "600",
+    "cooldown": 1500,
+    "cooldown_tiers": "1500",
     "skills": [
       {
         "en": "",
@@ -406,7 +406,7 @@
     "name_en": "",
     "name_cn": "切割镰刀",
     "type": "Item / 物品",
-    "size": "Medium / 中型",
+    "size": "Small / 小型",
     "starting_tier": "Diamond / 钻石",
     "available_tiers": "Diamond",
     "heroes": "",
@@ -468,12 +468,12 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 600,
-    "cooldown_tiers": "600",
+    "cooldown": 1500,
+    "cooldown_tiers": "1500",
     "skills": [
       {
         "en": "",
-        "cn": "攻击造成16|24|36|54|81|122伤害，弹药:3。"
+        "cn": "攻击造成30|45|68|102|153|230伤害，弹药:2。"
       },
       {
         "en": "",
@@ -595,13 +595,13 @@
       },
       {
         "en": "",
-        "cn": "右侧的攻击物品连发次数+1。"
+        "cn": "右侧的伤害物品连发次数+1。"
       }
     ],
     "icon": "item24",
     "attack_style": "旋转飞行",
-    "simple_desc": "右侧的攻击物品连发次数+1",
-    "simple_desc_tiered": "右侧的攻击物品连发次数+1"
+    "simple_desc": "右侧的伤害物品连发次数+1",
+    "simple_desc_tiered": "右侧的伤害物品连发次数+1"
   },
   {
     "id": "neutral_item_25_upgrade_stone",
@@ -818,5 +818,682 @@
     "attack_style": "不飞行",
     "simple_desc": "选择一张票券",
     "simple_desc_tiered": "丢弃时从技能券、购物券和冒险券中选择1个"
+  },
+  {
+    "id": "9be234bc-04f0-4d9a-a017-f579309be3df",
+    "name_en": "",
+    "name_cn": "锁镰",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver",
+    "heroes": "",
+    "tags": "刺客",
+    "position": "",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "攻击造成40|60|90|135|203|305伤害。"
+      },
+      {
+        "en": "",
+        "cn": "每次攻击后间隔缩短1秒。"
+      }
+    ],
+    "icon": "item34",
+    "attack_style": "旋转飞行",
+    "simple_desc": "每次攻击后间隔缩短",
+    "simple_desc_tiered": "每次攻击后间隔缩短1秒"
+  },
+  {
+    "id": "c73e7273-e3f7-4233-8ede-8c9943e90c99",
+    "name_en": "",
+    "name_cn": "护臂",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver",
+    "heroes": "",
+    "tags": "刺客",
+    "position": "",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "获得16|24|36|54|81|122护盾。"
+      },
+      {
+        "en": "",
+        "cn": "所有刺客物品伤害+16|24|36|54|81|122。"
+      }
+    ],
+    "icon": "item35",
+    "attack_style": "旋转飞行",
+    "simple_desc": "所有刺客物品伤害提升",
+    "simple_desc_tiered": "所有刺客物品伤害+16|24|36|54|81|122"
+  },
+  {
+    "id": "e436eda2-db92-4da2-9384-97d28b96aed7",
+    "name_en": "",
+    "name_cn": "藏刃匕首",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
+    "heroes": "",
+    "tags": "刺客",
+    "position": "",
+    "cooldown": 1500,
+    "cooldown_tiers": "1500",
+    "skills": [
+      {
+        "en": "",
+        "cn": "攻击造成80|120|180|270伤害。"
+      },
+      {
+        "en": "",
+        "cn": "第一次攻击额外造成目标最大生命值10%的伤害。"
+      }
+    ],
+    "icon": "item36",
+    "attack_style": "直线飞行",
+    "simple_desc": "第一次攻击造成百分比伤害",
+    "simple_desc_tiered": "第一次攻击额外造成目标最大生命值10%的伤害",
+    "attack_variants": [
+      "item36_a"
+    ]
+  },
+  {
+    "id": "e4094e8c-7ddf-4d0d-9b8d-228327a6c884",
+    "name_en": "",
+    "name_cn": "神行靴",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
+    "heroes": "",
+    "tags": "刺客",
+    "position": "",
+    "cooldown": 2500,
+    "cooldown_tiers": "2500",
+    "skills": [
+      {
+        "en": "",
+        "cn": "获得24|36|54|81护盾。"
+      },
+      {
+        "en": "",
+        "cn": "使用刺客物品时立即使用此物品。"
+      }
+    ],
+    "icon": "item37",
+    "attack_style": "旋转飞行",
+    "simple_desc": "使用刺客物品时立即使用此物品",
+    "simple_desc_tiered": "使用刺客物品时立即使用此物品"
+  },
+  {
+    "id": "28826f0f-eb65-43d8-9196-f5f82a46ccf4",
+    "name_en": "",
+    "name_cn": "蝶剑",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
+    "heroes": "",
+    "tags": "刺客",
+    "position": "",
+    "cooldown": 1500,
+    "cooldown_tiers": "1500",
+    "skills": [
+      {
+        "en": "",
+        "cn": "攻击造成40|60|90|135伤害。"
+      },
+      {
+        "en": "",
+        "cn": "上阵区每有1件其他刺客物品，连发次数+1。"
+      }
+    ],
+    "icon": "item38",
+    "attack_style": "旋转飞行",
+    "simple_desc": "上阵区每有1件其他刺客物品，连发次数+1",
+    "simple_desc_tiered": "上阵区每有1件其他刺客物品，连发次数+1",
+    "attack_variants": [
+      "item38_a"
+    ]
+  },
+  {
+    "id": "331c4474-fa8e-407f-957f-16643e367dbd",
+    "name_en": "",
+    "name_cn": "刺客印记",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
+    "heroes": "",
+    "tags": "刺客",
+    "position": "",
+    "cooldown": 2500,
+    "cooldown_tiers": "2500",
+    "skills": [
+      {
+        "en": "",
+        "cn": "获得40|60|90|135护盾。"
+      },
+      {
+        "en": "",
+        "cn": "刺客物品间隔缩短6%|9%|12%|15%。"
+      }
+    ],
+    "icon": "item39",
+    "attack_style": "旋转飞行",
+    "simple_desc": "刺客物品间隔缩短",
+    "simple_desc_tiered": "刺客物品间隔缩短6%|9%|12%|15%"
+  },
+  {
+    "id": "4ce4c826-62c4-4275-8625-7b42bcc6f601",
+    "name_en": "",
+    "name_cn": "万剑之王",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
+    "heroes": "",
+    "tags": "刺客",
+    "position": "",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "攻击造成50|75伤害。"
+      },
+      {
+        "en": "",
+        "cn": "造成任意伤害时此物品伤害+50|75。"
+      }
+    ],
+    "icon": "item40",
+    "attack_style": "旋转飞行",
+    "simple_desc": "造成任意伤害此物品伤害增加",
+    "simple_desc_tiered": "造成任意伤害此物品伤害+50|75",
+    "attack_variants": [
+      "item40_a"
+    ]
+  },
+  {
+    "id": "ee23cd36-1245-47d3-9591-88d7a07b6dfb",
+    "name_en": "",
+    "name_cn": "死神标记",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
+    "heroes": "",
+    "tags": "刺客",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "攻击造成999999伤害。"
+      },
+      {
+        "en": "",
+        "cn": "目标生命值低于30%|45%时直接斩杀。"
+      }
+    ],
+    "icon": "item41",
+    "attack_style": "旋转飞行",
+    "simple_desc": "敌人血量不足时斩杀",
+    "simple_desc_tiered": "目标生命值低于30%|45%时直接斩杀"
+  },
+  {
+    "id": "8be507af-6e3d-4e6f-a776-1838fc903a98",
+    "name_en": "",
+    "name_cn": "火药桶",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver",
+    "heroes": "",
+    "tags": "弓手",
+    "position": "",
+    "cooldown": 2500,
+    "cooldown_tiers": "2500",
+    "skills": [
+      {
+        "en": "",
+        "cn": "弹药:5。"
+      },
+      {
+        "en": "",
+        "cn": "为其他物品补充2|3|4|5|6|7发弹药；弹药耗尽时摧毁自身，造成目标最大生命值20%|25%|30%|35%|40%|45%的伤害。"
+      }
+    ],
+    "icon": "item42",
+    "attack_style": "旋转飞行",
+    "simple_desc": "为其他物品补充弹药，弹药耗尽时爆炸",
+    "simple_desc_tiered": "为其他物品补充2|3|4|5|6|7发弹药；弹药耗尽时摧毁自身，造成目标最大生命值20%|25%|30%|35%|40%|45%的伤害"
+  },
+  {
+    "id": "16b10f4c-7231-4c60-a987-640f2ab463ad",
+    "name_en": "",
+    "name_cn": "稻草人",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver",
+    "heroes": "",
+    "tags": "弓手",
+    "position": "",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "获得40|60|90|135|203|305护盾。"
+      },
+      {
+        "en": "",
+        "cn": "相邻弹药物品最大弹药量+2|3|4|5|6|7。"
+      }
+    ],
+    "icon": "item43",
+    "attack_style": "旋转飞行",
+    "simple_desc": "相邻弹药物品最大弹药量提升",
+    "simple_desc_tiered": "相邻弹药物品最大弹药量+2|3|4|5|6|7"
+  },
+  {
+    "id": "7092d066-6d29-4a69-8610-07b6b1da52c7",
+    "name_en": "",
+    "name_cn": "狙击步枪",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
+    "heroes": "",
+    "tags": "弓手",
+    "position": "",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "攻击造成200|300|450|675伤害，弹药:10。"
+      },
+      {
+        "en": "",
+        "cn": "如果这是唯一的伤害物品，造成3倍伤害。"
+      }
+    ],
+    "icon": "item44",
+    "attack_style": "直线飞行",
+    "simple_desc": "如果这是唯一的伤害物品，造成多倍伤害",
+    "simple_desc_tiered": "如果这是唯一的伤害物品，造成3倍伤害",
+    "attack_variants": [
+      "item44_a"
+    ]
+  },
+  {
+    "id": "b8528f1c-e90e-489c-9a17-2576b3662727",
+    "name_en": "",
+    "name_cn": "幻影分身",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
+    "heroes": "",
+    "tags": "弓手",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "弹药物品伤害+50|75|113|170，弹药消耗翻倍。"
+      }
+    ],
+    "icon": "item45",
+    "attack_style": "不飞行",
+    "simple_desc": "弹药物品伤害增加，弹药消耗翻倍",
+    "simple_desc_tiered": "弹药物品伤害+50|75|113|170，弹药消耗翻倍"
+  },
+  {
+    "id": "4456a17d-0ba5-4fd8-a906-ce1ea86d4828",
+    "name_en": "",
+    "name_cn": "瞄准镜",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
+    "heroes": "",
+    "tags": "弓手",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "相邻伤害物品伤害+20%|30%|40%|50%。"
+      }
+    ],
+    "icon": "item46",
+    "attack_style": "不飞行",
+    "simple_desc": "相邻伤害物品伤害增加",
+    "simple_desc_tiered": "相邻伤害物品伤害+20%|30%|40%|50%"
+  },
+  {
+    "id": "cb3981c5-947f-4550-87cc-f5599cab0b43",
+    "name_en": "",
+    "name_cn": "战术背包",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
+    "heroes": "",
+    "tags": "弓手",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "任意物品弹药耗尽时为其补充2|4|6|8发弹药并充能1秒。"
+      }
+    ],
+    "icon": "item47",
+    "attack_style": "不飞行",
+    "simple_desc": "任意物品弹药耗尽时为其补充弹药并充能",
+    "simple_desc_tiered": "任意物品弹药耗尽时为其补充2|4|6|8发弹药并充能1秒"
+  },
+  {
+    "id": "64a22938-3d5e-47ff-ae8e-8b392d3fbd07",
+    "name_en": "",
+    "name_cn": "重型机枪",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
+    "heroes": "",
+    "tags": "弓手",
+    "position": "",
+    "cooldown": 600,
+    "cooldown_tiers": "600",
+    "skills": [
+      {
+        "en": "",
+        "cn": "攻击造成50|75伤害，弹药:20。"
+      },
+      {
+        "en": "",
+        "cn": "使用时伤害+50|75。"
+      }
+    ],
+    "icon": "item48",
+    "attack_style": "直线飞行",
+    "simple_desc": "每次使用后伤害提升",
+    "simple_desc_tiered": "使用时伤害+50|75",
+    "attack_variants": [
+      "item48_a"
+    ]
+  },
+  {
+    "id": "493c77c1-1c6b-44c0-b845-e3343dba0835",
+    "name_en": "",
+    "name_cn": "泯灭大炮",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
+    "heroes": "",
+    "tags": "弓手",
+    "position": "",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "弹药:1。"
+      },
+      {
+        "en": "",
+        "cn": "摧毁敌人的1件物品。"
+      }
+    ],
+    "icon": "item49",
+    "attack_style": "直线飞行",
+    "simple_desc": "摧毁敌人的1件物品",
+    "simple_desc_tiered": "摧毁敌人的1件物品",
+    "attack_variants": [
+      "item49_a"
+    ]
+  },
+  {
+    "id": "4d06281b-4772-4843-b4ce-8cbf6b6dd812",
+    "name_en": "",
+    "name_cn": "战锤",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver",
+    "heroes": "",
+    "tags": "战士",
+    "position": "",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "攻击造成20|30|45|68|102|153伤害。"
+      },
+      {
+        "en": "",
+        "cn": "额外造成自身当前生命值10%的伤害。"
+      }
+    ],
+    "icon": "item50",
+    "attack_style": "旋转飞行",
+    "simple_desc": "额外造成自身当前生命值百分比的伤害",
+    "simple_desc_tiered": "额外造成自身当前生命值10%的伤害"
+  },
+  {
+    "id": "c6890594-7d11-4f9c-a7ce-adedcb6d7fbe",
+    "name_en": "",
+    "name_cn": "生命药水",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver",
+    "heroes": "",
+    "tags": "战士",
+    "position": "",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "回复150|225|338|507|761|1142生命值，弹药:3。"
+      },
+      {
+        "en": "",
+        "cn": "恢复生命值。"
+      }
+    ],
+    "icon": "item51",
+    "attack_style": "旋转飞行",
+    "simple_desc": "恢复生命值",
+    "simple_desc_tiered": "恢复生命值"
+  },
+  {
+    "id": "487be45f-b263-4b5f-9abe-891b1a801ec2",
+    "name_en": "",
+    "name_cn": "充能巨剑",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
+    "heroes": "",
+    "tags": "战士",
+    "position": "",
+    "cooldown": 6000,
+    "cooldown_tiers": "6000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "攻击造成200|300|450|675伤害。"
+      },
+      {
+        "en": "",
+        "cn": "获得护盾时为此物品充能1秒。"
+      }
+    ],
+    "icon": "item52",
+    "attack_style": "旋转飞行",
+    "simple_desc": "获得护盾时为此物品充能",
+    "simple_desc_tiered": "获得护盾时为此物品充能1秒"
+  },
+  {
+    "id": "c341e6d2-e7e3-4e27-b4ec-03c976a0f99e",
+    "name_en": "",
+    "name_cn": "重力战锤",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
+    "heroes": "",
+    "tags": "战士",
+    "position": "",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "攻击造成150|225|338|507伤害。"
+      },
+      {
+        "en": "",
+        "cn": "额外造成自身最大生命值15%的伤害。"
+      }
+    ],
+    "icon": "item53",
+    "attack_style": "旋转飞行",
+    "simple_desc": "额外造成自身最大生命值百分比的伤害",
+    "simple_desc_tiered": "额外造成自身最大生命值15%的伤害",
+    "attack_variants": [
+      "item53_a"
+    ]
+  },
+  {
+    "id": "ce897b11-e625-49ce-b4a7-051d312a86dd",
+    "name_en": "",
+    "name_cn": "勇者印记",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
+    "heroes": "",
+    "tags": "战士",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "最大生命值+20%|30%|40%|50%。"
+      }
+    ],
+    "icon": "item54",
+    "attack_style": "不飞行",
+    "simple_desc": "最大生命值增加",
+    "simple_desc_tiered": "最大生命值+20%|30%|40%|50%"
+  },
+  {
+    "id": "7278c01c-f947-4a1c-b232-72a93a52f96b",
+    "name_en": "",
+    "name_cn": "力量宝石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
+    "heroes": "",
+    "tags": "战士",
+    "position": "",
+    "cooldown": 2500,
+    "cooldown_tiers": "2500",
+    "skills": [
+      {
+        "en": "",
+        "cn": "回复1生命值。"
+      },
+      {
+        "en": "",
+        "cn": "恢复最大生命值6%|9%|12%|15%的生命值。"
+      }
+    ],
+    "icon": "item55",
+    "attack_style": "旋转飞行",
+    "simple_desc": "获得最大生命值百分比回血",
+    "simple_desc_tiered": "恢复最大生命值6%|9%|12%|15%的生命值"
+  },
+  {
+    "id": "57c1ec04-ea07-484b-8755-669246676061",
+    "name_en": "",
+    "name_cn": "巨龙之心",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
+    "heroes": "",
+    "tags": "战士",
+    "position": "",
+    "cooldown": 6000,
+    "cooldown_tiers": "6000|4000",
+    "skills": [
+      {
+        "en": "",
+        "cn": "获得1护盾。"
+      },
+      {
+        "en": "",
+        "cn": "获得护盾，等于当前生命值。"
+      }
+    ],
+    "icon": "item56",
+    "attack_style": "旋转飞行",
+    "simple_desc": "获得护盾，等于当前生命值",
+    "simple_desc_tiered": "获得护盾，等于当前生命值"
+  },
+  {
+    "id": "c344a7c2-15c0-478c-91af-80b8bc7419e0",
+    "name_en": "",
+    "name_cn": "不屈防线",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
+    "heroes": "",
+    "tags": "战士",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "获得1护盾。"
+      },
+      {
+        "en": "",
+        "cn": "濒死时获得3秒无敌，并获得最大生命值50%|75%的护盾。"
+      }
+    ],
+    "icon": "item57",
+    "attack_style": "旋转飞行",
+    "simple_desc": "濒死时无敌，并获得最大生命值百分比的护盾",
+    "simple_desc_tiered": "濒死时获得3秒无敌，并获得最大生命值50%|75%的护盾"
   }
 ]
