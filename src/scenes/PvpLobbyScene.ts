@@ -34,6 +34,7 @@ let activeInput: PixiInputHandle | null = null
 let selectedMode: PvpMode = 'async'
 let modePreSelected = false  // 从主菜单直接带入模式时为 true，跳过模式选择页
 let searchPollTimer: ReturnType<typeof setInterval> | null = null
+let createRoomInitialHp = 6
 
 // ----------------------------------------------------------------
 // PixiJS 原生输入控件
@@ -359,22 +360,70 @@ function drawCreateRoomView(): void {
     8,
     (val) => { roomName = val },
     CANVAS_W / 2,
-    380,
+    340,
     420,
   )
   inp.container.x = CANVAS_W / 2
-  inp.container.y = 380
+  inp.container.y = 340
   root.addChild(inp.container)
   activeInput = inp
 
+  // 血量步进器
+  const hpLabelT = makeText('初始血量', 24, 0x99aabb)
+  hpLabelT.anchor.set(0.5)
+  hpLabelT.x = CANVAS_W / 2
+  hpLabelT.y = 436
+  root.addChild(hpLabelT)
+
+  const hpCon = new Container()
+  hpCon.x = CANVAS_W / 2
+  hpCon.y = 496
+
+  const hpBg = new Graphics()
+  hpBg.roundRect(-130, -30, 260, 60, 12).fill({ color: 0x111828 })
+  hpBg.roundRect(-130, -30, 260, 60, 12).stroke({ color: 0x2a3a5c, width: 1.5 })
+  hpCon.addChild(hpBg)
+
+  const hpValT = makeText(String(createRoomInitialHp), 32, 0xffd86b, true)
+  hpValT.anchor.set(0.5)
+  hpValT.x = 0
+  hpValT.y = 0
+  hpCon.addChild(hpValT)
+
+  function makeStepBtn(label: string, dx: number, delta: number): Container {
+    const btn = new Container()
+    const bg = new Graphics()
+    bg.roundRect(-24, -24, 48, 48, 10).fill({ color: 0x1a2845 })
+    bg.roundRect(-24, -24, 48, 48, 10).stroke({ color: 0x5b8def, width: 1.5 })
+    btn.addChild(bg)
+    const t = makeText(label, 28, 0xaaccff, true)
+    t.anchor.set(0.5)
+    btn.addChild(t)
+    btn.x = dx
+    btn.y = 0
+    btn.eventMode = 'static'
+    btn.cursor = 'pointer'
+    btn.on('pointerdown', () => {
+      createRoomInitialHp = Math.min(20, Math.max(1, createRoomInitialHp + delta))
+      hpValT.text = String(createRoomInitialHp)
+    })
+    btn.on('pointerover', () => { btn.alpha = 0.75 })
+    btn.on('pointerout', () => { btn.alpha = 1 })
+    return btn
+  }
+
+  hpCon.addChild(makeStepBtn('−', -96, -1))
+  hpCon.addChild(makeStepBtn('+', 96, 1))
+  root.addChild(hpCon)
+
   const confirmBtn = makeBtn('确认创建', PANEL_W - 60, 0x163a22, 0x4caf50, handleCreateRoom)
   confirmBtn.x = CANVAS_W / 2
-  confirmBtn.y = 480
+  confirmBtn.y = 580
   root.addChild(confirmBtn)
 
   const backBtn = makeBtn('← 返回', 180, 0x1c1c2e, 0x334466, drawMainView)
   backBtn.x = CANVAS_W / 2
-  backBtn.y = 600
+  backBtn.y = 696
   root.addChild(backBtn)
 }
 
@@ -825,12 +874,13 @@ async function handleCreateRoom(): Promise<void> {
       pvpMode: selectedMode,
       playerHps: {},
       eliminatedPlayers: [],
+      initialHp: createRoomInitialHp,
     }
     PvpContext.startSession(pvpRoom!, sess)
     SceneManager.goto('shop')
   }
   try {
-    await pvpRoom.createRoom(roomCode, myNickname, maxPlayers)
+    await pvpRoom.createRoom(roomCode, myNickname, maxPlayers, createRoomInitialHp)
     console.log('[PvpLobby] 房间已创建 code=' + roomCode)
     registerRoom({ roomId: roomCode, nickname: myNickname, roomName: roomName || myNickname, maxPlayers, currentPlayers: 1, mode: selectedMode }).catch(() => {})
     drawHostWaitingView()
@@ -856,6 +906,7 @@ async function handleJoinRoom(code: string): Promise<void> {
       pvpMode: selectedMode,
       playerHps: {},
       eliminatedPlayers: [],
+      initialHp: pvpRoom!.initialHp,
     }
     PvpContext.startSession(pvpRoom!, sess)
     SceneManager.goto('shop')

@@ -86,6 +86,7 @@ let settingsOverlay:  Container       | null = null
 let skillTestOverlay: Container       | null = null
 let eventTestOverlay: Container       | null = null
 let itemTestOverlay:  Container       | null = null
+let pvpPlayerListOverlay: Container  | null = null
 let hintToastCon:     Container       | null = null
 let hintToastBg:      Graphics        | null = null
 let hintToastText:    Text            | null = null
@@ -8311,7 +8312,7 @@ function refreshShopUI(): void {
       // PVP 模式：显示 PVP HP，不显示 PVE 生命
       const pvpSession = PvpContext.getSession()
       const myHp = pvpSession?.playerHps?.[pvpSession?.myIndex ?? -1] ?? 6
-      const initHp = getConfig().pvpRules?.initialHp ?? 6
+      const initHp = pvpSession?.initialHp ?? 6
       livesText.text = `❤️ ${myHp}/${initHp}`
       livesText.style.fill = myHp <= 2 ? 0xff6a6a : 0xffd4d4
     } else {
@@ -10598,6 +10599,295 @@ function isPointInZoneArea(view: GridZone | null, gx: number, gy: number): boole
 }
 
 // ============================================================
+// PVP 玩家列表 Overlay（商店阶段点击 HP 文字弹出）
+// ============================================================
+
+/** 展开的玩家 index（-1 = 无） */
+let pvpPlayerListExpandedIndex = -1
+
+function openPvpPlayerListOverlay(): void {
+  if (!pvpPlayerListOverlay) {
+    const { stage } = getApp()
+    const overlay = new Container()
+    overlay.zIndex = 200
+    overlay.visible = false
+    stage.addChild(overlay)
+    pvpPlayerListOverlay = overlay
+  }
+  pvpPlayerListExpandedIndex = -1
+  buildPvpPlayerListContent(pvpPlayerListOverlay)
+  pvpPlayerListOverlay.visible = true
+}
+
+function closePvpPlayerListOverlay(): void {
+  if (pvpPlayerListOverlay) pvpPlayerListOverlay.visible = false
+}
+
+function buildPvpPlayerListContent(overlay: Container): void {
+  overlay.removeChildren()
+
+  const session = PvpContext.getSession()
+  if (!session) return
+
+  const snapshots = PvpContext.getLastPlayerSnapshots()
+
+  // 布局常量
+  const PANEL_W2 = 580
+  const PANEL_X = (CANVAS_W - PANEL_W2) / 2
+  const PANEL_Y = 100
+  const HEADER_H = 72         // 标题区高度
+  const ROW_H = 100           // 每行高度（三行内容：昵称/HP/操作）
+  const ROW_GAP = 6
+  const SNAP_H = 170
+  const BOTTOM_PAD = 24
+  const ROW_W = PANEL_W2 - 32
+  const initHp = session.initialHp ?? 6
+
+  const players = [...session.players].sort((a, b) => {
+    const elimA = session.eliminatedPlayers.includes(a.index) ? 1 : 0
+    const elimB = session.eliminatedPlayers.includes(b.index) ? 1 : 0
+    if (elimA !== elimB) return elimA - elimB
+    return (session.playerHps?.[b.index] ?? 0) - (session.playerHps?.[a.index] ?? 0)
+  })
+
+  // 预算面板高度（内容自适应）
+  let contentH = HEADER_H
+  for (const p of players) {
+    contentH += ROW_H + ROW_GAP
+    if (pvpPlayerListExpandedIndex === p.index && !!snapshots[p.index]) {
+      contentH += SNAP_H + 4
+    }
+  }
+  contentH += BOTTOM_PAD
+  const panelH = Math.min(contentH, CANVAS_H - PANEL_Y - 80)
+
+  // 背景遮罩（点击关闭）
+  const mask = new Graphics()
+  mask.rect(0, 0, CANVAS_W, CANVAS_H).fill({ color: 0x000000, alpha: 0.68 })
+  mask.eventMode = 'static'
+  mask.on('pointerdown', closePvpPlayerListOverlay)
+  overlay.addChild(mask)
+
+  // 面板背景
+  const panelBg = new Graphics()
+  panelBg.roundRect(PANEL_X, PANEL_Y, PANEL_W2, panelH, 20).fill({ color: 0x0d1520 })
+  panelBg.roundRect(PANEL_X, PANEL_Y, PANEL_W2, panelH, 20).stroke({ color: 0x2a3d5c, width: 1.5 })
+  panelBg.eventMode = 'static'
+  overlay.addChild(panelBg)
+
+  // 标题
+  const titleT = new Text({
+    text: '玩家状态',
+    style: { fill: 0xffd86b, fontSize: 32, fontWeight: 'bold', align: 'center' },
+  })
+  titleT.anchor.set(0.5, 0.5)
+  titleT.x = CANVAS_W / 2
+  titleT.y = PANEL_Y + HEADER_H / 2
+  overlay.addChild(titleT)
+
+  // 标题分隔线
+  const divG = new Graphics()
+  divG.rect(PANEL_X + 20, PANEL_Y + HEADER_H - 1, PANEL_W2 - 40, 1).fill({ color: 0x1e2e44 })
+  overlay.addChild(divG)
+
+  // 关闭按钮（右上角）
+  const closeBtn = new Container()
+  const closeBg = new Graphics()
+  closeBg.roundRect(-28, -28, 56, 56, 10).fill({ color: 0x162035 })
+  closeBtn.addChild(closeBg)
+  const closeT = new Text({ text: '✕', style: { fill: 0x8899bb, fontSize: 26, fontWeight: 'bold' } })
+  closeT.anchor.set(0.5)
+  closeBtn.addChild(closeT)
+  closeBtn.x = PANEL_X + PANEL_W2 - 36
+  closeBtn.y = PANEL_Y + HEADER_H / 2
+  closeBtn.eventMode = 'static'
+  closeBtn.cursor = 'pointer'
+  closeBtn.on('pointerdown', closePvpPlayerListOverlay)
+  closeBtn.on('pointerover', () => { closeBtn.alpha = 0.7 })
+  closeBtn.on('pointerout', () => { closeBtn.alpha = 1 })
+  overlay.addChild(closeBtn)
+
+  // 行列表（动态 Y 累加）
+  let cursorY = PANEL_Y + HEADER_H + 8
+
+  players.forEach((player, i) => {
+    const hp = session.playerHps?.[player.index] ?? 0
+    const eliminated = session.eliminatedPlayers.includes(player.index)
+    const isMe = player.index === session.myIndex
+    const hasSnap = !!snapshots[player.index]
+    const isExpanded = pvpPlayerListExpandedIndex === player.index && hasSnap
+
+    // HP 颜色
+    const hpColor = eliminated ? 0x554433
+      : hp <= 2 ? 0xff7766
+      : hp <= Math.ceil(initHp / 2) ? 0xffd86b
+      : 0x7fff7f
+
+    // ── 行容器 ──────────────────────────────────────────
+    const rowCon = new Container()
+    rowCon.x = PANEL_X + 16
+    rowCon.y = cursorY
+    rowCon.eventMode = 'static'
+
+    const rowBg = new Graphics()
+    rowBg.roundRect(0, 0, ROW_W, ROW_H, 12)
+      .fill({ color: isMe ? 0x18102e : (eliminated ? 0x0c1018 : 0x10192a) })
+    rowBg.roundRect(0, 0, ROW_W, ROW_H, 12)
+      .stroke({ color: isMe ? 0x6644aa : (eliminated ? 0x1c2230 : 0x1c2e44), width: 1 })
+    rowCon.addChild(rowBg)
+
+    // 左侧彩色条
+    const stripe = new Graphics()
+    stripe.roundRect(0, 8, 4, ROW_H - 16, 2)
+      .fill({ color: eliminated ? 0x443322 : (isMe ? 0x8855cc : 0x3a66aa) })
+    rowCon.addChild(stripe)
+
+    // 排名序号（居中左侧列）
+    const rankT = new Text({
+      text: String(i + 1),
+      style: { fill: eliminated ? 0x445566 : 0x5577aa, fontSize: 22, fontWeight: 'bold' },
+    })
+    rankT.anchor.set(0.5, 0.5)
+    rankT.x = 26
+    rankT.y = ROW_H / 2
+    rowCon.addChild(rankT)
+
+    // ── 左侧内容（昵称 + 状态）──
+    const nameT = new Text({
+      text: player.nickname + (isMe ? ' (我)' : ''),
+      style: {
+        fill: isMe ? 0xffd86b : (eliminated ? 0x445566 : 0xccddf0),
+        fontSize: 26,
+        fontWeight: isMe ? 'bold' : 'normal',
+      },
+    })
+    nameT.anchor.set(0, 0)
+    nameT.x = 52
+    nameT.y = 14
+    rowCon.addChild(nameT)
+
+    const statusT = new Text({
+      text: eliminated ? '已淘汰' : '存活中',
+      style: { fill: eliminated ? 0x665544 : 0x4a9966, fontSize: 17 },
+    })
+    statusT.anchor.set(0, 0)
+    statusT.x = 52
+    statusT.y = 50
+    rowCon.addChild(statusT)
+
+    if (hasSnap && !eliminated) {
+      const hintT = new Text({
+        text: isExpanded ? '收起 ▴' : '查看阵容 ▾',
+        style: { fill: 0x4488cc, fontSize: 17 },
+      })
+      hintT.anchor.set(0, 0)
+      hintT.x = 52
+      hintT.y = 74
+      rowCon.addChild(hintT)
+    }
+
+    // ── 右侧内容（HP 数字 + 格子）──
+    const hpT = new Text({
+      text: eliminated ? '0 HP' : `${hp} HP`,
+      style: { fill: hpColor, fontSize: 28, fontWeight: 'bold' },
+    })
+    hpT.anchor.set(1, 0)
+    hpT.x = ROW_W - 14
+    hpT.y = 14
+    rowCon.addChild(hpT)
+
+    // HP 格子
+    const maxDots = Math.min(initHp, 12)
+    const dotSize = 13
+    const dotGap = 4
+    const dotsW = maxDots * (dotSize + dotGap) - dotGap
+    const dotsStartX = ROW_W - 14 - dotsW
+    for (let d = 0; d < maxDots; d++) {
+      const filled = !eliminated && d < hp
+      const dot = new Graphics()
+      dot.roundRect(dotsStartX + d * (dotSize + dotGap), 54, dotSize, dotSize, 3)
+        .fill({ color: filled ? hpColor : 0x1a2535 })
+      rowCon.addChild(dot)
+    }
+
+    // 点击展开/收起
+    if (hasSnap && !eliminated) {
+      rowCon.cursor = 'pointer'
+      rowCon.on('pointerdown', () => {
+        pvpPlayerListExpandedIndex = pvpPlayerListExpandedIndex === player.index ? -1 : player.index
+        buildPvpPlayerListContent(overlay)
+      })
+      rowCon.on('pointerover', () => { rowBg.alpha = 0.78 })
+      rowCon.on('pointerout', () => { rowBg.alpha = 1 })
+    }
+
+    overlay.addChild(rowCon)
+    cursorY += ROW_H + ROW_GAP
+
+    // ── 展开阵容面板 ──────────────────────────────────
+    if (isExpanded) {
+      const snap = snapshots[player.index]!
+      const snapCon = new Container()
+      snapCon.x = PANEL_X + 16
+      snapCon.y = cursorY - ROW_GAP + 2
+
+      const snapBg = new Graphics()
+      snapBg.roundRect(0, 0, ROW_W, SNAP_H, 10).fill({ color: 0x0a1420 })
+      snapBg.roundRect(0, 0, ROW_W, SNAP_H, 10).stroke({ color: 0x223344, width: 1 })
+      snapCon.addChild(snapBg)
+
+      const snapLabel = new Text({ text: '上局阵容', style: { fill: 0x4477aa, fontSize: 17 } })
+      snapLabel.x = 14
+      snapLabel.y = 10
+      snapCon.addChild(snapLabel)
+
+      const ICON_SIZE = 60
+      const ICON_GAP = 8
+      const ICON_START_X = 14
+      const ICON_START_Y = 38
+      let col = 0
+      let iconRow = 0
+      const maxCols = Math.floor((ROW_W - 28) / (ICON_SIZE + ICON_GAP))
+
+      for (const entity of snap.entities) {
+        if (!entity.defId) continue
+        const ix = ICON_START_X + col * (ICON_SIZE + ICON_GAP)
+        const iy = ICON_START_Y + iconRow * (ICON_SIZE + ICON_GAP)
+
+        const iconBg = new Graphics()
+        iconBg.roundRect(ix, iy, ICON_SIZE, ICON_SIZE, 8).fill({ color: 0x162030 })
+        snapCon.addChild(iconBg)
+
+        Assets.load(getItemIconUrl(entity.defId)).then((tex: Texture) => {
+          if (!snapCon.destroyed) {
+            const sprite = new Sprite(tex)
+            sprite.x = ix
+            sprite.y = iy
+            sprite.width = ICON_SIZE
+            sprite.height = ICON_SIZE
+            snapCon.addChild(sprite)
+          }
+        }).catch(() => {})
+
+        col++
+        if (col >= maxCols) { col = 0; iconRow++ }
+      }
+
+      if (snap.entities.filter(e => e.defId).length === 0) {
+        const emptyT = new Text({ text: '（空阵容）', style: { fill: 0x3a4e60, fontSize: 18 } })
+        emptyT.anchor.set(0.5)
+        emptyT.x = ROW_W / 2
+        emptyT.y = SNAP_H / 2
+        snapCon.addChild(emptyT)
+      }
+
+      overlay.addChild(snapCon)
+      cursorY += SNAP_H + 4
+    }
+  })
+}
+
+// ============================================================
 // PVP 结束后清理残留的 in-memory 状态，防止 PVP 存档污染 PVE 商店
 // 由 PvpContext.endSession() 调用
 // ============================================================
@@ -10700,6 +10990,37 @@ export const ShopScene: Scene = {
     })
     livesText.zIndex = 95
     stage.addChild(livesText)
+
+    // PVP 模式：在血量文字下方添加专属「查看玩家」小按钮（PVE 模式不显示）
+    if (PvpContext.isActive()) {
+      const pvpPlayersBtn = new Container()
+      pvpPlayersBtn.zIndex = 96
+
+      const btnBg = new Graphics()
+      btnBg.roundRect(0, 0, 110, 36, 10).fill({ color: 0x162238, alpha: 0.92 })
+      btnBg.roundRect(0, 0, 110, 36, 10).stroke({ color: 0x3a5a8a, width: 1.2 })
+      pvpPlayersBtn.addChild(btnBg)
+
+      const btnT = new Text({
+        text: '👥 查看玩家',
+        style: { fill: 0x88bbee, fontSize: 17, fontWeight: 'bold' },
+      })
+      btnT.anchor.set(0.5)
+      btnT.x = 55
+      btnT.y = 18
+      pvpPlayersBtn.addChild(btnT)
+
+      // 定位到右上角血量文字下方（blood text y=18, height≈28, gap=4）
+      pvpPlayersBtn.x = CANVAS_W - 118
+      pvpPlayersBtn.y = 52
+
+      pvpPlayersBtn.eventMode = 'static'
+      pvpPlayersBtn.cursor = 'pointer'
+      pvpPlayersBtn.on('pointerdown', openPvpPlayerListOverlay)
+      pvpPlayersBtn.on('pointerover', () => { pvpPlayersBtn.alpha = 0.75 })
+      pvpPlayersBtn.on('pointerout', () => { pvpPlayersBtn.alpha = 1 })
+      stage.addChild(pvpPlayersBtn)
+    }
 
     trophyText = new Text({
       text: '🏆 0/10',
@@ -11557,6 +11878,11 @@ export const ShopScene: Scene = {
     if (restartBtn)   stage.removeChild(restartBtn)
     if (livesText)    stage.removeChild(livesText)
     if (trophyText)   stage.removeChild(trophyText)
+    if (pvpPlayerListOverlay) {
+      stage.removeChild(pvpPlayerListOverlay)
+      pvpPlayerListOverlay.destroy({ children: true })
+      pvpPlayerListOverlay = null
+    }
     if (btnRow)       stage.removeChild(btnRow)
     if (dayDebugCon)  stage.removeChild(dayDebugCon)
     if (settingsBtn)  stage.removeChild(settingsBtn)
@@ -11722,7 +12048,7 @@ export const ShopScene: Scene = {
     if (PvpContext.isActive() && livesText) {
       const pvpSession = PvpContext.getSession()
       const myHp = pvpSession?.playerHps?.[pvpSession?.myIndex ?? -1] ?? 6
-      const initHp = getConfig().pvpRules?.initialHp ?? 6
+      const initHp = pvpSession?.initialHp ?? 6
       const next = `❤️ ${myHp}/${initHp}`
       if (livesText.text !== next) {
         livesText.text = next

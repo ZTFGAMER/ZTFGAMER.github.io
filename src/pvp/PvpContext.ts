@@ -38,6 +38,9 @@ let syncStartCallbacks = new Map<number, (() => void)>() // day → callback
 let pendingSurvivingDamage = 0
 let pendingRoundWinner: 'player' | 'enemy' | 'draw' = 'draw'
 
+// 上局所有玩家快照（round_summary 下发，用于商店阶段查看阵容）
+let lastPlayerSnapshots: Record<number, import('@/combat/BattleSnapshotStore').BattleSnapshotBundle> = {}
+
 
 // ----------------------------------------------------------------
 // 公开 API（ShopScene / BattleScene 调用）
@@ -130,12 +133,14 @@ export const PvpContext = {
       if (cb) { cb(); syncStartCallbacks.delete(day) }
     }
 
-    pvpRoom.onRoundSummary = (day, hpMap, newlyEliminated) => {
+    pvpRoom.onRoundSummary = (day, hpMap, newlyEliminated, snapshots) => {
       if (!session) return
       // 更新所有玩家 HP
       Object.entries(hpMap).forEach(([idx, hp]) => {
         session!.playerHps[Number(idx)] = hp
       })
+      // 存储上局快照
+      lastPlayerSnapshots = snapshots ?? {}
       // 标记淘汰
       newlyEliminated.forEach((idx) => {
         if (!session!.eliminatedPlayers.includes(idx)) {
@@ -152,9 +157,9 @@ export const PvpContext = {
       }
     }
 
-    // 初始化 HP（从 pvp_rules 配置读取，fallback 6）
+    // 初始化 HP（使用 session.initialHp，fallback 6）
     if (!session.playerHps || Object.keys(session.playerHps).length === 0) {
-      const initHp = getConfig().pvpRules?.initialHp ?? 6
+      const initHp = session.initialHp ?? 6
       session.playerHps = {}
       session.players.forEach((p) => { session!.playerHps[p.index] = initHp })
     }
@@ -195,6 +200,11 @@ export const PvpContext = {
     room.notifySyncReady(day)
   },
 
+  /** 获取上局所有玩家快照（round_summary 下发后可用，首局前为空） */
+  getLastPlayerSnapshots(): Record<number, import('@/combat/BattleSnapshotStore').BattleSnapshotBundle> {
+    return lastPlayerSnapshots
+  },
+
   /** Returns current PVP mode */
   getPvpMode(): import('./PvpTypes').PvpMode | null {
     return session?.pvpMode ?? null
@@ -223,6 +233,10 @@ export const PvpContext = {
     // 注意：host 侧 onRoundSummary 可能在此同步触发并调用 goto('pvp-result')
     room?.reportRoundResult(session.currentDay, pendingRoundWinner, pendingSurvivingDamage)
     pendingSurvivingDamage = 0
+
+    // host 路径：reportRoundResult 内部可能同步触发 game_over → onGameOver → session.rankings 被填充
+    // 此时 navigation 已跳转结算页，不应再 goto('shop') 覆盖
+    if (session.rankings) return
 
     // host 侧 onRoundSummary 可能已同步更新 eliminatedPlayers，若已淘汰则不再 goto('shop')
     if (session.eliminatedPlayers.includes(session.myIndex)) return
@@ -271,6 +285,7 @@ export const PvpContext = {
     pendingSurvivingDamage = 0
     pendingRoundWinner = 'draw'
     stopCountdown()
+    lastPlayerSnapshots = {}
   },
 }
 
