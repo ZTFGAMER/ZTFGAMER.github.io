@@ -1,5 +1,14 @@
 # 大巴扎 — 开发进度记录
 
+#### 验收优化追加（2026-03-10，Vercel发布 + TestFlight上传）
+
+- 用户需求：上传 Vercel，并打 TF 包上传。
+- 已完成：
+  - Vercel 生产部署完成，别名已更新到 `https://bigbazzar.vercel.app`；
+  - iOS 打包链路完成（xcodegen -> archive -> export -> upload），TestFlight 上传成功。
+- 处理记录：首次上传因 `CFBundleVersion=24` 与已上传版本重复被拒；已将 `ios/project.yml` 的 `CURRENT_PROJECT_VERSION` 更新为 `25` 后重打并上传成功。
+- 当前阶段：发布与分发进入验收阶段，等待用户在线上与 TestFlight 后台确认版本可见与可安装。
+
 #### 验收优化追加（2026-03-10，中立物品天数上限表按新表更新）
 
 - 用户需求：按最新 Day1~Day20 表更新中立上限与各中立道具获取上限。
