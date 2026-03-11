@@ -177,6 +177,7 @@ export interface GameConfig {
   eventSystem?: {
     eventPool?: Array<{
       id: string
+      enabled?: boolean
       dayStart: number
       dayEnd: number
       icon: string

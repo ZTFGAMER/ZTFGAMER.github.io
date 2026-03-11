@@ -983,6 +983,15 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     step: 1,
     unit: '',
   },
+  gameplayStarterHeroShowAll: {
+    labelCn:      '英雄选择显示全部',
+    description:  '1=开局英雄选择显示10选1；0=默认随机3选1',
+    defaultValue: 0,
+    min:  0,
+    max:  1,
+    step: 1,
+    unit: '',
+  },
   enemyDraftEnabled: {
     labelCn:      '敌方实验AI开关',
     description:  '1=启用敌方购买/合成实验逻辑；0=沿用原有模板优先逻辑',

@@ -193,6 +193,7 @@ const GAMEPLAY_CHECKBOX_KEYS = [
   'gameplayShowSimpleDescriptions',
   'gameplaySkillDraftRerollEnabled',
   'gameplayEventDraftRerollEnabled',
+  'gameplayStarterHeroShowAll',
 ]
 const ENEMY_DATA_PARAM_KEYS: string[] = [
   'enemyDraftSameArchetypeBias',

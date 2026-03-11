@@ -698,7 +698,7 @@ export class CombatEngine {
               }
             }
           }
-          const firstHitLine = lines.find((s) => /第一次攻击额外造成目标最大生命值\d+(?:[\/|]\d+)*%的伤害/.test(s))
+          const firstHitLine = lines.find((s) => /第一次攻击额外造成目标最大生命值[+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*的伤害/.test(s))
           if (firstHitLine && it.runtime.executeCount < 1) {
             const pct = Math.max(0, this.tierValueFromLine(firstHitLine, tIdx))
             if (pct > 0) runtimeDamage += Math.round(targetHero.maxHp * (pct / 100))
@@ -753,12 +753,15 @@ export class CombatEngine {
             const pct = Math.max(0, this.tierValueFromLine(maxHpHealLine, tIdx)) / 100
             if (pct > 0) runtimeHeal += Math.max(0, Math.round(sourceHero.maxHp * pct))
           }
-          if (lines.some((s) => /获得护盾[，,]?等于当前生命值/.test(s))) {
-            runtimeShield = Math.max(0, Math.round(sourceHero.hp))
+          const currentHpShieldLine = lines.find((s) => /获得护盾[，,]?等于当前生命值/.test(s))
+          if (currentHpShieldLine) {
+            const pctRaw = this.tierValueFromLine(currentHpShieldLine, tIdx)
+            const pct = pctRaw > 0 ? pctRaw : 100
+            runtimeShield = Math.max(0, Math.round(sourceHero.hp * (pct / 100)))
           } else {
             runtimeShield = Math.max(0, this.scaleShieldGain(it.side, runtimeShield))
           }
-          const unyieldingLine = lines.find((s) => /濒死时获得3秒无敌.*最大生命值.*%.*护盾/.test(s))
+          const unyieldingLine = lines.find((s) => /濒死时获得\d+秒无敌.*最大生命值.*%.*护盾/.test(s))
           if (unyieldingLine) {
             const m = unyieldingLine.match(/最大生命值\s*([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*)\s*的护盾/)
             if (m?.[1]) {
@@ -1012,15 +1015,19 @@ export class CombatEngine {
 
     const selfDef = this.findItemDef(item.defId)
     const selfArch = this.itemArchetype(selfDef)
-    if (selfArch === '刺客') {
-      for (const owner of this.items) {
-        if (owner.side !== side) continue
-        const def = this.findItemDef(owner.defId)
-        const line = this.skillLines(def).find((s) => /刺客物品间隔缩短\d+(?:[\/|]\d+)*%/.test(s))
-        if (!line) continue
-        const tIdx = this.tierIndex(def, owner.tier)
-        const reducedPct = Math.max(0, this.tierValueFromLine(line, tIdx)) / 100
-        pct += reducedPct
+    for (const owner of this.items) {
+      if (owner.side !== side) continue
+      const def = this.findItemDef(owner.defId)
+      const lines = this.skillLines(def)
+      const tIdx = this.tierIndex(def, owner.tier)
+      for (const line of lines) {
+        if (/所有物品间隔缩短[+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*/.test(line)) {
+          pct += Math.max(0, this.tierValueFromLine(line, tIdx)) / 100
+          continue
+        }
+        if (selfArch === '刺客' && /刺客物品间隔缩短[+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*/.test(line)) {
+          pct += Math.max(0, this.tierValueFromLine(line, tIdx)) / 100
+        }
       }
     }
     return Math.max(0, Math.min(0.95, pct))
@@ -1214,7 +1221,9 @@ export class CombatEngine {
       }
 
       if (this.hasSkill(side, 'skill10')) {
-        for (const one of ammoItems) one.baseStats.damage += 10
+        for (const one of ammoItems) {
+          if (this.isDamageBonusEligible(one)) one.baseStats.damage += 10
+        }
       }
 
       if (this.hasSkill(side, 'skill16')) {
@@ -1276,14 +1285,20 @@ export class CombatEngine {
       const guard = this.items.find((it) => {
         if (it.side !== side) return false
         const def = this.findItemDef(it.defId)
-        return this.skillLines(def).some((s) => /濒死时获得3秒无敌.*最大生命值.*%.*护盾/.test(s))
+        return this.skillLines(def).some((s) => /濒死时获得\d+秒无敌.*最大生命值.*%.*护盾/.test(s))
       })
       if (guard) {
         const def = this.findItemDef(guard.defId)
-        const line = this.skillLines(def).find((s) => /濒死时获得3秒无敌.*最大生命值.*%.*护盾/.test(s))
+        const line = this.skillLines(def).find((s) => /濒死时获得\d+秒无敌.*最大生命值.*%.*护盾/.test(s))
         let pct = 0
+        let invincibleMs = 3000
         if (line) {
           const tIdx = this.tierIndex(def, guard.tier)
+          const secMatch = line.match(/濒死时获得\s*(\d+)\s*秒无敌/)
+          if (secMatch?.[1]) {
+            const sec = Number(secMatch[1])
+            if (Number.isFinite(sec) && sec > 0) invincibleMs = Math.round(sec * 1000)
+          }
           const m = line.match(/最大生命值\s*([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*)\s*的护盾/)
           if (m?.[1]) {
             pct = /[\/|]/.test(m[1]) ? pickTierSeriesValue(m[1], tIdx) : Number(m[1].replace(/%$/u, ''))
@@ -1292,7 +1307,7 @@ export class CombatEngine {
         }
         this.unyieldingTriggeredBySide[side] = true
         hero.hp = 1
-        this.heroInvincibleMsBySide[side] = Math.max(this.heroInvincibleMsBySide[side], 3000)
+        this.heroInvincibleMsBySide[side] = Math.max(this.heroInvincibleMsBySide[side], invincibleMs)
         if (pct > 0) {
           const gainShield = this.scaleShieldGain(side, Math.round(hero.maxHp * (pct / 100)))
           if (gainShield > 0) {
@@ -2774,8 +2789,11 @@ export class CombatEngine {
     if (item.baseStats.shield > 0 && sourceHero.hp > 0) {
       const rawShieldPanel = item.baseStats.shield + this.shieldGainBonusForItem(item)
       let shieldPanel = this.scaleShieldGain(item.side, rawShieldPanel)
-      if (lines.some((s) => /获得护盾[，,]?等于当前生命值/.test(s))) {
-        shieldPanel = Math.max(0, Math.round(sourceHero.hp))
+      const currentHpShieldLine = lines.find((s) => /获得护盾[，,]?等于当前生命值/.test(s))
+      if (currentHpShieldLine) {
+        const pctRaw = this.tierValueFromLine(currentHpShieldLine, tIdx)
+        const pct = pctRaw > 0 ? pctRaw : 100
+        shieldPanel = Math.max(0, Math.round(sourceHero.hp * (pct / 100)))
       }
       sourceHero.shield += shieldPanel
       this.debugShieldChargeLog('shield_gain_happened', {
@@ -3038,7 +3056,7 @@ export class CombatEngine {
       }
     }
 
-    const firstHitLine = lines.find((s) => /第一次攻击额外造成目标最大生命值\d+(?:[\/|]\d+)*%的伤害/.test(s))
+    const firstHitLine = lines.find((s) => /第一次攻击额外造成目标最大生命值[+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*的伤害/.test(s))
     const firstHitBonus = (() => {
       if (!firstHitLine || item.runtime.executeCount > 1) return 0
       const pct = Math.max(0, this.tierValueFromLine(firstHitLine, tIdx))
@@ -3208,13 +3226,16 @@ export class CombatEngine {
       }
     }
 
-    const selfDestroyExplodeLine = lines.find((s) => /弹药耗尽时摧毁自身.*最大生命值.*%.*伤害/.test(s))
+    const selfDestroyExplodeLine = lines.find((s) => /弹药耗尽时摧毁自身.*伤害/.test(s))
     if (selfDestroyExplodeLine && item.runtime.ammoMax > 0 && item.runtime.ammoCurrent <= 0) {
       const pctSeries = selfDestroyExplodeLine.match(/最大生命值\s*([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*)\s*的伤害/)
       const pct = pctSeries?.[1]
         ? (/[\/|]/.test(pctSeries[1]) ? pickTierSeriesValue(pctSeries[1], tIdx) : Number(pctSeries[1].replace(/%$/u, '')))
         : 0
-      if (pct > 0) this.applyDirectSkillDamage(item.side, Math.round(targetHero.maxHp * (pct / 100)), item.id, 'item')
+      const fixedSeries = selfDestroyExplodeLine.match(/造成\s*(\d+(?:[\/|]\d+)*)\s*伤害/)
+      const fixedDamage = fixedSeries?.[1] ? Math.max(0, Math.round(pickTierSeriesValue(fixedSeries[1], tIdx))) : 0
+      const explodeDamage = pct > 0 ? Math.round(targetHero.maxHp * (pct / 100)) : fixedDamage
+      if (explodeDamage > 0) this.applyDirectSkillDamage(item.side, explodeDamage, item.id, 'item')
       this.removeItemFromBattle(item.id)
       return
     }
@@ -3263,16 +3284,31 @@ export class CombatEngine {
     }
     const postUseCooldownLine = lines.find((s) => /攻击后间隔/.test(s))
     if (postUseCooldownLine) {
-      let reduceMs = 1000
-      let minMs = 1000
-      const matched = postUseCooldownLine.match(/间隔[^\d]*(\d+)\s*ms[^\d]*最低[^\d]*(\d+)\s*ms/i)
-      if (matched) {
-        const parsedReduce = Number(matched[1])
-        const parsedMin = Number(matched[2])
-        if (Number.isFinite(parsedReduce) && parsedReduce > 0) reduceMs = parsedReduce
-        if (Number.isFinite(parsedMin) && parsedMin > 0) minMs = parsedMin
+      const pctMatch = postUseCooldownLine.match(/间隔(?:缩短|减少)\s*(\d+(?:\.\d+)?(?:[\/|]\d+(?:\.\d+)?)*)\s*%/)
+      if (pctMatch?.[1]) {
+        const pct = Math.max(0, Math.min(0.95, this.tierValueFromLine(pctMatch[1], tIdx) / 100))
+        if (pct > 0) {
+          const factor = Math.pow(1 - pct, useRepeatCount)
+          item.baseStats.cooldownMs = Math.max(
+            this.minReducedCdMsFor(item),
+            Math.round(item.baseStats.cooldownMs * factor),
+          )
+        }
+      } else {
+        let reduceMs = 1000
+        let minMs = 1000
+        const matched = postUseCooldownLine.match(/间隔[^\d]*(\d+)\s*ms[^\d]*最低[^\d]*(\d+)\s*ms/i)
+        if (matched) {
+          const parsedReduce = Number(matched[1])
+          const parsedMin = Number(matched[2])
+          if (Number.isFinite(parsedReduce) && parsedReduce > 0) reduceMs = parsedReduce
+          if (Number.isFinite(parsedMin) && parsedMin > 0) minMs = parsedMin
+        }
+        item.baseStats.cooldownMs = Math.max(
+          Math.max(minMs, this.minReducedCdMsFor(item)),
+          item.baseStats.cooldownMs - reduceMs * useRepeatCount,
+        )
       }
-      item.baseStats.cooldownMs = Math.max(Math.max(minMs, this.minReducedCdMsFor(item)), item.baseStats.cooldownMs - reduceMs * useRepeatCount)
     }
 
     const postUseDamageReduceLine = lines.find((s) => /(?:每次)?使用后伤害-[\d|/]+/.test(s))

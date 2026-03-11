@@ -100,7 +100,7 @@
       "tier": "gold",
       "archetype": "assassin",
       "summary": "间隔缩短并突破极限。",
-      "detail": "所有物品的间隔-10%，最短间隔从0.5秒降为0.1秒。"
+      "detail": "所有物品的间隔-10%。"
     },
     {
       "id": "skill45",

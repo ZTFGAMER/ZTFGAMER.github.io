@@ -25,13 +25,33 @@ import type { ItemDef, ItemSizeNorm } from '@/items/ItemDef'
 import { EventBus } from '@/core/EventBus'
 import { SellPopup, type ItemInfoMode, type ItemInfoRuntimeOverride } from '@/shop/SellPopup'
 import { getBattleEffectColor, getBattleFloatTextColor, getBattleOrbColor, getTierColor } from '@/config/colorPalette'
-import { getItemIconUrl, getItemIconUrlByName, getSceneImageUrl, getSkillIconUrl } from '@/core/assetPath'
+import { getItemIconUrl, getItemIconUrlByName, getSkillIconUrl } from '@/core/assetPath'
 import { getBronzeSkillById, getBronzeSkillByName } from '@/skills/bronzeSkillConfig'
 import { getSilverSkillById } from '@/skills/silverSkillConfig'
 import { getGoldSkillById } from '@/skills/goldSkillConfig'
 
 const CANVAS_W = 640
 const CANVAS_H = 1384
+
+const HERO_VISUAL_IDS = ['hero1', 'hero2', 'hero3', 'hero4', 'hero5', 'hero6', 'hero7', 'hero8', 'hero9', 'hero10'] as const
+type HeroVisualId = typeof HERO_VISUAL_IDS[number]
+
+function randomHeroVisualId(): HeroVisualId {
+  return HERO_VISUAL_IDS[Math.floor(Math.random() * HERO_VISUAL_IDS.length)]!
+}
+
+function readPlayerHeroVisualId(): HeroVisualId {
+  try {
+    const raw = localStorage.getItem(SHOP_STATE_STORAGE_KEY)
+    if (!raw) return randomHeroVisualId()
+    const parsed = JSON.parse(raw) as { state?: { starterClass?: unknown } } | null
+    const key = String(parsed?.state?.starterClass ?? '')
+    if ((HERO_VISUAL_IDS as readonly string[]).includes(key)) return key as HeroVisualId
+    return randomHeroVisualId()
+  } catch {
+    return randomHeroVisualId()
+  }
+}
 
 let root: Container | null = null
 let titleText: Text | null = null
@@ -2515,7 +2535,8 @@ export const BattleScene: Scene = {
     root.addChild(playerHeroFlashSprite)
 
     try {
-      const tex = await Assets.load<Texture>(getSceneImageUrl('boss.png'))
+      const enemyHeroId = randomHeroVisualId()
+      const tex = await Assets.load<Texture>(`/resource/hero/${enemyHeroId}.png`)
       if (enemyBossSprite) {
         enemyBossSprite.texture = tex
       }
@@ -2533,7 +2554,13 @@ export const BattleScene: Scene = {
     enemyPresentationVisible = true
 
     try {
-      const tex = await Assets.load<Texture>(getSceneImageUrl('hero.png'))
+      const playerHeroId = readPlayerHeroVisualId()
+      let tex: Texture
+      try {
+        tex = await Assets.load<Texture>(`/resource/hero/${playerHeroId}b.png`)
+      } catch {
+        tex = await Assets.load<Texture>(`/resource/hero/${playerHeroId}.png`)
+      }
       if (playerHeroSprite) playerHeroSprite.texture = tex
       if (playerHeroFlashSprite) playerHeroFlashSprite.texture = tex
       playerHeroHitElapsedMs = -1

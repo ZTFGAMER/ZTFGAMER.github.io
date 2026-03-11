@@ -76,7 +76,7 @@ export function resolveItemTierBaseStats(item: ItemDef, tierRaw?: string): ItemT
   const tierIndex = Math.max(0, tierScore(tier, star) - startTierScore(item))
   const skillText = (item.skills ?? []).map((s) => s.cn ?? '').join('\n')
 
-  const damage = extractTierSeriesValue(skillText, /造成\s*([0-9]+(?:[\/|][0-9]+)*)\s*伤害/, tierIndex)
+  const damage = extractTierSeriesValue(skillText, /攻击造成\s*([0-9]+(?:[\/|][0-9]+)*)\s*伤害/, tierIndex)
   const heal = extractTierSeriesValue(skillText, /(?:治疗|回复)\s*([0-9]+(?:[\/|][0-9]+)*)/, tierIndex)
   const shield = extractTierSeriesValue(skillText, /(?:获得|提供)\s*([0-9]+(?:[\/|][0-9]+)*)\s*护盾/, tierIndex)
   const burn = extractTierSeriesValue(skillText, /(?:造成|附加|获得)?\s*([0-9]+(?:[\/|][0-9]+)*)\s*灼烧/, tierIndex)

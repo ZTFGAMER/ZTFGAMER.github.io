@@ -86,10 +86,13 @@ let livesText:      Text      | null = null
 let trophyText:     Text      | null = null
 let playerStatusCon: Container | null = null
 let playerStatusAvatar: Sprite | null = null
+let playerStatusAvatarClickHit: Graphics | null = null
+let playerStatusDailySkillStar: Text | null = null
 let playerStatusLvText: Text | null = null
 let playerStatusExpBg: Graphics | null = null
 let playerStatusExpBar: Graphics | null = null
 let playerStatusAvatarUrl = ''
+const HERO_DETAIL_POPUP_ID = '__hero_passive__'
 let miniMapGfx:     Graphics  | null = null
 let miniMapCon:     Container | null = null
 let bpBtnHandle:      CircleBtnHandle | null = null
@@ -258,7 +261,7 @@ type SavedShopState = {
   battleItems: SavedPlacedItem[]
   backpackItems: SavedPlacedItem[]
   instCounter: number
-  starterClass?: 'swordsman' | 'archer' | 'assassin' | null
+  starterClass?: StarterClass | null
   starterGranted?: boolean
   starterBattleGuideShown?: boolean
   pickedSkills?: SkillPick[]
@@ -304,7 +307,24 @@ type SavedShopState = {
   neutralDailyRollCounts?: Array<{ day: number; count: number }>
   levelRewardCategoryPool?: Array<'stone' | 'scroll' | 'medal'>
   pendingLevelRewards?: string[]
+  pendingHeroPeriodicRewards?: Array<{ itemId: string; level: 1 | 2 | 3 | 4 | 5 | 6 | 7; tier: TierKey; star: 1 | 2; source: string }>
   levelRewardObtainedCounts?: Array<{ kind: string; count: number }>
+  heroDailyCardRerollUsedDays?: number[]
+  heroFirstDiscardRewardedDays?: number[]
+  heroFirstSameItemSynthesisChoiceDays?: number[]
+  heroSmithStoneGrantedDays?: number[]
+  heroAdventurerScrollGrantedDays?: number[]
+  heroCommanderMedalGrantedDays?: number[]
+  heroHeirGoldEquipGrantedDays?: number[]
+  heroTycoonGoldGrantedDays?: number[]
+}
+
+type PendingHeroPeriodicReward = {
+  itemId: string
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7
+  tier: TierKey
+  star: 1 | 2
+  source: string
 }
 
 let pendingBattleTransition = false
@@ -315,8 +335,14 @@ let pvpUrgeCooldownSet = new Set<number>()
 let pendingSkillBarMoveStartAtMs: number | null = null
 let savedShopState: SavedShopState | null = null
 
-type StarterClass = 'swordsman' | 'archer' | 'assassin'
+const HERO_STARTER_POOL: StarterClass[] = ['hero1', 'hero2', 'hero3', 'hero4', 'hero5', 'hero6', 'hero7', 'hero8', 'hero9', 'hero10']
+
+type StarterClass =
+  | 'swordsman' | 'archer' | 'assassin'
+  | 'hero1' | 'hero2' | 'hero3' | 'hero4' | 'hero5'
+  | 'hero6' | 'hero7' | 'hero8' | 'hero9' | 'hero10'
 let starterClass: StarterClass | null = null
+let starterHeroChoiceOptions: StarterClass[] = []
 let starterGranted = false
 let starterBattleGuideShown = false
 let hasBoughtOnce = false
@@ -357,6 +383,7 @@ type EventArchetype = 'warrior' | 'archer' | 'assassin'
 
 type EventChoice = {
   id: string
+  enabled?: boolean
   dayStart: number
   dayEnd: number
   icon: string
@@ -423,6 +450,14 @@ const blockedBaseIncomeDays = new Set<number>()
 const pendingGoldByDay = new Map<number, number>()
 const pendingBattleUpgradeByDay = new Map<number, number>()
 const skill20GrantedDays = new Set<number>()
+const heroDailyCardRerollUsedDays = new Set<number>()
+const heroFirstDiscardRewardedDays = new Set<number>()
+const heroFirstSameItemSynthesisChoiceDays = new Set<number>()
+const heroSmithStoneGrantedDays = new Set<number>()
+const heroAdventurerScrollGrantedDays = new Set<number>()
+const heroCommanderMedalGrantedDays = new Set<number>()
+const heroHeirGoldEquipGrantedDays = new Set<number>()
+const heroTycoonGoldGrantedDays = new Set<number>()
 const unlockedItemIds = new Set<string>()
 const neutralObtainedCountByKind = new Map<string, number>()
 const neutralDailyRollCountByDay = new Map<number, number>()
@@ -438,6 +473,8 @@ let neutralRandomCategoryPool: Array<'stone' | 'scroll' | 'medal'> = []
 // 升级奖励状态（持久化）
 let levelRewardCategoryPool: Array<'stone' | 'scroll' | 'medal'> = []
 let pendingLevelRewards: string[] = []
+let pendingHeroPeriodicRewards: PendingHeroPeriodicReward[] = []
+let pendingHeroPeriodicRewardDispatching = false
 const levelRewardObtainedByKind = new Map<string, number>()
 let nextQuickBuyOffer: {
   itemId: string
@@ -792,6 +829,56 @@ function showMoveToBattleGuideHand(): void {
   Ticker.shared.add(battleGuideHandTick)
 }
 
+function canAffordQuickBuyNow(): boolean {
+  if (!shopManager) return false
+  const offer = rollNextQuickBuyOffer(false)
+  if (!offer) return false
+  if (!canBuyItemUnderFirstPurchaseRule(offer.item)) return false
+  const price = resolveBuyPriceWithSkills(offer.price).finalPrice
+  return shopManager.gold >= price
+}
+
+function showBuyGuideHand(): void {
+  stopBattleGuideHandAnim()
+
+  const { stage } = getApp()
+  const centerX = getDebugCfg('refreshBtnX') + 20
+  const centerY = getDebugCfg('refreshBtnY') + 48
+
+  const hand = new Text({
+    text: '👆',
+    style: {
+      fontSize: Math.max(64, Math.round(CELL_SIZE * 0.9)),
+      fill: 0xffffff,
+      fontFamily: 'Arial',
+      fontWeight: 'bold',
+      stroke: { color: 0x0b1222, width: 3 },
+    },
+  })
+  hand.anchor.set(0.5)
+
+  const con = new Container()
+  con.eventMode = 'none'
+  con.zIndex = 10020
+  con.x = centerX
+  con.y = centerY
+  con.addChild(hand)
+  stage.addChild(con)
+  battleGuideHandCon = con
+
+  const startAt = Date.now()
+  const durationMs = 1000
+  battleGuideHandTick = () => {
+    const tRaw = (Date.now() - startAt) / durationMs
+    const t = Math.max(0, Math.min(1, tRaw))
+    const pulse = Math.sin(t * Math.PI * 3)
+    con.y = centerY + pulse * 10
+    con.alpha = 0.7 + 0.3 * Math.max(0, pulse)
+    if (t >= 1) stopBattleGuideHandAnim()
+  }
+  Ticker.shared.add(battleGuideHandTick)
+}
+
 function stopUnlockRevealPlayback(): void {
   if (unlockRevealTickFn) {
     Ticker.shared.remove(unlockRevealTickFn)
@@ -889,7 +976,10 @@ function buildBattleSnapshot(skillBarMoveStartAtMs?: number): BattleSnapshotBund
   const trophy = getWinTrophyState(trophyTarget)
   const progress = getPlayerProgressState()
   const playerLevel = clampPlayerLevel(progress.level)
-  const playerBattleHp = getPlayerMaxLifeByLevel(playerLevel)
+  let playerBattleHp = getPlayerMaxLifeByLevel(playerLevel)
+  if (isSelectedHero('hero10')) {
+    playerBattleHp = Math.max(1, Math.round(playerBattleHp * 1.3))
+  }
   return {
     day: currentDay,
     activeColCount: snap.activeColCount,
@@ -1005,7 +1095,22 @@ function captureShopState(): SavedShopState | null {
     neutralDailyRollCounts: Array.from(neutralDailyRollCountByDay.entries()).map(([day, count]) => ({ day, count })),
     levelRewardCategoryPool: [...levelRewardCategoryPool],
     pendingLevelRewards: [...pendingLevelRewards],
+    pendingHeroPeriodicRewards: pendingHeroPeriodicRewards.map((one) => ({
+      itemId: one.itemId,
+      level: one.level,
+      tier: one.tier,
+      star: one.star,
+      source: one.source,
+    })),
     levelRewardObtainedCounts: Array.from(levelRewardObtainedByKind.entries()).map(([kind, count]) => ({ kind, count })),
+    heroDailyCardRerollUsedDays: Array.from(heroDailyCardRerollUsedDays),
+    heroFirstDiscardRewardedDays: Array.from(heroFirstDiscardRewardedDays),
+    heroFirstSameItemSynthesisChoiceDays: Array.from(heroFirstSameItemSynthesisChoiceDays),
+    heroSmithStoneGrantedDays: Array.from(heroSmithStoneGrantedDays),
+    heroAdventurerScrollGrantedDays: Array.from(heroAdventurerScrollGrantedDays),
+    heroCommanderMedalGrantedDays: Array.from(heroCommanderMedalGrantedDays),
+    heroHeirGoldEquipGrantedDays: Array.from(heroHeirGoldEquipGrantedDays),
+    heroTycoonGoldGrantedDays: Array.from(heroTycoonGoldGrantedDays),
   }
 }
 
@@ -1100,6 +1205,46 @@ function applySavedShopState(state: SavedShopState): void {
     ? state.skill20GrantedDays.filter((d): d is number => Number.isFinite(d)).map((d) => Math.max(1, Math.round(d)))
     : []
   for (const day of savedSkill20Days) skill20GrantedDays.add(day)
+  heroDailyCardRerollUsedDays.clear()
+  for (const day of state.heroDailyCardRerollUsedDays ?? []) {
+    const one = Math.max(1, Math.round(Number(day) || 0))
+    if (one > 0) heroDailyCardRerollUsedDays.add(one)
+  }
+  heroFirstDiscardRewardedDays.clear()
+  for (const day of state.heroFirstDiscardRewardedDays ?? []) {
+    const one = Math.max(1, Math.round(Number(day) || 0))
+    if (one > 0) heroFirstDiscardRewardedDays.add(one)
+  }
+  heroFirstSameItemSynthesisChoiceDays.clear()
+  for (const day of state.heroFirstSameItemSynthesisChoiceDays ?? []) {
+    const one = Math.max(1, Math.round(Number(day) || 0))
+    if (one > 0) heroFirstSameItemSynthesisChoiceDays.add(one)
+  }
+  heroSmithStoneGrantedDays.clear()
+  for (const day of state.heroSmithStoneGrantedDays ?? []) {
+    const one = Math.max(1, Math.round(Number(day) || 0))
+    if (one > 0) heroSmithStoneGrantedDays.add(one)
+  }
+  heroAdventurerScrollGrantedDays.clear()
+  for (const day of state.heroAdventurerScrollGrantedDays ?? []) {
+    const one = Math.max(1, Math.round(Number(day) || 0))
+    if (one > 0) heroAdventurerScrollGrantedDays.add(one)
+  }
+  heroCommanderMedalGrantedDays.clear()
+  for (const day of state.heroCommanderMedalGrantedDays ?? []) {
+    const one = Math.max(1, Math.round(Number(day) || 0))
+    if (one > 0) heroCommanderMedalGrantedDays.add(one)
+  }
+  heroHeirGoldEquipGrantedDays.clear()
+  for (const day of state.heroHeirGoldEquipGrantedDays ?? []) {
+    const one = Math.max(1, Math.round(Number(day) || 0))
+    if (one > 0) heroHeirGoldEquipGrantedDays.add(one)
+  }
+  heroTycoonGoldGrantedDays.clear()
+  for (const day of state.heroTycoonGoldGrantedDays ?? []) {
+    const one = Math.max(1, Math.round(Number(day) || 0))
+    if (one > 0) heroTycoonGoldGrantedDays.add(one)
+  }
   neutralObtainedCountByKind.clear()
   for (const row of state.neutralObtainedCounts ?? []) {
     const kind = String(row?.kind ?? '').trim()
@@ -1133,6 +1278,20 @@ function applySavedShopState(state: SavedShopState): void {
   pendingLevelRewards = Array.isArray(state.pendingLevelRewards)
     ? state.pendingLevelRewards.filter((v): v is string => typeof v === 'string' && v.length > 0)
     : []
+  pendingHeroPeriodicRewards = Array.isArray(state.pendingHeroPeriodicRewards)
+    ? state.pendingHeroPeriodicRewards
+      .map((row) => {
+        const itemId = String(row?.itemId ?? '').trim()
+        const source = String(row?.source ?? '').trim() || '英雄奖励'
+        const level = clampLevel(Number(row?.level ?? 1))
+        const tier = (String(row?.tier ?? 'Bronze') as TierKey)
+        const star = Math.max(1, Math.min(2, Math.round(Number(row?.star ?? 1)))) as 1 | 2
+        if (!itemId) return null
+        return { itemId, level, tier, star, source }
+      })
+      .filter((v): v is PendingHeroPeriodicReward => !!v)
+    : []
+  pendingHeroPeriodicRewardDispatching = false
   levelRewardObtainedByKind.clear()
   for (const row of state.levelRewardObtainedCounts ?? []) {
     const kind = String(row?.kind ?? '').trim()
@@ -2835,12 +2994,22 @@ function seedInitialUnlockPoolByStarterClass(_pick: StarterClass): void {
   neutralDailyRollCountByDay.clear()
   levelRewardCategoryPool = []
   pendingLevelRewards = []
+  pendingHeroPeriodicRewards = []
+  pendingHeroPeriodicRewardDispatching = false
   levelRewardObtainedByKind.clear()
   resetSkill15NextBuyDiscountState()
   resetSkill30BundleState()
   quickBuyNoSynthRefreshStreak = 0
   quickBuyNeutralMissStreak = 0
   nextQuickBuyOffer = null
+  heroDailyCardRerollUsedDays.clear()
+  heroFirstDiscardRewardedDays.clear()
+  heroFirstSameItemSynthesisChoiceDays.clear()
+  heroSmithStoneGrantedDays.clear()
+  heroAdventurerScrollGrantedDays.clear()
+  heroCommanderMedalGrantedDays.clear()
+  heroHeirGoldEquipGrantedDays.clear()
+  heroTycoonGoldGrantedDays.clear()
   // 按当前规则：开局解锁“所有青铜物品”，不再仅限所选职业
   const bronzeIds = getAllItems()
     .filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === 'Bronze')
@@ -2856,6 +3025,199 @@ function getStarterClassTag(): string {
   return ''
 }
 
+function isSelectedHero(id: StarterClass): boolean {
+  return starterClass === id
+}
+
+function canUseHeroDailyCardReroll(): boolean {
+  return isSelectedHero('hero1') && !heroDailyCardRerollUsedDays.has(currentDay)
+}
+
+function markHeroDailyCardRerollUsed(): void {
+  if (isSelectedHero('hero1')) {
+    heroDailyCardRerollUsedDays.add(currentDay)
+    refreshPlayerStatusUI()
+  }
+}
+
+function tryRunHeroCrossSynthesisReroll(stage: Container, synth: SynthesizeResult): boolean {
+  if (!canUseHeroDailyCardReroll()) return false
+  const system = synth.targetZone === 'battle' ? battleSystem : backpackSystem
+  const current = system?.getItem(synth.instanceId)
+  if (!current) return false
+  const targetLevel = Math.max(1, Math.min(7, tierStarLevelIndex(synth.toTier, synth.toStar) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const currentDefId = current.defId
+  const targetSize = normalizeSize(synth.targetSize)
+  const choices = collectPoolCandidatesByLevel(targetLevel)
+    .filter((one) => normalizeSize(one.item.size) === targetSize && one.item.id !== currentDefId)
+  if (choices.length <= 0) return false
+
+  const overlay = new Container()
+  overlay.zIndex = 3600
+  overlay.eventMode = 'static'
+  overlay.hitArea = new Rectangle(0, 0, CANVAS_W, CANVAS_H)
+
+  const mask = new Graphics()
+  mask.rect(0, 0, CANVAS_W, CANVAS_H)
+  mask.fill({ color: 0x070d1d, alpha: 0.9 })
+  overlay.addChild(mask)
+
+  const panel = new Graphics()
+  const panelW = 560
+  const panelH = 340
+  panel.roundRect((CANVAS_W - panelW) / 2, 460, panelW, panelH, 24)
+  panel.fill({ color: 0x13233d, alpha: 0.98 })
+  panel.stroke({ color: 0x79b6ff, width: 3, alpha: 0.98 })
+  overlay.addChild(panel)
+
+  const title = new Text({
+    text: '占卜师：重选合成结果',
+    style: { fontSize: 38, fill: 0xfff2cf, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  title.anchor.set(0.5)
+  title.x = CANVAS_W / 2
+  title.y = 530
+  overlay.addChild(title)
+
+  const desc = new Text({
+    text: '本次异物合成可免费重随机1次\n是否立即重选？',
+    style: { fontSize: 28, fill: 0xcfe2ff, fontFamily: 'Arial', fontWeight: 'bold', align: 'center', lineHeight: 40 },
+  })
+  desc.anchor.set(0.5)
+  desc.x = CANVAS_W / 2
+  desc.y = 620
+  overlay.addChild(desc)
+
+  const closeOverlay = () => {
+    if (overlay.parent) overlay.parent.removeChild(overlay)
+    overlay.destroy({ children: true })
+    setTransitionInputEnabled(true)
+    applyPhaseInputLock()
+  }
+
+  const keepBtn = new Container()
+  keepBtn.eventMode = 'static'
+  keepBtn.cursor = 'pointer'
+  keepBtn.x = CANVAS_W / 2 - 238
+  keepBtn.y = 722
+  const keepBg = new Graphics()
+  keepBg.roundRect(0, 0, 216, 74, 16)
+  keepBg.fill({ color: 0x25344d, alpha: 0.9 })
+  keepBg.stroke({ color: 0x5d7597, width: 3, alpha: 1 })
+  const keepTxt = new Text({ text: '保留结果', style: { fontSize: 30, fill: 0xc9d6ef, fontFamily: 'Arial', fontWeight: 'bold' } })
+  keepTxt.anchor.set(0.5)
+  keepTxt.x = 108
+  keepTxt.y = 37
+  keepBtn.addChild(keepBg, keepTxt)
+  keepBtn.on('pointerdown', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    closeOverlay()
+    refreshShopUI()
+  })
+  overlay.addChild(keepBtn)
+
+  const rerollBtn = new Container()
+  rerollBtn.eventMode = 'static'
+  rerollBtn.cursor = 'pointer'
+  rerollBtn.x = CANVAS_W / 2 + 22
+  rerollBtn.y = 722
+  const rerollBg = new Graphics()
+  rerollBg.roundRect(0, 0, 216, 74, 16)
+  rerollBg.fill({ color: 0x6dd3ff, alpha: 0.96 })
+  rerollBg.stroke({ color: 0xb8e8ff, width: 3, alpha: 1 })
+  const rerollTxt = new Text({ text: '重选1次', style: { fontSize: 30, fill: 0x10203a, fontFamily: 'Arial', fontWeight: 'bold' } })
+  rerollTxt.anchor.set(0.5)
+  rerollTxt.x = 108
+  rerollTxt.y = 37
+  rerollBtn.addChild(rerollBg, rerollTxt)
+  rerollBtn.on('pointerdown', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+    const latestSystem = synth.targetZone === 'battle' ? battleSystem : backpackSystem
+    const latest = latestSystem?.getItem(synth.instanceId)
+    if (!latest) {
+      closeOverlay()
+      refreshShopUI()
+      return
+    }
+    const pool = collectPoolCandidatesByLevel(targetLevel)
+      .filter((one) => normalizeSize(one.item.size) === targetSize && one.item.id !== latest.defId)
+    const picked = pool[Math.floor(Math.random() * pool.length)]
+    if (picked) {
+      const ok = transformPlacedItemKeepLevelTo(synth.instanceId, synth.targetZone, picked.item, true)
+      if (ok) {
+        setInstanceQualityLevel(synth.instanceId, picked.item.id, parseTierName(picked.item.starting_tier) ?? 'Bronze', targetLevel)
+        applyInstanceTierVisuals()
+        syncShopOwnedTierRules()
+        refreshUpgradeHints()
+        markHeroDailyCardRerollUsed()
+        showHintToast('no_gold_buy', '占卜师：已重随机本次异物合成结果', 0x9be5ff)
+      }
+    }
+    closeOverlay()
+    refreshShopUI()
+  })
+  overlay.addChild(rerollBtn)
+
+  overlay.on('pointerdown', (e: FederatedPointerEvent) => {
+    e.stopPropagation()
+  })
+
+  setTransitionInputEnabled(false)
+  setBaseShopPrimaryButtonsVisible(false)
+  stage.addChild(overlay)
+  return true
+}
+
+void tryRunHeroCrossSynthesisReroll
+
+function canTriggerHeroFirstDiscardReward(): boolean {
+  return isSelectedHero('hero3') && !heroFirstDiscardRewardedDays.has(currentDay)
+}
+
+function markHeroFirstDiscardRewardTriggered(): void {
+  if (isSelectedHero('hero3')) {
+    heroFirstDiscardRewardedDays.add(currentDay)
+    refreshPlayerStatusUI()
+  }
+}
+
+function canTriggerHeroSameItemSynthesisChoice(): boolean {
+  return isSelectedHero('hero4') && !heroFirstSameItemSynthesisChoiceDays.has(currentDay)
+}
+
+function markHeroSameItemSynthesisChoiceTriggered(): void {
+  if (isSelectedHero('hero4')) {
+    heroFirstSameItemSynthesisChoiceDays.add(currentDay)
+    refreshPlayerStatusUI()
+  }
+}
+
+function shouldShowHeroDailySkillReadyStar(): boolean {
+  if (
+    pendingHeroPeriodicRewards.length > 0
+    && (isSelectedHero('hero5') || isSelectedHero('hero6') || isSelectedHero('hero7') || isSelectedHero('hero8'))
+  ) {
+    return true
+  }
+  if (isSelectedHero('hero1')) return canUseHeroDailyCardReroll()
+  if (isSelectedHero('hero3')) return canTriggerHeroFirstDiscardReward()
+  if (isSelectedHero('hero4')) return canTriggerHeroSameItemSynthesisChoice()
+  return false
+}
+
+function grantHeroDiscardSameLevelReward(discardedDefId: string, level: 1 | 2 | 3 | 4 | 5 | 6 | 7): void {
+  if (!canTriggerHeroFirstDiscardReward()) return
+  const discardedDef = getItemDefById(discardedDefId)
+  if (!discardedDef || isNeutralItemDef(discardedDef)) return
+  const candidates = collectPoolCandidatesByLevel(level).filter((one) => one.item.id !== discardedDefId)
+  if (candidates.length <= 0) return
+  const picked = candidates[Math.floor(Math.random() * candidates.length)]
+  if (!picked) return
+  if (grantPoolCandidateToBoardOrBackpack(picked, '魔术师', { flyFromHeroAvatar: true })) {
+    markHeroFirstDiscardRewardTriggered()
+  }
+}
+
 function isStarterClassItem(item: ItemDef): boolean {
   const tag = getStarterClassTag()
   if (!tag) return true
@@ -2863,7 +3225,7 @@ function isStarterClassItem(item: ItemDef): boolean {
 }
 
 function isFirstPurchaseLockedToStarterClass(): boolean {
-  return !hasBoughtOnce && !!starterClass
+  return false
 }
 
 function canBuyItemUnderFirstPurchaseRule(item: ItemDef): boolean {
@@ -3020,19 +3382,20 @@ function playPlayerLevelUpFx(): void {
 }
 
 /**
- * 飞行动画：从头像位置飞一个物品图标到背包目标格
- * @param defId 物品定义ID（用于加载图标）
+ * 飞行动画：从头像位置飞一个光球到目标格
+ * @param defId 物品定义ID（保留参数以兼容调用方）
  * @param targetSlotCol 目标格列
  * @param targetSlotRow 目标格行
  * @param onLand 落地回调（执行真正的视觉addItem）
  */
-function flyRewardToBackpack(
+function flyRewardToGridSlot(
   defId: string,
+  targetView: GridZone,
   targetSlotCol: number,
   targetSlotRow: number,
   onLand: () => void,
 ): void {
-  if (!playerStatusAvatar || !backpackView) { onLand(); return }
+  if (!playerStatusAvatar) { onLand(); return }
   const stage = getApp().stage
 
   // 起点：头像中心（舞台坐标）
@@ -3040,34 +3403,26 @@ function flyRewardToBackpack(
   const startPos = stage.toLocal({ x: avatarBounds.x + avatarBounds.width / 2, y: avatarBounds.y + avatarBounds.height / 2 })
 
   // 终点：目标格中心（舞台坐标）
-  const targetGlobal = backpackView.toGlobal({
+  const targetGlobal = targetView.toGlobal({
     x: targetSlotCol * CELL_SIZE + CELL_SIZE / 2,
     y: targetSlotRow * CELL_HEIGHT + CELL_HEIGHT / 2,
   })
   const endPos = stage.toLocal(targetGlobal)
 
-  const iconSize = Math.round(CELL_SIZE * 0.72)
+  // 与背包区物品图标观感对齐（原先过大，约缩小一半）
+  const iconSize = Math.round(CELL_SIZE * 0.36)
   const durationMs = 440
 
-  // 尝试用物品图标作为代理精灵
-  const makeProxyAndAnimate = (tex: Texture | null) => {
-    let proxy: Sprite | Graphics
-    if (tex) {
-      const spr = new Sprite(tex)
-      spr.width = iconSize
-      spr.height = iconSize
-      spr.anchor.set(0.5)
-      spr.eventMode = 'none'
-      proxy = spr
-    } else {
-      const g = new Graphics()
-      g.circle(0, 0, iconSize / 2)
-      g.fill({ color: 0xffd700, alpha: 0.95 })
-      g.circle(0, 0, Math.max(4, iconSize / 2 - 4))
-      g.fill({ color: 0xfff8b0, alpha: 0.9 })
-      g.eventMode = 'none'
-      proxy = g
-    }
+  const makeProxyAndAnimate = () => {
+    void defId
+    let proxy: Graphics
+    const g = new Graphics()
+    g.circle(0, 0, iconSize / 2)
+    g.fill({ color: 0xffd700, alpha: 0.95 })
+    g.circle(0, 0, Math.max(4, iconSize / 2 - 4))
+    g.fill({ color: 0xfff8b0, alpha: 0.9 })
+    g.eventMode = 'none'
+    proxy = g
     proxy.x = startPos.x
     proxy.y = startPos.y
     stage.addChild(proxy)
@@ -3079,7 +3434,7 @@ function flyRewardToBackpack(
       proxy.x = startPos.x + (endPos.x - startPos.x) * ease
       proxy.y = startPos.y + (endPos.y - startPos.y) * ease - Math.sin(Math.PI * t) * 60
       proxy.alpha = t < 0.85 ? 1 : (1 - t) / 0.15  // 尾段淡出
-      const sc = 1 + Math.sin(Math.PI * t) * 0.15
+      const sc = 1 + Math.sin(Math.PI * t) * 0.08
       proxy.scale.set(sc)
       if (t >= 1) {
         Ticker.shared.remove(tick)
@@ -3090,16 +3445,17 @@ function flyRewardToBackpack(
     }
     Ticker.shared.add(tick)
   }
+  makeProxyAndAnimate()
+}
 
-  // 尝试从缓存加载图标（避免异步等待）
-  const url = getItemIconUrl(defId)
-  const cached = Assets.cache.get<Texture>(url)
-  if (cached) {
-    makeProxyAndAnimate(cached)
-  } else {
-    // 先以金色圆形飞出，背景异步加载不阻塞动画
-    makeProxyAndAnimate(null)
-  }
+function flyRewardToBackpack(
+  defId: string,
+  targetSlotCol: number,
+  targetSlotRow: number,
+  onLand: () => void,
+): void {
+  if (!backpackView) { onLand(); return }
+  flyRewardToGridSlot(defId, backpackView, targetSlotCol, targetSlotRow, onLand)
 }
 
 /** 记录升级奖励获得计数 */
@@ -3110,7 +3466,10 @@ function recordLevelRewardObtained(kind: NeutralSpecialKind): void {
 
 /** 检查背包是否有空位可放1x1物品并执行待领取奖励发放 */
 function checkAndPopPendingRewards(): void {
-  if (pendingLevelRewards.length === 0) return
+  if (pendingLevelRewards.length === 0) {
+    checkAndPopPendingHeroPeriodicRewards()
+    return
+  }
   if (!backpackSystem || !backpackView) return
 
   while (pendingLevelRewards.length > 0) {
@@ -3154,6 +3513,10 @@ function checkAndPopPendingRewards(): void {
 
     saveShopStateToStorage(captureShopState())
     break  // 每次只发一个，等动画结束后再检查下一个
+  }
+
+  if (pendingLevelRewards.length === 0) {
+    checkAndPopPendingHeroPeriodicRewards()
   }
 }
 
@@ -3200,9 +3563,160 @@ function grantSynthesisExp(amount = 1, from?: { instanceId: string; zone: 'battl
 }
 
 function getHeroIconByStarterClass(): string {
+  if (starterClass === 'hero1') return '/resource/hero/hero1icon.png'
+  if (starterClass === 'hero2') return '/resource/hero/hero2icon.png'
+  if (starterClass === 'hero3') return '/resource/hero/hero3icon.png'
+  if (starterClass === 'hero4') return '/resource/hero/hero4icon.png'
+  if (starterClass === 'hero5') return '/resource/hero/hero5icon.png'
+  if (starterClass === 'hero6') return '/resource/hero/hero6icon.png'
+  if (starterClass === 'hero7') return '/resource/hero/hero7icon.png'
+  if (starterClass === 'hero8') return '/resource/hero/hero8icon.png'
+  if (starterClass === 'hero9') return '/resource/hero/hero9icon.png'
+  if (starterClass === 'hero10') return '/resource/hero/hero10icon.png'
   if (starterClass === 'archer') return '/resource/hero/archericon.png'
   if (starterClass === 'assassin') return '/resource/hero/assassinicon.png'
   return '/resource/hero/warrioricon.png'
+}
+
+function getHeroPassiveDetailData(): { name: string; desc: string; icon: string } {
+  if (!starterClass) {
+    return {
+      name: '未选择英雄',
+      desc: '暂无技能效果',
+      icon: '/resource/hero/warrioricon.png',
+    }
+  }
+  const preset = STARTER_CLASS_PRESETS[starterClass]
+  if (!preset) {
+    return {
+      name: '未选择英雄',
+      desc: '暂无技能效果',
+      icon: '/resource/hero/warrioricon.png',
+    }
+  }
+  return {
+    name: preset.title,
+    desc: (preset.subtitle || '暂无技能效果').trim(),
+    icon: getHeroIconByStarterClass(),
+  }
+}
+
+function showHeroPassiveDetailPopup(): void {
+  const stage = getApp().stage
+  if (!skillDetailPopupCon) {
+    const con = new Container()
+    con.zIndex = 220
+    con.eventMode = 'none'
+    con.visible = false
+    stage.addChild(con)
+    skillDetailPopupCon = con
+  }
+  const con = skillDetailPopupCon
+  con.removeChildren().forEach((c) => c.destroy({ children: true }))
+
+  const detail = getHeroPassiveDetailData()
+  const panelW = Math.max(360, Math.min(CANVAS_W - 24, getDebugCfg('itemInfoWidth')))
+  const pad = 16
+  const iconSize = 128
+  const iconX = pad
+  const iconY = pad
+  const textX = iconX + iconSize + 16
+  const textW = panelW - textX - pad
+  const titleFontSize = getDebugCfg('itemInfoNameFontSize')
+  const descFontSize = getDebugCfg('itemInfoSimpleDescFontSize')
+
+  const title = new Text({
+    text: detail.name,
+    style: { fontSize: titleFontSize, fill: 0xffefc8, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  const desc = new Text({
+    text: detail.desc,
+    style: {
+      fontSize: descFontSize,
+      fill: 0xd7e2fa,
+      fontFamily: 'Arial',
+      wordWrap: true,
+      breakWords: true,
+      wordWrapWidth: textW,
+      lineHeight: Math.round(descFontSize * 1.25),
+    },
+  })
+
+  const dividerY = iconY + 44
+  const descY = dividerY + 12
+  const contentBottom = Math.max(iconY + iconSize, descY + desc.height)
+  const panelH = Math.max(getDebugCfg('itemInfoMinHSmall'), contentBottom + pad)
+  const px = CANVAS_W / 2 - panelW / 2
+  let panelBottomY = getDebugCfg('shopAreaY') - getDebugCfg('itemInfoBottomGapToShop') - 92
+  if (skillIconBarCon?.visible) {
+    panelBottomY = Math.min(panelBottomY, skillIconBarCon.y - 44)
+  }
+  const py = panelBottomY - panelH
+
+  const bg = new Graphics()
+  bg.roundRect(px, py, panelW, panelH, Math.max(0, getDebugCfg('gridItemCornerRadius')))
+  bg.fill({ color: 0x1e1e30, alpha: 0.97 })
+  bg.stroke({ color: 0x5566aa, width: 2, alpha: 1 })
+  con.addChild(bg)
+
+  const iconLetter = new Text({
+    text: detail.name.slice(0, 1),
+    style: { fontSize: 56, fill: 0xf5f7ff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  iconLetter.anchor.set(0.5)
+  iconLetter.x = px + iconX + iconSize / 2
+  iconLetter.y = py + iconY + iconSize / 2 + 2
+  con.addChild(iconLetter)
+
+  const iconSprite = new Sprite(Texture.WHITE)
+  iconSprite.x = px + iconX
+  iconSprite.y = py + iconY
+  iconSprite.width = iconSize
+  iconSprite.height = iconSize
+  iconSprite.alpha = 0
+  con.addChild(iconSprite)
+  const iconUrl = detail.icon
+  void Assets.load<Texture>(iconUrl).then((tex) => {
+    if (!skillDetailPopupCon || skillDetailSkillId !== HERO_DETAIL_POPUP_ID || iconSprite.destroyed) return
+    iconSprite.texture = tex
+    iconSprite.alpha = 1
+    iconLetter.visible = false
+  }).catch(() => {
+    // ignore runtime missing icon
+  })
+
+  title.x = px + textX
+  title.y = py + iconY + 2
+  con.addChild(title)
+
+  const divider = new Graphics()
+  divider.moveTo(px + textX, py + dividerY)
+  divider.lineTo(px + panelW - pad, py + dividerY)
+  divider.stroke({ color: 0x5a628f, width: 1, alpha: 0.9 })
+  con.addChild(divider)
+
+  desc.x = px + textX
+  desc.y = py + descY
+  con.addChild(desc)
+
+  skillDetailSkillId = HERO_DETAIL_POPUP_ID
+  con.visible = true
+}
+
+function toggleHeroPassiveDetailPopup(): void {
+  if (skillDetailSkillId === HERO_DETAIL_POPUP_ID) {
+    hideSkillDetailPopup()
+    return
+  }
+  currentSelection = { kind: 'none' }
+  selectedSellAction = null
+  resetInfoModeSelection()
+  shopPanel?.setSelectedSlot(-1)
+  battleView?.setSelected(null)
+  backpackView?.setSelected(null)
+  sellPopup?.hide()
+  applySellButtonState()
+  showHeroPassiveDetailPopup()
 }
 
 function parseTierName(raw: string): TierKey | null {
@@ -4709,6 +5223,66 @@ const STARTER_CLASS_PRESETS: Record<StarterClass, {
     gifts: ['匕首', '连发镖'],
     heroImage: '/resource/hero/assassin.png',
   },
+  hero1: {
+    title: '占卜师',
+    subtitle: '每天选择物品时，都可以重选一次',
+    gifts: ['短剑', '圆盾'],
+    heroImage: '/resource/hero/hero1.png',
+  },
+  hero2: {
+    title: '大亨',
+    subtitle: '每天额外获得天数+1的金币',
+    gifts: ['短剑', '圆盾'],
+    heroImage: '/resource/hero/hero2.png',
+  },
+  hero3: {
+    title: '魔术师',
+    subtitle: '每天首次丢弃，获得同等级的随机物品',
+    gifts: ['短剑', '圆盾'],
+    heroImage: '/resource/hero/hero3.png',
+  },
+  hero4: {
+    title: '戏法师',
+    subtitle: '每天首次合成，可以选择合成为其他物品',
+    gifts: ['短剑', '圆盾'],
+    heroImage: '/resource/hero/hero4.png',
+  },
+  hero5: {
+    title: '铁匠',
+    subtitle: '每隔3天获得1颗升级石',
+    gifts: ['短剑', '圆盾'],
+    heroImage: '/resource/hero/hero5.png',
+  },
+  hero6: {
+    title: '冒险家',
+    subtitle: '每隔3天获得1张冒险券',
+    gifts: ['短剑', '圆盾'],
+    heroImage: '/resource/hero/hero6.png',
+  },
+  hero7: {
+    title: '指挥官',
+    subtitle: '每隔3天获得1枚勋章',
+    gifts: ['短剑', '圆盾'],
+    heroImage: '/resource/hero/hero7.png',
+  },
+  hero8: {
+    title: '继承者',
+    subtitle: '第3天获得1个黄金宝箱',
+    gifts: ['短剑', '圆盾'],
+    heroImage: '/resource/hero/hero8.png',
+  },
+  hero9: {
+    title: '大胃王',
+    subtitle: '初始红心设置为40点',
+    gifts: ['短剑', '圆盾'],
+    heroImage: '/resource/hero/hero9.png',
+  },
+  hero10: {
+    title: '大力士',
+    subtitle: '战斗中最大生命值+30%',
+    gifts: ['短剑', '圆盾'],
+    heroImage: '/resource/hero/hero10.png',
+  },
 }
 
 function getItemDefByCn(nameCn: string): ItemDef | null {
@@ -4716,22 +5290,22 @@ function getItemDefByCn(nameCn: string): ItemDef | null {
 }
 
 function pickGuideOtherArchetypeResultItem(pick: StarterClass): ItemDef | null {
-  const targetTagByPick: Record<StarterClass, string> = {
+  const targetTagByPick: Partial<Record<StarterClass, string>> = {
     swordsman: '弓手',
     archer: '刺客',
     assassin: '战士',
   }
-  const preferredByPick: Record<StarterClass, string[]> = {
+  const preferredByPick: Partial<Record<StarterClass, string[]>> = {
     swordsman: ['木弓'],
     archer: ['匕首', '刺客匕首'],
     assassin: ['短剑'],
   }
 
-  for (const nameCn of preferredByPick[pick]) {
+  for (const nameCn of (preferredByPick[pick] ?? [])) {
     const hit = getItemDefByCn(nameCn)
     if (hit && parseTierName(hit.starting_tier) === 'Bronze') return hit
   }
-  const targetTag = targetTagByPick[pick]
+  const targetTag = targetTagByPick[pick] ?? '战士'
   return getAllItems().find((it) => `${it.tags ?? ''}`.includes(targetTag) && parseTierName(it.starting_tier) === 'Bronze')
     ?? getAllItems().find((it) => `${it.tags ?? ''}`.includes(targetTag))
     ?? null
@@ -5025,6 +5599,9 @@ function showStarterSynthesisGuide(stage: Container, pick: StarterClass): void {
   stage.addChild(overlay)
 }
 
+void grantStarterItemsByClass
+void showStarterSynthesisGuide
+
 function ensureStarterClassSelection(stage: Container): void {
   if (starterGranted) return
   if (classSelectOverlay) return
@@ -5043,7 +5620,7 @@ function ensureStarterClassSelection(stage: Container): void {
   overlay.addChild(bg)
 
   const title = new Text({
-    text: '选择你的初始职业',
+    text: '选择你的初始英雄',
     style: { fontSize: 42, fill: 0xfff2cf, fontFamily: 'Arial', fontWeight: 'bold' },
   })
   title.anchor.set(0.5)
@@ -5052,7 +5629,7 @@ function ensureStarterClassSelection(stage: Container): void {
   overlay.addChild(title)
 
   const subtitle = new Text({
-    text: '请选择一条开局战斗风格',
+    text: '仅影响头像展示，不附带初始物品',
     style: { fontSize: 24, fill: 0xb9c8e8, fontFamily: 'Arial' },
   })
   subtitle.anchor.set(0.5)
@@ -5061,12 +5638,26 @@ function ensureStarterClassSelection(stage: Container): void {
   overlay.addChild(subtitle)
 
   const cards: Array<{ key: StarterClass; border: Graphics }> = []
-  const order: StarterClass[] = ['swordsman', 'archer', 'assassin']
-  const cardW = 190
-  const cardH = 504
-  const gapX = 16
-  const cardX = (CANVAS_W - (cardW * 3 + gapX * 2)) / 2
-  const startY = 460
+  const showAllHeroes = getDebugCfg('gameplayStarterHeroShowAll') >= 0.5
+  if (!showAllHeroes && (starterHeroChoiceOptions.length !== 3 || starterHeroChoiceOptions.some((id) => !HERO_STARTER_POOL.includes(id)))) {
+    const pool = HERO_STARTER_POOL.slice()
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      const t = pool[i]
+      pool[i] = pool[j]!
+      pool[j] = t!
+    }
+    starterHeroChoiceOptions = pool.slice(0, 3)
+  }
+  const order: StarterClass[] = showAllHeroes ? HERO_STARTER_POOL : starterHeroChoiceOptions
+  const compact = order.length > 3
+  const cols = compact ? 5 : 3
+  const cardW = compact ? 114 : 190
+  const cardH = compact ? 250 : 504
+  const gapX = compact ? 10 : 16
+  const gapY = compact ? 12 : 0
+  const cardX = (CANVAS_W - (cardW * cols + gapX * (cols - 1))) / 2
+  const startY = compact ? 340 : 460
   let selected: StarterClass | null = starterClass
 
   const confirm = new Container()
@@ -5074,7 +5665,7 @@ function ensureStarterClassSelection(stage: Container): void {
   confirm.cursor = 'pointer'
   const cBg = new Graphics()
   const cText = new Text({
-    text: selected ? '进入大巴扎' : '请选择职业',
+    text: selected ? '进入大巴扎' : '请选择英雄',
     style: { fontSize: 32, fill: 0x10162a, fontFamily: 'Arial', fontWeight: 'bold' },
   })
   confirm.addChild(cBg)
@@ -5086,7 +5677,7 @@ function ensureStarterClassSelection(stage: Container): void {
     cBg.roundRect((CANVAS_W - 500) / 2, CANVAS_H - 184, 500, 100, 24)
     cBg.fill({ color: enabled ? 0x52c0ff : 0x5f6b82, alpha: enabled ? 0.95 : 0.7 })
     cBg.stroke({ color: enabled ? 0x9be0ff : 0x8f9ab1, width: 3, alpha: 1 })
-    cText.text = enabled ? '进入大巴扎' : '请选择职业'
+    cText.text = enabled ? '进入大巴扎' : '请选择英雄'
     cText.style.fill = enabled ? 0x10162a : 0xdce4ff
     cText.x = CANVAS_W / 2 - cText.width / 2
     cText.y = CANVAS_H - 184 + (100 - cText.height) / 2
@@ -5107,8 +5698,10 @@ function ensureStarterClassSelection(stage: Container): void {
     const key = order[i]!
     const preset = STARTER_CLASS_PRESETS[key]
     const con = new Container()
-    con.x = cardX + i * (cardW + gapX)
-    con.y = startY
+    const col = i % cols
+    const row = Math.floor(i / cols)
+    con.x = cardX + col * (cardW + gapX)
+    con.y = startY + row * (cardH + gapY)
     con.eventMode = 'static'
     con.cursor = 'pointer'
     con.hitArea = new Rectangle(0, 0, cardW, cardH)
@@ -5118,34 +5711,34 @@ function ensureStarterClassSelection(stage: Container): void {
 
     const t = new Text({
       text: preset.title,
-      style: { fontSize: 36, fill: 0xfff2cf, fontFamily: 'Arial', fontWeight: 'bold' },
+      style: { fontSize: compact ? 20 : 36, fill: 0xfff2cf, fontFamily: 'Arial', fontWeight: 'bold' },
     })
-    t.x = 32
-    t.y = 24
+    t.x = compact ? 12 : 32
+    t.y = compact ? 10 : 24
     con.addChild(t)
 
     const d = new Text({
       text: preset.subtitle,
       style: {
-        fontSize: 22,
+        fontSize: compact ? 14 : 22,
         fill: 0xc7d5f2,
         fontFamily: 'Arial',
         wordWrap: true,
         breakWords: true,
-        wordWrapWidth: cardW - 30,
-        lineHeight: 30,
+        wordWrapWidth: compact ? (cardW - 14) : (cardW - 30),
+        lineHeight: compact ? 18 : 30,
       },
     })
-    d.x = 18
-    d.y = 352
+    d.x = compact ? 7 : 18
+    d.y = compact ? 182 : 352
     con.addChild(d)
 
     const hero = new Sprite(Texture.WHITE)
-    const heroMaxW = 154
-    const heroMaxH = 230
+    const heroMaxW = compact ? 96 : 154
+    const heroMaxH = compact ? 120 : 230
     hero.visible = false
     hero.x = (cardW - heroMaxW) / 2
-    hero.y = 102
+    hero.y = compact ? 56 : 102
     void Assets.load<Texture>(preset.heroImage).then((tex) => {
       hero.texture = tex
       const sw = Math.max(1, tex.width)
@@ -5154,7 +5747,7 @@ function ensureStarterClassSelection(stage: Container): void {
       hero.width = Math.max(1, Math.round(sw * scale))
       hero.height = Math.max(1, Math.round(sh * scale))
       hero.x = (cardW - hero.width) / 2
-      hero.y = 102 + (heroMaxH - hero.height) / 2
+      hero.y = (compact ? 56 : 102) + (heroMaxH - hero.height) / 2
       hero.visible = true
     }).catch(() => {
       // ignore missing asset in runtime
@@ -5177,8 +5770,11 @@ function ensureStarterClassSelection(stage: Container): void {
     starterClass = selected
     starterGranted = true
     starterBattleGuideShown = false
+    if (selected === 'hero9') {
+      setLifeState(40, 40)
+    }
     seedInitialUnlockPoolByStarterClass(selected)
-    grantStarterItemsByClass(selected)
+    grantHeroStartDayEffectsIfNeeded()
     saveShopStateToStorage(captureShopState())
     if (classSelectOverlay?.parent) classSelectOverlay.parent.removeChild(classSelectOverlay)
     classSelectOverlay?.destroy({ children: true })
@@ -5186,7 +5782,6 @@ function ensureStarterClassSelection(stage: Container): void {
     setTransitionInputEnabled(true)
     applyPhaseInputLock()
     refreshShopUI()
-    showStarterSynthesisGuide(stage, selected)
     ensureDailyChoiceSelection(stage)
   })
 
@@ -5554,6 +6149,7 @@ type NeutralSpecialKind =
   | 'raw_stone'
   | 'medal'
   | 'blank_scroll'
+  | 'golden_chest'
 
 type NeutralChoiceCandidate = {
   item: ItemDef
@@ -5572,6 +6168,7 @@ function getNeutralSpecialKind(item: ItemDef): NeutralSpecialKind | null {
   if (key === '原石') return 'raw_stone'
   if (key === '勋章') return 'medal'
   if (key === '空白卷轴') return 'blank_scroll'
+  if (key === '黄金宝箱') return 'golden_chest'
   return null
 }
 
@@ -5585,6 +6182,7 @@ const NEUTRAL_RANDOM_CAP_BY_DAY: Record<NeutralSpecialKind, number[]> = {
   raw_stone: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   medal: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
   blank_scroll: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  golden_chest: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 }
 
 const NEUTRAL_DAILY_ROLL_CAP_BY_DAY: number[] = [
@@ -6156,9 +6754,17 @@ function showNeutralChoiceOverlay(
   candidates: NeutralChoiceCandidate[],
   onConfirmPick?: (candidate: NeutralChoiceCandidate) => boolean,
   displayMode: 'default' | 'special_shop_like' = 'default',
+  options?: {
+    canReroll?: () => boolean
+    onReroll?: () => NeutralChoiceCandidate[]
+    onRerollUsed?: () => void
+    rerollBtnText?: string
+  },
 ): boolean {
   const showSimple = shouldShowSimpleDescriptions()
-  const uniq = candidates.filter((one, idx, arr) => arr.findIndex((it) => it.item.id === one.item.id) === idx).slice(0, 3)
+  const normalizeCandidates = (list: NeutralChoiceCandidate[]) =>
+    list.filter((one, idx, arr) => arr.findIndex((it) => it.item.id === one.item.id) === idx).slice(0, 3)
+  const uniq = normalizeCandidates(candidates)
   if (uniq.length <= 0) return false
 
   setTransitionInputEnabled(false)
@@ -6199,13 +6805,15 @@ function showNeutralChoiceOverlay(
   const startX = (CANVAS_W - totalW) / 2
   const cardY = 580
 
-  const closeOverlay = () => {
+  const closeOverlay = (withRefresh = true) => {
     if (overlay.parent) overlay.parent.removeChild(overlay)
     overlay.destroy({ children: true })
     setTransitionInputEnabled(true)
     applyPhaseInputLock()
-    refreshShopUI()
-    saveShopStateToStorage(captureShopState())
+    if (withRefresh) {
+      refreshShopUI()
+      saveShopStateToStorage(captureShopState())
+    }
   }
 
   let selectedIdx = uniq.length === 1 ? 0 : -1
@@ -6305,9 +6913,7 @@ function showNeutralChoiceOverlay(
             ? `✚回血${healValue}`
             : '◈被动'
       const mainStatColor = damageValue > 0 ? 0xff7a82 : shieldValue > 0 ? 0xffd983 : healValue > 0 ? 0x73e6a6 : 0x86b8ff
-      const speedText = cooldownMs > 0
-        ? `⏱速度${getSpecialShopSpeedTierText(cooldownMs)}`
-        : '⏱被动'
+      const speedText = cooldownMs > 0 ? `⏱速度${getSpecialShopSpeedTierText(cooldownMs)}` : ''
 
       const ammoLine = (cand.item.skills ?? [])
         .map((s) => String(s.cn ?? '').trim())
@@ -6316,8 +6922,8 @@ function showNeutralChoiceOverlay(
 
       const statEntries: Array<{ text: string; color: number }> = [
         { text: mainStatText, color: mainStatColor },
-        { text: speedText, color: 0x70b2ff },
       ]
+      if (speedText) statEntries.push({ text: speedText, color: 0x70b2ff })
       if (ammo > 0) statEntries.push({ text: `◉弹药${ammo}`, color: 0xffd36b })
 
       const statStartY = 258
@@ -6482,6 +7088,51 @@ function showNeutralChoiceOverlay(
   })
   overlay.addChild(holdBtn)
 
+  const canShowRerollBtn = !!options?.onReroll
+  if (canShowRerollBtn) {
+    const rerollBtn = new Container()
+    rerollBtn.x = actionBtnStartX + actionBtnW + actionBtnGap
+    rerollBtn.y = actionBtnY
+    rerollBtn.eventMode = 'static'
+    rerollBtn.cursor = 'pointer'
+    const rerollBg = new Graphics()
+    const rerollTxt = new Text({
+      text: options?.rerollBtnText || '重选1次',
+      style: { fontSize: actionBtnFontSize, fill: 0x10213a, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    rerollTxt.anchor.set(0.5)
+    rerollTxt.x = actionBtnW / 2
+    rerollTxt.y = actionBtnH / 2
+    rerollBtn.addChild(rerollBg, rerollTxt)
+
+    const redrawRerollBtn = () => {
+      const can = !!options?.onReroll && (options?.canReroll ? options.canReroll() : true)
+      rerollBg.clear()
+      rerollBg.roundRect(0, 0, actionBtnW, actionBtnH, 20)
+      rerollBg.fill({ color: can ? 0xffd86b : 0x8a6e4b, alpha: 0.95 })
+      rerollBg.stroke({ color: can ? 0xffefad : 0xb89d78, width: 3, alpha: 0.95 })
+      rerollTxt.style.fill = can ? 0x10213a : 0xd7c4a8
+      rerollBtn.visible = can
+    }
+    redrawRerollBtn()
+
+    rerollBtn.on('pointerdown', (e: FederatedPointerEvent) => {
+      e.stopPropagation()
+      if (!options?.onReroll) return
+      if (options?.canReroll && !options.canReroll()) return
+      const next = normalizeCandidates(options.onReroll())
+      if (next.length <= 0) {
+        showHintToast('backpack_full_buy', '占卜师：当前无可重选候选', 0xffb27a)
+        return
+      }
+      options.onRerollUsed?.()
+      closeOverlay(false)
+      showNeutralChoiceOverlay(stage, titleText, next, onConfirmPick, displayMode, options)
+    })
+
+    overlay.addChild(rerollBtn)
+  }
+
   stage.addChild(overlay)
   return true
 }
@@ -6581,6 +7232,41 @@ function openSpecialShopFromNeutralScroll(stage: Container): boolean {
   return true
 }
 
+function buildGoldenChestChoiceCandidates(): NeutralChoiceCandidate[] {
+  const allGoldNonNeutral = getAllItems()
+    .filter((it) => !isNeutralItemDef(it))
+    .filter((it) => parseAvailableTiers(it.available_tiers).includes('Gold'))
+
+  const byArchetype = new Map<SkillArchetype, ItemDef[]>()
+  for (const item of allGoldNonNeutral) {
+    const archetype = toSkillArchetype(getPrimaryArchetype(item.tags))
+    if (archetype !== 'warrior' && archetype !== 'archer' && archetype !== 'assassin') continue
+    const arr = byArchetype.get(archetype) ?? []
+    arr.push(item)
+    byArchetype.set(archetype, arr)
+  }
+
+  const availableArchetypes = Array.from(byArchetype.keys())
+  if (availableArchetypes.length < 2) return []
+
+  const firstArchetype = availableArchetypes[Math.floor(Math.random() * availableArchetypes.length)]
+  if (!firstArchetype) return []
+  const remainArchetypes = availableArchetypes.filter((it) => it !== firstArchetype)
+  const secondArchetype = remainArchetypes[Math.floor(Math.random() * remainArchetypes.length)]
+  if (!secondArchetype) return []
+
+  const firstPool = byArchetype.get(firstArchetype) ?? []
+  const secondPool = byArchetype.get(secondArchetype) ?? []
+  const first = firstPool[Math.floor(Math.random() * firstPool.length)]
+  const second = secondPool[Math.floor(Math.random() * secondPool.length)]
+  if (!first || !second) return []
+
+  return [
+    { item: first, tier: 'Gold', star: 1 },
+    { item: second, tier: 'Gold', star: 1 },
+  ]
+}
+
 function applyNeutralDiscardEffect(source: ItemDef, stage: Container): boolean {
   const kind = getNeutralSpecialKind(source)
   if (!kind) return false
@@ -6655,6 +7341,17 @@ function applyNeutralDiscardEffect(source: ItemDef, stage: Container): boolean {
   if (kind === 'medal') {
     const ok = showMedalArchetypeChoiceOverlay(stage)
     if (!ok) showHintToast('no_gold_buy', '勋章：当前无法打开职业选择', 0xffb27a)
+    return true
+  }
+
+  if (kind === 'golden_chest') {
+    const picks = buildGoldenChestChoiceCandidates()
+    if (picks.length <= 0) {
+      showHintToast('no_gold_buy', '黄金宝箱：当前无可选黄金物品', 0xffb27a)
+      return true
+    }
+    const ok = showNeutralChoiceOverlay(stage, '黄金宝箱：选择黄金物品', picks, undefined, 'special_shop_like')
+    if (!ok) showHintToast('no_gold_buy', '黄金宝箱：当前无可选黄金物品', 0xffb27a)
     return true
   }
 
@@ -6828,6 +7525,52 @@ function applyNeutralStoneTargetEffect(sourceDef: ItemDef, target: SynthesisTarg
   }, 'special_shop_like')
 }
 
+function tryRunHeroSameItemSynthesisChoice(
+  stage: Container,
+  sourceDefId: string,
+  sourceTier: TierKey,
+  sourceStar: 1 | 2,
+  target: SynthesisTarget,
+  consumeSource: () => boolean,
+): boolean {
+  if (!canTriggerHeroSameItemSynthesisChoice()) return false
+  const system = target.zone === 'battle' ? battleSystem : backpackSystem
+  const targetItem = system?.getItem(target.instanceId)
+  if (!targetItem || targetItem.defId !== sourceDefId) return false
+  const upgradeTo = nextTierLevel(sourceTier, sourceStar)
+  if (!upgradeTo) return false
+  const nextLevel = Math.max(1, Math.min(7, tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const sourceDef = getItemDefById(sourceDefId)
+  if (!sourceDef) return false
+  const all = collectPoolCandidatesByLevel(nextLevel)
+  const altPool = all.filter((one) => one.item.id !== sourceDefId)
+  if (altPool.length <= 0) return false
+  const alt = altPool[Math.floor(Math.random() * altPool.length)]
+  if (!alt) return false
+  const choices: NeutralChoiceCandidate[] = [
+    { item: sourceDef, tier: upgradeTo.tier, star: upgradeTo.star },
+    { item: alt.item, tier: alt.tier, star: alt.star },
+  ]
+  const opened = showNeutralChoiceOverlay(stage, '戏法师：选择合成结果', choices, (picked) => {
+    if (!consumeSource()) return false
+    const ok = transformPlacedItemKeepLevelTo(target.instanceId, target.zone, picked.item, true)
+    if (!ok) {
+      showHintToast('backpack_full_buy', '戏法师：转化失败', 0xff8f8f)
+      return false
+    }
+    setInstanceQualityLevel(target.instanceId, picked.item.id, parseTierName(picked.item.starting_tier) ?? 'Bronze', nextLevel)
+    applyInstanceTierVisuals()
+    syncShopOwnedTierRules()
+    refreshUpgradeHints()
+    markHeroSameItemSynthesisChoiceTriggered()
+    grantSynthesisExp(1, { instanceId: target.instanceId, zone: target.zone })
+    showHintToast('no_gold_buy', '戏法师：本次同物合成可选其他物品', 0x9be5ff)
+    refreshShopUI()
+    return true
+  }, 'special_shop_like')
+  return opened
+}
+
 function tryRunSameArchetypeDiffItemStoneSynthesis(
   stage: Container,
   sourceInstanceId: string,
@@ -6848,11 +7591,12 @@ function tryRunSameArchetypeDiffItemStoneSynthesis(
   const upgradeTo = nextTierLevel(sourceTier, sourceStar)
   if (!upgradeTo) return false
   const nextLevel = Math.max(1, Math.min(7, tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
-  const choices = buildStoneTransformChoices(target, 'other', {
+  const buildChoices = () => buildStoneTransformChoices(target, 'other', {
     rollLevel: nextLevel,
     displayTier: upgradeTo.tier,
     displayStar: upgradeTo.star,
   })
+  const choices = buildChoices()
   if (choices.length <= 0) {
     showHintToast('backpack_full_buy', '同职业合成：当前无可用候选', 0xffb27a)
     restore()
@@ -6873,7 +7617,12 @@ function tryRunSameArchetypeDiffItemStoneSynthesis(
     showHintToast('no_gold_buy', '同职业合成：已选择转化结果', 0x9be5ff)
     refreshShopUI()
     return true
-  }, 'special_shop_like')
+  }, 'special_shop_like', {
+    canReroll: () => canUseHeroDailyCardReroll(),
+    onReroll: () => buildChoices(),
+    onRerollUsed: () => markHeroDailyCardRerollUsed(),
+    rerollBtnText: '占卜重选',
+  })
   if (!opened) {
     showHintToast('backpack_full_buy', '同职业合成：当前无可用候选', 0xffb27a)
     restore()
@@ -7332,6 +8081,7 @@ function isBattleArchetypeTopTie(archetype: EventArchetype): boolean {
 }
 
 function isEventChoiceAvailable(event: EventChoice, day: number): boolean {
+  if (event.enabled === false) return false
   if (day < event.dayStart || day > event.dayEnd) return false
   const maxSelections = event.limits?.maxSelectionsPerRun
   if (typeof maxSelections === 'number' && Number.isFinite(maxSelections) && maxSelections > 0) {
@@ -7481,13 +8231,6 @@ function pickMixedSkillTier(baseTier: SkillTier, day: number): SkillTier {
   ])
 }
 
-function starterClassToArchetype(starter: StarterClass | null): SkillArchetype | null {
-  if (starter === 'swordsman') return 'warrior'
-  if (starter === 'archer') return 'archer'
-  if (starter === 'assassin') return 'assassin'
-  return null
-}
-
 function toSkillArchetype(raw: string): SkillArchetype | null {
   const key = String(raw || '').trim().toLowerCase()
   if (key === 'warrior' || key === '战士') return 'warrior'
@@ -7526,11 +8269,8 @@ function pickSkillChoices(baseTier: SkillTier, day: number): SkillPick[] {
   const picks: SkillPick[] = []
   const usedIds = new Set<string>()
   const alreadyPicked = new Set(pickedSkills.map((s) => s.id))
-  const plan = getSkillDailyDraftPlanRows().find((it) => Math.round(Number(it.day) || 0) === day)
   const chooseCount = 2
-  const firstDayArchetype = (plan && (Number(plan.onlyStarterArchetype) || 0) >= 0.5)
-    ? starterClassToArchetype(starterClass)
-    : null
+  const firstDayArchetype: SkillArchetype | null = null
   const dominantBattleArchetype = firstDayArchetype ? null : getDominantBattleArchetype()
 
   const tryPickOne = (
@@ -8658,7 +9398,7 @@ function openSpecialShopOverlay(stage: Container): void {
       const mainStatColor = damageValue > 0 ? 0xff7a82 : shieldValue > 0 ? 0xffd983 : healValue > 0 ? 0x73e6a6 : 0x86b8ff
       const speedText = cooldownMs > 0
         ? (selected ? `⏱间隔${formatSpecialShopCooldownSec(cooldownMs)}秒` : `⏱速度${getSpecialShopSpeedTierText(cooldownMs)}`)
-        : '⏱被动'
+        : ''
 
       const ammoLine = (candidate.item.skills ?? [])
         .map((s) => String(s.cn ?? '').trim())
@@ -8667,8 +9407,8 @@ function openSpecialShopOverlay(stage: Container): void {
 
       const statEntries: Array<{ text: string; color: number }> = [
         { text: mainStatText, color: mainStatColor },
-        { text: speedText, color: 0x70b2ff },
       ]
+      if (speedText) statEntries.push({ text: speedText, color: 0x70b2ff })
       if (ammo > 0) {
         statEntries.push({ text: `◉弹药${ammo}`, color: 0xffd36b })
       }
@@ -9403,6 +10143,10 @@ function refreshPlayerStatusUI(): void {
       // ignore runtime missing icon
     })
   }
+
+  if (playerStatusDailySkillStar) {
+    playerStatusDailySkillStar.visible = shouldShowHeroDailySkillReadyStar()
+  }
 }
 
 function layoutPlayerStatusPanel(): void {
@@ -9426,6 +10170,17 @@ function layoutPlayerStatusPanel(): void {
   playerStatusAvatar.y = avatarY
   playerStatusAvatar.width = avatarW
   playerStatusAvatar.height = avatarH
+  playerStatusAvatar.hitArea = new Rectangle(0, 0, avatarW, avatarH)
+  if (playerStatusAvatarClickHit) {
+    playerStatusAvatarClickHit.clear()
+    playerStatusAvatarClickHit.rect(avatarX, avatarY, avatarW, avatarH)
+    playerStatusAvatarClickHit.fill({ color: 0xffffff, alpha: 0.001 })
+  }
+
+  if (playerStatusDailySkillStar) {
+    playerStatusDailySkillStar.x = avatarX + avatarW - 8
+    playerStatusDailySkillStar.y = avatarY + avatarH - 38
+  }
 
   playerStatusLvText.x = avatarCenterX
   playerStatusLvText.y = getDebugCfg('shopPlayerStatusLvY')
@@ -9439,6 +10194,7 @@ function layoutPlayerStatusPanel(): void {
 
   playerStatusExpBar.x = expX + 2
   playerStatusExpBar.y = expY + 2
+
 }
 
 // ============================================================
@@ -9509,6 +10265,7 @@ function refreshShopUI(): void {
   refreshUpgradeHints()
   refreshBattlePassiveStatBadges(true)
   layoutSkillIconBar()
+  checkAndPopPendingRewards()
   saveShopStateToStorage(captureShopState())
 }
 void executeSpecialShopBulkSell
@@ -10312,6 +11069,169 @@ function grantSkill20DailyBronzeItemIfNeeded(): void {
   showHintToast('backpack_full_buy', `背包大师：获得 ${picked.name_cn}（青铜1星）`, 0x86e1ff)
 }
 
+function grantPoolCandidateToBoardOrBackpack(
+  candidate: PoolCandidate,
+  toastPrefix: string,
+  opts?: { flyFromHeroAvatar?: boolean; silentNoSpaceToast?: boolean; onSettled?: () => void },
+): boolean {
+  if (!battleSystem || !battleView || !backpackSystem || !backpackView) return false
+  const size = normalizeSize(candidate.item.size)
+  const battleSlot = findFirstBattlePlace(size)
+  const backpackSlot = battleSlot ? null : findFirstBackpackPlace(size)
+  if (!battleSlot && !backpackSlot) {
+    if (!opts?.silentNoSpaceToast) {
+      showHintToast('backpack_full_buy', `${toastPrefix}：空间不足，发放失败`, 0xffb27a)
+    }
+    return false
+  }
+  const id = nextId()
+  const visualTier = toVisualTier(candidate.tier, candidate.star)
+  if (battleSlot) {
+    battleSystem.place(battleSlot.col, battleSlot.row, size, candidate.item.id, id)
+    const onLand = () => {
+      if (!battleSystem?.getItem(id) || !battleView) { opts?.onSettled?.(); return }
+      void battleView.addItem(id, candidate.item.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
+        battleView!.setItemTier(id, visualTier)
+        drag?.refreshZone(battleView!)
+        opts?.onSettled?.()
+      })
+    }
+    if (opts?.flyFromHeroAvatar) flyRewardToGridSlot(candidate.item.id, battleView, battleSlot.col, battleSlot.row, onLand)
+    else onLand()
+  } else if (backpackSlot) {
+    backpackSystem.place(backpackSlot.col, backpackSlot.row, size, candidate.item.id, id)
+    const onLand = () => {
+      if (!backpackSystem?.getItem(id) || !backpackView) { opts?.onSettled?.(); return }
+      void backpackView.addItem(id, candidate.item.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
+        backpackView!.setItemTier(id, visualTier)
+        drag?.refreshZone(backpackView!)
+        opts?.onSettled?.()
+      })
+    }
+    if (opts?.flyFromHeroAvatar) flyRewardToGridSlot(candidate.item.id, backpackView, backpackSlot.col, backpackSlot.row, onLand)
+    else onLand()
+  }
+  instanceToDefId.set(id, candidate.item.id)
+  setInstanceQualityLevel(id, candidate.item.id, parseTierName(candidate.item.starting_tier) ?? 'Bronze', candidate.level)
+  instanceToPermanentDamageBonus.set(id, 0)
+  recordNeutralItemObtained(candidate.item.id)
+  unlockItemToPool(candidate.item.id)
+  showHintToast('backpack_full_buy', `${toastPrefix}：获得 ${candidate.item.name_cn}`, 0x86e1ff)
+  return true
+}
+
+function buildNamedPoolCandidate(nameCn: string): PoolCandidate | null {
+  const item = getItemDefByCn(nameCn)
+  if (!item) return null
+  const tier = parseTierName(item.starting_tier) ?? 'Bronze'
+  const level = (tier === 'Bronze' ? 1 : tier === 'Silver' ? 2 : tier === 'Gold' ? 4 : 6) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  return { item, level, tier, star: 1, price: getUnlockPoolBuyPriceByLevel(level) }
+}
+
+function enqueueHeroPeriodicReward(candidate: PoolCandidate, source: string): void {
+  pendingHeroPeriodicRewards.push({
+    itemId: candidate.item.id,
+    level: candidate.level,
+    tier: candidate.tier,
+    star: candidate.star,
+    source,
+  })
+  refreshPlayerStatusUI()
+  saveShopStateToStorage(captureShopState())
+}
+
+function checkAndPopPendingHeroPeriodicRewards(): void {
+  if (pendingHeroPeriodicRewardDispatching) return
+  if (pendingHeroPeriodicRewards.length <= 0) return
+
+  const next = pendingHeroPeriodicRewards[0]
+  if (!next) return
+  const item = getItemDefById(next.itemId)
+  if (!item) {
+    pendingHeroPeriodicRewards.shift()
+    refreshPlayerStatusUI()
+    saveShopStateToStorage(captureShopState())
+    checkAndPopPendingHeroPeriodicRewards()
+    return
+  }
+
+  const candidate: PoolCandidate = {
+    item,
+    level: next.level,
+    tier: next.tier,
+    star: next.star,
+    price: getUnlockPoolBuyPriceByLevel(next.level),
+  }
+  pendingHeroPeriodicRewardDispatching = true
+  const ok = grantPoolCandidateToBoardOrBackpack(candidate, `${next.source}补发`, {
+    flyFromHeroAvatar: true,
+    silentNoSpaceToast: true,
+    onSettled: () => {
+      pendingHeroPeriodicRewardDispatching = false
+      checkAndPopPendingHeroPeriodicRewards()
+    },
+  })
+  if (!ok) {
+    pendingHeroPeriodicRewardDispatching = false
+    return
+  }
+  pendingHeroPeriodicRewards.shift()
+  refreshPlayerStatusUI()
+  saveShopStateToStorage(captureShopState())
+}
+
+function grantHeroPeriodicRewardOrQueue(nameCn: string, source: string): boolean {
+  const candidate = buildNamedPoolCandidate(nameCn)
+  if (!candidate) return false
+  const ok = grantPoolCandidateToBoardOrBackpack(candidate, source, {
+    flyFromHeroAvatar: true,
+    silentNoSpaceToast: true,
+  })
+  if (ok) return true
+  enqueueHeroPeriodicReward(candidate, source)
+  showHintToast('backpack_full_buy', `${source}：空间不足，已暂存待补发`, 0xffd48f)
+  return true
+}
+
+function grantHeroStartDayEffectsIfNeeded(): void {
+  if (!shopManager) return
+  if (isSelectedHero('hero2') && !heroTycoonGoldGrantedDays.has(currentDay)) {
+    const bonus = Math.max(0, currentDay + 1)
+    if (bonus > 0) {
+      shopManager.gold += bonus
+      heroTycoonGoldGrantedDays.add(currentDay)
+      showHintToast('no_gold_buy', `大亨：额外获得${bonus}金币`, 0xf4d67d)
+    }
+  }
+}
+
+function grantHeroPeriodicEffectsOnNewDay(day: number): void {
+  if (!shopManager) return
+  if (isSelectedHero('hero2') && !heroTycoonGoldGrantedDays.has(day)) {
+    const bonus = Math.max(0, day + 1)
+    if (bonus > 0) {
+      shopManager.gold += bonus
+      heroTycoonGoldGrantedDays.add(day)
+      showHintToast('no_gold_buy', `大亨：额外获得${bonus}金币`, 0xf4d67d)
+    }
+  }
+  if (day % 3 === 0) {
+    if (isSelectedHero('hero5') && !heroSmithStoneGrantedDays.has(day)) {
+      if (grantHeroPeriodicRewardOrQueue('升级石', '铁匠')) heroSmithStoneGrantedDays.add(day)
+    }
+    if (isSelectedHero('hero6') && !heroAdventurerScrollGrantedDays.has(day)) {
+      if (grantHeroPeriodicRewardOrQueue('冒险卷轴', '冒险家')) heroAdventurerScrollGrantedDays.add(day)
+    }
+    if (isSelectedHero('hero7') && !heroCommanderMedalGrantedDays.has(day)) {
+      if (grantHeroPeriodicRewardOrQueue('勋章', '指挥官')) heroCommanderMedalGrantedDays.add(day)
+    }
+  }
+  if (day === 3 && isSelectedHero('hero8') && !heroHeirGoldEquipGrantedDays.has(day)) {
+    if (grantHeroPeriodicRewardOrQueue('黄金宝箱', '继承者')) heroHeirGoldEquipGrantedDays.add(day)
+    else showHintToast('backpack_full_buy', '继承者：当前无可发放黄金宝箱', 0xffb27a)
+  }
+}
+
 function grantSilverDailyGoldBonusesOnNewDay(): void {
   if (!shopManager) return
   if (hasPickedSkill('skill29')) {
@@ -10391,6 +11311,7 @@ function setDay(day: number): void {
       }
       grantSilverDailyGoldBonusesOnNewDay()
       applyFutureEventEffectsOnNewDay(currentDay)
+      grantHeroPeriodicEffectsOnNewDay(currentDay)
     }
   }
   if (currentDay !== prevDay) grantSkill20DailyBronzeItemIfNeeded()
@@ -11591,6 +12512,25 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
       return
     }
 
+    if (tryRunHeroSameItemSynthesisChoice(
+      stage,
+      slot.item.id,
+      slot.tier,
+      1,
+      synthTarget,
+      () => {
+        const ret = tryBuyShopSlotWithSkill(slot)
+        if (!ret.ok) {
+          showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
+          return false
+        }
+        markShopPurchaseDone()
+        return true
+      },
+    )) {
+      _resetDrag(); return
+    }
+
     if (!tryBuyShopSlotWithSkill(slot).ok) {
       showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
       _resetDrag(); return
@@ -12760,7 +13700,36 @@ export const ShopScene: Scene = {
     playerStatusAvatar.width = 120
     playerStatusAvatar.height = 120
     playerStatusAvatar.alpha = 0
+    playerStatusAvatar.eventMode = 'static'
+    playerStatusAvatar.cursor = 'pointer'
+    playerStatusAvatar.on('pointerdown', (e: FederatedPointerEvent) => {
+      e.stopPropagation()
+      toggleHeroPassiveDetailPopup()
+    })
     playerStatusCon.addChild(playerStatusAvatar)
+
+    playerStatusAvatarClickHit = new Graphics()
+    playerStatusAvatarClickHit.eventMode = 'static'
+    playerStatusAvatarClickHit.cursor = 'pointer'
+    playerStatusAvatarClickHit.on('pointerdown', (e: FederatedPointerEvent) => {
+      e.stopPropagation()
+      toggleHeroPassiveDetailPopup()
+    })
+    playerStatusCon.addChild(playerStatusAvatarClickHit)
+
+    playerStatusDailySkillStar = new Text({
+      text: '★',
+      style: {
+        fontSize: 28,
+        fill: 0xffd24a,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        stroke: { color: 0x4a2d00, width: 3 },
+      },
+    })
+    playerStatusDailySkillStar.anchor.set(0.5)
+    playerStatusDailySkillStar.visible = false
+    playerStatusCon.addChild(playerStatusDailySkillStar)
 
     playerStatusExpBg = new Graphics()
     playerStatusCon.addChild(playerStatusExpBg)
@@ -12945,12 +13914,16 @@ export const ShopScene: Scene = {
       // 1) 拖到下方丢弃区域：直接丢弃（若命中任意格子候选，优先走落位/换位）
       if (isOverGridDragSellArea(anchorGx, anchorGy) && !isOverAnyGridDropTarget(anchorGx, anchorGy, size)) {
         const sourceDef = getItemDefById(defId)
+        const sourceLevel = getInstanceLevel(instanceId)
         if (sourceDef && isNeutralItemDef(sourceDef)) {
           const ok = applyNeutralDiscardEffect(sourceDef, stage)
           if (!ok) return false
         }
         homeSystem.remove(instanceId)
         removeInstanceMeta(instanceId)
+        if (sourceDef && sourceLevel) {
+          grantHeroDiscardSameLevelReward(sourceDef.id, sourceLevel)
+        }
         refreshShopUI()
         checkAndPopPendingRewards()
         return true
@@ -13093,7 +14066,9 @@ export const ShopScene: Scene = {
               }
               removeInstanceMeta(instanceId)
               playSynthesisFlashEffect(stage, synth)
-              refreshShopUI()
+              if (!tryRunHeroCrossSynthesisReroll(stage, synth)) {
+                refreshShopUI()
+              }
             }
             if (isCrossIdSynthesisConfirmEnabled()) {
               showCrossSynthesisConfirmOverlay(
@@ -13113,6 +14088,19 @@ export const ShopScene: Scene = {
             return true
           }
 
+          if (tryRunHeroSameItemSynthesisChoice(
+            stage,
+            defId,
+            fromTier,
+            fromStar,
+            synthTarget,
+            () => {
+              removeInstanceMeta(instanceId)
+              return true
+            },
+          )) {
+            return true
+          }
           const synth = synthesizeTarget(defId, fromTier, fromStar, synthTarget.instanceId, synthTarget.zone)
           if (synth) {
             removeInstanceMeta(instanceId)
@@ -13440,6 +14428,11 @@ export const ShopScene: Scene = {
       if (battleStartTransition) return
       const boardItemCount = battleSystem?.getAllItems().length ?? 0
       const backpackItemCount = backpackSystem?.getAllItems().length ?? 0
+      if (boardItemCount <= 0 && canAffordQuickBuyNow()) {
+        showHintToast('no_gold_buy', '请先购买物品作战', 0xffd48f)
+        showBuyGuideHand()
+        return
+      }
       if (boardItemCount <= 0 && backpackItemCount > 0) {
         // PVP 模式：允许直接提交（背包物品不参与战斗，但快照交换正常工作）
         if (!PvpContext.isActive()) {
@@ -13713,6 +14706,7 @@ export const ShopScene: Scene = {
     } else {
       pendingAdvanceToNextDay = false
       starterClass = null
+      starterHeroChoiceOptions = []
       starterGranted = false
       starterBattleGuideShown = false
       hasBoughtOnce = false
@@ -13741,6 +14735,16 @@ export const ShopScene: Scene = {
       QUALITY_PSEUDO_RANDOM_STATE.clear()
       QUICK_BUY_LEVEL_PSEUDO_RANDOM_STATE.clear()
       nextQuickBuyOffer = null
+      heroDailyCardRerollUsedDays.clear()
+      heroFirstDiscardRewardedDays.clear()
+      heroFirstSameItemSynthesisChoiceDays.clear()
+      heroSmithStoneGrantedDays.clear()
+      heroAdventurerScrollGrantedDays.clear()
+      heroCommanderMedalGrantedDays.clear()
+      heroHeirGoldEquipGrantedDays.clear()
+      heroTycoonGoldGrantedDays.clear()
+      pendingHeroPeriodicRewards = []
+      pendingHeroPeriodicRewardDispatching = false
       syncUnlockPoolToManager()
       grantSkill20DailyBronzeItemIfNeeded()
     }
@@ -13832,6 +14836,8 @@ export const ShopScene: Scene = {
     playerStatusCon?.destroy({ children: true })
     playerStatusCon = null
     playerStatusAvatar = null
+    playerStatusAvatarClickHit = null
+    playerStatusDailySkillStar = null
     playerStatusLvText = null
     playerStatusExpBg = null
     playerStatusExpBar = null
@@ -13933,6 +14939,7 @@ export const ShopScene: Scene = {
     QUICK_BUY_LEVEL_PSEUDO_RANDOM_STATE.clear()
     nextQuickBuyOffer = null
     starterClass    = null
+    starterHeroChoiceOptions = []
     starterGranted  = false
     starterBattleGuideShown = false
     hasBoughtOnce = false
@@ -13954,6 +14961,16 @@ export const ShopScene: Scene = {
     itemTransformFlashLastAtMs.clear()
     skillDetailMode = getDefaultSkillDetailMode()
     skill20GrantedDays.clear()
+    heroDailyCardRerollUsedDays.clear()
+    heroFirstDiscardRewardedDays.clear()
+    heroFirstSameItemSynthesisChoiceDays.clear()
+    heroSmithStoneGrantedDays.clear()
+    heroAdventurerScrollGrantedDays.clear()
+    heroCommanderMedalGrantedDays.clear()
+    heroHeirGoldEquipGrantedDays.clear()
+    heroTycoonGoldGrantedDays.clear()
+    pendingHeroPeriodicRewards = []
+    pendingHeroPeriodicRewardDispatching = false
     showingBackpack = false
     battleSystem = backpackSystem = battleView = backpackView = drag = null
     instanceToDefId.clear()
