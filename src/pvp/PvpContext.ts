@@ -200,6 +200,8 @@ export const PvpContext = {
       })
       // 存储上局快照
       lastPlayerSnapshots = snapshots ?? {}
+      // 通知 ShopScene 快照已就绪（解决 round_summary 晚于 onEnter 的竞态）
+      PvpContext.onRoundSummaryReceived?.()
       // 标记淘汰
       newlyEliminated.forEach((idx) => {
         if (!session!.eliminatedPlayers.includes(idx)) {
@@ -331,6 +333,9 @@ export const PvpContext = {
 
   /** day_ready 携带轮空预分配后触发（ShopScene 用于补建对手徽章） */
   onOpponentPreAssigned: null as (() => void) | null,
+
+  /** round_summary 收到后触发（ShopScene 用于补建对手英雄立绘，解决竞态） */
+  onRoundSummaryReceived: null as (() => void) | null,
 
   /** Returns current PVP mode */
   getPvpMode(): import('./PvpTypes').PvpMode | null {
@@ -464,6 +469,7 @@ export const PvpContext = {
     PvpContext.onUrgeReceived = null
     PvpContext.onEliminatedPlayersUpdate = null
     PvpContext.onOpponentKnown = null
+    PvpContext.onRoundSummaryReceived = null
     PvpContext.onOpponentPreAssigned = null
     pendingSurvivingDamage = 0
     pendingRoundWinner = 'draw'

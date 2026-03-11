@@ -109,6 +109,7 @@ let pvpPlayerListOverlay:   Container | null = null
 let pvpWaitingPanel:        Container | null = null
 let pvpBackpackReturnBtn:   Container | null = null
 let pvpOpponentBadge:       Container | null = null
+let pvpOpponentHeroLayer:   Container | null = null
 let hintToastCon:     Container       | null = null
 let hintToastBg:      Graphics        | null = null
 let hintToastText:    Text            | null = null
@@ -938,7 +939,7 @@ function applyPhaseUiVisibility(): void {
   if (refreshCostText) refreshCostText.visible = inShop
   if (goldText) goldText.visible = inShop
   if (livesText) livesText.visible = inShop
-  if (playerStatusCon) playerStatusCon.visible = inShop && !PvpContext.isActive()
+  if (playerStatusCon) playerStatusCon.visible = inShop
   if (miniMapCon) miniMapCon.visible = inShop
   if (dayDebugCon) dayDebugCon.visible = inShop
   if (sellPopup) sellPopup.visible = inShop && currentSelection.kind !== 'none'
@@ -10368,7 +10369,7 @@ function layoutPlayerStatusPanel(): void {
   const expY = avatarY + avatarH + expOffsetY
 
   playerStatusCon.x = 0
-  playerStatusCon.y = getDebugCfg('shopPlayerStatusY')
+  playerStatusCon.y = PvpContext.isActive() ? getDebugCfg('battleZoneY') - 200 : getDebugCfg('shopPlayerStatusY')
 
   playerStatusAvatar.x = avatarX
   playerStatusAvatar.y = avatarY
@@ -13719,6 +13720,79 @@ function buildPvpOpponentBadge(): void {
   stage.addChild(badge)
 }
 
+// ── 对手英雄立绘背景层（PVP 商店阶段，半透明置底）──
+async function buildPvpOpponentHeroLayer(): Promise<void> {
+  const { stage } = getApp()
+  if (pvpOpponentHeroLayer) {
+    stage.removeChild(pvpOpponentHeroLayer)
+    pvpOpponentHeroLayer.destroy({ children: true })
+    pvpOpponentHeroLayer = null
+  }
+
+  const sess = PvpContext.getSession()
+  if (!sess) return
+
+  // 获取对手 index（与 badge 逻辑保持一致）
+  const aliveIdx = sess.players
+    .filter(p => !sess.eliminatedPlayers.includes(p.index))
+    .map(p => p.index)
+  const oppIdx = sess.currentOpponentPlayerIndex
+    ?? getOpponentFromAlive(sess.myIndex, aliveIdx, sess.currentDay - 1)
+
+  const lastSnaps = PvpContext.getLastPlayerSnapshots()
+  const heroId = lastSnaps[oppIdx]?.ownerHeroId
+
+  if (oppIdx < 0 || !heroId) return
+
+  // 对手昵称和 HP（供立绘下方标签使用）
+  const oppPlayer = sess.players.find(p => p.index === oppIdx)
+  const oppHp = sess.playerHps?.[oppIdx] ?? sess.initialHp
+
+  try {
+    const tex = await Assets.load<Texture>(`/resource/hero/${heroId}.png`)
+    // 场景已切换则丢弃
+    if (!PvpContext.isActive()) return
+
+    const layer = new Container()
+    layer.zIndex = 5
+    layer.eventMode = 'none'
+
+    // 立绘：上移到石墙区，放大，更不透明
+    const sprite = new Sprite(tex)
+    sprite.anchor.set(0.5, 1)
+    const maxW = 310
+    if (sprite.width > maxW) sprite.scale.set(maxW / tex.width)
+    sprite.x = CANVAS_W / 2
+    sprite.y = 520   // 石墙/沙地分界处
+    sprite.alpha = 0.5
+    layer.addChild(sprite)
+
+    // 对手昵称 + HP 标签（立绘上方）
+    if (oppPlayer) {
+      const labelY = sprite.y - sprite.height - 44
+      const nameBg = new Graphics()
+      nameBg.roundRect(-90, 0, 180, 40, 10).fill({ color: 0x0d0d1a, alpha: 0.65 })
+      nameBg.x = CANVAS_W / 2
+      nameBg.y = labelY
+      layer.addChild(nameBg)
+
+      const nameT = new Text({
+        text: `${oppPlayer.nickname}  ♥${oppHp}`,
+        style: { fill: 0xffdde0, fontSize: 20, fontWeight: 'bold', align: 'center' },
+      })
+      nameT.anchor.set(0.5, 0)
+      nameT.x = CANVAS_W / 2
+      nameT.y = labelY + 3
+      layer.addChild(nameT)
+    }
+
+    pvpOpponentHeroLayer = layer
+    stage.addChild(layer)
+  } catch {
+    // 贴图加载失败静默忽略
+  }
+}
+
 // ── 查看背包（等待面板临时隐藏，展示背包，浮层返回按钮）──
 function showBackpackFromWaitingPanel(): void {
   if (!pvpWaitingPanel) return
@@ -14006,11 +14080,19 @@ export const ShopScene: Scene = {
       pvpPlayersBtn.on('pointerout', () => { pvpPlayersBtn.alpha = 1 })
       stage.addChild(pvpPlayersBtn)
 
-      // ── 本轮对手徽章（sync-a：商店阶段始终可见）──
+      // ── 本轮对手徽章 + 英雄背景立绘（sync-a：商店阶段始终可见）──
       if (PvpContext.getPvpMode() === 'sync-a') {
         buildPvpOpponentBadge()
+        void buildPvpOpponentHeroLayer()
         // day_ready 携带轮空预分配时（onEnter 之后 ~300ms 到达），补建徽章
-        PvpContext.onOpponentPreAssigned = () => { buildPvpOpponentBadge() }
+        PvpContext.onOpponentPreAssigned = () => {
+          buildPvpOpponentBadge()
+          void buildPvpOpponentHeroLayer()
+        }
+        // round_summary 比 onEnter 晚到时，补建英雄立绘
+        PvpContext.onRoundSummaryReceived = () => {
+          void buildPvpOpponentHeroLayer()
+        }
       }
     }
 
@@ -14761,6 +14843,7 @@ export const ShopScene: Scene = {
     shopPanel.onTap    = (slotIndex) => handleShopSlotTap(slotIndex)
 
     sellPopup = new SellPopup(CANVAS_W, CANVAS_H)
+    sellPopup.zIndex = 20
     stage.addChild(sellPopup)
     applyLayoutFromDebug()
 
@@ -15014,6 +15097,11 @@ export const ShopScene: Scene = {
       pvpOpponentBadge.destroy({ children: true })
       pvpOpponentBadge = null
     }
+    if (pvpOpponentHeroLayer) {
+      stage.removeChild(pvpOpponentHeroLayer)
+      pvpOpponentHeroLayer.destroy({ children: true })
+      pvpOpponentHeroLayer = null
+    }
     if (pvpBackpackReturnBtn) {
       pvpBackpackReturnBtn.parent?.removeChild(pvpBackpackReturnBtn)
       pvpBackpackReturnBtn.destroy({ children: true })
@@ -15024,6 +15112,7 @@ export const ShopScene: Scene = {
     PvpContext.onEliminatedPlayersUpdate = null
     PvpContext.onOpponentKnown = null
     PvpContext.onOpponentPreAssigned = null
+    PvpContext.onRoundSummaryReceived = null
     pvpUrgeCooldownSet.clear()
     if (btnRow)       stage.removeChild(btnRow)
     if (dayDebugCon)  stage.removeChild(dayDebugCon)
