@@ -5637,7 +5637,7 @@ function ensureStarterClassSelection(stage: Container): void {
   subtitle.y = 202
   overlay.addChild(subtitle)
 
-  const cards: Array<{ key: StarterClass; border: Graphics }> = []
+  const cards: Array<{ key: StarterClass; border: Graphics; pick: Text }> = []
   const showAllHeroes = getDebugCfg('gameplayStarterHeroShowAll') >= 0.5
   if (!showAllHeroes && (starterHeroChoiceOptions.length !== 3 || starterHeroChoiceOptions.some((id) => !HERO_STARTER_POOL.includes(id)))) {
     const pool = HERO_STARTER_POOL.slice()
@@ -5660,27 +5660,24 @@ function ensureStarterClassSelection(stage: Container): void {
   const startY = compact ? 340 : 460
   let selected: StarterClass | null = starterClass
 
-  const confirm = new Container()
-  confirm.eventMode = 'static'
-  confirm.cursor = 'pointer'
-  const cBg = new Graphics()
-  const cText = new Text({
-    text: selected ? '进入大巴扎' : '请选择英雄',
-    style: { fontSize: 32, fill: 0x10162a, fontFamily: 'Arial', fontWeight: 'bold' },
-  })
-  confirm.addChild(cBg)
-  confirm.addChild(cText)
-
-  const redrawConfirm = () => {
-    cBg.clear()
-    const enabled = !!selected
-    cBg.roundRect((CANVAS_W - 500) / 2, CANVAS_H - 184, 500, 100, 24)
-    cBg.fill({ color: enabled ? 0x52c0ff : 0x5f6b82, alpha: enabled ? 0.95 : 0.7 })
-    cBg.stroke({ color: enabled ? 0x9be0ff : 0x8f9ab1, width: 3, alpha: 1 })
-    cText.text = enabled ? '进入大巴扎' : '请选择英雄'
-    cText.style.fill = enabled ? 0x10162a : 0xdce4ff
-    cText.x = CANVAS_W / 2 - cText.width / 2
-    cText.y = CANVAS_H - 184 + (100 - cText.height) / 2
+  const confirmSelection = () => {
+    if (!selected) return
+    starterClass = selected
+    starterGranted = true
+    starterBattleGuideShown = false
+    if (selected === 'hero9') {
+      setLifeState(40, 40)
+    }
+    seedInitialUnlockPoolByStarterClass(selected)
+    grantHeroStartDayEffectsIfNeeded()
+    saveShopStateToStorage(captureShopState())
+    if (classSelectOverlay?.parent) classSelectOverlay.parent.removeChild(classSelectOverlay)
+    classSelectOverlay?.destroy({ children: true })
+    classSelectOverlay = null
+    setTransitionInputEnabled(true)
+    applyPhaseInputLock()
+    refreshShopUI()
+    ensureDailyChoiceSelection(stage)
   }
 
   const redrawCards = () => {
@@ -5690,8 +5687,8 @@ function ensureStarterClassSelection(stage: Container): void {
       c.border.roundRect(0, 0, cardW, cardH, 24)
       c.border.stroke({ color: active ? 0x5fd3ff : 0x6d7791, width: active ? 4 : 2, alpha: 1 })
       c.border.fill({ color: active ? 0x132a46 : 0x1b2438, alpha: active ? 0.95 : 0.85 })
+      c.pick.visible = active
     }
-    redrawConfirm()
   }
 
   for (let i = 0; i < order.length; i++) {
@@ -5733,6 +5730,16 @@ function ensureStarterClassSelection(stage: Container): void {
     d.y = compact ? 182 : 352
     con.addChild(d)
 
+    const pick = new Text({
+      text: '点击选择',
+      style: { fontSize: compact ? 16 : 28, fill: 0x8fe6b2, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    pick.anchor.set(0.5)
+    pick.x = cardW / 2
+    pick.y = cardH - (compact ? 22 : 34)
+    pick.visible = false
+    con.addChild(pick)
+
     const hero = new Sprite(Texture.WHITE)
     const heroMaxW = compact ? 96 : 154
     const heroMaxH = compact ? 120 : 230
@@ -5756,36 +5763,18 @@ function ensureStarterClassSelection(stage: Container): void {
 
     con.on('pointerdown', (e: FederatedPointerEvent) => {
       e.stopPropagation()
-      selected = key
-      redrawCards()
+      if (selected !== key) {
+        selected = key
+        redrawCards()
+        return
+      }
+      confirmSelection()
     })
 
     overlay.addChild(con)
-    cards.push({ key, border })
+    cards.push({ key, border, pick })
   }
 
-  confirm.on('pointerdown', (e: FederatedPointerEvent) => {
-    e.stopPropagation()
-    if (!selected) return
-    starterClass = selected
-    starterGranted = true
-    starterBattleGuideShown = false
-    if (selected === 'hero9') {
-      setLifeState(40, 40)
-    }
-    seedInitialUnlockPoolByStarterClass(selected)
-    grantHeroStartDayEffectsIfNeeded()
-    saveShopStateToStorage(captureShopState())
-    if (classSelectOverlay?.parent) classSelectOverlay.parent.removeChild(classSelectOverlay)
-    classSelectOverlay?.destroy({ children: true })
-    classSelectOverlay = null
-    setTransitionInputEnabled(true)
-    applyPhaseInputLock()
-    refreshShopUI()
-    ensureDailyChoiceSelection(stage)
-  })
-
-  overlay.addChild(confirm)
   redrawCards()
 
   classSelectOverlay = overlay
