@@ -5251,7 +5251,7 @@ const STARTER_CLASS_PRESETS: Record<StarterClass, {
   },
   hero2: {
     title: '大亨',
-    subtitle: '每天额外获得天数*3的金币',
+    subtitle: '每天额外获得天数+1的金币',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero2.png',
   },
@@ -5269,7 +5269,7 @@ const STARTER_CLASS_PRESETS: Record<StarterClass, {
   },
   hero5: {
     title: '铁匠',
-    subtitle: '每隔3天获得1颗升级石：丢弃时随机升级1个物品',
+    subtitle: '每隔5天获得1颗升级石：丢弃时随机升级1个物品',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero5.png',
   },
@@ -5673,7 +5673,7 @@ function ensureStarterClassSelection(stage: Container): void {
   const compact = order.length > 3
   const cols = compact ? 5 : 3
   const cardW = compact ? 114 : 190
-  const cardH = compact ? 250 : 504
+  const cardH = compact ? 370 : 624
   const gapX = compact ? 10 : 16
   const gapY = compact ? 12 : 0
   const cardX = (CANVAS_W - (cardW * cols + gapX * (cols - 1))) / 2
@@ -6364,9 +6364,9 @@ const FIXED_LEVEL_REWARD_BASE_ITEM_IDS_BY_LEVEL: Array<string | null> = [
 const FIXED_LEVEL_REWARD_RANDOM_STONE_COUNT_BY_LEVEL: number[] = [
   0, 0, 0, 0,
   1, 1, 1, 1,
-  2, 2, 2, 2,
-  3, 3, 3, 3, 3, 3,
-  3, 3, 3, 3, 3, 3, 3, 3,
+  1, 1, 1, 1,
+  2, 2, 2, 2, 2, 2,
+  2, 2, 2, 2, 2, 2, 2, 2,
 ]
 
 function getLevelRewardStoneWeights(level: number): LevelRewardStoneWeights {
@@ -7683,6 +7683,19 @@ function applyNeutralStoneTargetEffect(sourceDef: ItemDef, target: SynthesisTarg
   const title = titleByKind[kind] ?? '选择变化方向'
 
   const buildChoices = () => {
+    if (kind === 'gold_morph_stone' || kind === 'diamond_morph_stone') {
+      const targetTier = kind === 'gold_morph_stone' ? 'Gold' : 'Diamond'
+      const lvTierStar = levelToTierStar(targetLevel)
+      const displayTier = lvTierStar?.tier ?? 'Bronze'
+      const displayStar = lvTierStar?.star ?? 1
+      const filteredDirect = getAllItems()
+        .filter((it) => !isNeutralItemDef(it))
+        .filter((it) => normalizeSize(it.size) === placed.size)
+        .filter((it) => it.id !== placed.defId)
+        .filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === targetTier)
+      return pickRandomElements(filteredDirect, 3).map((one) => ({ item: one, tier: displayTier, star: displayStar }))
+    }
+
     const all = collectPoolCandidatesByLevel(targetLevel)
       .filter((one) => normalizeSize(one.item.size) === placed.size)
       .filter((one) => one.item.id !== placed.defId)
@@ -7695,8 +7708,6 @@ function applyNeutralStoneTargetEffect(sourceDef: ItemDef, target: SynthesisTarg
       if (kind === 'warrior_stone') return arch === 'warrior'
       if (kind === 'archer_stone') return arch === 'archer'
       if (kind === 'assassin_stone') return arch === 'assassin'
-      if (kind === 'gold_morph_stone') return parseAvailableTiers(one.item.available_tiers).includes('Gold')
-      if (kind === 'diamond_morph_stone') return parseAvailableTiers(one.item.available_tiers).includes('Diamond')
       return false
     })
     return pickRandomElements(filtered, 3).map((one) => ({ item: one.item, tier: one.tier, star: one.star }))
@@ -8073,7 +8084,7 @@ function applyEventEffect(event: EventChoice, fromTest = false): boolean {
     return sold > 0
   }
   if (event.id === 'event20') {
-    const gain = day * 4
+    const gain = day * 2
     shopManager.gold += gain
     showHintToast('no_gold_buy', `${toastPrefix}获得${gain}金币`, 0xa8f0b6)
     return true
@@ -8083,7 +8094,7 @@ function applyEventEffect(event: EventChoice, fromTest = false): boolean {
     const all = [...backpackSystem.getAllItems()]
     if (all.length <= 0) return false
     for (const one of all) removePlacedItemById(one.instanceId, 'backpack')
-    const gain = day * 8
+    const gain = day * 4
     shopManager.gold += gain
     showHintToast('no_gold_buy', `${toastPrefix}清空背包并获得${gain}金币`, 0xa8f0b6)
     return true
@@ -8141,7 +8152,7 @@ function applyEventEffect(event: EventChoice, fromTest = false): boolean {
     return true
   }
   if (event.id === 'event28') {
-    const gain = day * 12
+    const gain = day * 6
     schedulePendingGold(day + 3, gain)
     showHintToast('no_gold_buy', `${toastPrefix}已预约3天后获得${gain}金币`, 0xa8f0b6)
     return true
@@ -8326,13 +8337,13 @@ function resolveEventDescText(event: EventChoice, detailed: boolean): string {
   const useDetailed = detailed || !shouldShowSimpleDescriptions()
   const raw = useDetailed ? event.detailDesc : event.shortDesc
   if (event.id === 'event20') {
-    return raw.replace(/x/g, String(currentDay * 4))
+    return raw.replace(/x/g, String(currentDay * 2))
   }
   if (event.id === 'event21') {
-    return raw.replace(/x/g, String(currentDay * 8))
+    return raw.replace(/x/g, String(currentDay * 4))
   }
   if (event.id === 'event28') {
-    const gain = currentDay * 12
+    const gain = currentDay * 6
     return `3天后获得${gain}金币`
   }
   return raw
@@ -8551,6 +8562,16 @@ function pickSkillChoicesExactTier(baseTier: SkillTier, blockedIds?: Set<string>
     shuffled[j] = tmp!
   }
   const picks: SkillPick[] = []
+  const dominantBattleArchetype = getDominantBattleArchetype()
+  if (dominantBattleArchetype) {
+    const dominantPool = shuffled.filter((s) => s.archetype === dominantBattleArchetype)
+    const preferred = dominantPool[Math.floor(Math.random() * dominantPool.length)]
+    if (preferred) {
+      picks.push(preferred)
+      const idx = shuffled.findIndex((s) => s.id === preferred.id)
+      if (idx >= 0) shuffled.splice(idx, 1)
+    }
+  }
   for (const one of shuffled) {
     if (picks.length >= 2) break
     picks.push(one)
@@ -11413,17 +11434,19 @@ function grantHeroStartDayEffectsIfNeeded(): void {
 function grantHeroPeriodicEffectsOnNewDay(day: number): void {
   if (!shopManager) return
   if (isSelectedHero('hero2') && !heroTycoonGoldGrantedDays.has(day)) {
-    const bonus = Math.max(0, day * 3)
+    const bonus = Math.max(0, day + 1)
     if (bonus > 0) {
       shopManager.gold += bonus
       heroTycoonGoldGrantedDays.add(day)
       showHintToast('no_gold_buy', `大亨：额外获得${bonus}金币`, 0xf4d67d)
     }
   }
-  if (day % 3 === 0) {
+  if (day % 5 === 0) {
     if (isSelectedHero('hero5') && !heroSmithStoneGrantedDays.has(day)) {
       if (grantHeroPeriodicRewardOrQueue('升级石', '铁匠')) heroSmithStoneGrantedDays.add(day)
     }
+  }
+  if (day % 3 === 0) {
     if (isSelectedHero('hero6') && !heroAdventurerScrollGrantedDays.has(day)) {
       if (grantHeroPeriodicRewardOrQueue('冒险卷轴', '冒险家')) heroAdventurerScrollGrantedDays.add(day)
     }
@@ -11440,7 +11463,7 @@ function grantHeroPeriodicEffectsOnNewDay(day: number): void {
 function grantSilverDailyGoldBonusesOnNewDay(): void {
   if (!shopManager) return
   if (hasPickedSkill('skill29')) {
-    const bonus = Math.max(0, currentDay * 2)
+    const bonus = Math.max(0, currentDay)
     if (bonus > 0) {
       shopManager.gold += bonus
       showHintToast('no_gold_buy', `投资达人：额外获得${bonus}金币`, 0x9be5ff)

@@ -1496,7 +1496,7 @@ export class CombatEngine {
       baseDamage: panel,
       finalDamage: remaining,
     })
-    if (remaining > 0) {
+    if (panel > 0) {
       this.applyWanJianGrowthOnAnyDamage(sourceSide)
     }
     if (targetHero.hp === 0) {
@@ -1586,7 +1586,7 @@ export class CombatEngine {
       if (owner.side !== sourceSide) continue
       if (!this.isDamageBonusEligible(owner)) continue
       const def = this.findItemDef(owner.defId)
-      const line = this.skillLines(def).find((s) => /造成任意伤害时此物品伤害\+\d+(?:[\/|]\d+)*/.test(s))
+      const line = this.skillLines(def).find((s) => /造成任意伤害(?:时)?此物品伤害\+\d+(?:[\/|]\d+)*/.test(s))
       if (!line) continue
       const v = Math.max(0, Math.round(this.tierValueFromLine(line, this.tierIndex(def, owner.tier))))
       if (v > 0) owner.baseStats.damage += v
@@ -3569,7 +3569,7 @@ export class CombatEngine {
         this.applyOnHeroDamagedReactions(targetHero.side)
       }
 
-      if (remaining > 0) {
+      if (panel > 0) {
         this.applyWanJianGrowthOnAnyDamage(hit.side)
         if (attacker) {
           this.applyOnDealDamageLifesteal(attacker, remaining)
