@@ -376,6 +376,7 @@ type PendingSkillDraft = {
   tier: SkillTier
   choices: SkillPick[]
   rerolled?: boolean
+  fixedTier?: boolean
 }
 
 type EventLane = 'left' | 'right'
@@ -699,24 +700,25 @@ function showHintToast(reason: ToastReason, message: string, color = 0xffe8a3): 
   }
   hintToastText.text = message
   hintToastText.style.fill = color
-  const padX = 24
-  const padY = 12
+  hintToastText.style.fontSize = Math.max(28, Math.round(getConfig().textSizes.refreshCost * 1.25))
+  const padX = 36
+  const padY = 18
   const boxW = hintToastText.width + padX * 2
   const boxH = hintToastText.height + padY * 2
   const boxX = (CANVAS_W - boxW) / 2
-  const boxY = 120
+  const boxY = (CANVAS_H - boxH) / 2
   const corner = Math.max(10, Math.round(getDebugCfg('gridItemCornerRadius')))
   hintToastBg.clear()
   hintToastBg.roundRect(boxX, boxY, boxW, boxH, corner)
-  hintToastBg.fill({ color: 0x1a2238, alpha: 0.88 })
-  hintToastBg.stroke({ color: 0xffd25a, width: 2, alpha: 0.9 })
+  hintToastBg.fill({ color: 0x0f1a2f, alpha: 0.96 })
+  hintToastBg.stroke({ color: 0xffe08a, width: 4, alpha: 1 })
   hintToastText.x = boxX + padX
   hintToastText.y = boxY + padY
   hintToastCon.visible = true
   hintToastHideTimer = setTimeout(() => {
     if (hintToastCon) hintToastCon.visible = false
     hintToastHideTimer = null
-  }, 1200)
+  }, 1700)
 }
 
 function stopBattleGuideHandAnim(): void {
@@ -1481,6 +1483,37 @@ function getItemDefById(defId: string): ItemDef | undefined {
 function getPrimaryArchetype(rawTags: string): string {
   const first = String(rawTags || '').split('|')[0]?.trim() ?? ''
   return first.split('/')[0]?.trim() ?? ''
+}
+
+function getArchetypeCornerBadge(item: ItemDef): { label: string; fill: number; stroke: number } {
+  const key = toSkillArchetype(getPrimaryArchetype(item.tags))
+  if (key === 'warrior') return { label: '战士', fill: 0xc54a4a, stroke: 0xffc0c0 }
+  if (key === 'archer') return { label: '弓手', fill: 0x2c8b50, stroke: 0xb5ffd0 }
+  if (key === 'assassin') return { label: '刺客', fill: 0x3f5fb2, stroke: 0xc5d5ff }
+  return { label: '中立', fill: 0x8d6a2f, stroke: 0xffe3ac }
+}
+
+function addArchetypeCornerBadge(card: Container, item: ItemDef, cardW: number, iconTopY: number): void {
+  const badge = getArchetypeCornerBadge(item)
+  const text = new Text({
+    text: badge.label,
+    style: { fontSize: 20, fill: 0xf9fbff, fontFamily: 'Arial', fontWeight: 'bold' },
+  })
+  const padX = 10
+  const padY = 4
+  const bg = new Graphics()
+  const badgeW = Math.max(64, Math.ceil(text.width + padX * 2))
+  const badgeH = Math.max(26, Math.ceil(text.height + padY * 2))
+  const badgeY = Math.max(-26, Math.round(iconTopY - badgeH - 8))
+  bg.roundRect(0, 0, badgeW, badgeH, 10)
+  bg.fill({ color: badge.fill, alpha: 0.96 })
+  bg.stroke({ color: badge.stroke, width: 2, alpha: 0.96 })
+  bg.x = Math.round((cardW - badgeW) / 2)
+  bg.y = badgeY
+  text.x = Math.round(bg.x + (badgeW - text.width) / 2)
+  text.y = Math.round(bg.y + (badgeH - text.height) / 2)
+  card.addChild(bg)
+  card.addChild(text)
 }
 
 function isNeutralArchetypeKey(raw: string): boolean {
@@ -2361,7 +2394,7 @@ function openItemTestOverlay(): void {
   panel.addChild(title)
 
   const subtitle = new Text({
-    text: '点击“最低级/全等级”可添加该物品最低等级或全部可用等级',
+    text: '按职业分页后，点击“最低级/全等级”可添加物品',
     style: { fontSize: 20, fill: 0xa8bddf, fontFamily: 'Arial' },
   })
   subtitle.anchor.set(0.5)
@@ -2370,13 +2403,16 @@ function openItemTestOverlay(): void {
 
   const listCon = new Container()
   panel.addChild(listCon)
-  let listBottomY = -344
+  let listBottomY = -300
   const refreshListScroll = setupOverlayListDragScroll(
     panel,
     listCon,
-    { x: -276, y: -360, w: 552, h: 860 },
+    { x: -276, y: -316, w: 552, h: 816 },
     () => listBottomY,
   )
+
+  type ItemTestPage = 'all' | 'warrior' | 'archer' | 'assassin' | 'neutral'
+  let activePage: ItemTestPage = 'all'
 
   const all = [...getAllItems()].sort((a, b) => {
     const ta = parseTierName(a.starting_tier) ?? 'Bronze'
@@ -2387,69 +2423,141 @@ function openItemTestOverlay(): void {
     return a.name_cn.localeCompare(b.name_cn, 'zh-Hans-CN')
   })
 
-  const topY = -344
-  const rowH = 38
-  listBottomY = topY + Math.max(0, all.length - 1) * rowH + 16
-  for (let idx = 0; idx < all.length; idx++) {
-    const def = all[idx]!
-    const y = topY + idx * rowH
-    const rowBg = new Graphics()
-    rowBg.roundRect(-276, y - 16, 552, 32, 10)
-    rowBg.fill({ color: idx % 2 === 0 ? 0x172844 : 0x15233c, alpha: 0.72 })
-    listCon.addChild(rowBg)
+  const pageTabs: Array<{ key: ItemTestPage; label: string }> = [
+    { key: 'all', label: '全部' },
+    { key: 'warrior', label: '战士' },
+    { key: 'archer', label: '弓手' },
+    { key: 'assassin', label: '刺客' },
+    { key: 'neutral', label: '中立' },
+  ]
 
-    const tier = parseTierName(def.starting_tier) ?? 'Bronze'
-    const label = new Text({
-      text: `${def.name_cn}（${tier}）`,
-      style: { fontSize: 16, fill: 0xe0ebff, fontFamily: 'Arial', fontWeight: 'bold' },
-    })
-    label.x = -248
-    label.y = y - label.height / 2
-    listCon.addChild(label)
+  const pageBtnByKey = new Map<ItemTestPage, { bg: Graphics; text: Text }>()
+  const pageCon = new Container()
+  pageCon.y = -352
+  panel.addChild(pageCon)
 
-    const minBtn = new Container()
-    minBtn.x = 136
-    minBtn.y = y
-    minBtn.eventMode = 'static'
-    minBtn.cursor = 'pointer'
-    const minBg = new Graphics()
-    minBg.roundRect(-36, -14, 72, 28, 10)
-    minBg.fill({ color: 0x96c7ff, alpha: 0.98 })
-    minBg.stroke({ color: 0x0d1426, width: 2, alpha: 0.95 })
-    const minText = new Text({
-      text: '最低级',
-      style: { fontSize: 14, fill: 0x0f1c33, fontFamily: 'Arial', fontWeight: 'bold' },
+  const getPageItems = (): ItemDef[] => {
+    if (activePage === 'all') return all
+    return all.filter((def) => {
+      const arch = getPrimaryArchetype(def.tags)
+      if (activePage === 'warrior') return arch === '战士'
+      if (activePage === 'archer') return arch === '弓手'
+      if (activePage === 'assassin') return arch === '刺客'
+      return isNeutralArchetypeKey(arch)
     })
-    minText.anchor.set(0.5)
-    minBtn.on('pointerdown', (e) => {
-      e.stopPropagation()
-      addMinLevelForTest(def)
-    })
-    minBtn.addChild(minBg, minText)
-    listCon.addChild(minBtn)
-
-    const allBtn = new Container()
-    allBtn.x = 220
-    allBtn.y = y
-    allBtn.eventMode = 'static'
-    allBtn.cursor = 'pointer'
-    const allBg = new Graphics()
-    allBg.roundRect(-40, -14, 80, 28, 10)
-    allBg.fill({ color: 0x74dc9b, alpha: 0.98 })
-    allBg.stroke({ color: 0x0d1426, width: 2, alpha: 0.95 })
-    const allText = new Text({
-      text: '全等级',
-      style: { fontSize: 16, fill: 0x0f1c33, fontFamily: 'Arial', fontWeight: 'bold' },
-    })
-    allText.anchor.set(0.5)
-    allBtn.on('pointerdown', (e) => {
-      e.stopPropagation()
-      addAllPossibleLevelsForTest(def)
-    })
-    allBtn.addChild(allBg, allText)
-    listCon.addChild(allBtn)
   }
-  refreshListScroll()
+
+  const topY = -300
+  const rowH = 38
+  const drawList = () => {
+    const old = listCon.removeChildren()
+    old.forEach((child) => child.destroy())
+    const items = getPageItems()
+    listBottomY = topY + Math.max(0, items.length - 1) * rowH + 16
+    for (let idx = 0; idx < items.length; idx++) {
+      const def = items[idx]!
+      const y = topY + idx * rowH
+      const rowBg = new Graphics()
+      rowBg.roundRect(-276, y - 16, 552, 32, 10)
+      rowBg.fill({ color: idx % 2 === 0 ? 0x172844 : 0x15233c, alpha: 0.72 })
+      listCon.addChild(rowBg)
+
+      const tier = parseTierName(def.starting_tier) ?? 'Bronze'
+      const label = new Text({
+        text: `${def.name_cn}（${tier}）`,
+        style: { fontSize: 16, fill: 0xe0ebff, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      label.x = -248
+      label.y = y - label.height / 2
+      listCon.addChild(label)
+
+      const minBtn = new Container()
+      minBtn.x = 136
+      minBtn.y = y
+      minBtn.eventMode = 'static'
+      minBtn.cursor = 'pointer'
+      const minBg = new Graphics()
+      minBg.roundRect(-36, -14, 72, 28, 10)
+      minBg.fill({ color: 0x96c7ff, alpha: 0.98 })
+      minBg.stroke({ color: 0x0d1426, width: 2, alpha: 0.95 })
+      const minText = new Text({
+        text: '最低级',
+        style: { fontSize: 14, fill: 0x0f1c33, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      minText.anchor.set(0.5)
+      minBtn.on('pointerdown', (e) => {
+        e.stopPropagation()
+        addMinLevelForTest(def)
+      })
+      minBtn.addChild(minBg, minText)
+      listCon.addChild(minBtn)
+
+      const allBtn = new Container()
+      allBtn.x = 220
+      allBtn.y = y
+      allBtn.eventMode = 'static'
+      allBtn.cursor = 'pointer'
+      const allBg = new Graphics()
+      allBg.roundRect(-40, -14, 80, 28, 10)
+      allBg.fill({ color: 0x74dc9b, alpha: 0.98 })
+      allBg.stroke({ color: 0x0d1426, width: 2, alpha: 0.95 })
+      const allText = new Text({
+        text: '全等级',
+        style: { fontSize: 16, fill: 0x0f1c33, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      allText.anchor.set(0.5)
+      allBtn.on('pointerdown', (e) => {
+        e.stopPropagation()
+        addAllPossibleLevelsForTest(def)
+      })
+      allBtn.addChild(allBg, allText)
+      listCon.addChild(allBtn)
+    }
+    refreshListScroll()
+  }
+
+  const redrawPageTabs = () => {
+    for (const row of pageTabs) {
+      const view = pageBtnByKey.get(row.key)
+      if (!view) continue
+      const selected = row.key === activePage
+      view.bg.clear()
+      view.bg.roundRect(-50, -17, 100, 34, 12)
+      view.bg.fill({ color: selected ? 0x7cc6ff : 0x2a4068, alpha: 0.96 })
+      view.bg.stroke({ color: selected ? 0xe9f6ff : 0x9ec2ff, width: selected ? 3 : 2, alpha: 0.95 })
+      view.text.style.fill = selected ? 0x0f1c33 : 0xeaf3ff
+    }
+  }
+
+  const totalW = pageTabs.length * 108 - 8
+  pageTabs.forEach((row, idx) => {
+    const btn = new Container()
+    btn.x = -totalW / 2 + idx * 108 + 50
+    btn.y = 0
+    btn.eventMode = 'static'
+    btn.cursor = 'pointer'
+
+    const tabBg = new Graphics()
+    const tabText = new Text({
+      text: row.label,
+      style: { fontSize: 16, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    tabText.anchor.set(0.5)
+    btn.addChild(tabBg, tabText)
+    pageCon.addChild(btn)
+    pageBtnByKey.set(row.key, { bg: tabBg, text: tabText })
+
+    btn.on('pointerdown', (e) => {
+      e.stopPropagation()
+      if (activePage === row.key) return
+      activePage = row.key
+      drawList()
+      redrawPageTabs()
+    })
+  })
+
+  drawList()
+  redrawPageTabs()
 
   const closeBtn = new Container()
   closeBtn.x = 0
@@ -3047,125 +3155,35 @@ function tryRunHeroCrossSynthesisReroll(stage: Container, synth: SynthesizeResul
   if (!current) return false
   const targetLevel = Math.max(1, Math.min(7, tierStarLevelIndex(synth.toTier, synth.toStar) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
   const currentDefId = current.defId
-  const targetSize = normalizeSize(synth.targetSize)
-  const choices = collectPoolCandidatesByLevel(targetLevel)
+  const currentDef = getItemDefById(currentDefId)
+  if (!currentDef) return false
+  const targetSize = synth.targetSize
+  const pool = collectPoolCandidatesByLevel(targetLevel)
     .filter((one) => normalizeSize(one.item.size) === targetSize && one.item.id !== currentDefId)
-  if (choices.length <= 0) return false
+  const altPicks = pickRandomElements(pool, 2)
+  if (altPicks.length < 2) return false
+  const choices: NeutralChoiceCandidate[] = [
+    { item: currentDef, tier: synth.toTier, star: synth.toStar },
+    ...altPicks.map((one) => ({ item: one.item, tier: one.tier, star: one.star })),
+  ]
 
-  const overlay = new Container()
-  overlay.zIndex = 3600
-  overlay.eventMode = 'static'
-  overlay.hitArea = new Rectangle(0, 0, CANVAS_W, CANVAS_H)
-
-  const mask = new Graphics()
-  mask.rect(0, 0, CANVAS_W, CANVAS_H)
-  mask.fill({ color: 0x070d1d, alpha: 0.9 })
-  overlay.addChild(mask)
-
-  const panel = new Graphics()
-  const panelW = 560
-  const panelH = 340
-  panel.roundRect((CANVAS_W - panelW) / 2, 460, panelW, panelH, 24)
-  panel.fill({ color: 0x13233d, alpha: 0.98 })
-  panel.stroke({ color: 0x79b6ff, width: 3, alpha: 0.98 })
-  overlay.addChild(panel)
-
-  const title = new Text({
-    text: '占卜师：重选合成结果',
-    style: { fontSize: 38, fill: 0xfff2cf, fontFamily: 'Arial', fontWeight: 'bold' },
-  })
-  title.anchor.set(0.5)
-  title.x = CANVAS_W / 2
-  title.y = 530
-  overlay.addChild(title)
-
-  const desc = new Text({
-    text: '本次异物合成可免费重随机1次\n是否立即重选？',
-    style: { fontSize: 28, fill: 0xcfe2ff, fontFamily: 'Arial', fontWeight: 'bold', align: 'center', lineHeight: 40 },
-  })
-  desc.anchor.set(0.5)
-  desc.x = CANVAS_W / 2
-  desc.y = 620
-  overlay.addChild(desc)
-
-  const closeOverlay = () => {
-    if (overlay.parent) overlay.parent.removeChild(overlay)
-    overlay.destroy({ children: true })
-    setTransitionInputEnabled(true)
-    applyPhaseInputLock()
-  }
-
-  const keepBtn = new Container()
-  keepBtn.eventMode = 'static'
-  keepBtn.cursor = 'pointer'
-  keepBtn.x = CANVAS_W / 2 - 238
-  keepBtn.y = 722
-  const keepBg = new Graphics()
-  keepBg.roundRect(0, 0, 216, 74, 16)
-  keepBg.fill({ color: 0x25344d, alpha: 0.9 })
-  keepBg.stroke({ color: 0x5d7597, width: 3, alpha: 1 })
-  const keepTxt = new Text({ text: '保留结果', style: { fontSize: 30, fill: 0xc9d6ef, fontFamily: 'Arial', fontWeight: 'bold' } })
-  keepTxt.anchor.set(0.5)
-  keepTxt.x = 108
-  keepTxt.y = 37
-  keepBtn.addChild(keepBg, keepTxt)
-  keepBtn.on('pointerdown', (e: FederatedPointerEvent) => {
-    e.stopPropagation()
-    closeOverlay()
-    refreshShopUI()
-  })
-  overlay.addChild(keepBtn)
-
-  const rerollBtn = new Container()
-  rerollBtn.eventMode = 'static'
-  rerollBtn.cursor = 'pointer'
-  rerollBtn.x = CANVAS_W / 2 + 22
-  rerollBtn.y = 722
-  const rerollBg = new Graphics()
-  rerollBg.roundRect(0, 0, 216, 74, 16)
-  rerollBg.fill({ color: 0x6dd3ff, alpha: 0.96 })
-  rerollBg.stroke({ color: 0xb8e8ff, width: 3, alpha: 1 })
-  const rerollTxt = new Text({ text: '重选1次', style: { fontSize: 30, fill: 0x10203a, fontFamily: 'Arial', fontWeight: 'bold' } })
-  rerollTxt.anchor.set(0.5)
-  rerollTxt.x = 108
-  rerollTxt.y = 37
-  rerollBtn.addChild(rerollBg, rerollTxt)
-  rerollBtn.on('pointerdown', (e: FederatedPointerEvent) => {
-    e.stopPropagation()
-    const latestSystem = synth.targetZone === 'battle' ? battleSystem : backpackSystem
-    const latest = latestSystem?.getItem(synth.instanceId)
-    if (!latest) {
-      closeOverlay()
-      refreshShopUI()
-      return
-    }
-    const pool = collectPoolCandidatesByLevel(targetLevel)
-      .filter((one) => normalizeSize(one.item.size) === targetSize && one.item.id !== latest.defId)
-    const picked = pool[Math.floor(Math.random() * pool.length)]
-    if (picked) {
+  return showNeutralChoiceOverlay(stage, '占卜师：选择合成结果', choices, (picked) => {
+    if (picked.item.id !== currentDefId) {
       const ok = transformPlacedItemKeepLevelTo(synth.instanceId, synth.targetZone, picked.item, true)
-      if (ok) {
-        setInstanceQualityLevel(synth.instanceId, picked.item.id, parseTierName(picked.item.starting_tier) ?? 'Bronze', targetLevel)
-        applyInstanceTierVisuals()
-        syncShopOwnedTierRules()
-        refreshUpgradeHints()
-        markHeroDailyCardRerollUsed()
-        showHintToast('no_gold_buy', '占卜师：已重随机本次异物合成结果', 0x9be5ff)
+      if (!ok) {
+        showHintToast('backpack_full_buy', '占卜师：转化失败', 0xff8f8f)
+        return false
       }
+      setInstanceQualityLevel(synth.instanceId, picked.item.id, parseTierName(picked.item.starting_tier) ?? 'Bronze', targetLevel)
+      applyInstanceTierVisuals()
+      syncShopOwnedTierRules()
+      refreshUpgradeHints()
     }
-    closeOverlay()
+    markHeroDailyCardRerollUsed()
+    showHintToast('no_gold_buy', '占卜师：本次异物合成可选结果', 0x9be5ff)
     refreshShopUI()
-  })
-  overlay.addChild(rerollBtn)
-
-  overlay.on('pointerdown', (e: FederatedPointerEvent) => {
-    e.stopPropagation()
-  })
-
-  setTransitionInputEnabled(false)
-  setBaseShopPrimaryButtonsVisible(false)
-  stage.addChild(overlay)
-  return true
+    return true
+  }, 'special_shop_like')
 }
 
 void tryRunHeroCrossSynthesisReroll
@@ -3522,9 +3540,8 @@ function checkAndPopPendingRewards(): void {
 
 /** 处理升级奖励：抽取物品加入待领取队列 */
 function handleLevelReward(level: number): void {
-  const defId = rollLevelRewardDefId(level)
-  if (!defId) {
-    // 所有物品达上限，给金币补偿
+  const rewards = rollLevelRewardDefIds(level)
+  if (rewards.length <= 0) {
     if (shopManager) {
       const goldFallback = 3
       shopManager.gold += goldFallback
@@ -3533,7 +3550,7 @@ function handleLevelReward(level: number): void {
     saveShopStateToStorage(captureShopState())
     return
   }
-  pendingLevelRewards.push(defId)
+  pendingLevelRewards.push(...rewards)
   checkAndPopPendingRewards()
 }
 
@@ -3542,6 +3559,7 @@ function grantSynthesisExp(amount = 1, from?: { instanceId: string; zone: 'battl
   if (add <= 0) return
   const cap = getPlayerLevelCap()
   const current = getPlayerProgressState()
+  const levelBeforeUpgrade = clampPlayerLevel(current.level)
   let level = clampPlayerLevel(current.level)
   let exp = Math.max(0, Math.round(current.exp)) + add
   let leveled = false
@@ -3558,7 +3576,7 @@ function grantSynthesisExp(amount = 1, from?: { instanceId: string; zone: 'battl
   if (leveled) {
     showHintToast('no_gold_buy', `升级到 Lv${level}`, 0x8ff0b0)
     playPlayerLevelUpFx()
-    handleLevelReward(level)
+    handleLevelReward(levelBeforeUpgrade)
   }
 }
 
@@ -4632,7 +4650,7 @@ function showSynthesisHoverInfo(
   if (canUseSameArchetypeDiffItemStoneSynthesis(sourceDefId, targetItem.defId, sourceTier, sourceStar, targetTier, targetStar)) {
     const customDisplay: ItemInfoCustomDisplay = {
       hideName: true,
-      lines: ['升级为 +1 级其他非中立职业物品（2选1）'],
+      lines: ['升级为 +1 级其他非中立职业物品（同等级桶随机）'],
       suppressStats: true,
       hideTierBadge: true,
       centerRichLineInFrame: true,
@@ -5225,49 +5243,49 @@ const STARTER_CLASS_PRESETS: Record<StarterClass, {
   },
   hero1: {
     title: '占卜师',
-    subtitle: '每天选择物品时，都可以重选一次',
+    subtitle: '不同物品合成，可以选择合成结果（每天限1次）',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero1.png',
   },
   hero2: {
     title: '大亨',
-    subtitle: '每天额外获得天数+1的金币',
+    subtitle: '每天额外获得天数*3的金币',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero2.png',
   },
   hero3: {
     title: '魔术师',
-    subtitle: '每天首次丢弃，获得同等级的随机物品',
+    subtitle: '每天首次丢弃物品，获得同等级的随机物品',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero3.png',
   },
   hero4: {
     title: '戏法师',
-    subtitle: '每天首次合成，可以选择合成为其他物品',
+    subtitle: '相同物品合成，可以选择合成结果（每天限1次）',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero4.png',
   },
   hero5: {
     title: '铁匠',
-    subtitle: '每隔3天获得1颗升级石',
+    subtitle: '每隔3天获得1颗升级石：丢弃时随机升级1个物品',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero5.png',
   },
   hero6: {
     title: '冒险家',
-    subtitle: '每隔3天获得1张冒险券',
+    subtitle: '每隔3天获得1张冒险券：丢弃时进行一次冒险',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero6.png',
   },
   hero7: {
     title: '指挥官',
-    subtitle: '每隔3天获得1枚勋章',
+    subtitle: '每隔3天获得1枚勋章：选择1个职业，获得该职业随机物品',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero7.png',
   },
   hero8: {
     title: '继承者',
-    subtitle: '第3天获得1个黄金宝箱',
+    subtitle: '第3天获得1个黄金宝箱：选择1个黄金物品',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero8.png',
   },
@@ -5736,7 +5754,7 @@ function ensureStarterClassSelection(stage: Container): void {
     })
     pick.anchor.set(0.5)
     pick.x = cardW / 2
-    pick.y = cardH - (compact ? 22 : 34)
+    pick.y = cardH - (compact ? 52 : 64)
     pick.visible = false
     con.addChild(pick)
 
@@ -6132,13 +6150,20 @@ type NeutralSpecialKind =
   | 'upgrade_stone'
   | 'class_shift_stone'
   | 'class_morph_stone'
+  | 'warrior_stone'
+  | 'archer_stone'
+  | 'assassin_stone'
+  | 'gold_morph_stone'
+  | 'diamond_morph_stone'
   | 'skill_scroll'
   | 'shop_scroll'
   | 'event_scroll'
   | 'raw_stone'
   | 'medal'
   | 'blank_scroll'
+  | 'silver_chest'
   | 'golden_chest'
+  | 'diamond_chest'
 
 type NeutralChoiceCandidate = {
   item: ItemDef
@@ -6151,13 +6176,20 @@ function getNeutralSpecialKind(item: ItemDef): NeutralSpecialKind | null {
   if (key === '升级石') return 'upgrade_stone'
   if (key === '转职石') return 'class_shift_stone'
   if (key === '变化石') return 'class_morph_stone'
-  if (key === '技能卷轴') return 'skill_scroll'
+  if (key === '战士石') return 'warrior_stone'
+  if (key === '弓手石') return 'archer_stone'
+  if (key === '刺客石') return 'assassin_stone'
+  if (key === '点金石') return 'gold_morph_stone'
+  if (key === '真钻石') return 'diamond_morph_stone'
+  if (key === '技能卷轴' || key === '青铜卷轴' || key === '白银卷轴' || key === '黄金卷轴') return 'skill_scroll'
   if (key === '购物卷轴') return 'shop_scroll'
   if (key === '冒险卷轴') return 'event_scroll'
   if (key === '原石') return 'raw_stone'
   if (key === '勋章') return 'medal'
   if (key === '空白卷轴') return 'blank_scroll'
+  if (key === '白银宝箱') return 'silver_chest'
   if (key === '黄金宝箱') return 'golden_chest'
+  if (key === '钻石宝箱') return 'diamond_chest'
   return null
 }
 
@@ -6165,13 +6197,20 @@ const NEUTRAL_RANDOM_CAP_BY_DAY: Record<NeutralSpecialKind, number[]> = {
   upgrade_stone: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   class_shift_stone: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
   class_morph_stone: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
+  warrior_stone: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  archer_stone: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  assassin_stone: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  gold_morph_stone: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  diamond_morph_stone: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   skill_scroll: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
   shop_scroll: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   event_scroll: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
   raw_stone: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   medal: [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
   blank_scroll: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  silver_chest: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   golden_chest: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  diamond_chest: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
 }
 
 const NEUTRAL_DAILY_ROLL_CAP_BY_DAY: number[] = [
@@ -6181,22 +6220,6 @@ const NEUTRAL_DAILY_ROLL_CAP_BY_DAY: number[] = [
 
 type NeutralRandomCategory = 'stone' | 'scroll' | 'medal'
 const NEUTRAL_RANDOM_RATIO_BUCKET_TEMPLATE: NeutralRandomCategory[] = ['stone', 'stone', 'scroll', 'scroll', 'medal']
-
-// 升级奖励等级上限表（索引0=Lv1, 索引25=Lv26），各等级最多可通过升级奖励获得的数量
-const NEUTRAL_LEVEL_REWARD_CAP: Partial<Record<NeutralSpecialKind, number[]>> = {
-  class_shift_stone: [0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
-  class_morph_stone: [0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
-  skill_scroll:      [0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
-  medal:             [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
-}
-// 升级奖励桶模板：卷轴:石头:勋章 = 1:1:1
-const LEVEL_REWARD_BUCKET_TEMPLATE: NeutralRandomCategory[] = ['stone', 'scroll', 'medal']
-// 升级奖励石头对应物品（从中随机选一个未达上限的）
-const LEVEL_REWARD_STONE_KINDS: NeutralSpecialKind[] = ['class_shift_stone', 'class_morph_stone']
-// 升级奖励卷轴对应物品
-const LEVEL_REWARD_SCROLL_KINDS: NeutralSpecialKind[] = ['skill_scroll']
-// 升级奖励勋章对应物品
-const LEVEL_REWARD_MEDAL_KINDS: NeutralSpecialKind[] = ['medal']
 
 function refillNeutralRandomCategoryPool(): void {
   neutralRandomCategoryPool = [...NEUTRAL_RANDOM_RATIO_BUCKET_TEMPLATE]
@@ -6229,7 +6252,17 @@ function pickNeutralRandomCategoryByPool(candidates: PoolCandidate[]): NeutralRa
 }
 
 function neutralRandomCategoryOfKind(kind: NeutralSpecialKind): NeutralRandomCategory | null {
-  if (kind === 'upgrade_stone' || kind === 'class_shift_stone' || kind === 'class_morph_stone' || kind === 'raw_stone') return 'stone'
+  if (
+    kind === 'upgrade_stone'
+    || kind === 'class_shift_stone'
+    || kind === 'class_morph_stone'
+    || kind === 'warrior_stone'
+    || kind === 'archer_stone'
+    || kind === 'assassin_stone'
+    || kind === 'gold_morph_stone'
+    || kind === 'diamond_morph_stone'
+    || kind === 'raw_stone'
+  ) return 'stone'
   if (kind === 'skill_scroll' || kind === 'shop_scroll' || kind === 'event_scroll' || kind === 'blank_scroll') return 'scroll'
   if (kind === 'medal') return 'medal'
   return null
@@ -6287,71 +6320,106 @@ function isNeutralKindRandomAvailable(kind: NeutralSpecialKind): boolean {
 }
 
 // ============================================================
-// 升级奖励：等级上限 / 桶抽取 / 发奖逻辑
+// 升级奖励：固定等级表发奖
 // ============================================================
 
-function getLevelRewardCapByLevel(level: number, kind: NeutralSpecialKind): number {
-  const row = NEUTRAL_LEVEL_REWARD_CAP[kind]
-  if (!row) return 0
-  const idx = Math.max(0, Math.min(row.length - 1, Math.round(level) - 1))
-  return Math.max(0, Math.round(row[idx] ?? 0))
+type LevelRewardStoneWeights = {
+  classStone: number
+  randomStone: number
+  goldStone: number
+  diamondStone: number
 }
 
-function getLevelRewardObtainedCount(kind: NeutralSpecialKind): number {
-  return Math.max(0, Math.round(levelRewardObtainedByKind.get(kind) ?? 0))
+const FIXED_LEVEL_REWARD_BASE_ITEM_IDS_BY_LEVEL: Array<string | null> = [
+  'item59',
+  'neutral_item_28_skill_scroll',
+  'item59',
+  'neutral_item_28_skill_scroll',
+  'item59',
+  'item62',
+  'item59',
+  'item62',
+  'item58',
+  'item63',
+  'item58',
+  'item63',
+  'item58',
+  'item58',
+  'item58',
+  'item58',
+  'item60',
+  'item60',
+  'item60',
+  'item60',
+  'item60',
+  'item60',
+  'item60',
+  'item60',
+  'item60',
+  'item60',
+]
+
+const FIXED_LEVEL_REWARD_RANDOM_STONE_COUNT_BY_LEVEL: number[] = [
+  0, 0, 0, 0,
+  1, 1, 1, 1,
+  2, 2, 2, 2,
+  3, 3, 3, 3, 3, 3,
+  3, 3, 3, 3, 3, 3, 3, 3,
+]
+
+function getLevelRewardStoneWeights(level: number): LevelRewardStoneWeights {
+  if (level <= 6) return { classStone: 0.75, randomStone: 0.25, goldStone: 0, diamondStone: 0 }
+  if (level <= 10) return { classStone: 0.6, randomStone: 0.2, goldStone: 0.2, diamondStone: 0 }
+  if (level <= 14) return { classStone: 0.6, randomStone: 0.1, goldStone: 0.2, diamondStone: 0.1 }
+  if (level <= 18) return { classStone: 0.6, randomStone: 0.1, goldStone: 0.1, diamondStone: 0.2 }
+  return { classStone: 0.6, randomStone: 0, goldStone: 0, diamondStone: 0.4 }
 }
 
-function isLevelRewardKindAvailable(level: number, kind: NeutralSpecialKind): boolean {
-  return getLevelRewardObtainedCount(kind) < getLevelRewardCapByLevel(level, kind)
-}
+function rollRandomTransformStoneDefId(weights: LevelRewardStoneWeights): string | null {
+  const classWeight = Math.max(0, Number(weights.classStone) || 0)
+  const randomWeight = Math.max(0, Number(weights.randomStone) || 0)
+  const goldWeight = Math.max(0, Number(weights.goldStone) || 0)
+  const diamondWeight = Math.max(0, Number(weights.diamondStone) || 0)
+  const total = classWeight + randomWeight + goldWeight + diamondWeight
+  if (total <= 0) return null
 
-function refillLevelRewardCategoryPool(): void {
-  levelRewardCategoryPool = [...LEVEL_REWARD_BUCKET_TEMPLATE]
-  for (let i = levelRewardCategoryPool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    const tmp = levelRewardCategoryPool[i]
-    levelRewardCategoryPool[i] = levelRewardCategoryPool[j]!
-    levelRewardCategoryPool[j] = tmp!
+  let roll = Math.random() * total
+  const category = (() => {
+    roll -= classWeight
+    if (roll <= 0) return 'class' as const
+    roll -= randomWeight
+    if (roll <= 0) return 'random' as const
+    roll -= goldWeight
+    if (roll <= 0) return 'gold' as const
+    return 'diamond' as const
+  })()
+
+  if (category === 'class') {
+    const classStoneIds = ['item64', 'item65', 'item66'].filter((id) => !!getItemDefById(id))
+    if (classStoneIds.length <= 0) return null
+    return classStoneIds[Math.floor(Math.random() * classStoneIds.length)] ?? null
   }
+  if (category === 'random') return getItemDefById('neutral_item_27_class_morph_stone')?.id ?? null
+  if (category === 'gold') return getItemDefById('item68')?.id ?? null
+  return getItemDefById('item69')?.id ?? null
 }
 
-/** 从升级奖励桶中抽取一个物品defId，失败返回null（已全达上限） */
-function rollLevelRewardDefId(level: number): string | null {
-  // 最多循环3次（一个完整桶），避免死循环
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (levelRewardCategoryPool.length <= 0) refillLevelRewardCategoryPool()
-    // 找第一个有可用物品的类别
-    for (let i = 0; i < levelRewardCategoryPool.length; i++) {
-      const category = levelRewardCategoryPool[i]!
-      const kindsForCategory: NeutralSpecialKind[] = category === 'stone'
-        ? LEVEL_REWARD_STONE_KINDS
-        : category === 'scroll'
-          ? LEVEL_REWARD_SCROLL_KINDS
-          : LEVEL_REWARD_MEDAL_KINDS
-      const available = kindsForCategory.filter((k) => isLevelRewardKindAvailable(level, k))
-      if (available.length === 0) {
-        // 该类别已达上限，移除并尝试下一个
-        levelRewardCategoryPool.splice(i, 1)
-        i--
-        continue
-      }
-      // 从该类别的可用物品中随机选一个
-      const kind = available[Math.floor(Math.random() * available.length)]!
-      const defId = findNeutralDefIdByKind(kind)
-      if (!defId) { levelRewardCategoryPool.splice(i, 1); i--; continue }
-      levelRewardCategoryPool.splice(i, 1)
-      return defId
-    }
-    // 桶耗尽且都达上限，补充一桶再试
-    refillLevelRewardCategoryPool()
+function rollLevelRewardDefIds(level: number): string[] {
+  const lv = Math.max(1, Math.min(26, Math.round(level)))
+  const out: string[] = []
+
+  const baseDefId = FIXED_LEVEL_REWARD_BASE_ITEM_IDS_BY_LEVEL[lv - 1]
+  if (baseDefId && getItemDefById(baseDefId)) out.push(baseDefId)
+
+  const randomStoneCount = Math.max(0, Math.round(FIXED_LEVEL_REWARD_RANDOM_STONE_COUNT_BY_LEVEL[lv - 1] ?? 0))
+  if (randomStoneCount <= 0) return out
+
+  const weights = getLevelRewardStoneWeights(lv)
+  for (let i = 0; i < randomStoneCount; i++) {
+    const one = rollRandomTransformStoneDefId(weights)
+    if (one) out.push(one)
   }
-  return null  // 所有类别全部达上限
-}
-
-/** 根据NeutralSpecialKind找到对应defId */
-function findNeutralDefIdByKind(kind: NeutralSpecialKind): string | null {
-  const item = getAllItems().find((it) => getNeutralSpecialKind(it) === kind)
-  return item?.id ?? null
+  return out
 }
 
 function canRandomNeutralItem(item: ItemDef): boolean {
@@ -6363,7 +6431,16 @@ function canRandomNeutralItem(item: ItemDef): boolean {
 
 function getNeutralReplacementKindForRandom(kind: NeutralSpecialKind): NeutralSpecialKind | null {
   if (kind === 'skill_scroll' || kind === 'shop_scroll' || kind === 'event_scroll') return 'blank_scroll'
-  if (kind === 'upgrade_stone' || kind === 'class_shift_stone' || kind === 'class_morph_stone') return 'raw_stone'
+  if (
+    kind === 'upgrade_stone'
+    || kind === 'class_shift_stone'
+    || kind === 'class_morph_stone'
+    || kind === 'warrior_stone'
+    || kind === 'archer_stone'
+    || kind === 'assassin_stone'
+    || kind === 'gold_morph_stone'
+    || kind === 'diamond_morph_stone'
+  ) return 'raw_stone'
   return null
 }
 
@@ -6378,7 +6455,7 @@ function rewriteNeutralRandomPick(item: ItemDef): ItemDef {
     if (availableScrollKinds.length === 1) {
       const only = availableScrollKinds[0]
       const onlyName = only === 'skill_scroll'
-        ? '技能卷轴'
+        ? '青铜卷轴'
         : only === 'shop_scroll'
           ? '购物卷轴'
           : '冒险卷轴'
@@ -6405,7 +6482,13 @@ function recordNeutralItemObtained(defId: string): void {
 function isNeutralTargetStone(item: ItemDef | null | undefined): boolean {
   if (!item) return false
   const kind = getNeutralSpecialKind(item)
-  return kind === 'class_shift_stone' || kind === 'class_morph_stone'
+  return kind === 'class_shift_stone'
+    || kind === 'class_morph_stone'
+    || kind === 'warrior_stone'
+    || kind === 'archer_stone'
+    || kind === 'assassin_stone'
+    || kind === 'gold_morph_stone'
+    || kind === 'diamond_morph_stone'
 }
 
 function isValidNeutralStoneTarget(sourceDef: ItemDef, targetDef: ItemDef): boolean {
@@ -6787,9 +6870,12 @@ function showNeutralChoiceOverlay(
   hint.y = 286
   overlay.addChild(hint)
 
-  const cardW = 238
+  const cardWMax = 238
   const cardH = 470 + (displayMode === 'special_shop_like' ? 120 : 0)
-  const gapX = uniq.length === 2 ? 50 : 16
+  const sidePadding = 16
+  const gapX = uniq.length === 2 ? 40 : 12
+  const maxTotalW = Math.max(0, CANVAS_W - sidePadding * 2)
+  const cardW = Math.min(cardWMax, Math.floor((maxTotalW - (uniq.length - 1) * gapX) / uniq.length))
   const totalW = uniq.length * cardW + (uniq.length - 1) * gapX
   const startX = (CANVAS_W - totalW) / 2
   const cardY = 580
@@ -6841,6 +6927,7 @@ function showNeutralChoiceOverlay(
       icon.y = 20
       icon.alpha = 0
       card.addChild(icon)
+      addArchetypeCornerBadge(card, cand.item, cardW, icon.y)
       void Assets.load<Texture>(getItemIconUrl(cand.item.id)).then((tex) => {
         icon.texture = tex
         icon.alpha = 1
@@ -6853,6 +6940,7 @@ function showNeutralChoiceOverlay(
       icon.x = Math.round((cardW - icon.width) / 2)
       icon.y = 108
       card.addChild(icon)
+      addArchetypeCornerBadge(card, cand.item, cardW, icon.y)
     }
 
     const name = new Text({
@@ -7190,16 +7278,6 @@ function transformPlacedItemKeepLevelTo(
   return true
 }
 
-function openSkillDraftFromNeutralScroll(stage: Container): boolean {
-  const tier = getSkillTierForDay(currentDay) ?? 'bronze'
-  const choices = pickSkillChoices(tier, currentDay).slice(0, 2)
-  if (choices.length < 2) return false
-  pendingSkillDraft = { day: currentDay, tier, choices, rerolled: false }
-  closeSkillDraftOverlay()
-  ensureSkillDraftSelection(stage)
-  return true
-}
-
 function openEventDraftFromNeutralScroll(stage: Container): boolean {
   const choices = pickRandomEventDraftChoices(currentDay).slice(0, 2)
   if (choices.length < 2) return false
@@ -7221,13 +7299,30 @@ function openSpecialShopFromNeutralScroll(stage: Container): boolean {
   return true
 }
 
-function buildGoldenChestChoiceCandidates(): NeutralChoiceCandidate[] {
-  const allGoldNonNeutral = getAllItems()
+function getNeutralSkillTierByItem(item: ItemDef): SkillTier {
+  const tier = parseTierName(item.starting_tier) ?? 'Bronze'
+  if (tier === 'Silver') return 'silver'
+  if (tier === 'Gold' || tier === 'Diamond') return 'gold'
+  return 'bronze'
+}
+
+function openSkillDraftFromNeutralScrollByItem(stage: Container, source: ItemDef): boolean {
+  const tier = getNeutralSkillTierByItem(source)
+  const choices = pickSkillChoicesExactTier(tier).slice(0, 2)
+  if (choices.length < 2) return false
+  pendingSkillDraft = { day: currentDay, tier, choices, rerolled: false, fixedTier: true }
+  closeSkillDraftOverlay()
+  ensureSkillDraftSelection(stage)
+  return true
+}
+
+function buildTierChestChoiceCandidates(tier: TierKey): NeutralChoiceCandidate[] {
+  const allTierNonNeutral = getAllItems()
     .filter((it) => !isNeutralItemDef(it))
-    .filter((it) => parseAvailableTiers(it.available_tiers).includes('Gold'))
+    .filter((it) => parseAvailableTiers(it.available_tiers).includes(tier))
 
   const byArchetype = new Map<SkillArchetype, ItemDef[]>()
-  for (const item of allGoldNonNeutral) {
+  for (const item of allTierNonNeutral) {
     const archetype = toSkillArchetype(getPrimaryArchetype(item.tags))
     if (archetype !== 'warrior' && archetype !== 'archer' && archetype !== 'assassin') continue
     const arr = byArchetype.get(archetype) ?? []
@@ -7235,25 +7330,43 @@ function buildGoldenChestChoiceCandidates(): NeutralChoiceCandidate[] {
     byArchetype.set(archetype, arr)
   }
 
-  const availableArchetypes = Array.from(byArchetype.keys())
-  if (availableArchetypes.length < 2) return []
+  const picks: ItemDef[] = []
+  const usedDef = new Set<string>()
+  const archetypes = Array.from(byArchetype.keys())
 
-  const firstArchetype = availableArchetypes[Math.floor(Math.random() * availableArchetypes.length)]
-  if (!firstArchetype) return []
-  const remainArchetypes = availableArchetypes.filter((it) => it !== firstArchetype)
-  const secondArchetype = remainArchetypes[Math.floor(Math.random() * remainArchetypes.length)]
-  if (!secondArchetype) return []
+  for (let i = archetypes.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const tmp = archetypes[i]
+    archetypes[i] = archetypes[j]!
+    archetypes[j] = tmp!
+  }
 
-  const firstPool = byArchetype.get(firstArchetype) ?? []
-  const secondPool = byArchetype.get(secondArchetype) ?? []
-  const first = firstPool[Math.floor(Math.random() * firstPool.length)]
-  const second = secondPool[Math.floor(Math.random() * secondPool.length)]
-  if (!first || !second) return []
+  for (const arch of archetypes) {
+    if (picks.length >= 3) break
+    const pool = byArchetype.get(arch) ?? []
+    const one = pool[Math.floor(Math.random() * pool.length)]
+    if (!one || usedDef.has(one.id)) continue
+    usedDef.add(one.id)
+    picks.push(one)
+  }
 
-  return [
-    { item: first, tier: 'Gold', star: 1 },
-    { item: second, tier: 'Gold', star: 1 },
-  ]
+  if (picks.length < 3) {
+    const fallback = [...allTierNonNeutral]
+    for (let i = fallback.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      const tmp = fallback[i]
+      fallback[i] = fallback[j]!
+      fallback[j] = tmp!
+    }
+    for (const one of fallback) {
+      if (picks.length >= 3) break
+      if (usedDef.has(one.id)) continue
+      usedDef.add(one.id)
+      picks.push(one)
+    }
+  }
+
+  return picks.slice(0, 3).map((item) => ({ item, tier, star: 1 as const }))
 }
 
 function applyNeutralDiscardEffect(source: ItemDef, stage: Container): boolean {
@@ -7280,10 +7393,10 @@ function applyNeutralDiscardEffect(source: ItemDef, stage: Container): boolean {
     return true
   }
 
-  if (kind === 'class_shift_stone' || kind === 'class_morph_stone') return true
+  if (isNeutralTargetStone(source)) return true
 
   if (kind === 'skill_scroll') {
-    const ok = openSkillDraftFromNeutralScroll(stage)
+    const ok = openSkillDraftFromNeutralScrollByItem(stage, source)
     if (!ok) showHintToast('no_gold_buy', '技能卷轴：当前无法打开技能选择', 0xffb27a)
     return true
   }
@@ -7313,7 +7426,7 @@ function applyNeutralDiscardEffect(source: ItemDef, stage: Container): boolean {
     return true
   }
   if (kind === 'blank_scroll') {
-    const picks = pickCandidateItemsByNames(['技能卷轴', '购物卷轴', '冒险卷轴'])
+    const picks = pickCandidateItemsByNames(['青铜卷轴', '购物卷轴', '冒险卷轴'])
       .filter((item) => {
         const oneKind = getNeutralSpecialKind(item)
         return oneKind ? isNeutralKindRandomAvailable(oneKind) : true
@@ -7333,8 +7446,19 @@ function applyNeutralDiscardEffect(source: ItemDef, stage: Container): boolean {
     return true
   }
 
+  if (kind === 'silver_chest') {
+    const picks = buildTierChestChoiceCandidates('Silver')
+    if (picks.length <= 0) {
+      showHintToast('no_gold_buy', '白银宝箱：当前无可选白银物品', 0xffb27a)
+      return true
+    }
+    const ok = showNeutralChoiceOverlay(stage, '白银宝箱：选择白银物品', picks, undefined, 'special_shop_like')
+    if (!ok) showHintToast('no_gold_buy', '白银宝箱：当前无可选白银物品', 0xffb27a)
+    return true
+  }
+
   if (kind === 'golden_chest') {
-    const picks = buildGoldenChestChoiceCandidates()
+    const picks = buildTierChestChoiceCandidates('Gold')
     if (picks.length <= 0) {
       showHintToast('no_gold_buy', '黄金宝箱：当前无可选黄金物品', 0xffb27a)
       return true
@@ -7344,13 +7468,24 @@ function applyNeutralDiscardEffect(source: ItemDef, stage: Container): boolean {
     return true
   }
 
+  if (kind === 'diamond_chest') {
+    const picks = buildTierChestChoiceCandidates('Diamond')
+    if (picks.length <= 0) {
+      showHintToast('no_gold_buy', '钻石宝箱：当前无可选钻石物品', 0xffb27a)
+      return true
+    }
+    const ok = showNeutralChoiceOverlay(stage, '钻石宝箱：选择钻石物品', picks, undefined, 'special_shop_like')
+    if (!ok) showHintToast('no_gold_buy', '钻石宝箱：当前无可选钻石物品', 0xffb27a)
+    return true
+  }
+
   return false
 }
 
 function buildStoneTransformChoices(
   target: SynthesisTarget,
   rule: 'same' | 'other',
-  opts?: { rollLevel?: number; displayTier?: TierKey; displayStar?: 1 | 2 },
+  opts?: { rollLevel?: number; displayTier?: TierKey; displayStar?: 1 | 2; choiceCount?: number },
 ): NeutralChoiceCandidate[] {
   const targetTier = getInstanceTier(target.instanceId) ?? 'Bronze'
   const targetLevel = getInstanceLevel(target.instanceId)
@@ -7358,27 +7493,47 @@ function buildStoneTransformChoices(
   const rollLevel = Math.max(1, Math.min(7, Math.round(opts?.rollLevel ?? targetLevel))) as 1 | 2 | 3 | 4 | 5 | 6 | 7
   const displayTier = opts?.displayTier ?? targetTier
   const displayStar = opts?.displayStar ?? targetStar
+  const choiceCount = Math.max(1, Math.min(3, Math.round(opts?.choiceCount ?? 2)))
   const poolAllTier = collectArchetypeRuleTransformCandidates(target.instanceId, target.zone, rule)
-  const availableFirstTiers = Array.from(new Set(poolAllTier.map((it) => parseTierName(it.starting_tier) ?? 'Bronze')))
-  const firstTier = availableFirstTiers.length > 0
-    ? pickQualityByPseudoRandomBag(rollLevel, availableFirstTiers)
-    : null
-  const firstPool = firstTier
-    ? poolAllTier.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === firstTier)
-    : []
-  const first = pickRandomElements(firstPool, 1)[0]
-  const poolForSecond = first ? poolAllTier.filter((it) => it.id !== first.id) : [...poolAllTier]
-  const availableSecondTiers = Array.from(new Set(poolForSecond.map((it) => parseTierName(it.starting_tier) ?? 'Bronze')))
-  const secondTier = availableSecondTiers.length > 0
-    ? pickQualityByPseudoRandomBag(rollLevel, availableSecondTiers)
-    : null
-  const secondPool = secondTier
-    ? poolForSecond.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === secondTier)
-    : []
-  const second = pickRandomElements(secondPool, 1)[0]
-  return [first, second]
-    .filter((it): it is ItemDef => !!it)
-    .map((item) => ({ item, tier: displayTier, star: displayStar }))
+  const picked: ItemDef[] = []
+  let remaining = [...poolAllTier]
+  for (let i = 0; i < choiceCount && remaining.length > 0; i++) {
+    const availableTiers = Array.from(new Set(remaining.map((it) => parseTierName(it.starting_tier) ?? 'Bronze')))
+    const selectedTier = availableTiers.length > 0
+      ? pickQualityByPseudoRandomBag(rollLevel, availableTiers)
+      : null
+    const tierPool = selectedTier
+      ? remaining.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === selectedTier)
+      : remaining
+    const one = pickRandomElements(tierPool.length > 0 ? tierPool : remaining, 1)[0]
+    if (!one) break
+    picked.push(one)
+    remaining = remaining.filter((it) => it.id !== one.id)
+  }
+  return picked.map((item) => ({ item, tier: displayTier, star: displayStar }))
+}
+
+function rollStoneTransformCandidate(
+  target: SynthesisTarget,
+  rule: 'same' | 'other',
+  opts?: { rollLevel?: number; displayTier?: TierKey; displayStar?: 1 | 2 },
+): NeutralChoiceCandidate | null {
+  const targetTier = getInstanceTier(target.instanceId) ?? 'Bronze'
+  const targetLevel = getInstanceLevel(target.instanceId)
+  const targetStar = getInstanceTierStar(target.instanceId)
+  const rollLevel = Math.max(1, Math.min(7, Math.round(opts?.rollLevel ?? targetLevel))) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const displayTier = opts?.displayTier ?? targetTier
+  const displayStar = opts?.displayStar ?? targetStar
+  const poolAllTier = collectArchetypeRuleTransformCandidates(target.instanceId, target.zone, rule)
+  if (poolAllTier.length <= 0) return null
+  const availableTiers = Array.from(new Set(poolAllTier.map((it) => parseTierName(it.starting_tier) ?? 'Bronze')))
+  const pickedTier = availableTiers.length > 0 ? pickQualityByPseudoRandomBag(rollLevel, availableTiers) : null
+  const pool = pickedTier
+    ? poolAllTier.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === pickedTier)
+    : poolAllTier
+  const picked = pickRandomElements(pool, 1)[0]
+  if (!picked) return null
+  return { item: picked, tier: displayTier, star: displayStar }
 }
 
 function showLv7MorphSynthesisConfirmOverlay(
@@ -7490,26 +7645,74 @@ function showLv7MorphSynthesisConfirmOverlay(
 
 function applyNeutralStoneTargetEffect(sourceDef: ItemDef, target: SynthesisTarget, stage: Container): boolean {
   const kind = getNeutralSpecialKind(sourceDef)
-  if (kind !== 'class_shift_stone' && kind !== 'class_morph_stone') return false
+  if (!kind) return false
+  if (!isNeutralTargetStone(sourceDef)) return false
   const system = target.zone === 'battle' ? battleSystem : backpackSystem
   const placed = system?.getItem(target.instanceId)
   if (!placed) return false
-  const targetDef = getItemDefById(placed.defId)
-  if (!targetDef || !isValidNeutralStoneTarget(sourceDef, targetDef)) return false
-  const rule = kind === 'class_shift_stone' ? 'other' : 'same'
-  const choices = buildStoneTransformChoices(target, rule)
-  if (choices.length <= 0) {
-    showHintToast('no_gold_buy', kind === 'class_shift_stone' ? '转职石：该目标当前无法转化' : '变化石：该目标当前无法转化', 0xffb27a)
+  const targetLevel = getInstanceLevel(target.instanceId)
+  const minLevelByKind: Partial<Record<NeutralSpecialKind, number>> = {
+    warrior_stone: 2,
+    archer_stone: 2,
+    assassin_stone: 2,
+    gold_morph_stone: 4,
+    diamond_morph_stone: 6,
+  }
+  const minLevel = minLevelByKind[kind] ?? 1
+  if (targetLevel < minLevel) {
+    showHintToast('no_gold_buy', `${sourceDef.name_cn}：该目标等级太低，无法转化`, 0xffb27a)
     return false
   }
-  const title = kind === 'class_shift_stone' ? '选择转职方向' : '选择变化方向'
+  const targetDef = getItemDefById(placed.defId)
+  if (!targetDef || !isValidNeutralStoneTarget(sourceDef, targetDef)) return false
+
+  const targetArch = toSkillArchetype(getPrimaryArchetype(targetDef.tags))
+  if (targetArch !== 'warrior' && targetArch !== 'archer' && targetArch !== 'assassin') return false
+
+  const titleByKind: Partial<Record<NeutralSpecialKind, string>> = {
+    class_shift_stone: '选择转职方向',
+    class_morph_stone: '选择变化方向',
+    warrior_stone: '选择战士方向',
+    archer_stone: '选择弓手方向',
+    assassin_stone: '选择刺客方向',
+    gold_morph_stone: '选择黄金方向',
+    diamond_morph_stone: '选择钻石方向',
+  }
+  const title = titleByKind[kind] ?? '选择变化方向'
+
+  const buildChoices = () => {
+    const all = collectPoolCandidatesByLevel(targetLevel)
+      .filter((one) => normalizeSize(one.item.size) === placed.size)
+      .filter((one) => one.item.id !== placed.defId)
+
+    const filtered = all.filter((one) => {
+      const arch = toSkillArchetype(getPrimaryArchetype(one.item.tags))
+      if (arch !== 'warrior' && arch !== 'archer' && arch !== 'assassin') return false
+      if (kind === 'class_shift_stone') return arch !== targetArch
+      if (kind === 'class_morph_stone') return true
+      if (kind === 'warrior_stone') return arch === 'warrior'
+      if (kind === 'archer_stone') return arch === 'archer'
+      if (kind === 'assassin_stone') return arch === 'assassin'
+      if (kind === 'gold_morph_stone') return parseAvailableTiers(one.item.available_tiers).includes('Gold')
+      if (kind === 'diamond_morph_stone') return parseAvailableTiers(one.item.available_tiers).includes('Diamond')
+      return false
+    })
+    return pickRandomElements(filtered, 3).map((one) => ({ item: one.item, tier: one.tier, star: one.star }))
+  }
+
+  const choices = buildChoices()
+  if (choices.length < 3) {
+    showHintToast('no_gold_buy', `${sourceDef.name_cn}：该目标当前无法转化`, 0xffb27a)
+    return false
+  }
+
   return showNeutralChoiceOverlay(stage, title, choices, (picked) => {
     const ok = transformPlacedItemKeepLevelTo(target.instanceId, target.zone, picked.item, true)
     if (!ok) {
-      showHintToast('no_gold_buy', kind === 'class_shift_stone' ? '转职石：该目标当前无法转化' : '变化石：该目标当前无法转化', 0xffb27a)
+      showHintToast('no_gold_buy', `${sourceDef.name_cn}：该目标当前无法转化`, 0xffb27a)
       return false
     }
-    showHintToast('no_gold_buy', kind === 'class_shift_stone' ? '转职石：已转化目标物品' : '变化石：已转化目标物品', 0x9be5ff)
+    showHintToast('no_gold_buy', `${sourceDef.name_cn}：已转化目标物品`, 0x9be5ff)
     return true
   }, 'special_shop_like')
 }
@@ -7534,11 +7737,10 @@ function tryRunHeroSameItemSynthesisChoice(
   const all = collectPoolCandidatesByLevel(nextLevel)
   const altPool = all.filter((one) => one.item.id !== sourceDefId)
   if (altPool.length <= 0) return false
-  const alt = altPool[Math.floor(Math.random() * altPool.length)]
-  if (!alt) return false
+  const altPicks = pickRandomElements(altPool, 2)
   const choices: NeutralChoiceCandidate[] = [
     { item: sourceDef, tier: upgradeTo.tier, star: upgradeTo.star },
-    { item: alt.item, tier: alt.tier, star: alt.star },
+    ...altPicks.map((one) => ({ item: one.item, tier: one.tier, star: one.star })),
   ]
   const opened = showNeutralChoiceOverlay(stage, '戏法师：选择合成结果', choices, (picked) => {
     if (!consumeSource()) return false
@@ -7561,7 +7763,6 @@ function tryRunHeroSameItemSynthesisChoice(
 }
 
 function tryRunSameArchetypeDiffItemStoneSynthesis(
-  stage: Container,
   sourceInstanceId: string,
   sourceDefId: string,
   sourceTier: TierKey,
@@ -7569,6 +7770,7 @@ function tryRunSameArchetypeDiffItemStoneSynthesis(
   target: SynthesisTarget,
   restore: () => void,
 ): boolean {
+  if (canUseHeroDailyCardReroll()) return false
   const system = target.zone === 'battle' ? battleSystem : backpackSystem
   const targetItem = system?.getItem(target.instanceId)
   if (!targetItem) return false
@@ -7580,42 +7782,30 @@ function tryRunSameArchetypeDiffItemStoneSynthesis(
   const upgradeTo = nextTierLevel(sourceTier, sourceStar)
   if (!upgradeTo) return false
   const nextLevel = Math.max(1, Math.min(7, tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
-  const buildChoices = () => buildStoneTransformChoices(target, 'other', {
+  const rolled = rollStoneTransformCandidate(target, 'other', {
     rollLevel: nextLevel,
     displayTier: upgradeTo.tier,
     displayStar: upgradeTo.star,
   })
-  const choices = buildChoices()
-  if (choices.length <= 0) {
+  if (!rolled) {
     showHintToast('backpack_full_buy', '同职业合成：当前无可用候选', 0xffb27a)
     restore()
     return true
   }
-  const opened = showNeutralChoiceOverlay(stage, '选择合成方向', choices, (picked) => {
-    const ok = transformPlacedItemKeepLevelTo(target.instanceId, target.zone, picked.item, true)
-    if (!ok) {
-      showHintToast('backpack_full_buy', '同职业合成：转化失败', 0xff8f8f)
-      return false
-    }
-    setInstanceQualityLevel(target.instanceId, picked.item.id, parseTierName(picked.item.starting_tier) ?? 'Bronze', nextLevel)
-    applyInstanceTierVisuals()
-    syncShopOwnedTierRules()
-    refreshUpgradeHints()
-    removeInstanceMeta(sourceInstanceId)
-    grantSynthesisExp(1, { instanceId: target.instanceId, zone: target.zone })
-    showHintToast('no_gold_buy', '同职业合成：已选择转化结果', 0x9be5ff)
-    refreshShopUI()
-    return true
-  }, 'special_shop_like', {
-    canReroll: () => canUseHeroDailyCardReroll(),
-    onReroll: () => buildChoices(),
-    onRerollUsed: () => markHeroDailyCardRerollUsed(),
-    rerollBtnText: '占卜重选',
-  })
-  if (!opened) {
-    showHintToast('backpack_full_buy', '同职业合成：当前无可用候选', 0xffb27a)
+  const ok = transformPlacedItemKeepLevelTo(target.instanceId, target.zone, rolled.item, true)
+  if (!ok) {
+    showHintToast('backpack_full_buy', '同职业合成：转化失败', 0xff8f8f)
     restore()
+    return true
   }
+  setInstanceQualityLevel(target.instanceId, rolled.item.id, parseTierName(rolled.item.starting_tier) ?? 'Bronze', nextLevel)
+  applyInstanceTierVisuals()
+  syncShopOwnedTierRules()
+  refreshUpgradeHints()
+  removeInstanceMeta(sourceInstanceId)
+  grantSynthesisExp(1, { instanceId: target.instanceId, zone: target.zone })
+  showHintToast('no_gold_buy', `同职业合成：随机转化为${rolled.item.name_cn}`, 0x9be5ff)
+  refreshShopUI()
   return true
 }
 
@@ -7881,7 +8071,7 @@ function applyEventEffect(event: EventChoice, fromTest = false): boolean {
     return sold > 0
   }
   if (event.id === 'event20') {
-    const gain = day + 3
+    const gain = day * 4
     shopManager.gold += gain
     showHintToast('no_gold_buy', `${toastPrefix}获得${gain}金币`, 0xa8f0b6)
     return true
@@ -7891,7 +8081,7 @@ function applyEventEffect(event: EventChoice, fromTest = false): boolean {
     const all = [...backpackSystem.getAllItems()]
     if (all.length <= 0) return false
     for (const one of all) removePlacedItemById(one.instanceId, 'backpack')
-    const gain = (day + 3) * 3
+    const gain = day * 8
     shopManager.gold += gain
     showHintToast('no_gold_buy', `${toastPrefix}清空背包并获得${gain}金币`, 0xa8f0b6)
     return true
@@ -7949,7 +8139,7 @@ function applyEventEffect(event: EventChoice, fromTest = false): boolean {
     return true
   }
   if (event.id === 'event28') {
-    const gain = (day + 3) * 5
+    const gain = day * 12
     schedulePendingGold(day + 3, gain)
     showHintToast('no_gold_buy', `${toastPrefix}已预约3天后获得${gain}金币`, 0xa8f0b6)
     return true
@@ -8134,13 +8324,13 @@ function resolveEventDescText(event: EventChoice, detailed: boolean): string {
   const useDetailed = detailed || !shouldShowSimpleDescriptions()
   const raw = useDetailed ? event.detailDesc : event.shortDesc
   if (event.id === 'event20') {
-    return raw.replace(/x/g, String(currentDay + 3))
+    return raw.replace(/x/g, String(currentDay * 4))
   }
   if (event.id === 'event21') {
-    return raw.replace(/x/g, String((currentDay + 3) * 3))
+    return raw.replace(/x/g, String(currentDay * 8))
   }
   if (event.id === 'event28') {
-    const gain = (currentDay + 3) * 5
+    const gain = currentDay * 12
     return `3天后获得${gain}金币`
   }
   return raw
@@ -8344,6 +8534,26 @@ function pickSkillChoicesNoOverlap(baseTier: SkillTier, day: number, blockedIds:
     if (!hasOverlap) return next
   }
   return []
+}
+
+function pickSkillChoicesExactTier(baseTier: SkillTier, blockedIds?: Set<string>): SkillPick[] {
+  const alreadyPicked = new Set(pickedSkills.map((s) => s.id))
+  const blocked = blockedIds ?? new Set<string>()
+  const pool = makeSkillPoolByTier(baseTier).filter((s) => !alreadyPicked.has(s.id) && !blocked.has(s.id))
+  if (pool.length <= 0) return []
+  const shuffled = [...pool]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const tmp = shuffled[i]
+    shuffled[i] = shuffled[j]!
+    shuffled[j] = tmp!
+  }
+  const picks: SkillPick[] = []
+  for (const one of shuffled) {
+    if (picks.length >= 2) break
+    picks.push(one)
+  }
+  return picks
 }
 
 function layoutSkillIconBar(): void {
@@ -9329,6 +9539,7 @@ function openSpecialShopOverlay(stage: Container): void {
       icon.y = 20
       icon.alpha = 0
       card.addChild(icon)
+      addArchetypeCornerBadge(card, candidate.item, cardW, icon.y)
       void Assets.load<Texture>(getItemIconUrl(candidate.item.id)).then((tex) => {
         icon.texture = tex
         icon.alpha = offer.purchased ? 0.35 : 1
@@ -10043,7 +10254,9 @@ function ensureSkillDraftSelection(stage: Container): void {
     if (!isSkillDraftRerollEnabled()) return
     if (draft?.rerolled === true) return
     const blocked = new Set(shownChoices.map((it) => it.id))
-    const nextChoices = pickSkillChoicesNoOverlap(draft!.tier, currentDay, blocked)
+    const nextChoices = draft?.fixedTier
+      ? pickSkillChoicesExactTier(draft.tier, blocked)
+      : pickSkillChoicesNoOverlap(draft!.tier, currentDay, blocked)
     if (nextChoices.length < 2) {
       showHintToast('no_gold_refresh', '可刷新候选不足', 0xff8f8f)
       return
@@ -10053,6 +10266,7 @@ function ensureSkillDraftSelection(stage: Container): void {
       tier: draft!.tier,
       choices: nextChoices,
       rerolled: true,
+      fixedTier: draft?.fixedTier === true,
     }
     closeSkillDraftOverlay()
     refreshShopUI()
@@ -11185,7 +11399,7 @@ function grantHeroPeriodicRewardOrQueue(nameCn: string, source: string): boolean
 function grantHeroStartDayEffectsIfNeeded(): void {
   if (!shopManager) return
   if (isSelectedHero('hero2') && !heroTycoonGoldGrantedDays.has(currentDay)) {
-    const bonus = Math.max(0, currentDay + 1)
+    const bonus = Math.max(0, currentDay * 3)
     if (bonus > 0) {
       shopManager.gold += bonus
       heroTycoonGoldGrantedDays.add(currentDay)
@@ -11197,7 +11411,7 @@ function grantHeroStartDayEffectsIfNeeded(): void {
 function grantHeroPeriodicEffectsOnNewDay(day: number): void {
   if (!shopManager) return
   if (isSelectedHero('hero2') && !heroTycoonGoldGrantedDays.has(day)) {
-    const bonus = Math.max(0, day + 1)
+    const bonus = Math.max(0, day * 3)
     if (bonus > 0) {
       shopManager.gold += bonus
       heroTycoonGoldGrantedDays.add(day)
@@ -11224,11 +11438,14 @@ function grantHeroPeriodicEffectsOnNewDay(day: number): void {
 function grantSilverDailyGoldBonusesOnNewDay(): void {
   if (!shopManager) return
   if (hasPickedSkill('skill29')) {
-    shopManager.gold += 5
-    showHintToast('no_gold_buy', '投资达人：额外获得5金币', 0x9be5ff)
+    const bonus = Math.max(0, currentDay * 2)
+    if (bonus > 0) {
+      shopManager.gold += bonus
+      showHintToast('no_gold_buy', `投资达人：额外获得${bonus}金币`, 0x9be5ff)
+    }
   }
   if (hasPickedSkill('skill34')) {
-    const interest = Math.min(10, Math.max(0, Math.floor(shopManager.gold / 5)))
+    const interest = Math.min(30, Math.max(0, Math.floor(shopManager.gold / 5)))
     if (interest > 0) {
       shopManager.gold += interest
       showHintToast('no_gold_buy', `利息循环：获得${interest}金币`, 0xa8f0b6)
@@ -12483,7 +12700,9 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
           return
         }
         playSynthesisFlashEffect(stage, synth)
-        refreshShopUI()
+        if (!tryRunHeroCrossSynthesisReroll(stage, synth)) {
+          refreshShopUI()
+        }
       }
       if (isCrossIdSynthesisConfirmEnabled()) {
         showCrossSynthesisConfirmOverlay(
@@ -13900,16 +14119,23 @@ export const ShopScene: Scene = {
       const item = getAllItems().find(i => i.id === defId)
       if (!item) return false
 
-      // 1) 拖到下方丢弃区域：直接丢弃（若命中任意格子候选，优先走落位/换位）
-      if (isOverGridDragSellArea(anchorGx, anchorGy) && !isOverAnyGridDropTarget(anchorGx, anchorGy, size)) {
-        const sourceDef = getItemDefById(defId)
-        const sourceLevel = getInstanceLevel(instanceId)
+      const sourceDef = getItemDefById(defId)
+      const sourceLevel = getInstanceLevel(instanceId)
+      const overSellArea = isOverGridDragSellArea(anchorGx, anchorGy)
+      const overAnyDropTarget = isOverAnyGridDropTarget(anchorGx, anchorGy, size)
+      const forceDiscardForNeutralStone = !!sourceDef && isNeutralTargetStone(sourceDef) && overSellArea
+
+      // 1) 拖到下方丢弃区域：直接丢弃
+      // 普通物品：未命中任意格子候选时才丢弃；
+      // 变化石/转职石：命中丢弃区时优先允许丢弃，避免“无目标时无法丢弃”。
+      if ((overSellArea && !overAnyDropTarget) || forceDiscardForNeutralStone) {
         if (sourceDef && isNeutralItemDef(sourceDef)) {
           const ok = applyNeutralDiscardEffect(sourceDef, stage)
           if (!ok) return false
         }
         homeSystem.remove(instanceId)
         removeInstanceMeta(instanceId)
+        showHintToast('no_gold_buy', `已丢弃：${sourceDef?.name_cn ?? item.name_cn}`, 0x9be5ff)
         if (sourceDef && sourceLevel) {
           grantHeroDiscardSameLevelReward(sourceDef.id, sourceLevel)
         }
@@ -13918,7 +14144,6 @@ export const ShopScene: Scene = {
         return true
       }
 
-      const sourceDef = getItemDefById(defId)
       if (sourceDef && isNeutralTargetStone(sourceDef)) {
         const target = findNeutralStoneTargetWithDragProbe(sourceDef, anchorGx, anchorGy, size)
         if (!target) return false
@@ -14036,7 +14261,6 @@ export const ShopScene: Scene = {
               refreshShopUI()
             }
             if (tryRunSameArchetypeDiffItemStoneSynthesis(
-              stage,
               instanceId,
               defId,
               fromTier,

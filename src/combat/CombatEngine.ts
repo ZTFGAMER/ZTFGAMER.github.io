@@ -1265,7 +1265,7 @@ export class CombatEngine {
         this[execBonus] += trophyWins * 15
       }
       if (this.hasSkill(side, 'skill95') && goldAtStart > 0) {
-        this[execBonus] += goldAtStart
+        this[execBonus] += Math.floor(goldAtStart / 3)
       }
 
       if (this.hasSkill(side, 'skill33')) {

@@ -278,7 +278,7 @@
       "tier": "silver",
       "archetype": "utility",
       "summary": "每天开始获得金币。",
-      "detail": "每天开始额外获得5金币。",
+      "detail": "每天开始额外获得天数*2的金币。",
       "effect": {
         "scope": "run",
         "trigger": "on_new_day_enter_shop",
@@ -331,7 +331,7 @@
       "tier": "silver",
       "archetype": "utility",
       "summary": "获得利息。",
-      "detail": "每天开始每拥有5金币，获得1金币；最多获得10金币。",
+      "detail": "每天开始每拥有5金币，获得1金币；最多获得30金币。",
       "effect": {
         "scope": "run",
         "trigger": "on_new_day_enter_shop",
@@ -339,7 +339,7 @@
         "target": "player_gold",
         "per_gold": 5,
         "gain_per_step": 1,
-        "max_gain": 10,
+        "max_gain": 30,
         "max_triggers_per_day": 1
       }
     },

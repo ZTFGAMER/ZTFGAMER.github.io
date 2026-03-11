@@ -181,7 +181,7 @@
       "tier": "gold",
       "archetype": "utility",
       "summary": "金币越多伤害越高",
-      "detail": "战斗开始时，每持有1金币所有物品伤害+1。"
+      "detail": "战斗开始时，每持有3金币所有物品伤害+1。"
     }
   ]
 }

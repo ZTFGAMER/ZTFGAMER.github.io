@@ -5,8 +5,8 @@
     "name_cn": "短剑",
     "type": "Item / 物品",
     "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver",
     "heroes": "",
     "tags": "战士",
     "position": "",
@@ -36,8 +36,8 @@
     "name_cn": "圆盾",
     "type": "Item / 物品",
     "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
     "heroes": "",
     "tags": "战士",
     "position": "",
@@ -609,8 +609,8 @@
     "name_cn": "升级石",
     "type": "Item / 物品",
     "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver",
     "heroes": "",
     "tags": "中立",
     "position": "",
@@ -633,8 +633,8 @@
     "name_cn": "转职石",
     "type": "Item / 物品",
     "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
     "heroes": "",
     "tags": "中立",
     "position": "",
@@ -649,7 +649,7 @@
     "icon": "item26",
     "attack_style": "不飞行",
     "simple_desc": "将物品转化为其他职业",
-    "simple_desc_tiered": "拖动到特定物品上，将该物品转化为其他职业的物品"
+    "simple_desc_tiered": "拖动到物品上，将该物品转化为其他职业的物品"
   },
   {
     "id": "neutral_item_27_class_morph_stone",
@@ -657,8 +657,8 @@
     "name_cn": "变化石",
     "type": "Item / 物品",
     "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
     "heroes": "",
     "tags": "中立",
     "position": "",
@@ -667,18 +667,138 @@
     "skills": [
       {
         "en": "",
-        "cn": "拖动到目标物品上：将其转化为本职业其他同等级物品。"
+        "cn": "拖动到目标物品上：将其转化为随机同等级其他物品。"
       }
     ],
-    "icon": "item27",
+    "icon": "item67",
     "attack_style": "不飞行",
-    "simple_desc": "将物品转化为本职业其他物品",
-    "simple_desc_tiered": "拖动到特定物品上，将该物品转化为本职业其他物品"
+    "simple_desc": "将物品转化为随机物品",
+    "simple_desc_tiered": "拖动到物品上，将该物品转化为随机同等级其他物品"
+  },
+  {
+    "id": "item64",
+    "name_en": "",
+    "name_cn": "战士石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "拖动到目标物品上：从3个战士同等级其他物品中选择1个。"
+      }
+    ],
+    "icon": "item64",
+    "attack_style": "不飞行",
+    "simple_desc": "将物品转化为战士物品",
+    "simple_desc_tiered": "拖动到物品上，将该物品转化为战士同等级其他物品"
+  },
+  {
+    "id": "item65",
+    "name_en": "",
+    "name_cn": "弓手石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "拖动到目标物品上：从3个弓手同等级其他物品中选择1个。"
+      }
+    ],
+    "icon": "item65",
+    "attack_style": "不飞行",
+    "simple_desc": "将物品转化为弓手物品",
+    "simple_desc_tiered": "拖动到物品上，将该物品转化为弓手同等级其他物品"
+  },
+  {
+    "id": "item66",
+    "name_en": "",
+    "name_cn": "刺客石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "拖动到目标物品上：从3个刺客同等级其他物品中选择1个。"
+      }
+    ],
+    "icon": "item66",
+    "attack_style": "不飞行",
+    "simple_desc": "将物品转化为刺客物品",
+    "simple_desc_tiered": "拖动到物品上，将该物品转化为刺客同等级其他物品"
+  },
+  {
+    "id": "item68",
+    "name_en": "",
+    "name_cn": "点金石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "拖动到目标物品上：从3个随机黄金同等级其他物品中选择1个。"
+      }
+    ],
+    "icon": "item68",
+    "attack_style": "不飞行",
+    "simple_desc": "将物品转化为随机黄金物品",
+    "simple_desc_tiered": "拖动到物品上，将该物品转化为随机黄金同等级其他物品"
+  },
+  {
+    "id": "item69",
+    "name_en": "",
+    "name_cn": "真钻石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "拖动到目标物品上：从3个随机钻石同等级其他物品中选择1个。"
+      }
+    ],
+    "icon": "item69",
+    "attack_style": "不飞行",
+    "simple_desc": "将物品转化为随机钻石物品",
+    "simple_desc_tiered": "拖动到物品上，将该物品转化为随机钻石同等级其他物品"
   },
   {
     "id": "neutral_item_28_skill_scroll",
     "name_en": "",
-    "name_cn": "技能卷轴",
+    "name_cn": "青铜卷轴",
     "type": "Item / 物品",
     "size": "Small / 小型",
     "starting_tier": "Bronze / 青铜",
@@ -691,13 +811,13 @@
     "skills": [
       {
         "en": "",
-        "cn": "丢弃时选择一个技能。"
+        "cn": "丢弃时选择一个青铜级技能。"
       }
     ],
-    "icon": "item28",
+    "icon": "item61",
     "attack_style": "不飞行",
-    "simple_desc": "选择一个技能",
-    "simple_desc_tiered": "丢弃时选择一个技能"
+    "simple_desc": "选择一个青铜级技能",
+    "simple_desc_tiered": "丢弃时选择一个青铜级技能"
   },
   {
     "id": "neutral_item_29_shop_scroll",
@@ -705,8 +825,8 @@
     "name_cn": "购物卷轴",
     "type": "Item / 物品",
     "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
     "heroes": "",
     "tags": "中立",
     "position": "",
@@ -729,8 +849,8 @@
     "name_cn": "冒险卷轴",
     "type": "Item / 物品",
     "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver",
     "heroes": "",
     "tags": "中立",
     "position": "",
@@ -753,8 +873,8 @@
     "name_cn": "原石",
     "type": "Item / 物品",
     "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
     "heroes": "",
     "tags": "中立",
     "position": "",
@@ -777,8 +897,8 @@
     "name_cn": "勋章",
     "type": "Item / 物品",
     "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver",
     "heroes": "",
     "tags": "中立",
     "position": "",
@@ -801,8 +921,8 @@
     "name_cn": "空白卷轴",
     "type": "Item / 物品",
     "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
     "heroes": "",
     "tags": "中立",
     "position": "",
@@ -1068,17 +1188,17 @@
     "skills": [
       {
         "en": "",
-        "cn": "弹药:3。"
+        "cn": "攻击造成300|450|680|1020|1530|2300伤害，弹药:3。"
       },
       {
         "en": "",
-        "cn": "为其他物品补充2|3|4|5|6|7发弹药；弹药耗尽时摧毁自身造成300|450|680|1020|1530|2300伤害。"
+        "cn": "为其他物品补充2|3|4|5|6|7发弹药；弹药耗尽时摧毁自身造成伤害。"
       }
     ],
     "icon": "item42",
     "attack_style": "旋转飞行",
     "simple_desc": "为其他物品补充弹药，弹药耗尽时爆炸",
-    "simple_desc_tiered": "为其他物品补充2|3|4|5|6|7发弹药；弹药耗尽时摧毁自身造成300|450|680|1020|1530|2300伤害"
+    "simple_desc_tiered": "为其他物品补充2|3|4|5|6|7发弹药；弹药耗尽时摧毁自身造成伤害"
   },
   {
     "id": "16b10f4c-7231-4c60-a987-640f2ab463ad",
@@ -1502,8 +1622,8 @@
     "name_cn": "黄金宝箱",
     "type": "Item / 物品",
     "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
     "heroes": "",
     "tags": "中立",
     "position": "",
@@ -1516,12 +1636,116 @@
       },
       {
         "en": "",
-        "cn": "丢弃时从2个不同职业的黄金物品中选择1个。"
+        "cn": "丢弃时选择1个黄金Lv4物品。"
       }
     ],
     "icon": "item58",
     "attack_style": "不飞行",
     "simple_desc": "选择一个黄金物品",
-    "simple_desc_tiered": "丢弃时从2个不同职业的黄金物品中选择1个"
+    "simple_desc_tiered": "丢弃时选择1个黄金Lv4物品"
+  },
+  {
+    "id": "item59",
+    "name_en": "",
+    "name_cn": "白银宝箱",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "选择一个白银物品。"
+      },
+      {
+        "en": "",
+        "cn": "丢弃时选择1个白银Lv2物品。"
+      }
+    ],
+    "icon": "item59",
+    "attack_style": "不飞行",
+    "simple_desc": "选择一个白银物品",
+    "simple_desc_tiered": "丢弃时选择1个白银Lv2物品"
+  },
+  {
+    "id": "item60",
+    "name_en": "",
+    "name_cn": "钻石宝箱",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "选择一个钻石物品。"
+      },
+      {
+        "en": "",
+        "cn": "丢弃时选择1个钻石Lv6物品。"
+      }
+    ],
+    "icon": "item60",
+    "attack_style": "不飞行",
+    "simple_desc": "选择一个钻石物品",
+    "simple_desc_tiered": "丢弃时选择1个钻石Lv6物品"
+  },
+  {
+    "id": "item62",
+    "name_en": "",
+    "name_cn": "白银卷轴",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Silver / 白银",
+    "available_tiers": "Silver",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "丢弃时选择一个白银级技能。"
+      }
+    ],
+    "icon": "item62",
+    "attack_style": "不飞行",
+    "simple_desc": "选择一个白银级技能",
+    "simple_desc_tiered": "丢弃时选择一个白银级技能"
+  },
+  {
+    "id": "item63",
+    "name_en": "",
+    "name_cn": "黄金卷轴",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Gold / 黄金",
+    "available_tiers": "Gold",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "丢弃时选择一个黄金级技能。"
+      }
+    ],
+    "icon": "item63",
+    "attack_style": "不飞行",
+    "simple_desc": "选择一个黄金级技能",
+    "simple_desc_tiered": "丢弃时选择一个黄金级技能"
   }
 ]
