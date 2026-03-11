@@ -126,6 +126,9 @@ export interface GameConfig {
   runRules?: {
     trophyWinsToFinalVictory?: number
     muteLogsInMobileRelease?: boolean
+    playerExpToNextLevel?: number[]
+    playerMaxLifeByLevel?: number[]
+    playerRoundDamageByLevel?: number[]
   }
   skillSystem?: {
     dailyDraftPlan?: Array<{

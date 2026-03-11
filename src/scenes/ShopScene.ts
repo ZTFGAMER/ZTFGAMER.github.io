@@ -10,7 +10,16 @@
 import { SceneManager, type Scene } from './SceneManager'
 import { getApp } from '@/core/AppContext'
 import { getConfig, getAllItems } from '@/core/DataLoader'
-import { clearCurrentRunState, getLifeState, getWinTrophyState, resetLifeState, setLifeState, SHOP_STATE_STORAGE_KEY } from '@/core/RunState'
+import {
+  clearCurrentRunState,
+  getLifeState,
+  getPlayerProgressState,
+  getWinTrophyState,
+  resetLifeState,
+  setLifeState,
+  setPlayerProgressState,
+  SHOP_STATE_STORAGE_KEY,
+} from '@/core/RunState'
 import { GridSystem }        from '@/grid/GridSystem'
 import type { ItemSizeNorm, PlacedItem } from '@/grid/GridSystem'
 import { GridZone, CELL_SIZE, CELL_HEIGHT } from '@/grid/GridZone'
@@ -75,6 +84,12 @@ let showingBackpack = true
 let goldText:       Text      | null = null
 let livesText:      Text      | null = null
 let trophyText:     Text      | null = null
+let playerStatusCon: Container | null = null
+let playerStatusAvatar: Sprite | null = null
+let playerStatusLvText: Text | null = null
+let playerStatusExpBg: Graphics | null = null
+let playerStatusExpBar: Graphics | null = null
+let playerStatusAvatarUrl = ''
 let miniMapGfx:     Graphics  | null = null
 let miniMapCon:     Container | null = null
 let bpBtnHandle:      CircleBtnHandle | null = null
@@ -287,6 +302,9 @@ type SavedShopState = {
   neutralObtainedCounts?: Array<{ kind: string; count: number }>
   neutralRandomCategoryPool?: Array<'stone' | 'scroll' | 'medal'>
   neutralDailyRollCounts?: Array<{ day: number; count: number }>
+  levelRewardCategoryPool?: Array<'stone' | 'scroll' | 'medal'>
+  pendingLevelRewards?: string[]
+  levelRewardObtainedCounts?: Array<{ kind: string; count: number }>
 }
 
 let pendingBattleTransition = false
@@ -417,6 +435,10 @@ let skill30NextBuyFree = false
 let quickBuyNoSynthRefreshStreak = 0
 let quickBuyNeutralMissStreak = 0
 let neutralRandomCategoryPool: Array<'stone' | 'scroll' | 'medal'> = []
+// 升级奖励状态（持久化）
+let levelRewardCategoryPool: Array<'stone' | 'scroll' | 'medal'> = []
+let pendingLevelRewards: string[] = []
+const levelRewardObtainedByKind = new Map<string, number>()
 let nextQuickBuyOffer: {
   itemId: string
   tier: TierKey
@@ -827,6 +849,7 @@ function applyPhaseUiVisibility(): void {
   if (refreshCostText) refreshCostText.visible = inShop
   if (goldText) goldText.visible = inShop
   if (livesText) livesText.visible = inShop
+  if (playerStatusCon) playerStatusCon.visible = inShop && !PvpContext.isActive()
   if (miniMapCon) miniMapCon.visible = inShop
   if (dayDebugCon) dayDebugCon.visible = inShop
   if (sellPopup) sellPopup.visible = inShop && currentSelection.kind !== 'none'
@@ -864,6 +887,9 @@ function buildBattleSnapshot(skillBarMoveStartAtMs?: number): BattleSnapshotBund
   const playerBackpackItemCount = backpackSystem?.getAllItems().length ?? 0
   const trophyTarget = getConfig().runRules?.trophyWinsToFinalVictory ?? 10
   const trophy = getWinTrophyState(trophyTarget)
+  const progress = getPlayerProgressState()
+  const playerLevel = clampPlayerLevel(progress.level)
+  const playerBattleHp = getPlayerMaxLifeByLevel(playerLevel)
   return {
     day: currentDay,
     activeColCount: snap.activeColCount,
@@ -872,6 +898,7 @@ function buildBattleSnapshot(skillBarMoveStartAtMs?: number): BattleSnapshotBund
     playerBackpackItemCount,
     playerGold: Math.max(0, Math.round(shopManager?.gold ?? 0)),
     playerTrophyWins: Math.max(0, Math.round(trophy.wins)),
+    playerBattleHp,
     ownerSkillIds: pickedSkills.map((s) => s.id),
     entities: snap.entities.map((it) => ({
       ...it,
@@ -976,6 +1003,9 @@ function captureShopState(): SavedShopState | null {
     neutralObtainedCounts: Array.from(neutralObtainedCountByKind.entries()).map(([kind, count]) => ({ kind, count })),
     neutralRandomCategoryPool,
     neutralDailyRollCounts: Array.from(neutralDailyRollCountByDay.entries()).map(([day, count]) => ({ day, count })),
+    levelRewardCategoryPool: [...levelRewardCategoryPool],
+    pendingLevelRewards: [...pendingLevelRewards],
+    levelRewardObtainedCounts: Array.from(levelRewardObtainedByKind.entries()).map(([kind, count]) => ({ kind, count })),
   }
 }
 
@@ -1060,6 +1090,7 @@ function applySavedShopState(state: SavedShopState): void {
   }
   guaranteedNewUnlockTriggeredLevels.clear()
   QUALITY_PSEUDO_RANDOM_STATE.clear()
+  QUICK_BUY_LEVEL_PSEUDO_RANDOM_STATE.clear()
   const savedGuaranteed = Array.isArray(state.guaranteedNewUnlockTriggeredLevels)
     ? state.guaranteedNewUnlockTriggeredLevels.filter((lv): lv is number => Number.isFinite(lv)).map((lv) => Math.round(lv))
     : []
@@ -1094,6 +1125,20 @@ function applySavedShopState(state: SavedShopState): void {
     const count = Math.max(0, Math.round(Number(row?.count) || 0))
     if (day <= 0 || count <= 0) continue
     neutralDailyRollCountByDay.set(day, count)
+  }
+  // 升级奖励持久化恢复
+  levelRewardCategoryPool = Array.isArray(state.levelRewardCategoryPool)
+    ? state.levelRewardCategoryPool.filter((v): v is 'stone' | 'scroll' | 'medal' => v === 'stone' || v === 'scroll' || v === 'medal')
+    : []
+  pendingLevelRewards = Array.isArray(state.pendingLevelRewards)
+    ? state.pendingLevelRewards.filter((v): v is string => typeof v === 'string' && v.length > 0)
+    : []
+  levelRewardObtainedByKind.clear()
+  for (const row of state.levelRewardObtainedCounts ?? []) {
+    const kind = String(row?.kind ?? '').trim()
+    const count = Math.max(0, Math.round(Number(row?.count) || 0))
+    if (!kind || count <= 0) continue
+    levelRewardObtainedByKind.set(kind, count)
   }
   skill15NextBuyDiscountPrepared = state.skill15NextBuyDiscountPrepared === true
   skill15NextBuyDiscount = state.skill15NextBuyDiscount === true
@@ -1298,6 +1343,32 @@ function isCrossIdSynthesisConfirmEnabled(): boolean {
 
 function isBattleZoneNoSynthesisEnabled(): boolean {
   return getDebugCfg('gameplayBattleZoneNoSynthesis') >= 0.5
+}
+
+function isSameArchetypeDiffItemStoneSynthesisEnabled(): boolean {
+  return getDebugCfg('gameplaySameArchetypeDiffItemStoneSynthesis') >= 0.5
+}
+
+function canUseSameArchetypeDiffItemStoneSynthesis(
+  sourceDefId: string,
+  targetDefId: string,
+  sourceTier: TierKey,
+  sourceStar: 1 | 2,
+  targetTier: TierKey,
+  targetStar: 1 | 2,
+): boolean {
+  if (!isSameArchetypeDiffItemStoneSynthesisEnabled()) return false
+  if (sourceDefId === targetDefId) return false
+  if (sourceTier !== targetTier || sourceStar !== targetStar) return false
+  if (!nextTierLevel(sourceTier, sourceStar)) return false
+  const sourceDef = getItemDefById(sourceDefId)
+  const targetDef = getItemDefById(targetDefId)
+  if (!sourceDef || !targetDef) return false
+  if (isNeutralItemDef(sourceDef) || isNeutralItemDef(targetDef)) return false
+  const sourceArch = getPrimaryArchetype(sourceDef.tags)
+  const targetArch = getPrimaryArchetype(targetDef.tags)
+  if (!sourceArch || !targetArch) return false
+  return sourceArch === targetArch
 }
 
 function hasPickedSkill(skillId: string): boolean {
@@ -1631,6 +1702,7 @@ function executeSpecialShopBulkSell(): void {
     refreshShopUI()
     showHintToast('no_gold_buy', `已批量出售${sold}件，获得${Math.round(total)}G`, 0xa8f0b6)
     saveShopStateToStorage(captureShopState())
+    checkAndPopPendingRewards()
   }
 }
 void getSpecialBulkSellTotalPrice
@@ -2264,7 +2336,7 @@ function openSettingsOverlay(): void {
   overlay.addChild(panel)
 
   const panelW = 612
-  const panelH = 860
+  const panelH = 980
   const panelBg = new Graphics()
   panelBg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 24)
   panelBg.fill({ color: 0x121c33, alpha: 0.98 })
@@ -2293,12 +2365,13 @@ function openSettingsOverlay(): void {
   panel.addChild(subtitle)
 
   type ToggleRow = {
-    key: 'gameplayCrossSynthesisConfirm' | 'gameplayShowSpeedButton' | 'gameplayBattleZoneNoSynthesis'
+    key: 'gameplayCrossSynthesisConfirm' | 'gameplayShowSpeedButton' | 'gameplayBattleZoneNoSynthesis' | 'gameplaySameArchetypeDiffItemStoneSynthesis'
     label: string
   }
   const rows: ToggleRow[] = [
     { key: 'gameplayBattleZoneNoSynthesis', label: '上阵区禁止合成' },
     { key: 'gameplayCrossSynthesisConfirm', label: '合成二次弹窗' },
+    { key: 'gameplaySameArchetypeDiffItemStoneSynthesis', label: '同职异物合成选转化' },
     { key: 'gameplayShowSpeedButton', label: '战斗加速按钮' },
   ]
 
@@ -2584,6 +2657,50 @@ function getMinTierDropWeight(item: ItemDef, resultTier: TierKey, resultStar: 1 
 }
 
 const QUALITY_PSEUDO_RANDOM_STATE = new Map<string, { bag: TierKey[]; cursor: number }>()
+const QUICK_BUY_LEVEL_PSEUDO_RANDOM_STATE = new Map<string, { bag: Array<1 | 2 | 3 | 4 | 5 | 6 | 7>; cursor: number }>()
+
+function pickQuickBuyLevelByPseudoRandomBucket(
+  effectiveWeights: [number, number, number, number, number, number, number],
+): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+  const active = effectiveWeights
+    .map((w, i) => ({ level: (i + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7, weight: Math.max(0, Number(w || 0)) }))
+    .filter((it) => it.weight > 0)
+
+  if (active.length <= 0) return 1
+  if (active.length === 1) return active[0]!.level
+
+  const nonZeroLevels = active.map((it) => it.level)
+  const low = Math.min(...nonZeroLevels) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const high = Math.max(...nonZeroLevels) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const lowW = active.find((it) => it.level === low)?.weight ?? 0
+  const highW = active.find((it) => it.level === high)?.weight ?? 0
+  const isTwoLevelFiftyFifty = active.length === 2 && Math.abs(lowW - highW) <= 1e-6
+  if (isTwoLevelFiftyFifty) {
+    const key = `50_50:${low}-${high}`
+    let state = QUICK_BUY_LEVEL_PSEUDO_RANDOM_STATE.get(key)
+    if (!state || state.cursor >= state.bag.length) {
+      state = { bag: [low, low, high, high], cursor: 0 }
+      QUICK_BUY_LEVEL_PSEUDO_RANDOM_STATE.set(key, state)
+    }
+    const picked = state.bag[state.cursor] ?? low
+    state.cursor += 1
+    return picked
+  }
+
+  let totalWeight = 0
+  for (let i = 0; i < effectiveWeights.length; i++) totalWeight += Math.max(0, effectiveWeights[i] ?? 0)
+  if (totalWeight <= 0) return 1
+  let levelRoll = Math.random() * totalWeight
+  let pickedLevel: 1 | 2 | 3 | 4 | 5 | 6 | 7 = 1
+  for (let i = 0; i < effectiveWeights.length; i++) {
+    levelRoll -= effectiveWeights[i] ?? 0
+    if (levelRoll <= 0) {
+      pickedLevel = (i + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+      break
+    }
+  }
+  return pickedLevel
+}
 
 function pickCrossSynthesisDesiredMinTier(resultTier: TierKey, resultStar: 1 | 2, available?: TierKey[]): TierKey {
   const level = Math.max(1, Math.min(7, tierStarLevelIndex(resultTier, resultStar) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
@@ -2716,6 +2833,9 @@ function seedInitialUnlockPoolByStarterClass(_pick: StarterClass): void {
   neutralObtainedCountByKind.clear()
   neutralRandomCategoryPool = []
   neutralDailyRollCountByDay.clear()
+  levelRewardCategoryPool = []
+  pendingLevelRewards = []
+  levelRewardObtainedByKind.clear()
   resetSkill15NextBuyDiscountState()
   resetSkill30BundleState()
   quickBuyNoSynthRefreshStreak = 0
@@ -2759,6 +2879,330 @@ function showFirstPurchaseRuleHint(): void {
 
 function markShopPurchaseDone(): void {
   hasBoughtOnce = true
+}
+
+function getPlayerExpToNextLevelTable(): number[] {
+  const raw = getConfig().runRules?.playerExpToNextLevel
+  if (!Array.isArray(raw) || raw.length <= 0) return [3, 4, 5, 6, 7, 8, 9, 10, 12]
+  return raw.map((n) => Math.max(1, Math.round(Number(n) || 1)))
+}
+
+function getPlayerMaxLifeByLevelTable(): number[] {
+  const raw = getConfig().runRules?.playerMaxLifeByLevel
+  if (!Array.isArray(raw) || raw.length <= 0) return [30, 34, 38, 42, 46, 50, 54, 58, 62, 66]
+  return raw.map((n) => Math.max(1, Math.round(Number(n) || 1)))
+}
+
+function getPlayerLevelCap(): number {
+  return Math.max(1, getPlayerMaxLifeByLevelTable().length)
+}
+
+function clampPlayerLevel(level: number): number {
+  const cap = getPlayerLevelCap()
+  if (!Number.isFinite(level)) return 1
+  return Math.max(1, Math.min(cap, Math.round(level)))
+}
+
+function getPlayerExpNeedByLevel(level: number): number {
+  const table = getPlayerExpToNextLevelTable()
+  const idx = Math.max(0, Math.min(table.length - 1, clampPlayerLevel(level) - 1))
+  return Math.max(1, Math.round(table[idx] ?? table[table.length - 1] ?? 1))
+}
+
+function getPlayerMaxLifeByLevel(level: number): number {
+  const table = getPlayerMaxLifeByLevelTable()
+  const idx = Math.max(0, Math.min(table.length - 1, clampPlayerLevel(level) - 1))
+  return Math.max(1, Math.round(table[idx] ?? table[table.length - 1] ?? 1))
+}
+
+function getPlacedItemCenterOnStage(instanceId: string, zone: 'battle' | 'backpack'): { x: number; y: number } | null {
+  if (!battleSystem || !backpackSystem || !battleView || !backpackView) return null
+  const system = zone === 'battle' ? battleSystem : backpackSystem
+  const view = zone === 'battle' ? battleView : backpackView
+  const item = system.getItem(instanceId)
+  if (!item) return null
+  const w = item.size === '1x1' ? CELL_SIZE : item.size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
+  const h = CELL_HEIGHT
+  const centerGlobal = view.toGlobal({
+    x: item.col * CELL_SIZE + w / 2,
+    y: item.row * CELL_HEIGHT + h / 2,
+  })
+  return getApp().stage.toLocal(centerGlobal)
+}
+
+function getPlayerExpCenterOnStage(): { x: number; y: number } | null {
+  if (!playerStatusExpBg) return null
+  const stage = getApp().stage
+  const b = playerStatusExpBg.getBounds()
+  return stage.toLocal({ x: b.x + b.width / 2, y: b.y + b.height / 2 })
+}
+
+function playSynthesisExpFlyEffect(from: { x: number; y: number } | null): void {
+  const to = getPlayerExpCenterOnStage()
+  if (!to) return
+  const startPos = from ?? { x: to.x, y: to.y - 120 }
+  const stage = getApp().stage
+  const orb = new Graphics()
+  orb.eventMode = 'none'
+  stage.addChild(orb)
+
+  const durationMs = 420
+  const startAt = Date.now()
+  const tick = () => {
+    const t = Math.min(1, (Date.now() - startAt) / durationMs)
+    const u = 1 - t
+    const x = startPos.x * u + to.x * t
+    const y = startPos.y * u + to.y * t - Math.sin(Math.PI * t) * 26
+    const r = 5 + Math.sin(Math.PI * t) * 2
+
+    orb.clear()
+    orb.circle(x, y, r)
+    orb.fill({ color: 0x8fd8ff, alpha: 0.95 })
+    orb.circle(x, y, Math.max(2, r - 2.2))
+    orb.fill({ color: 0xffffff, alpha: 0.9 })
+
+    if (t >= 1) {
+      Ticker.shared.remove(tick)
+      orb.parent?.removeChild(orb)
+      orb.destroy()
+    }
+  }
+  Ticker.shared.add(tick)
+}
+
+function playPlayerLevelUpFx(): void {
+  if (!playerStatusAvatar || !playerStatusLvText) return
+  const avatar = playerStatusAvatar
+  const lvText = playerStatusLvText
+  const stage = getApp().stage
+  const flash = new Graphics()
+  flash.eventMode = 'none'
+  stage.addChild(flash)
+
+  const baseX = avatar.x
+  const baseY = avatar.y
+  const baseW = avatar.width
+  const baseH = avatar.height
+  const avatarBounds = avatar.getBounds()
+  const flashPos = stage.toLocal({ x: avatarBounds.x, y: avatarBounds.y })
+
+  const durationMs = 280
+  const startAt = Date.now()
+  const tick = () => {
+    const t = Math.min(1, (Date.now() - startAt) / durationMs)
+    const pulse = Math.sin(Math.PI * t)
+    const scale = 1 + pulse * 0.16
+
+    const nextW = baseW * scale
+    const nextH = baseH * scale
+    avatar.width = nextW
+    avatar.height = nextH
+    avatar.x = baseX - (nextW - baseW) / 2
+    avatar.y = baseY - (nextH - baseH) / 2
+    lvText.scale.set(1 + pulse * 0.22)
+
+    flash.clear()
+    flash.roundRect(flashPos.x, flashPos.y, avatarBounds.width, avatarBounds.height, 18)
+    flash.fill({ color: 0xffffff, alpha: pulse * 0.75 })
+
+    if (t >= 1) {
+      Ticker.shared.remove(tick)
+      flash.parent?.removeChild(flash)
+      flash.destroy()
+      avatar.width = baseW
+      avatar.height = baseH
+      avatar.x = baseX
+      avatar.y = baseY
+      lvText.scale.set(1)
+    }
+  }
+  Ticker.shared.add(tick)
+}
+
+/**
+ * 飞行动画：从头像位置飞一个物品图标到背包目标格
+ * @param defId 物品定义ID（用于加载图标）
+ * @param targetSlotCol 目标格列
+ * @param targetSlotRow 目标格行
+ * @param onLand 落地回调（执行真正的视觉addItem）
+ */
+function flyRewardToBackpack(
+  defId: string,
+  targetSlotCol: number,
+  targetSlotRow: number,
+  onLand: () => void,
+): void {
+  if (!playerStatusAvatar || !backpackView) { onLand(); return }
+  const stage = getApp().stage
+
+  // 起点：头像中心（舞台坐标）
+  const avatarBounds = playerStatusAvatar.getBounds()
+  const startPos = stage.toLocal({ x: avatarBounds.x + avatarBounds.width / 2, y: avatarBounds.y + avatarBounds.height / 2 })
+
+  // 终点：目标格中心（舞台坐标）
+  const targetGlobal = backpackView.toGlobal({
+    x: targetSlotCol * CELL_SIZE + CELL_SIZE / 2,
+    y: targetSlotRow * CELL_HEIGHT + CELL_HEIGHT / 2,
+  })
+  const endPos = stage.toLocal(targetGlobal)
+
+  const iconSize = Math.round(CELL_SIZE * 0.72)
+  const durationMs = 440
+
+  // 尝试用物品图标作为代理精灵
+  const makeProxyAndAnimate = (tex: Texture | null) => {
+    let proxy: Sprite | Graphics
+    if (tex) {
+      const spr = new Sprite(tex)
+      spr.width = iconSize
+      spr.height = iconSize
+      spr.anchor.set(0.5)
+      spr.eventMode = 'none'
+      proxy = spr
+    } else {
+      const g = new Graphics()
+      g.circle(0, 0, iconSize / 2)
+      g.fill({ color: 0xffd700, alpha: 0.95 })
+      g.circle(0, 0, Math.max(4, iconSize / 2 - 4))
+      g.fill({ color: 0xfff8b0, alpha: 0.9 })
+      g.eventMode = 'none'
+      proxy = g
+    }
+    proxy.x = startPos.x
+    proxy.y = startPos.y
+    stage.addChild(proxy)
+
+    const startAt = Date.now()
+    const tick = () => {
+      const t = Math.min(1, (Date.now() - startAt) / durationMs)
+      const ease = 1 - Math.pow(1 - t, 3)  // ease-out cubic
+      proxy.x = startPos.x + (endPos.x - startPos.x) * ease
+      proxy.y = startPos.y + (endPos.y - startPos.y) * ease - Math.sin(Math.PI * t) * 60
+      proxy.alpha = t < 0.85 ? 1 : (1 - t) / 0.15  // 尾段淡出
+      const sc = 1 + Math.sin(Math.PI * t) * 0.15
+      proxy.scale.set(sc)
+      if (t >= 1) {
+        Ticker.shared.remove(tick)
+        proxy.parent?.removeChild(proxy)
+        proxy.destroy()
+        onLand()
+      }
+    }
+    Ticker.shared.add(tick)
+  }
+
+  // 尝试从缓存加载图标（避免异步等待）
+  const url = getItemIconUrl(defId)
+  const cached = Assets.cache.get<Texture>(url)
+  if (cached) {
+    makeProxyAndAnimate(cached)
+  } else {
+    // 先以金色圆形飞出，背景异步加载不阻塞动画
+    makeProxyAndAnimate(null)
+  }
+}
+
+/** 记录升级奖励获得计数 */
+function recordLevelRewardObtained(kind: NeutralSpecialKind): void {
+  const prev = levelRewardObtainedByKind.get(kind) ?? 0
+  levelRewardObtainedByKind.set(kind, Math.max(0, Math.round(prev + 1)))
+}
+
+/** 检查背包是否有空位可放1x1物品并执行待领取奖励发放 */
+function checkAndPopPendingRewards(): void {
+  if (pendingLevelRewards.length === 0) return
+  if (!backpackSystem || !backpackView) return
+
+  while (pendingLevelRewards.length > 0) {
+    const slot = findFirstBackpackPlace('1x1')
+    if (!slot) break  // 背包满，等待空格
+
+    const defId = pendingLevelRewards[0]!
+    const def = getItemDefById(defId)
+    if (!def) { pendingLevelRewards.shift(); continue }
+
+    // 逻辑先占位（alpha=0，防止拖拽占用）
+    const id = nextId()
+    backpackSystem.place(slot.col, slot.row, '1x1', defId, id)
+    instanceToDefId.set(id, defId)
+    setInstanceQualityLevel(id, defId, 'Bronze', 1)
+    instanceToPermanentDamageBonus.set(id, 0)
+    const kind = getNeutralSpecialKind(def)
+    if (kind) recordLevelRewardObtained(kind)
+    recordNeutralItemObtained(defId)
+    unlockItemToPool(defId)
+    pendingLevelRewards.shift()
+
+    // 飞行动画结束后再显示物品（addItem触发acquireFx），然后继续派发下一个待领取
+    const capturedId = id
+    const capturedDef = def
+    const capturedSlot = { ...slot }
+    flyRewardToBackpack(defId, slot.col, slot.row, () => {
+      if (!backpackView || !backpackSystem) return
+      // 检查物品还在（没被移除）
+      if (!backpackSystem.getItem(capturedId)) {
+        checkAndPopPendingRewards()
+        return
+      }
+      void backpackView.addItem(capturedId, capturedDef.id, '1x1', capturedSlot.col, capturedSlot.row, 'Bronze#1').then(() => {
+        backpackView!.setItemTier(capturedId, 'Bronze#1')
+        drag?.refreshZone(backpackView!)
+        // 动画落地后检查是否还有更多待领取
+        checkAndPopPendingRewards()
+      })
+    })
+
+    saveShopStateToStorage(captureShopState())
+    break  // 每次只发一个，等动画结束后再检查下一个
+  }
+}
+
+/** 处理升级奖励：抽取物品加入待领取队列 */
+function handleLevelReward(level: number): void {
+  const defId = rollLevelRewardDefId(level)
+  if (!defId) {
+    // 所有物品达上限，给金币补偿
+    if (shopManager) {
+      const goldFallback = 3
+      shopManager.gold += goldFallback
+      showHintToast('no_gold_buy', `升级奖励：中立物品已满，获得${goldFallback}G`, 0xffd700)
+    }
+    saveShopStateToStorage(captureShopState())
+    return
+  }
+  pendingLevelRewards.push(defId)
+  checkAndPopPendingRewards()
+}
+
+function grantSynthesisExp(amount = 1, from?: { instanceId: string; zone: 'battle' | 'backpack' }): void {
+  const add = Math.max(0, Math.round(amount))
+  if (add <= 0) return
+  const cap = getPlayerLevelCap()
+  const current = getPlayerProgressState()
+  let level = clampPlayerLevel(current.level)
+  let exp = Math.max(0, Math.round(current.exp)) + add
+  let leveled = false
+  while (level < cap) {
+    const need = getPlayerExpNeedByLevel(level)
+    if (exp < need) break
+    exp -= need
+    level += 1
+    leveled = true
+  }
+  if (level >= cap) exp = 0
+  setPlayerProgressState(level, exp)
+  playSynthesisExpFlyEffect(from ? getPlacedItemCenterOnStage(from.instanceId, from.zone) : null)
+  if (leveled) {
+    showHintToast('no_gold_buy', `升级到 Lv${level}`, 0x8ff0b0)
+    playPlayerLevelUpFx()
+    handleLevelReward(level)
+  }
+}
+
+function getHeroIconByStarterClass(): string {
+  if (starterClass === 'archer') return '/resource/hero/archericon.png'
+  if (starterClass === 'assassin') return '/resource/hero/assassinicon.png'
+  return '/resource/hero/warrioricon.png'
 }
 
 function parseTierName(raw: string): TierKey | null {
@@ -3614,6 +4058,9 @@ function synthesizeTarget(
   applyInstanceTierVisuals()
   syncShopOwnedTierRules()
   refreshUpgradeHints()
+  grantSynthesisExp(1, { instanceId: targetInstanceId, zone })
+  // 合成释放了背包空间，尝试发放待领取升级奖励
+  checkAndPopPendingRewards()
   return {
     instanceId: targetInstanceId,
     targetZone: zone,
@@ -3665,6 +4112,18 @@ function showSynthesisHoverInfo(
   const buyPrice = shopManager.getItemPrice(sourceDef, sourceTier)
   if (isSameItem) {
     sellPopup.show(sourceDef, buyPrice, 'buy', toVisualTier(upgradeTo.tier, upgradeTo.star), undefined, 'detailed')
+    return
+  }
+
+  if (canUseSameArchetypeDiffItemStoneSynthesis(sourceDefId, targetItem.defId, sourceTier, sourceStar, targetTier, targetStar)) {
+    const customDisplay: ItemInfoCustomDisplay = {
+      hideName: true,
+      lines: ['升级为 +1 级其他非中立职业物品（2选1）'],
+      suppressStats: true,
+      hideTierBadge: true,
+      centerRichLineInFrame: true,
+    }
+    sellPopup.show(sourceDef, buyPrice, 'buy', toVisualTier(upgradeTo.tier, upgradeTo.star), undefined, 'detailed', undefined, customDisplay)
     return
   }
 
@@ -5136,6 +5595,22 @@ const NEUTRAL_DAILY_ROLL_CAP_BY_DAY: number[] = [
 type NeutralRandomCategory = 'stone' | 'scroll' | 'medal'
 const NEUTRAL_RANDOM_RATIO_BUCKET_TEMPLATE: NeutralRandomCategory[] = ['stone', 'stone', 'scroll', 'scroll', 'medal']
 
+// 升级奖励等级上限表（索引0=Lv1, 索引25=Lv26），各等级最多可通过升级奖励获得的数量
+const NEUTRAL_LEVEL_REWARD_CAP: Partial<Record<NeutralSpecialKind, number[]>> = {
+  class_shift_stone: [0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
+  class_morph_stone: [0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
+  skill_scroll:      [0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
+  medal:             [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
+}
+// 升级奖励桶模板：卷轴:石头:勋章 = 1:1:1
+const LEVEL_REWARD_BUCKET_TEMPLATE: NeutralRandomCategory[] = ['stone', 'scroll', 'medal']
+// 升级奖励石头对应物品（从中随机选一个未达上限的）
+const LEVEL_REWARD_STONE_KINDS: NeutralSpecialKind[] = ['class_shift_stone', 'class_morph_stone']
+// 升级奖励卷轴对应物品
+const LEVEL_REWARD_SCROLL_KINDS: NeutralSpecialKind[] = ['skill_scroll']
+// 升级奖励勋章对应物品
+const LEVEL_REWARD_MEDAL_KINDS: NeutralSpecialKind[] = ['medal']
+
 function refillNeutralRandomCategoryPool(): void {
   neutralRandomCategoryPool = [...NEUTRAL_RANDOM_RATIO_BUCKET_TEMPLATE]
   for (let i = neutralRandomCategoryPool.length - 1; i > 0; i--) {
@@ -5222,6 +5697,74 @@ function isNeutralKindRandomAvailable(kind: NeutralSpecialKind): boolean {
     if (!hasAnyStoneAvailable) return false
   }
   return true
+}
+
+// ============================================================
+// 升级奖励：等级上限 / 桶抽取 / 发奖逻辑
+// ============================================================
+
+function getLevelRewardCapByLevel(level: number, kind: NeutralSpecialKind): number {
+  const row = NEUTRAL_LEVEL_REWARD_CAP[kind]
+  if (!row) return 0
+  const idx = Math.max(0, Math.min(row.length - 1, Math.round(level) - 1))
+  return Math.max(0, Math.round(row[idx] ?? 0))
+}
+
+function getLevelRewardObtainedCount(kind: NeutralSpecialKind): number {
+  return Math.max(0, Math.round(levelRewardObtainedByKind.get(kind) ?? 0))
+}
+
+function isLevelRewardKindAvailable(level: number, kind: NeutralSpecialKind): boolean {
+  return getLevelRewardObtainedCount(kind) < getLevelRewardCapByLevel(level, kind)
+}
+
+function refillLevelRewardCategoryPool(): void {
+  levelRewardCategoryPool = [...LEVEL_REWARD_BUCKET_TEMPLATE]
+  for (let i = levelRewardCategoryPool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const tmp = levelRewardCategoryPool[i]
+    levelRewardCategoryPool[i] = levelRewardCategoryPool[j]!
+    levelRewardCategoryPool[j] = tmp!
+  }
+}
+
+/** 从升级奖励桶中抽取一个物品defId，失败返回null（已全达上限） */
+function rollLevelRewardDefId(level: number): string | null {
+  // 最多循环3次（一个完整桶），避免死循环
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (levelRewardCategoryPool.length <= 0) refillLevelRewardCategoryPool()
+    // 找第一个有可用物品的类别
+    for (let i = 0; i < levelRewardCategoryPool.length; i++) {
+      const category = levelRewardCategoryPool[i]!
+      const kindsForCategory: NeutralSpecialKind[] = category === 'stone'
+        ? LEVEL_REWARD_STONE_KINDS
+        : category === 'scroll'
+          ? LEVEL_REWARD_SCROLL_KINDS
+          : LEVEL_REWARD_MEDAL_KINDS
+      const available = kindsForCategory.filter((k) => isLevelRewardKindAvailable(level, k))
+      if (available.length === 0) {
+        // 该类别已达上限，移除并尝试下一个
+        levelRewardCategoryPool.splice(i, 1)
+        i--
+        continue
+      }
+      // 从该类别的可用物品中随机选一个
+      const kind = available[Math.floor(Math.random() * available.length)]!
+      const defId = findNeutralDefIdByKind(kind)
+      if (!defId) { levelRewardCategoryPool.splice(i, 1); i--; continue }
+      levelRewardCategoryPool.splice(i, 1)
+      return defId
+    }
+    // 桶耗尽且都达上限，补充一桶再试
+    refillLevelRewardCategoryPool()
+  }
+  return null  // 所有类别全部达上限
+}
+
+/** 根据NeutralSpecialKind找到对应defId */
+function findNeutralDefIdByKind(kind: NeutralSpecialKind): string | null {
+  const item = getAllItems().find((it) => getNeutralSpecialKind(it) === kind)
+  return item?.id ?? null
 }
 
 function canRandomNeutralItem(item: ItemDef): boolean {
@@ -5650,7 +6193,7 @@ function showNeutralChoiceOverlay(
   overlay.addChild(hint)
 
   const cardW = 238
-  const cardH = 470
+  const cardH = 470 + (displayMode === 'special_shop_like' ? 120 : 0)
   const gapX = uniq.length === 2 ? 50 : 16
   const totalW = uniq.length * cardW + (uniq.length - 1) * gapX
   const startX = (CANVAS_W - totalW) / 2
@@ -5752,13 +6295,16 @@ function showNeutralChoiceOverlay(
       const tierStats = resolveItemTierBaseStats(cand.item, `${cand.tier}#${cand.star}`)
       const damageValue = Math.max(0, Math.round(tierStats.damage))
       const shieldValue = Math.max(0, Math.round(tierStats.shield))
+      const healValue = Math.max(0, Math.round(tierStats.heal))
       const cooldownMs = Math.max(0, Math.round(tierStats.cooldownMs))
       const mainStatText = damageValue > 0
         ? `✦伤害${damageValue}`
         : shieldValue > 0
           ? `🛡护盾${shieldValue}`
-          : '◈被动'
-      const mainStatColor = damageValue > 0 ? 0xff7a82 : shieldValue > 0 ? 0xffd983 : 0x86b8ff
+          : healValue > 0
+            ? `✚回血${healValue}`
+            : '◈被动'
+      const mainStatColor = damageValue > 0 ? 0xff7a82 : shieldValue > 0 ? 0xffd983 : healValue > 0 ? 0x73e6a6 : 0x86b8ff
       const speedText = cooldownMs > 0
         ? `⏱速度${getSpecialShopSpeedTierText(cooldownMs)}`
         : '⏱被动'
@@ -5992,7 +6538,9 @@ function transformPlacedItemKeepLevelTo(
   }
   view.removeItem(instanceId)
   void view.addItem(instanceId, nextDef.id, placed.size, placed.col, placed.row, toVisualTier(tier, star)).then(() => {
-    view.setItemTier(instanceId, toVisualTier(tier, star))
+    const visualTier = getInstanceTier(instanceId) ?? tier
+    const visualStar = getInstanceTierStar(instanceId)
+    view.setItemTier(instanceId, toVisualTier(visualTier, visualStar))
     drag?.refreshZone(view)
   })
   instanceToDefId.set(instanceId, nextDef.id)
@@ -6113,14 +6661,21 @@ function applyNeutralDiscardEffect(source: ItemDef, stage: Container): boolean {
   return false
 }
 
-function buildStoneTransformChoices(target: SynthesisTarget, rule: 'same' | 'other'): NeutralChoiceCandidate[] {
+function buildStoneTransformChoices(
+  target: SynthesisTarget,
+  rule: 'same' | 'other',
+  opts?: { rollLevel?: number; displayTier?: TierKey; displayStar?: 1 | 2 },
+): NeutralChoiceCandidate[] {
   const targetTier = getInstanceTier(target.instanceId) ?? 'Bronze'
   const targetLevel = getInstanceLevel(target.instanceId)
   const targetStar = getInstanceTierStar(target.instanceId)
+  const rollLevel = Math.max(1, Math.min(7, Math.round(opts?.rollLevel ?? targetLevel))) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const displayTier = opts?.displayTier ?? targetTier
+  const displayStar = opts?.displayStar ?? targetStar
   const poolAllTier = collectArchetypeRuleTransformCandidates(target.instanceId, target.zone, rule)
   const availableFirstTiers = Array.from(new Set(poolAllTier.map((it) => parseTierName(it.starting_tier) ?? 'Bronze')))
   const firstTier = availableFirstTiers.length > 0
-    ? pickQualityByPseudoRandomBag(targetLevel, availableFirstTiers)
+    ? pickQualityByPseudoRandomBag(rollLevel, availableFirstTiers)
     : null
   const firstPool = firstTier
     ? poolAllTier.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === firstTier)
@@ -6129,7 +6684,7 @@ function buildStoneTransformChoices(target: SynthesisTarget, rule: 'same' | 'oth
   const poolForSecond = first ? poolAllTier.filter((it) => it.id !== first.id) : [...poolAllTier]
   const availableSecondTiers = Array.from(new Set(poolForSecond.map((it) => parseTierName(it.starting_tier) ?? 'Bronze')))
   const secondTier = availableSecondTiers.length > 0
-    ? pickQualityByPseudoRandomBag(targetLevel, availableSecondTiers)
+    ? pickQualityByPseudoRandomBag(rollLevel, availableSecondTiers)
     : null
   const secondPool = secondTier
     ? poolForSecond.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === secondTier)
@@ -6137,7 +6692,7 @@ function buildStoneTransformChoices(target: SynthesisTarget, rule: 'same' | 'oth
   const second = pickRandomElements(secondPool, 1)[0]
   return [first, second]
     .filter((it): it is ItemDef => !!it)
-    .map((item) => ({ item, tier: targetTier, star: targetStar }))
+    .map((item) => ({ item, tier: displayTier, star: displayStar }))
 }
 
 function showLv7MorphSynthesisConfirmOverlay(
@@ -6273,6 +6828,59 @@ function applyNeutralStoneTargetEffect(sourceDef: ItemDef, target: SynthesisTarg
   }, 'special_shop_like')
 }
 
+function tryRunSameArchetypeDiffItemStoneSynthesis(
+  stage: Container,
+  sourceInstanceId: string,
+  sourceDefId: string,
+  sourceTier: TierKey,
+  sourceStar: 1 | 2,
+  target: SynthesisTarget,
+  restore: () => void,
+): boolean {
+  const system = target.zone === 'battle' ? battleSystem : backpackSystem
+  const targetItem = system?.getItem(target.instanceId)
+  if (!targetItem) return false
+  const targetTier = getInstanceTier(target.instanceId) ?? sourceTier
+  const targetStar = getInstanceTierStar(target.instanceId)
+  if (!canUseSameArchetypeDiffItemStoneSynthesis(sourceDefId, targetItem.defId, sourceTier, sourceStar, targetTier, targetStar)) {
+    return false
+  }
+  const upgradeTo = nextTierLevel(sourceTier, sourceStar)
+  if (!upgradeTo) return false
+  const nextLevel = Math.max(1, Math.min(7, tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const choices = buildStoneTransformChoices(target, 'other', {
+    rollLevel: nextLevel,
+    displayTier: upgradeTo.tier,
+    displayStar: upgradeTo.star,
+  })
+  if (choices.length <= 0) {
+    showHintToast('backpack_full_buy', '同职业合成：当前无可用候选', 0xffb27a)
+    restore()
+    return true
+  }
+  const opened = showNeutralChoiceOverlay(stage, '选择合成方向', choices, (picked) => {
+    const ok = transformPlacedItemKeepLevelTo(target.instanceId, target.zone, picked.item, true)
+    if (!ok) {
+      showHintToast('backpack_full_buy', '同职业合成：转化失败', 0xff8f8f)
+      return false
+    }
+    setInstanceQualityLevel(target.instanceId, picked.item.id, parseTierName(picked.item.starting_tier) ?? 'Bronze', nextLevel)
+    applyInstanceTierVisuals()
+    syncShopOwnedTierRules()
+    refreshUpgradeHints()
+    removeInstanceMeta(sourceInstanceId)
+    grantSynthesisExp(1, { instanceId: target.instanceId, zone: target.zone })
+    showHintToast('no_gold_buy', '同职业合成：已选择转化结果', 0x9be5ff)
+    refreshShopUI()
+    return true
+  }, 'special_shop_like')
+  if (!opened) {
+    showHintToast('backpack_full_buy', '同职业合成：当前无可用候选', 0xffb27a)
+    restore()
+  }
+  return true
+}
+
 function applyFutureEventEffectsOnNewDay(day: number): void {
   if (!shopManager) return
   const pendingGold = Math.max(0, Math.round(pendingGoldByDay.get(day) ?? 0))
@@ -6344,6 +6952,66 @@ function getMaxQuickBuyLevelForDay(day: number): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
     if (Number(weights[i] ?? 0) > 0) maxLevel = (i + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7
   }
   return maxLevel
+}
+
+function getMinQuickBuyLevelForDay(day: number): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+  const weights = getQuickBuyLevelWeightsByDay(day)
+  for (let i = 0; i < weights.length; i++) {
+    if (Number(weights[i] ?? 0) > 0) return (i + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  }
+  return 1
+}
+
+function pickForcedLowLevelPairCandidate(day: number): PoolCandidate | null {
+  if (!battleSystem || !backpackSystem) return null
+  const minAllowedLevel = getMinQuickBuyLevelForDay(day)
+  if (minAllowedLevel <= 1) return null
+
+  const oddBuckets = new Map<string, {
+    defId: string
+    level: 1 | 2 | 3 | 4 | 5 | 6 | 7
+    tier: TierKey
+    star: 1 | 2
+    count: number
+  }>()
+
+  const collect = (items: ReturnType<GridSystem['getAllItems']>) => {
+    for (const it of items) {
+      const def = getItemDefById(it.defId)
+      if (!def || isNeutralItemDef(def)) continue
+      const level = getInstanceLevel(it.instanceId)
+      if (level >= minAllowedLevel) continue
+      const tier = getInstanceTier(it.instanceId)
+      const star = getInstanceTierStar(it.instanceId)
+      if (!tier) continue
+      const key = `${it.defId}|${tier}|${star}`
+      const prev = oddBuckets.get(key)
+      if (prev) prev.count += 1
+      else oddBuckets.set(key, { defId: it.defId, level, tier, star, count: 1 })
+    }
+  }
+  collect(battleSystem.getAllItems())
+  collect(backpackSystem.getAllItems())
+
+  const pending = Array.from(oddBuckets.values())
+    .filter((it) => (it.count % 2) === 1)
+    .sort((a, b) => (a.level - b.level) || a.defId.localeCompare(b.defId))
+  if (pending.length <= 0) return null
+
+  for (const one of pending) {
+    const item = getItemDefById(one.defId)
+    if (!item) continue
+    const size = normalizeSize(item.size)
+    if (!findFirstBattlePlace(size) && !findFirstBackpackPlace(size)) continue
+    return {
+      item,
+      level: one.level,
+      tier: one.tier,
+      star: one.star,
+      price: getUnlockPoolBuyPriceByLevel(one.level),
+    }
+  }
+  return null
 }
 
 function pickArchetypeItemAtLevel(archetype: EventArchetype, level: 1 | 2 | 3 | 4 | 5 | 6 | 7): PoolCandidate | null {
@@ -7565,7 +8233,13 @@ function resolveTierSeriesTextByStar(item: ItemDef, tier: TierKey, star: 1 | 2, 
   const tiers = parseAvailableTiers(item.available_tiers)
   const base = Math.max(0, tiers.indexOf(tier))
   const idx = Math.max(0, Math.min(parts.length - 1, base + (star - 1)))
-  return parts[idx] ?? series
+  const resolved = parts[idx] ?? series
+  const trimmed = String(series).trim()
+  if (/^[+\-]/.test(trimmed) && !/^[+\-]/.test(resolved)) {
+    const sign = trimmed.startsWith('-') ? '-' : '+'
+    return `${sign}${resolved}`
+  }
+  return resolved
 }
 
 function resolveSkillLineByTierStar(item: ItemDef, tier: TierKey, star: 1 | 2, line: string): string {
@@ -7972,13 +8646,16 @@ function openSpecialShopOverlay(stage: Container): void {
       const tierStats = resolveItemTierBaseStats(candidate.item, `${candidate.tier}#${candidate.star}`)
       const damageValue = Math.max(0, Math.round(tierStats.damage))
       const shieldValue = Math.max(0, Math.round(tierStats.shield))
+      const healValue = Math.max(0, Math.round(tierStats.heal))
       const cooldownMs = Math.max(0, Math.round(tierStats.cooldownMs))
       const mainStatText = damageValue > 0
         ? `✦伤害${damageValue}`
         : shieldValue > 0
           ? `🛡护盾${shieldValue}`
-          : '◈被动'
-      const mainStatColor = damageValue > 0 ? 0xff7a82 : shieldValue > 0 ? 0xffd983 : 0x86b8ff
+          : healValue > 0
+            ? `✚回血${healValue}`
+            : '◈被动'
+      const mainStatColor = damageValue > 0 ? 0xff7a82 : shieldValue > 0 ? 0xffd983 : healValue > 0 ? 0x73e6a6 : 0x86b8ff
       const speedText = cooldownMs > 0
         ? (selected ? `⏱间隔${formatSpecialShopCooldownSec(cooldownMs)}秒` : `⏱速度${getSpecialShopSpeedTierText(cooldownMs)}`)
         : '⏱被动'
@@ -8682,6 +9359,88 @@ function updateMiniMap(): void {
   }
 }
 
+function refreshPlayerStatusUI(): void {
+  if (!playerStatusCon || !playerStatusLvText || !playerStatusExpBar) return
+  const progress = getPlayerProgressState()
+  const level = clampPlayerLevel(progress.level)
+  const levelCap = getPlayerLevelCap()
+  const expNeed = getPlayerExpNeedByLevel(level)
+  const exp = level >= levelCap ? 0 : Math.max(0, Math.min(expNeed, Math.round(progress.exp)))
+
+  playerStatusLvText.text = `Lv${level}`
+
+  playerStatusExpBar.clear()
+  {
+    const areaW = Math.max(8, getDebugCfg('shopPlayerStatusExpBarWidth') - 4)
+    const areaH = Math.max(8, getDebugCfg('shopPlayerStatusExpBarHeight') - 4)
+    const totalBeans = Math.max(1, expNeed)
+    const filledBeans = level >= levelCap ? totalBeans : Math.max(0, Math.min(totalBeans, exp))
+    let gap = 3
+    const minBeanW = 2
+    let beanW = (areaW - gap * (totalBeans - 1)) / totalBeans
+    while (gap > 0 && beanW < minBeanW) {
+      gap -= 1
+      beanW = (areaW - gap * (totalBeans - 1)) / totalBeans
+    }
+    if (beanW > 0) {
+      const radius = Math.min(8, Math.max(2, beanW / 2))
+      for (let i = 0; i < totalBeans; i++) {
+        const x = i * (beanW + gap)
+        playerStatusExpBar.roundRect(x, 0, beanW, areaH, radius)
+        playerStatusExpBar.fill({ color: i < filledBeans ? 0x5db5ff : 0x2d3f63, alpha: 0.98 })
+      }
+    }
+  }
+
+  const nextAvatarUrl = getHeroIconByStarterClass()
+  if (playerStatusAvatar && playerStatusAvatarUrl !== nextAvatarUrl) {
+    playerStatusAvatarUrl = nextAvatarUrl
+    void Assets.load<Texture>(nextAvatarUrl).then((tex) => {
+      if (!playerStatusAvatar || playerStatusAvatarUrl !== nextAvatarUrl) return
+      playerStatusAvatar.texture = tex
+      playerStatusAvatar.alpha = 1
+    }).catch(() => {
+      // ignore runtime missing icon
+    })
+  }
+}
+
+function layoutPlayerStatusPanel(): void {
+  if (!playerStatusCon || !playerStatusAvatar || !playerStatusLvText || !playerStatusExpBg || !playerStatusExpBar) return
+  const avatarX = 260
+  const avatarY = 10
+  const avatarW = 120
+  const avatarH = 120
+  const avatarCenterX = avatarX + avatarW / 2
+  const expW = Math.max(40, getDebugCfg('shopPlayerStatusExpBarWidth'))
+  const expH = Math.max(12, getDebugCfg('shopPlayerStatusExpBarHeight'))
+  const expOffsetX = getDebugCfg('shopPlayerStatusExpBarOffsetX')
+  const expOffsetY = getDebugCfg('shopPlayerStatusExpBarOffsetY')
+  const expX = avatarCenterX - expW / 2 + expOffsetX
+  const expY = avatarY + avatarH + expOffsetY
+
+  playerStatusCon.x = 0
+  playerStatusCon.y = getDebugCfg('shopPlayerStatusY')
+
+  playerStatusAvatar.x = avatarX
+  playerStatusAvatar.y = avatarY
+  playerStatusAvatar.width = avatarW
+  playerStatusAvatar.height = avatarH
+
+  playerStatusLvText.x = avatarCenterX
+  playerStatusLvText.y = getDebugCfg('shopPlayerStatusLvY')
+
+  playerStatusExpBg.clear()
+  playerStatusExpBg.roundRect(0, 0, expW, expH, 10)
+  playerStatusExpBg.fill({ color: 0x1a243d, alpha: 0.9 })
+  playerStatusExpBg.stroke({ color: 0x5a78aa, width: 2, alpha: 0.9 })
+  playerStatusExpBg.x = expX
+  playerStatusExpBg.y = expY
+
+  playerStatusExpBar.x = expX + 2
+  playerStatusExpBar.y = expY + 2
+}
+
 // ============================================================
 // 刷新商店 UI
 // ============================================================
@@ -8700,8 +9459,8 @@ function refreshShopUI(): void {
     if (PvpContext.isActive()) {
       // PVP 模式：显示 PVP HP，不显示 PVE 生命
       const pvpSession = PvpContext.getSession()
-      const myHp = pvpSession?.playerHps?.[pvpSession?.myIndex ?? -1] ?? 6
-      const initHp = pvpSession?.initialHp ?? 6
+      const myHp = pvpSession?.playerHps?.[pvpSession?.myIndex ?? -1] ?? 30
+      const initHp = pvpSession?.initialHp ?? 30
       livesText.text = `❤️ ${myHp}/${initHp}`
       livesText.style.fill = myHp <= 2 ? 0xff6a6a : 0xffd4d4
     } else {
@@ -8737,6 +9496,7 @@ function refreshShopUI(): void {
     const sub = refreshBtnHandle.container.getChildByName('sell-price') as Text | null
     if (sub) sub.style.fill = shopManager.gold >= getQuickBuyMinPrice() ? 0xffd700 : 0xff6666
   }
+  refreshPlayerStatusUI()
   if (specialShopBackpackViewActive) {
     setBaseShopPrimaryButtonsVisible(false)
     drag?.setEnabled(false)
@@ -9210,22 +9970,7 @@ function pickQualityByPseudoRandomBag(
 }
 
 function collectNeutralQuickBuyCandidates(): PoolCandidate[] {
-  if (!battleSystem || !backpackSystem) return []
-  const out: PoolCandidate[] = []
-  for (const item of getAllItems()) {
-    if (!isNeutralItemDef(item)) continue
-    if (!canRandomNeutralItem(item)) continue
-    const size = normalizeSize(item.size)
-    if (!findFirstBattlePlace(size) && !findFirstBackpackPlace(size)) continue
-    out.push({
-      item,
-      level: 1,
-      tier: 'Bronze',
-      star: 1,
-      price: Math.max(1, currentDay + 1),
-    })
-  }
-  return out
+  return []
 }
 
 function updateNeutralPseudoRandomCounterOnPurchase(item: ItemDef): void {
@@ -9248,6 +9993,17 @@ function updateNeutralPseudoRandomCounterOnPurchase(item: ItemDef): void {
 }
 
 function rollNextQuickBuyOffer(force = false): PoolCandidate | null {
+  const forcedLowLevelPair = pickForcedLowLevelPairCandidate(currentDay)
+  if (forcedLowLevelPair) {
+    nextQuickBuyOffer = {
+      itemId: forcedLowLevelPair.item.id,
+      tier: forcedLowLevelPair.tier,
+      star: forcedLowLevelPair.star,
+      price: forcedLowLevelPair.price,
+    }
+    return forcedLowLevelPair
+  }
+
   if (!force) {
     const keep = findCandidateByOffer(nextQuickBuyOffer)
     if (keep) return keep
@@ -9329,15 +10085,7 @@ function rollNextQuickBuyOffer(force = false): PoolCandidate | null {
     return null
   }
 
-  let levelRoll = Math.random() * totalWeight
-  let pickedLevel: 1 | 2 | 3 | 4 | 5 | 6 | 7 = 1
-  for (let i = 0; i < effectiveWeights.length; i++) {
-    levelRoll -= effectiveWeights[i] ?? 0
-    if (levelRoll <= 0) {
-      pickedLevel = (i + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7
-      break
-    }
-  }
+  const pickedLevel = pickQuickBuyLevelByPseudoRandomBucket(effectiveWeights)
 
   const levelCandidates = byLevel[pickedLevel]
   if (levelCandidates.length <= 0) {
@@ -9596,6 +10344,9 @@ function setDay(day: number): void {
     closeSpecialShopOverlay()
     specialShopRefreshCount = 0
     specialShopOffers = []
+    QUALITY_PSEUDO_RANDOM_STATE.clear()
+    QUICK_BUY_LEVEL_PSEUDO_RANDOM_STATE.clear()
+    nextQuickBuyOffer = null
   }
   const newCols = getDayActiveCols(currentDay)
 
@@ -9741,6 +10492,7 @@ function applyTextSizesFromDebug(): void {
   if (dayPrevBtn) dayPrevBtn.style.fontSize = getDebugCfg('dayDebugArrowFontSize')
   if (dayNextBtn) dayNextBtn.style.fontSize = getDebugCfg('dayDebugArrowFontSize')
   if (dayDebugText) dayDebugText.style.fontSize = getDebugCfg('dayDebugLabelFontSize')
+  if (playerStatusLvText) playerStatusLvText.style.fontSize = getDebugCfg('shopPlayerStatusLvFontSize')
   layoutDayDebugControls()
 
   battleView?.setLabelFontSize(areaLabelSize / (battleView.scale.x || 1))
@@ -9851,6 +10603,7 @@ function applyLayoutFromDebug(): void {
     livesText.x = CANVAS_W - livesText.width - 18
     livesText.y = 18
   }
+  layoutPlayerStatusPanel()
   if (miniMapCon) {
     miniMapCon.x = getDebugCfg('backpackBtnX') - MINI_W / 2
     miniMapCon.y = getDebugCfg('backpackBtnY') + BTN_RADIUS + 8
@@ -10780,6 +11533,7 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
             refreshShopUI()
             return false
           }
+          grantSynthesisExp(1, { instanceId: synthTarget.instanceId, zone: synthTarget.zone })
           showHintToast('no_gold_buy', 'Lv7合成：已触发变化石效果', 0x9be5ff)
           refreshShopUI()
           return true
@@ -11065,7 +11819,7 @@ function buildPvpPlayerListContent(overlay: Container): void {
   const SNAP_H = 170
   const BOTTOM_PAD = 24
   const ROW_W = PANEL_W2 - 32
-  const initHp = session.initialHp ?? 6
+  const initHp = session.initialHp ?? 30
 
   const players = [...session.players].sort((a, b) => {
     const elimA = session.eliminatedPlayers.includes(a.index) ? 1 : 0
@@ -11995,6 +12749,42 @@ export const ShopScene: Scene = {
     restartBtn = restartCon
     stage.addChild(restartCon)
 
+    playerStatusCon = new Container()
+    playerStatusCon.zIndex = 95
+    playerStatusCon.x = 0
+    playerStatusCon.y = getDebugCfg('shopPlayerStatusY')
+
+    playerStatusAvatar = new Sprite(Texture.WHITE)
+    playerStatusAvatar.x = 260
+    playerStatusAvatar.y = 10
+    playerStatusAvatar.width = 120
+    playerStatusAvatar.height = 120
+    playerStatusAvatar.alpha = 0
+    playerStatusCon.addChild(playerStatusAvatar)
+
+    playerStatusExpBg = new Graphics()
+    playerStatusCon.addChild(playerStatusExpBg)
+
+    playerStatusExpBar = new Graphics()
+    playerStatusCon.addChild(playerStatusExpBar)
+
+    playerStatusLvText = new Text({
+      text: 'Lv1',
+      style: {
+        fontSize: getDebugCfg('shopPlayerStatusLvFontSize'),
+        fill: 0xf3f8ff,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        stroke: { color: 0x0f172b, width: 3 },
+      },
+    })
+    playerStatusLvText.anchor.set(0.5)
+    playerStatusCon.addChild(playerStatusLvText)
+
+    layoutPlayerStatusPanel()
+
+    stage.addChild(playerStatusCon)
+
     livesText = new Text({
       text: '❤️ 5/5',
       style: {
@@ -12162,6 +12952,7 @@ export const ShopScene: Scene = {
         homeSystem.remove(instanceId)
         removeInstanceMeta(instanceId)
         refreshShopUI()
+        checkAndPopPendingRewards()
         return true
       }
 
@@ -12227,6 +13018,7 @@ export const ShopScene: Scene = {
                   return false
                 }
                 removeInstanceMeta(instanceId)
+                grantSynthesisExp(1, { instanceId: synthTarget.instanceId, zone: synthTarget.zone })
                 showHintToast('no_gold_buy', 'Lv7合成：已触发变化石效果', 0x9be5ff)
                 refreshShopUI()
                 return true
@@ -12267,22 +13059,36 @@ export const ShopScene: Scene = {
             if (!targetDef) return false
             const upgradeTo = nextTierLevel(fromTier, fromStar)
             if (!upgradeTo) return false
+            const restoreDragToHome = () => {
+              restoreDraggedItemToZone(
+                instanceId,
+                defId,
+                size,
+                fromTier,
+                fromStar,
+                originCol,
+                originRow,
+                homeSystem,
+                homeView,
+              )
+              refreshShopUI()
+            }
+            if (tryRunSameArchetypeDiffItemStoneSynthesis(
+              stage,
+              instanceId,
+              defId,
+              fromTier,
+              fromStar,
+              synthTarget,
+              restoreDragToHome,
+            )) {
+              return true
+            }
             const runCrossSynthesis = () => {
               const synth = synthesizeTarget(defId, fromTier, fromStar, synthTarget.instanceId, synthTarget.zone)
               if (!synth) {
                 showHintToast('backpack_full_buy', '合成目标无效', 0xff8f8f)
-                restoreDraggedItemToZone(
-                  instanceId,
-                  defId,
-                  size,
-                  fromTier,
-                  fromStar,
-                  originCol,
-                  originRow,
-                  homeSystem,
-                  homeView,
-                )
-                refreshShopUI()
+                restoreDragToHome()
                 return
               }
               removeInstanceMeta(instanceId)
@@ -12298,18 +13104,7 @@ export const ShopScene: Scene = {
                 upgradeTo.star,
                 runCrossSynthesis,
                 () => {
-                  restoreDraggedItemToZone(
-                    instanceId,
-                    defId,
-                    size,
-                    fromTier,
-                    fromStar,
-                    originCol,
-                    originRow,
-                    homeSystem,
-                    homeView,
-                  )
-                  refreshShopUI()
+                  restoreDragToHome()
                 },
               )
             } else {
@@ -12776,6 +13571,10 @@ export const ShopScene: Scene = {
         || key === 'refreshBtnX' || key === 'refreshBtnY'
         || key === 'phaseBtnX' || key === 'phaseBtnY'
         || key === 'goldTextCenterX' || key === 'goldTextY'
+        || key === 'shopPlayerStatusY'
+        || key === 'shopPlayerStatusLvY'
+        || key === 'shopPlayerStatusExpBarWidth' || key === 'shopPlayerStatusExpBarHeight'
+        || key === 'shopPlayerStatusExpBarOffsetX' || key === 'shopPlayerStatusExpBarOffsetY'
         || key === 'dayDebugX' || key === 'dayDebugY'
         || key === 'tierBorderWidth'
         || key === 'gridItemCornerRadius'
@@ -12789,6 +13588,7 @@ export const ShopScene: Scene = {
         || key === 'sellButtonSubPriceFontSize'
         || key === 'refreshCostFontSize'
         || key === 'goldFontSize'
+        || key === 'shopPlayerStatusLvFontSize'
         || key === 'dayDebugArrowFontSize'
         || key === 'dayDebugLabelFontSize'
         || key === 'shopItemNameFontSize'
@@ -12939,6 +13739,7 @@ export const ShopScene: Scene = {
       neutralDailyRollCountByDay.clear()
       guaranteedNewUnlockTriggeredLevels.clear()
       QUALITY_PSEUDO_RANDOM_STATE.clear()
+      QUICK_BUY_LEVEL_PSEUDO_RANDOM_STATE.clear()
       nextQuickBuyOffer = null
       syncUnlockPoolToManager()
       grantSkill20DailyBronzeItemIfNeeded()
@@ -12977,6 +13778,7 @@ export const ShopScene: Scene = {
     if (backpackAreaBg) stage.removeChild(backpackAreaBg)
     if (battleAreaBg) stage.removeChild(battleAreaBg)
     if (restartBtn)   stage.removeChild(restartBtn)
+    if (playerStatusCon) stage.removeChild(playerStatusCon)
     if (livesText)    stage.removeChild(livesText)
     if (trophyText)   stage.removeChild(trophyText)
     if (pvpPlayerListOverlay) {
@@ -13027,6 +13829,13 @@ export const ShopScene: Scene = {
     if (specialShopOverlay?.parent) specialShopOverlay.parent.removeChild(specialShopOverlay)
     specialShopOverlay?.destroy({ children: true })
     specialShopOverlay = null
+    playerStatusCon?.destroy({ children: true })
+    playerStatusCon = null
+    playerStatusAvatar = null
+    playerStatusLvText = null
+    playerStatusExpBg = null
+    playerStatusExpBar = null
+    playerStatusAvatarUrl = ''
     if (skillIconBarCon?.parent) skillIconBarCon.parent.removeChild(skillIconBarCon)
     skillIconBarCon?.destroy({ children: true })
     skillIconBarCon = null
@@ -13121,6 +13930,7 @@ export const ShopScene: Scene = {
     neutralDailyRollCountByDay.clear()
     guaranteedNewUnlockTriggeredLevels.clear()
     QUALITY_PSEUDO_RANDOM_STATE.clear()
+    QUICK_BUY_LEVEL_PSEUDO_RANDOM_STATE.clear()
     nextQuickBuyOffer = null
     starterClass    = null
     starterGranted  = false
@@ -13170,8 +13980,8 @@ export const ShopScene: Scene = {
     // PVP HP：实时响应 round_summary 更新右上角血量显示
     if (PvpContext.isActive() && livesText) {
       const pvpSession = PvpContext.getSession()
-      const myHp = pvpSession?.playerHps?.[pvpSession?.myIndex ?? -1] ?? 6
-      const initHp = pvpSession?.initialHp ?? 6
+      const myHp = pvpSession?.playerHps?.[pvpSession?.myIndex ?? -1] ?? 30
+      const initHp = pvpSession?.initialHp ?? 30
       const next = `❤️ ${myHp}/${initHp}`
       if (livesText.text !== next) {
         livesText.text = next

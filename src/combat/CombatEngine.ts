@@ -499,7 +499,8 @@ export class CombatEngine {
     const playerHpRow = cfg.dailyPlayerHealth ?? enemyHpRow
     const hpIdx = Math.max(0, Math.min(enemyHpRow.length - 1, snapshot.day - 1))
     const enemyHp = enemyHpRow[hpIdx] ?? enemyHpRow[0] ?? 300
-    const playerHp = playerHpRow[Math.max(0, Math.min(playerHpRow.length - 1, snapshot.day - 1))] ?? playerHpRow[0] ?? enemyHp
+    const playerHpByDay = playerHpRow[Math.max(0, Math.min(playerHpRow.length - 1, snapshot.day - 1))] ?? playerHpRow[0] ?? enemyHp
+    const playerHp = Math.max(1, Math.round(Number(snapshot.playerBattleHp ?? playerHpByDay) || playerHpByDay))
 
     this.playerHero = { id: 'hero_player', side: 'player', maxHp: playerHp, hp: playerHp, shield: 0, burn: 0, poison: 0, regen: 0 }
     this.enemyHero = { id: 'hero_enemy', side: 'enemy', maxHp: enemyHp, hp: enemyHp, shield: 0, burn: 0, poison: 0, regen: 0 }

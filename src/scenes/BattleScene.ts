@@ -1921,6 +1921,7 @@ function resolveBattleSettlement(): void {
   const result = engine.getResult()
   const winner = result?.winner ?? 'draw'
   const before = getLifeState()
+  const roundLifeDamage = Math.max(1, Math.min(8, Math.round(battleDay)))
   const trophyTarget = getGameCfg().runRules?.trophyWinsToFinalVictory ?? 10
   const trophyBefore = getWinTrophyState(trophyTarget)
   const winStreakBefore = getPlayerWinStreakState().count
@@ -1928,7 +1929,7 @@ function resolveBattleSettlement(): void {
   if (PvpContext.isActive()) {
     PvpContext.recordBattleResult(winner, engine?.getResult()?.survivingDamage ?? 1)
   }
-  const after = (!PvpContext.isActive() && winner === 'enemy') ? deductLife(battleDay) : before
+  const after = (!PvpContext.isActive() && winner === 'enemy') ? deductLife(roundLifeDamage) : before
   const shouldAddTrophy = !PvpContext.isActive() && (winner === 'player' || winner === 'draw')
   const trophyAfter = shouldAddTrophy ? addWinTrophy(trophyTarget) : trophyBefore
   if (!PvpContext.isActive()) {
@@ -1959,8 +1960,8 @@ function resolveBattleSettlement(): void {
 
   if (PvpContext.isActive()) {
     const pvpSession = PvpContext.getSession()
-    const myHp = pvpSession?.playerHps?.[pvpSession?.myIndex ?? -1] ?? 6
-    const damage = winner === 'enemy' ? Math.max(1, Math.round(battleDay)) : 0
+    const myHp = pvpSession?.playerHps?.[pvpSession?.myIndex ?? -1] ?? 30
+    const damage = winner === 'enemy' ? roundLifeDamage : 0
     const hpAfter = Math.max(0, myHp - damage)
     settlementLifeText.text = '⚔️ PVP 对战'
     settlementLifeText.style.fill = 0x99bbdd

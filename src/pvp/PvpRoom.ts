@@ -28,7 +28,7 @@ export class PvpRoom {
   private _myIndex = 0
   private _totalPlayers = 4
   private _maxPlayers = 4
-  private _initialHp = 6
+  private _initialHp = 30
   // 游戏是否已开始（开始后锁定房间，拒绝迟到加入）
   private gameStarted = false
   // Per-day snapshot collection (host only)
@@ -89,7 +89,7 @@ export class PvpRoom {
   // ----------------------------------------------------------------
   // 创建房间（房主调用）
   // ----------------------------------------------------------------
-  async createRoom(roomCode: string, nickname: string, maxPlayers: number, initialHp = 6): Promise<void> {
+  async createRoom(roomCode: string, nickname: string, maxPlayers: number, initialHp = 30): Promise<void> {
     this.role = 'host'
 
     this._maxPlayers = maxPlayers
@@ -772,7 +772,7 @@ export class PvpRoom {
       const lost = myResult?.winner === 'enemy'
       if (lost) {
         void opponentIdx
-        const damage = Math.max(1, Math.round(day))
+        const damage = Math.max(1, Math.min(8, Math.round(day)))
         const currentHp = this.playerHps.get(player.index) ?? 0
         const newHp = Math.max(0, currentHp - damage)
         this.playerHps.set(player.index, newHp)

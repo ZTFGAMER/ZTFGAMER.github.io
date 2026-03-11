@@ -34,7 +34,7 @@ let activeInput: PixiInputHandle | null = null
 let selectedMode: PvpMode = 'async'
 let modePreSelected = false  // 从主菜单直接带入模式时为 true，跳过模式选择页
 let searchPollTimer: ReturnType<typeof setInterval> | null = null
-let createRoomInitialHp = 6
+let createRoomInitialHp = 30
 
 // ----------------------------------------------------------------
 // PixiJS 原生输入控件

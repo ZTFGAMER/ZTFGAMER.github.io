@@ -232,9 +232,9 @@ export const PvpContext = {
       PvpContext.onUrgeReceived?.(fromPlayerIndex, fromNickname)
     }
 
-    // 初始化 HP（使用 session.initialHp，fallback 6）
+    // 初始化 HP（使用 session.initialHp，fallback 30）
     if (!session.playerHps || Object.keys(session.playerHps).length === 0) {
-      const initHp = session.initialHp ?? 6
+      const initHp = session.initialHp ?? 30
       session.playerHps = {}
       session.players.forEach((p) => { session!.playerHps[p.index] = initHp })
     }

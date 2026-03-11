@@ -19,6 +19,424 @@
   - `ShopScene.ts`：注册 `onEliminatedPlayersUpdate` → `refreshPvpWaitingPanel()`；`onExit` 清理回调
 - **待验收**：线上多人对局中触发淘汰，确认淘汰玩家直接进结算页，其余玩家等待面板正常，不再出现 `eliminated=[2][2]`
 
+#### 新功能（2026-03-11，升级奖励物品飞行发放系统）
+
+- 用户需求：玩家每次升级获得1个中立物品奖励，从头像位置飞出到背包空白格；背包满时记录待领取状态，有空格后自动飞出。
+- 主程方案（Notebook `9baa2b32-22e4-4896-92bf-ced78ca0d148`）已确认：逻辑先占位 + 异步飞行动画；持久化桶状态+待领取队列；事件驱动空格监听。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 新增状态变量：`levelRewardCategoryPool`（桶）、`pendingLevelRewards`（待领取队列）、`levelRewardObtainedByKind`（计数）
+  - 升级奖励等级上限表 `NEUTRAL_LEVEL_REWARD_CAP`（转职石/变化石/技能卷轴最高5个，勋章最高25个）
+  - 桶模板 `LEVEL_REWARD_BUCKET_TEMPLATE = ['stone', 'scroll', 'medal']`（1:1:1）
+  - 辅助函数：`getLevelRewardCapByLevel`, `isLevelRewardKindAvailable`, `rollLevelRewardDefId`, `findNeutralDefIdByKind`
+  - `flyRewardToBackpack()`：头像→格子飞行动画（物品图标代理或金色圆形），时长440ms
+  - `handleLevelReward(level)`：升级后抽取物品加入队列并触发发放
+  - `checkAndPopPendingRewards()`：有空格即发放，自动链式处理多个待领取
+  - 三处空格释放钩子：合成后、拖拽丢弃后、批量出售后
+  - 三项持久化：`SavedShopState` 新增字段，存档恢复/新游重置均已覆盖
+  - 兜底：所有物品达上限时给3金币
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收"升级奖励飞行动画 + 待领取队列 + 上限逻辑"。
+
+#### 验收优化追加（2026-03-11，升级数值表更新到 Lv26）
+
+- 用户需求：更新“到下一级合成次数 + 生命值”数值表（Lv1~Lv26）。
+- 已完成：`data/game_config.json`
+  - 更新 `run_rules.playerExpToNextLevel` 为新口径（Lv1~Lv25 对应升到下一等级次数）；
+  - 更新 `run_rules.playerMaxLifeByLevel` 为新生命值曲线，并新增 `Lv26 = 40000`。
+- 结果说明：
+  - 玩家等级上限由生命值表长度决定，现上限为 `Lv26`；
+  - 升级消耗表保持到 `Lv25 -> Lv26`（符合“Lv26无下一等级消耗”口径）。
+- 验证：`npm run build` 通过。
+- 当前阶段：该数值更新进入验收阶段，等待用户确认“升级节奏与生命值成长”体验。
+
+#### 验收优化追加（2026-03-11，基础购买等级改为伪随机桶）
+
+- 用户问题确认：当前基础购买等级为按权重即时随机（非桶）。
+- 用户需求：
+  - 保留 `100% 单等级` 配置；
+  - 对 `50% + 50% 双等级` 配置改为伪随机桶：每 4 次固定 `2 个低级 + 2 个高级`。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 新增 `QUICK_BUY_LEVEL_PSEUDO_RANDOM_STATE`；
+  - 新增 `pickQuickBuyLevelByPseudoRandomBucket()`：
+    - 单等级权重：固定该等级；
+    - 双等级且等权：按 `[低, 低, 高, 高]` 桶序列循环；
+    - 其他权重组合：回退原加权随机。
+  - `rollNextQuickBuyOffer()` 等级选择接入该函数。
+  - 在存档恢复/切天/重开等入口补充清空等级桶状态，避免跨状态污染。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“50/50 配置下基础购买等级序列按 2低2高循环”。
+
+#### 验收优化追加（2026-03-11，普通购买不再出现中立物品）
+
+- 用户需求：普通购买不再出现中立物品。
+- 已完成：
+  - `src/shop/ShopManager.ts`
+    - 商店三格普通池 `rollPool()` 增加中立过滤（按 tags/id 识别），普通商店位不再刷出中立。
+  - `src/scenes/ShopScene.ts`
+    - 基础购买（购买按钮）中立候选入口关闭（`collectNeutralQuickBuyCandidates()` 直接返回空），快速购买不再随机中立。
+- 影响范围：仅“普通购买”路径禁用中立；事件/特殊来源逻辑不改。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“商店三格+基础购买均不再出现中立物品”。
+
+#### 验收优化追加（2026-03-11，合成经验飞行特效 + 升级头像白闪放缩 + 等级文本放缩）
+
+- 用户需求：
+  - 合成获得经验时，从合成物品处飞出特效到经验条位置；
+  - 玩家升级时头像放缩并闪白（类似合成反馈）；
+  - 升级时等级文本做放缩变化。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）发起方案确认，本轮超时（`MCP error -32001: Request timed out`），按最小侵入方案先落地。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 新增合成经验飞行特效链路：
+    - `getPlacedItemCenterOnStage()` 计算合成源物品位置；
+    - `getPlayerExpCenterOnStage()` 定位经验条中心；
+    - `playSynthesisExpFlyEffect()` 实现“源点 -> 经验条”的飞行光点。
+  - 新增升级反馈：`playPlayerLevelUpFx()`
+    - 头像放缩脉冲；
+    - 头像白闪覆盖；
+    - 等级文本同步放缩。
+  - `grantSynthesisExp()` 扩展来源参数，经验增加时触发飞行特效；发生升级时触发升级反馈特效。
+  - 所有合成经验入口已补充来源坐标参数（常规合成/同职业异物/两处Lv7转化）。
+- 验证：`npm run build` 通过。
+- 当前阶段：该特效实现进入验收阶段，等待用户确认“飞行轨迹、升级白闪强度、放缩节奏”是否符合预期。
+
+#### 验收优化追加（2026-03-11，恢复“玩家等级文本Y坐标”调参）
+
+- 用户需求：在“玩家面板调参项精简”后，补回“玩家等级文本 Y 坐标”网页调参能力。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增配置 `shopPlayerStatusLvY`（默认 `70`，范围 `0~300`）。
+  - `src/debug/debugPage.ts`
+    - 将 `shopPlayerStatusLvY` 重新接入“界面位置”调参组。
+  - `src/scenes/ShopScene.ts`
+    - 等级文本继续与头像同中心 X；Y 改为读取 `shopPlayerStatusLvY`；
+    - `onDebugCfgChange` 监听补充 `shopPlayerStatusLvY`，支持热更新。
+  - `data/debug_defaults.json`
+    - 新增默认值 `shopPlayerStatusLvY: 70`。
+- 验证：`npm run build` 通过。
+- 当前阶段：该补充进入验收阶段，等待用户确认“等级Y可调 + 等级X仍自动居中”是否符合预期。
+
+#### 验收优化追加（2026-03-11，物品详情面板新增回血主属性显示）
+
+- 用户需求：常规物品详情面板（如生命药水）应像伤害/护盾一样展示回血数值，且图标与颜色符合“加血”概念。
+- 方案沟通：
+  - 主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`）。
+  - 按最小兼容方案先落地。
+- 已完成：`src/shop/SellPopup.ts`
+  - `extractSimpleStatEntries()` 新增回血识别：匹配“回复/恢复/治疗 + 数值 + 生命值”，并输出 `✚ 回血{数值}`；
+  - 回血样式：图标 `✚`、颜色 `0x73e6a6`（绿色系）；
+  - `applyRuntimeValueToLine()` 新增 `rt.heal` 注入，保证运行态覆盖时详情文本中的回血值可同步替换。
+- 验证：`npm run build` 通过。
+- 当前阶段：该详情显示修正进入验收阶段，等待用户确认“生命药水等回血物品在详情面板可见回血主属性，样式符合预期”。
+
+#### 验收优化追加（2026-03-11，玩家面板调参项精简 + 经验条尺寸/偏移可调）
+
+- 用户需求：
+  - 调试页里不再暴露：玩家等级文本 X、玩家血量文本字号、玩家经验文本字号；
+  - 玩家等级文本与头像保持同中心（自动居中，不手调位置）；
+  - 经验条支持网页调：高度、总宽度、相对头像偏移。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 删除配置：`shopPlayerStatusLvX`、`shopPlayerStatusLvY`、`shopPlayerStatusHpTextFontSize`、`shopPlayerStatusExpTextFontSize`；
+    - 新增配置：`shopPlayerStatusExpBarWidth`、`shopPlayerStatusExpBarHeight`、`shopPlayerStatusExpBarOffsetX`、`shopPlayerStatusExpBarOffsetY`。
+  - `src/debug/debugPage.ts`
+    - 移除上述不再需要的 4 个调参项；
+    - 新增经验条宽/高/偏移调参项（布局位置分组）。
+  - `src/scenes/ShopScene.ts`
+    - 新增 `layoutPlayerStatusPanel()` 统一布局：等级文本中心自动跟随头像中心；
+    - 经验条底板与经验豆绘制宽高改为读取新配置并热更新；
+    - 清理已移除文本节点相关逻辑（HP/EXP 文本不再参与）。
+  - `data/debug_defaults.json`
+    - 删除旧键默认值，新增经验条宽/高/偏移默认值（`120/30/0/60`）。
+- 验证：`npm run build` 通过。
+- 当前阶段：该调参收口进入验收阶段，等待用户确认“仅保留必要调参项 + 经验条可按需调形态与位置”。
+
+#### 验收优化追加（2026-03-11，短剑文案+号修复 + 回血主属性显示）
+
+- 用户需求：
+  - 短剑效果描述应显示 `+15`（而不是无符号 `15`）；
+  - 回血类物品在 2 选 1 卡片中应像伤害/护盾一样显示主属性“回血”。
+- 方案沟通：
+  - 主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`）。
+  - 按最小兼容方案先落地。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 修正分档文本替换逻辑 `resolveTierSeriesTextByStar()`：当原分档串以 `+`/`-` 开头时，替换后保留符号；
+  - 2 选 1 卡片主属性新增回血分支：在无伤害/护盾时，若 `heal>0` 显示 `✚回血{数值}`；
+  - 同步覆盖 `showNeutralChoiceOverlay(..., 'special_shop_like')` 与折扣商店卡片两处主属性渲染逻辑。
+- 验证：`npm run build` 通过。
+- 当前阶段：该显示修正进入验收阶段，等待用户确认“短剑描述带+号 + 回血物品主属性显示正常”。
+
+#### 验收优化追加（2026-03-11，玩家面板改版：隐藏生命值 + 头像等级居中 + 仅显示头像下经验豆）
+
+- 用户需求：
+  - 不显示生命值；
+  - 头像与等级居中显示；
+  - 经验值显示到头像下方；
+  - 经验条总宽约等于头像、高度约 `30px`；
+  - 不显示经验值文本。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 非战斗玩家面板移除生命值展示（不再绘制 HP 条/HP 文本）；
+  - 头像改为居中布局（120x120），等级文本改为居中位置读取调试参数；
+  - EXP 条改为头像下方短条，底板尺寸约 `120x30`；
+  - EXP 仍沿用“经验豆”分色逻辑，绘制区域同步收敛到头像宽度级别（约 `116px`）；
+  - 移除 EXP 文本展示。
+- 同步默认值：
+  - `src/config/debugConfig.ts`：`shopPlayerStatusLvX/LvY` 默认值调整为居中口径（`320/155`）；
+  - `data/debug_defaults.json`：`shopPlayerStatusLvX=320`、`shopPlayerStatusLvY=156`、`shopPlayerStatusY=120`。
+- 验证：`npm run build` 通过。
+- 当前阶段：该面板改版进入验收阶段，等待用户确认“无血量文本/头像等级居中/头像下经验豆”表现。
+
+#### 验收优化追加（2026-03-11，合成/变化石/转职石选择框高度增加120px）
+
+- 用户需求：合成、变化石、转职石等 2 选 1 界面中，描述较长时会超出选择框；要求选择框高度增加 `120px`。
+- 方案沟通：
+  - 主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`）。
+  - 设计 Notebook（`98dc4c7c-dcf5-4391-a65e-1529a4a6b6e5`）问询布局确认，本轮超时（`MCP error -32001: Request timed out`）。
+  - 按最小兼容方案先落地：仅对 `special_shop_like` 选择卡增高，避免影响默认样式弹层。
+- 已完成：`src/scenes/ShopScene.ts`
+  - `showNeutralChoiceOverlay()` 中将卡片高度从 `470` 调整为 `470 + 120`（仅 `displayMode === 'special_shop_like'` 生效）。
+  - 覆盖界面：合成方向选择、变化石/转职石选择、Lv7 变化方向等复用该模式的卡片。
+- 验证：`npm run build` 通过。
+- 当前阶段：该 UI 修正进入验收阶段，等待用户确认“长描述不再超框，整体布局与点击交互正常”。
+
+#### 验收优化追加（2026-03-11，玩家面板文本字号与等级位置网页可调）
+
+- 用户需求：在网页调试页可调整以下项：
+  - 等级文本字号；
+  - 血量文本字号；
+  - 经验值文本字号；
+  - 等级文本位置。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增位置参数：`shopPlayerStatusLvX`、`shopPlayerStatusLvY`；
+    - 新增字号参数：`shopPlayerStatusLvFontSize`、`shopPlayerStatusHpTextFontSize`、`shopPlayerStatusExpTextFontSize`。
+  - `src/debug/debugPage.ts`
+    - 将上述参数接入调试页：
+      - 位置参数归入“布局位置”；
+      - 字号参数归入“字体大小”。
+  - `data/debug_defaults.json`
+    - 新增上述 5 项默认值（与当前面板视觉保持一致）。
+  - `src/scenes/ShopScene.ts`
+    - 初始化时读取新参数设置等级文本位置与三类文本字号；
+    - `applyLayoutFromDebug()` 接入等级文本位置热更新；
+    - `applyTextSizesFromDebug()` 接入三类文本字号热更新；
+    - `onDebugCfgChange` 监听新增键，确保网页改动可实时生效。
+- 验证：`npm run build` 通过。
+- 当前阶段：该可调能力进入验收阶段，等待用户确认调试页可实时调节“等级位置 + 三类文本字号”。
+
+#### 验收优化追加（2026-03-11，非战斗玩家面板布局二次调整：去头像框 + 右侧同排双条）
+
+- 用户需求：
+  - 先不与 Notebook 沟通；
+  - 头像框背景去掉；
+  - 血条与经验条改回头像右侧同一排区域；
+  - 条左边缘对齐头像右边缘，条右边缘距屏幕右侧约 `30px`；
+  - 头像左边缘距屏幕左侧约 `30px`。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 移除头像背景框绘制（仅保留头像本体）；
+  - 面板容器 X 调整为 `18`，配合头像 `x=12`，头像左边缘全局约 `30px`；
+  - 血条/经验条重排到头像右侧同区域：条起点 `x=132`（即头像右边缘），条终点对齐到全局 `610`（距右侧 `30px`）；
+  - HP 填充宽度与 EXP 经验豆绘制宽度同步为 `454`，与新底板内宽一致；
+  - HP/EXP 文本位置同步到新条中心。
+- 验证：`npm run build` 通过。
+- 当前阶段：该布局调整进入验收阶段，等待用户确认“无头像框 + 右侧同排双条 + 左右边距口径”是否达标。
+
+#### 验收优化追加（2026-03-11，非战斗玩家面板视觉细化：Lv40/头像放大/经验豆/条形延展）
+
+- 用户需求：
+  - 等级文字改为 `40` 号；
+  - 人物头像放大 `1.5` 倍；
+  - EXP 条改为按经验数量显示多个圆角矩形（已获得/未获得分色）；
+  - HP 条与 EXP 条向右延伸，并使其左边距与头像到左侧边缘的距离一致。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）发起样式实现确认，本轮超时（`MCP error -32001: Request timed out`），按最小兼容方案先落地。
+- 已完成：`src/scenes/ShopScene.ts`
+  - `playerStatusLvText` 字号改为固定 `40`；
+  - 头像区由 `80x80` 放大到 `120x120`（1.5x），背景圆同步放大；
+  - EXP 显示逻辑改为“经验豆”模式：按 `expNeed` 生成豆格，`已获得=蓝色`、`未获得=深蓝色`；
+  - HP/EXP 条布局改为与头像同左边距起点（统一从 `x=12` 起），并向右扩展到 `596` 宽；
+  - 相应数值文本（HP/EXP）位置同步重排。
+- 验证：`npm run build` 通过。
+- 当前阶段：该视觉细化进入验收阶段，等待用户确认“字号/头像比例/经验豆表现/条形延展”四项效果。
+
+#### 验收优化追加（2026-03-11，低等级奇数补对覆盖上阵区）
+
+- 用户反馈：低等级补对当前仅统计背包；要求上阵区也参与统计；中立物品仍不参与补对。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）发起补充口径确认，本轮超时（`MCP error -32001: Request timed out`），按最小兼容方案先落地。
+- 已完成：`src/scenes/ShopScene.ts`
+  - `pickForcedLowLevelPairCandidate()` 从“仅遍历背包区”改为“遍历上阵区+背包区”；
+  - 两区合并后按 `defId+tier+star` 统计低于当日最低可售等级的奇偶，基础购买继续按奇数项优先补对；
+  - 中立过滤逻辑保持不变（中立不补）。
+- 验证：`npm run build` 通过。
+- 当前阶段：该补充修正进入验收阶段，等待用户确认“上阵区低等级奇数也会被补对，中立不补”。
+
+#### 验收优化追加（2026-03-11，术语口径修正：红心与战斗血量拆分）
+
+- 用户口径确认：
+  - 战败扣减的是“红心”；
+  - “血量”指战斗内英雄生命值，不是红心。
+- 已完成修正：
+  - `src/scenes/BattleScene.ts`
+    - 战败扣红心逻辑恢复按天数（回退此前按等级扣红心改动）。
+  - `src/scenes/ShopScene.ts`
+    - 玩家面板 HP 改为展示“战斗血量”（等级表映射），不再读取红心；
+    - 合成升级不再改动红心数值。
+  - `src/combat/BattleSnapshotStore.ts`
+    - 快照新增 `playerBattleHp` 字段。
+  - `src/combat/CombatEngine.ts`
+    - 玩家战斗初始血量优先使用快照 `playerBattleHp`（由等级成长提供），无值回退旧按天数配置。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“红心系统与战斗血量系统完全分离”结果。
+
+#### 验收优化追加（2026-03-11，非战斗玩家信息面板新增整体 Y 可配置）
+
+- 用户需求：战斗外头像、血量、经验值显示区域，增加一个可配置“整体 Y 位置”参数。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）问询最小改动方案，本轮超时（`MCP error -32001: Request timed out`），按最小兼容方案先落地。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增配置项 `shopPlayerStatusY`（默认 `120`，范围 `0~1384`，步进 `2`）。
+  - `src/debug/debugPage.ts`
+    - 将 `shopPlayerStatusY` 接入“布局位置”调试项，可在线滑杆调整。
+  - `data/debug_defaults.json`
+    - 新增 `shopPlayerStatusY: 120` 默认值。
+  - `src/scenes/ShopScene.ts`
+    - 玩家信息面板容器 `playerStatusCon` 的 `y` 改为读取 `getDebugCfg('shopPlayerStatusY')`；
+    - 布局刷新链路 `applyLayoutFromDebug()` 已接入该参数；
+    - 实时配置监听 `onDebugCfgChange` 已纳入 `shopPlayerStatusY`，支持热更新位置。
+- 验证：`npm run build` 通过。
+- 当前阶段：该位置可配置项进入验收阶段，等待用户确认“非战斗玩家信息面板可通过单一 Y 参数整体上下移动”。
+
+#### 验收优化追加（2026-03-11，基础购买跨天重置 + 低等级奇数补对）
+
+- 用户需求：
+  - Day7 起不再出售 Lv1、Day13 起不再出售 Lv2 时，若背包内存在低于当日最低可售等级的同物品“奇数个”，基础购买应优先补 1 个使其成对可合成；
+  - 若存在多个不同物品均为奇数，后续购买继续逐个补对；
+  - 跨天后基础购买应完全重刷，不能继承前一天已随机出的最后一个结果。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）发起方案问询，本轮超时（`MCP error -32001: Request timed out`），按最小兼容方案先落地。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 新增 `getMinQuickBuyLevelForDay()`：按当天 quick buy 权重计算“当日最低可售等级”；
+  - 新增 `pickForcedLowLevelPairCandidate()`：扫描背包内低于当日最低等级的非中立物品，按 `defId+tier+star` 计数，若为奇数则生成“补对”强制候选（优先更低等级）；
+  - `rollNextQuickBuyOffer()` 前置接入“补对候选”：存在奇数低等级时，下一次基础购买必定返回该候选；连续购买会随背包状态继续补齐其余奇数项；
+  - `setDay()` 在跨天时显式清空 `QUALITY_PSEUDO_RANDOM_STATE` 与 `nextQuickBuyOffer`，确保跨天后基础购买不沿用上一天缓存结果。
+- 验证：`npm run build` 通过。
+- 当前阶段：该改动进入验收阶段，等待用户确认“Day7/Day13 后奇数低等级可连续补对，且跨天首购不再继承前一天结果”。
+
+#### 验收优化追加（2026-03-11，玩家等级成长数值表更新）
+
+- 用户提供新表并要求更新：
+  - `等级 -> 到下一级合成次数`
+  - `等级 -> 生命值`
+- 已完成：`data/game_config.json`
+  - `run_rules.playerExpToNextLevel` 已更新为 Lv1~Lv25 对应需求表；
+  - `run_rules.playerMaxLifeByLevel` 已更新为 Lv1~Lv25 对应需求表（600~38000）。
+- 说明：
+  - 当前代码会按 `playerMaxLifeByLevel` 自动扩展等级上限；
+  - 到达等级上限后 EXP 显示为 `EXP MAX`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收成长节奏（升级速度/血量曲线）是否符合预期。
+
+#### 验收优化追加（2026-03-11，非战斗玩家等级/经验/血量面板 + 合成经验升级）
+
+- 用户需求：
+  - 非战斗状态显示玩家信息：职业头像、等级、HP、EXP；
+  - 血量改为与等级挂钩；等级来自经验；
+  - 每次合成（同物品/异物品）+1 EXP，达到阈值升级并提升生命上限；
+  - 头像区按玩家职业选择显示对应头像。
+- 方案沟通：
+  - 主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）与设计 Notebook（`98dc4c7c-dcf5-4391-a65e-1529a4a6b6e5`）本轮请求均超时（`MCP error -32001: Request timed out`），先按最小可落地方案实现。
+- 已完成：
+  - `src/core/RunState.ts`
+    - 新增玩家进度持久化：`level/exp`（`getPlayerProgressState` / `setPlayerProgressState`）；
+    - 清档时同步清理玩家进度。
+  - `data/game_config.json`
+    - 在 `run_rules` 新增配置：`playerExpToNextLevel`、`playerMaxLifeByLevel`、`playerRoundDamageByLevel`。
+  - `src/items/ItemDef.ts`
+    - 扩展 `runRules` 类型定义，接入上述配置字段。
+  - `src/scenes/ShopScene.ts`
+    - 新增商店态玩家信息面板（头像/Lv/HP条/EXP条）；
+    - 头像按 `starterClass` 动态切换到 `resource/hero/*icon.png`；
+    - 新增经验与升级逻辑：每次合成成功 `+1 EXP`，升级后按等级表提升生命上限并同步当前生命；
+    - 覆盖同物品合成、跨物品合成、Lv7转化、同职异物2选1转化成功路径。
+  - `src/scenes/BattleScene.ts`
+    - 回合生命扣减从“按天数”改为优先读取 `playerRoundDamageByLevel`（无配置回退旧逻辑）。
+- 验证：`npm run build` 通过。
+- 当前阶段：进入验收阶段，待确认以下点：
+  - 非战斗面板位置与样式是否符合预期；
+  - 合成经验增长与升级节奏是否合适；
+  - 升级后生命上限变化是否符合预期。
+
+#### 验收优化追加（2026-03-11，转化后等级显示延迟刷新修复）
+
+- 用户反馈：选择“其他职业物品”后，等级显示不对，需拖动一次才恢复正确；判断为显示层问题。
+- 根因定位：`transformPlacedItemKeepLevelTo()` 中 `addItem().then(...)` 回调使用了旧等级快照，异步回调会覆盖掉已更新的等级显示，导致展示滞后。
+- 已完成：`src/scenes/ShopScene.ts`
+  - 在 `addItem().then(...)` 内改为实时读取当前实例等级（`getInstanceTier/getInstanceTierStar`）后再 `setItemTier`，不再使用旧快照。
+- 验证：`npm run build` 通过。
+- 当前阶段：该显示修复进入验收阶段，等待用户确认“转化后等级显示立即正确，无需再拖动触发刷新”。
+
+#### 验收优化追加（2026-03-11，同职异物合成候选池改为“其他非中立职业”）
+
+- 用户反馈：当前 2 选 1 候选池仍在本职业内随机，不符合预期。
+- 口径修正：同职异物触发该玩法时，候选池应从“其他非中立职业”中随机。
+- 已完成：`src/scenes/ShopScene.ts`
+  - `tryRunSameArchetypeDiffItemStoneSynthesis()` 的候选构造从 `buildStoneTransformChoices(..., 'same')` 改为 `buildStoneTransformChoices(..., 'other')`；
+  - 悬浮信息文案同步改为：`升级为 +1 级其他非中立职业物品（2选1）`。
+- 验证：`npm run build` 通过。
+- 当前阶段：该修正进入验收阶段，等待用户确认候选池已不再落在本职业内。
+
+#### 验收优化追加（2026-03-11，同职业异物合成新增开关 + 转职石式2选1且结果+1级）
+
+- 用户需求：
+  - 网页内增加玩法开关：`同职业不同物品合成` 是否走“转职石式2选1”；
+  - 默认开启；
+  - 流程与转职石一致，但候选与结果等级应为 `+1`（即合成后的目标等级）。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）发起方案评审，本轮超时（`MCP error -32001: Request timed out`），按最小兼容方案先落地。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增开关 `gameplaySameArchetypeDiffItemStoneSynthesis`（默认 `1`）。
+  - `data/debug_defaults.json`
+    - 新增该开关默认值并设为开启。
+  - `src/debug/debugPage.ts`
+    - 将该开关接入“玩法复选项”调试区，支持网页调试页开关。
+  - `src/scenes/ShopScene.ts`
+    - 设置弹窗新增开关行：`同职异物合成选转化`；
+    - 同职业异物合成新增判定与执行链路：开关开启时，拖拽合成改为“2选1转化”；
+    - 候选生成复用石头转化逻辑，并将抽取等级与展示等级提升到 `+1`；
+    - 选择确认后结果物品等级落为 `+1`，并消耗拖拽源物品；
+    - 保持现有边界：同物品合成、Lv7转化、中立物品限制逻辑不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：该玩法开关改动进入验收阶段，等待用户确认“开关默认开启 + 同职业异物合成改为2选1且结果为+1级”。
+
+#### 验收优化追加（2026-03-10，重力战锤百分比口径回退确认）
+
+- 用户确认：`重力战锤` 期望值是 **15%**，不是 30%。
+- 已完成：`data/vanessa_items.json`
+  - `重力战锤` 词条与 `simple_desc_tiered` 均回退为 `额外造成自身最大生命值15%的伤害`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认重力战锤口径已恢复为 15%。
+
+#### 验收优化追加（2026-03-10，重力战锤额外伤害百分比修正）
+
+- 用户反馈：`重力战锤` 额外伤害应为“自身最大生命值 30%”，当前配置不一致。
+- 已完成：`data/vanessa_items.json`
+  - `重力战锤` 词条从 `额外造成自身最大生命值15%的伤害。` 更新为 `额外造成自身最大生命值30%的伤害。`；
+  - `simple_desc_tiered` 同步为 30%。
+- 说明：战斗逻辑按词条正则解析百分比，因此该配置修正会同步影响实战与显示。
+- 验证：`npm run build` 通过。
+- 当前阶段：该数值修正进入验收阶段，等待用户确认重力战锤实战额外伤害为自身最大生命值 30%。
+
+#### 验收优化追加（2026-03-10，PVP默认初始血量30 + PVE/PVP扣血上限8）
+
+- 用户需求：
+  - 同步 PVP 初始房间血量默认值改为 `30`；
+  - PVE 与 PVP 扣血规则统一为 `min(天数, 8)`（至少 1）。
+- 主程沟通：向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）提交方案问询，本轮超时（`MCP error -32001: Request timed out`），按最小兼容方案先落地。
+- 已完成：
+  - `src/scenes/PvpLobbyScene.ts`：建房默认初始血量从 `6` 调整为 `30`；
+  - `src/pvp/PvpRoom.ts`：`_initialHp` 与 `createRoom(..., initialHp=...)` 默认改为 `30`，并将失败扣血改为 `Math.max(1, Math.min(8, Math.round(day)))`；
+  - `src/pvp/PvpContext.ts`、`src/scenes/ShopScene.ts`、`src/scenes/BattleScene.ts`：PVP HP 展示 fallback 同步从 `6` 改为 `30`；
+  - `src/scenes/BattleScene.ts`：PVE 结算扣血改为同口径 `min(天数,8)`，并同步到结算文案显示。
+- 验证：`npm run build` 通过。
+- 当前阶段：该规则调整进入验收阶段，等待用户确认 PVP 新建房间默认 30 血、以及 PVE/PVP 在 Day8 后单场失败扣血固定为 8。
+
 #### 验收优化追加（2026-03-10，版本号升级 0.1.2 并发布）
 
 - 用户需求：版本更新为 `0.1.2`，并上传 GHE + Vercel。

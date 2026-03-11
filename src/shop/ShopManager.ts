@@ -228,6 +228,12 @@ export class ShopManager {
     return first ?? ''
   }
 
+  private isNeutralItem(item: ItemDef): boolean {
+    const tags = `${item.tags ?? ''}`.split(/[，,\/\s]+/).map((s) => s.trim().toLowerCase()).filter(Boolean)
+    if (tags.includes('中立') || tags.includes('neutral')) return true
+    return item.id.startsWith('neutral_')
+  }
+
   private hasOwnedAmmoItem(): boolean {
     for (const defId of this.ownedDefIds) {
       const item = this.allItems.find((it) => it.id === defId)
@@ -380,6 +386,7 @@ export class ShopManager {
       if (maxWidthForCurrent < 1) break
 
       const candidates = sourceItems.filter((it) => {
+        if (this.isNeutralItem(it)) return false
         if (!allowDuplicate && usedItemIds.has(it.id)) return false
         if (this.getShopWidthCells(it) > maxWidthForCurrent) return false
         if (restrictAmmoSupport && !hasAmmoOwned && this.isAmmoSupportItem(it)) return false

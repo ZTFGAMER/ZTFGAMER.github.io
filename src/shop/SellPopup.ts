@@ -208,6 +208,16 @@ function extractSimpleStatEntries(
     })
   }
 
+  const heal = find(/(?:回复|恢复|治疗)\s*([+\-]?\d+(?:\.\d+)?)(?:\s*点?)?\s*(?:生命值|生命)?/)
+  if (heal) {
+    out.push({
+      label: '回血',
+      value: heal,
+      color: 0x73e6a6,
+      icon: '✚',
+    })
+  }
+
   const ms = typeof rt?.cooldownMs === 'number'
     ? Math.max(0, rt.cooldownMs)
     : getCooldownMsByTier(item, tierIndex)
@@ -298,11 +308,13 @@ function applyRuntimeValueToLine(line: string, rt?: ItemInfoRuntimeOverride): st
   let out = line
   const damage = typeof rt.damage === 'number' ? Math.max(0, Math.round(rt.damage)) : null
   const shield = typeof rt.shield === 'number' ? Math.max(0, Math.round(rt.shield)) : null
+  const heal = typeof rt.heal === 'number' ? Math.max(0, Math.round(rt.heal)) : null
   const burn = typeof rt.burn === 'number' ? Math.max(0, Math.round(rt.burn)) : null
   const poison = typeof rt.poison === 'number' ? Math.max(0, Math.round(rt.poison)) : null
   const multicast = typeof rt.multicast === 'number' ? Math.max(1, Math.round(rt.multicast)) : null
   if (damage !== null) out = out.replace(/(?:攻击造成|造成)\s*\d+(?:\.\d+)?\s*伤害/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${damage}`))
   if (shield !== null) out = out.replace(/(?:获得|提供)\s*\d+(?:\.\d+)?\s*护盾/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${shield}`))
+  if (heal !== null) out = out.replace(/(?:回复|恢复|治疗)\s*\d+(?:\.\d+)?(?:\s*点?)?\s*(?:生命值|生命)/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${heal}`))
   if (burn !== null) out = out.replace(/造成\s*\d+(?:\.\d+)?\s*灼烧/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${burn}`))
   if (poison !== null) out = out.replace(/造成\s*\d+(?:\.\d+)?\s*剧毒/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${poison}`))
   if (multicast !== null) {

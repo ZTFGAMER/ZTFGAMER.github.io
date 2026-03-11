@@ -28,6 +28,7 @@ export interface BattleSnapshotBundle {
   playerBackpackItemCount?: number
   playerGold?: number
   playerTrophyWins?: number
+  playerBattleHp?: number
   showBasicSynthesisGuide?: boolean
   entities: BattleSnapshotEntity[]
   /** 快照所有者自身的技能 ID（PVP 提交时附带，对手用作 enemySkillIds） */
@@ -52,6 +53,7 @@ export function setBattleSnapshot(snapshot: BattleSnapshotBundle): void {
     playerBackpackItemCount: typeof snapshot.playerBackpackItemCount === 'number' ? Math.max(0, Math.round(snapshot.playerBackpackItemCount)) : undefined,
     playerGold: typeof snapshot.playerGold === 'number' ? Math.max(0, Math.round(snapshot.playerGold)) : undefined,
     playerTrophyWins: typeof snapshot.playerTrophyWins === 'number' ? Math.max(0, Math.round(snapshot.playerTrophyWins)) : undefined,
+    playerBattleHp: typeof snapshot.playerBattleHp === 'number' ? Math.max(1, Math.round(snapshot.playerBattleHp)) : undefined,
     showBasicSynthesisGuide: snapshot.showBasicSynthesisGuide === true,
     entities: snapshot.entities.map((it) => ({ ...it })),
     ownerSkillIds: snapshot.ownerSkillIds ? [...snapshot.ownerSkillIds] : undefined,
@@ -74,6 +76,7 @@ export function getBattleSnapshot(): BattleSnapshotBundle | null {
     playerBackpackItemCount: typeof currentSnapshot.playerBackpackItemCount === 'number' ? Math.max(0, Math.round(currentSnapshot.playerBackpackItemCount)) : undefined,
     playerGold: typeof currentSnapshot.playerGold === 'number' ? Math.max(0, Math.round(currentSnapshot.playerGold)) : undefined,
     playerTrophyWins: typeof currentSnapshot.playerTrophyWins === 'number' ? Math.max(0, Math.round(currentSnapshot.playerTrophyWins)) : undefined,
+    playerBattleHp: typeof currentSnapshot.playerBattleHp === 'number' ? Math.max(1, Math.round(currentSnapshot.playerBattleHp)) : undefined,
     showBasicSynthesisGuide: currentSnapshot.showBasicSynthesisGuide === true,
     entities: currentSnapshot.entities.map((it) => ({ ...it })),
     ownerSkillIds: currentSnapshot.ownerSkillIds ? [...currentSnapshot.ownerSkillIds] : undefined,
