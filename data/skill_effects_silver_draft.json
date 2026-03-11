@@ -278,7 +278,7 @@
       "tier": "silver",
       "archetype": "utility",
       "summary": "每天开始获得金币。",
-      "detail": "每天开始额外获得天数*2的金币。",
+      "detail": "每天开始额外获得等于天数的金币。",
       "effect": {
         "scope": "run",
         "trigger": "on_new_day_enter_shop",
