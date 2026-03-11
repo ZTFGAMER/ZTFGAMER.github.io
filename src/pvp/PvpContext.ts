@@ -16,8 +16,6 @@ import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 
 // 野怪轮胜利奖励系数（相对日收入）：两次野怪各 0.5，满奖励=1× 日收入
 const WILD_WIN_BONUS_RATIO = 0.5
-// sync-a 模式 Shop3 本地倒计时（ms）
-const SHOP3_COUNTDOWN_MS = 60_000
 
 const PVE_BACKUP_KEY = 'bigbazzar_pve_backup_v1'
 
@@ -33,8 +31,6 @@ let countdownTimeoutId: ReturnType<typeof setTimeout> | null = null
 let active = false
 let session: PvpSession | null = null
 let room: PvpRoom | null = null
-// day_ready 在战斗途中到达时延迟显示覆盖层
-let pendingDayReadyAt = 0   // 非 0 表示有待展示的 day_ready，值为到达时间戳 ms
 
 // Mode A: sync-start pending
 let syncStartCallbacks = new Map<number, (() => void)>() // day → callback
@@ -100,18 +96,26 @@ export const PvpContext = {
     backupAndClearPveSave()
 
     // 注册房间回调
-    pvpRoom.onDayReady = (_day, countdownMs) => {
+    pvpRoom.onDayReady = (_day, countdownMs, byeOpponentMap) => {
       // 异步PVP无倒计时：玩家手动点"准备"推进，无需自动提交
       if (isAsyncMode()) return
       // 注意：不在此处更新 session.currentDay！
       // currentDay 由 session 初始值(1) 和 onBattleComplete 负责推进。
       countdownTotalMs = countdownMs
-      // 战斗场景中收到下一天 day_ready 时，延迟启动倒计时，避免干扰战斗界面
-      if (SceneManager.currentName() === 'battle') {
-        pendingDayReadyAt = Date.now()
-      } else {
-        startCountdown()
+      // 若 host 预计算了轮空配对，提前设置 currentOpponentPlayerIndex（商店徽章即可展示）
+      if (session && byeOpponentMap) {
+        const preAssigned = byeOpponentMap[session.myIndex]
+        if (preAssigned !== undefined) {
+          session.currentOpponentPlayerIndex = preAssigned
+          PvpContext.onOpponentPreAssigned?.()
+        }
       }
+      // 倒计时由 onCountdownStart 统一触发（所有玩家进入商店后才开始）
+    }
+
+    pvpRoom.onCountdownStart = (_day) => {
+      if (isAsyncMode()) return
+      startCountdown()
     }
 
     pvpRoom.onPlayerStatusUpdate = () => { /* 不再显示玩家准备状态 */ }
@@ -141,6 +145,8 @@ export const PvpContext = {
           applyOpponentSnapshot(day, opponentSnap)
         } else {
           pendingOpponentSnap = opponentSnap
+          // 对手 index 已确认但还在等待 sync_start，通知 ShopScene 刷新等待面板
+          PvpContext.onOpponentKnown?.()
         }
         return
       }
@@ -315,6 +321,12 @@ export const PvpContext = {
   /** eliminatedPlayers 更新后触发（ShopScene 用于刷新等待面板） */
   onEliminatedPlayersUpdate: null as (() => void) | null,
 
+  /** 对手 index 确认后触发（sync-a 缓存快照时，ShopScene 用于刷新等待面板对手卡） */
+  onOpponentKnown: null as (() => void) | null,
+
+  /** day_ready 携带轮空预分配后触发（ShopScene 用于补建对手徽章） */
+  onOpponentPreAssigned: null as (() => void) | null,
+
   /** Returns current PVP mode */
   getPvpMode(): import('./PvpTypes').PvpMode | null {
     return session?.pvpMode ?? null
@@ -387,14 +399,6 @@ export const PvpContext = {
       }
 
       SceneManager.goto('shop')
-
-      // 若 day_ready 在战斗途中已到达（延迟了覆盖层），现在补充显示
-      if (pendingDayReadyAt > 0) {
-        const elapsed = Date.now() - pendingDayReadyAt
-        countdownTotalMs = Math.max(0, countdownTotalMs - elapsed)
-        pendingDayReadyAt = 0
-        startCountdown()
-      }
     }
   },
 
@@ -420,16 +424,10 @@ export const PvpContext = {
     return bonus
   },
 
-  /**
-   * ShopScene 注册完 autoSubmit 后调用：通知 PvpContext 商店已就绪。
-   * 仅 sync-a 模式需要倒计时，异步PVP为空操作。
-   */
-  onShopReady(): void {
-    if (isAsyncMode()) return
-    if (currentDayPhase === 'shop3') {
-      countdownTotalMs = SHOP3_COUNTDOWN_MS
-      startCountdown()
-    }
+  /** ShopScene 进入时调用：通知 host 本玩家已到商店，所有人到齐后开始倒计时 */
+  notifyShopEntered(): void {
+    if (!active || !session || !room || isAsyncMode()) return
+    room.notifyShopEntered(session.currentDay)
   },
 
   /** ShopScene 轮询：获取当前剩余倒计时毫秒数（0 表示未激活或已结束） */
@@ -447,13 +445,14 @@ export const PvpContext = {
     room = null
     session = null
     active = false
-    pendingDayReadyAt = 0
     syncStartCallbacks.clear()
     pendingOpponentSnap = null
     pendingSyncStartDay = 0
     syncReadyIndices = []
     PvpContext.onUrgeReceived = null
     PvpContext.onEliminatedPlayersUpdate = null
+    PvpContext.onOpponentKnown = null
+    PvpContext.onOpponentPreAssigned = null
     pendingSurvivingDamage = 0
     pendingRoundWinner = 'draw'
     currentDayPhase = 'shop1'

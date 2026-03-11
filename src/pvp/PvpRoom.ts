@@ -10,7 +10,7 @@ import { getOpponentFromAlive } from '@/pvp/PvpTypes'
 import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 import { getConfig } from '@/core/DataLoader'
 
-const DEFAULT_COUNTDOWN_MS = 90_000
+const DEFAULT_COUNTDOWN_MS = 120_000
 
 export type RoomRole = 'host' | 'client'
 
@@ -55,16 +55,23 @@ export class PvpRoom {
   private dayAliveIndices = new Map<number, number[]>()
   // 淘汰顺序记录：按淘汰先后排列 playerIndex，第一个元素为最先被淘汰的玩家
   private eliminationOrder: number[] = []
+  // sync-a：每天预计算的轮空配对（playerIndex → mirrorOpponentIndex）
+  private byePairingsByDay = new Map<number, Map<number, number>>()
+  // sync-a：每天已进入商店的玩家集合（host only），全员到位后触发倒计时
+  private shopEnteredByDay = new Map<number, Set<number>>()
+  // sync-a：已触发过倒计时的天数，防止重复广播
+  private countdownStartedDays = new Set<number>()
 
   pvpMode: PvpMode = 'async'
   // Mode A: sync-ready tracking per day
   private daySyncReadyPlayers = new Map<number, Set<number>>() // day → set of playerIndex
   onBattleSyncStart?: (day: number) => void
+  onCountdownStart?: (day: number) => void
 
   // ---------- Callbacks (set by PvpContext / PvpLobbyScene) ----------
   onRoomStateChange?: (players: PvpPlayer[]) => void
   onGameStart?: (myIndex: number, totalPlayers: number) => void
-  onDayReady?: (day: number, countdownMs: number) => void
+  onDayReady?: (day: number, countdownMs: number, byeOpponentMap?: Record<number, number>) => void
   onPlayerStatusUpdate?: (day: number, readyIndices: number[]) => void
   onOpponentSnapshot?: (day: number, snapshot: BattleSnapshotBundle, opponentPlayerIndex?: number) => void
   onGameOver?: (rankings: { nickname: string; wins: number | null; index: number }[]) => void
@@ -221,6 +228,12 @@ export class PvpRoom {
         this.broadcastToClients({ type: 'battle_sync_start', day })
         this.onBattleSyncStart?.(day)
       }
+    } else if (msg.type === 'shop_entered') {
+      const player = this._players.find((p) => p.peerId === peerId)
+      if (!player) return
+      if (!this.shopEnteredByDay.has(msg.day)) this.shopEnteredByDay.set(msg.day, new Set())
+      this.shopEnteredByDay.get(msg.day)!.add(player.index)
+      this.checkAndStartCountdown(msg.day)
     } else if (msg.type === 'urge') {
       const fromPlayer = this._players.find((p) => p.peerId === peerId)
       if (!fromPlayer) return
@@ -276,7 +289,7 @@ export class PvpRoom {
         this.onGameStart?.(msg.myIndex, msg.totalPlayers)
         break
       case 'day_ready':
-        this.onDayReady?.(msg.day, msg.countdownMs)
+        this.onDayReady?.(msg.day, msg.countdownMs, msg.byeOpponentMap)
         break
       case 'player_status':
         this.onPlayerStatusUpdate?.(msg.day, msg.readyIndices)
@@ -298,6 +311,9 @@ export class PvpRoom {
         break
       case 'urge_notify':
         this.onUrgeNotify?.(msg.fromPlayerIndex, msg.fromNickname)
+        break
+      case 'countdown_start':
+        this.onCountdownStart?.(msg.day)
         break
     }
   }
@@ -347,15 +363,63 @@ export class PvpRoom {
     this.latestDaySnapshots.set(day, new Map())
     this.dispatchedPlayersByDay.set(day, new Set())
 
+    // sync-a：预计算轮空配对，随 day_ready 下发，客户端商店阶段即可展示对手
+    let byeOpponentMap: Record<number, number> | undefined
+    if (this.pvpMode === 'sync-a') {
+      const aliveForDay = this._players
+        .filter(p => !p.isAi && !this.eliminatedSet.has(p.index))
+        .map(p => p.index)
+        .sort((a, b) => a - b)
+      const byePairings = new Map<number, number>()
+      for (const idx of aliveForDay) {
+        const oppIdx = getOpponentFromAlive(idx, aliveForDay, day - 1)
+        if (oppIdx < 0) {
+          // 轮空：确定性选第一个其他存活玩家作为镜像（保证客户端可复现）
+          const mirror = aliveForDay.find(i => i !== idx)
+          if (mirror !== undefined) byePairings.set(idx, mirror)
+        }
+      }
+      this.byePairingsByDay.set(day, byePairings)
+      if (byePairings.size > 0) {
+        byeOpponentMap = {}
+        byePairings.forEach((opp, player) => { byeOpponentMap![player] = opp })
+      }
+    }
+
     const countdownMs = DEFAULT_COUNTDOWN_MS
-    this.broadcastToClients({ type: 'day_ready', day, countdownMs })
-    this.onDayReady?.(day, countdownMs)
+    this.broadcastToClients({ type: 'day_ready', day, countdownMs, byeOpponentMap })
+    this.onDayReady?.(day, countdownMs, byeOpponentMap)
 
     // 安全兜底：10分钟后对所有尚未收到分发的存活玩家强制用昨日快照分发
     if (this.dayCountdownTimer) clearTimeout(this.dayCountdownTimer)
     this.dayCountdownTimer = setTimeout(() => {
       this.hostForceDispatchAll(day)
     }, 600_000)
+  }
+
+  /** 玩家进入商店时上报（host 本地调用；客户端发消息给 host） */
+  notifyShopEntered(day: number): void {
+    if (this.pvpMode !== 'sync-a') return
+    if (this.isHost) {
+      if (!this.shopEnteredByDay.has(day)) this.shopEnteredByDay.set(day, new Set())
+      this.shopEnteredByDay.get(day)!.add(this._myIndex)
+      this.checkAndStartCountdown(day)
+    } else {
+      this.sendToHost({ type: 'shop_entered', day })
+    }
+  }
+
+  /** 检查所有存活且在线玩家是否已进入商店，若是则广播倒计时开始 */
+  private checkAndStartCountdown(day: number): void {
+    if (this.countdownStartedDays.has(day)) return
+    const entered = this.shopEnteredByDay.get(day) ?? new Set()
+    const aliveHumans = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index) && p.connected)
+    if (aliveHumans.length > 0 && aliveHumans.every((p) => entered.has(p.index))) {
+      console.log('[PvpRoom] 所有玩家已进入商店，启动倒计时 day=' + day)
+      this.countdownStartedDays.add(day)
+      this.broadcastToClients({ type: 'countdown_start', day })
+      this.onCountdownStart?.(day)
+    }
   }
 
   /** 安全兜底：强制向所有未分发的存活玩家派发（使用可用的最佳快照） */
@@ -444,16 +508,28 @@ export class PvpRoom {
     let resolvedOpponentIdx = opponentIdx
 
     if (opponentIdx < 0) {
-      // 轮空：从当天已提交的快照中随机选一位存活玩家（排除自身）
-      const candidates = [...latestMap.entries()].filter(([idx]) => idx !== playerIndex && !this.eliminatedSet.has(idx))
-      if (candidates.length > 0) {
-        const [ownerIdx, snap] = candidates[Math.floor(Math.random() * candidates.length)]!
-        opponentSnap = snap
-        resolvedOpponentIdx = ownerIdx
+      // 轮空：优先使用 hostStartDay 预计算的确定性镜像配对（与 day_ready 下发的保持一致）
+      const preMirror = this.byePairingsByDay.get(day)?.get(playerIndex) ?? -1
+      const mirrorIdx = preMirror >= 0 ? preMirror : -1
+      if (mirrorIdx >= 0) {
+        // 用预配对玩家的当天快照（若已提交）或昨日快照
+        opponentSnap = latestMap.get(mirrorIdx)
+          ?? this.playerLastSnapshots.get(mirrorIdx)
+          ?? this.getGhostOrEmpty(day)
+        resolvedOpponentIdx = mirrorIdx
       } else {
-        // 退到昨日快照兜底
-        opponentSnap = this.playerLastSnapshots.get(playerIndex) ?? this.getGhostOrEmpty(day)
-        resolvedOpponentIdx = -1
+        // 兜底：从当天已提交中选第一个（确定性，非随机）
+        const candidates = [...latestMap.entries()]
+          .filter(([idx]) => idx !== playerIndex && !this.eliminatedSet.has(idx))
+          .sort(([a], [b]) => a - b)
+        if (candidates.length > 0) {
+          const [ownerIdx, snap] = candidates[0]!
+          opponentSnap = snap
+          resolvedOpponentIdx = ownerIdx
+        } else {
+          opponentSnap = this.playerLastSnapshots.get(playerIndex) ?? this.getGhostOrEmpty(day)
+          resolvedOpponentIdx = -1
+        }
       }
     } else {
       // 常规对战：使用对手当天最新快照，若无则用昨日快照
@@ -759,5 +835,7 @@ export class PvpRoom {
     this.dispatchedOpponentSnaps.clear()
     this.latestDaySnapshots.clear()
     this.dispatchedPlayersByDay.clear()
+    this.shopEnteredByDay.clear()
+    this.countdownStartedDays.clear()
   }
 }

@@ -522,71 +522,6 @@ function startSearchPoll(): void {
 }
 
 // ----------------------------------------------------------------
-// 加入房间视图
-// ----------------------------------------------------------------
-function drawJoinRoomView(): void {
-  clearRoot()
-  drawPageBg()
-  drawPageTitle('加入房间', '输入好友的房间码')
-
-  if (!root) return
-
-  const cardCon = new Container()
-  cardCon.x = CANVAS_W / 2
-  cardCon.y = CANVAS_H / 2 - 60
-
-  const cardG = new Graphics()
-  cardG.roundRect(-260, -200, 520, 400, 24).fill({ color: 0x111828 })
-  cardG.roundRect(-262, -202, 524, 404, 25).fill({ color: 0x2a3a5c, alpha: 0.35 })
-  cardCon.addChild(cardG)
-
-  const iconT = makeText('⌨', 44, 0x5b8def)
-  iconT.anchor.set(0.5)
-  iconT.y = -148
-  cardCon.addChild(iconT)
-
-  const promptT = makeText('输入6位房间码', 32, 0xddeeff, true)
-  promptT.anchor.set(0.5)
-  promptT.y = -88
-  cardCon.addChild(promptT)
-
-  const hintT = makeText('区分大小写，输入后回车或点加入', 20, 0x556688)
-  hintT.anchor.set(0.5)
-  hintT.y = -48
-  cardCon.addChild(hintT)
-
-  const inp = createPixiInput('例：ABC123', 6, (val) => {
-    handleJoinRoom(val)
-  }, CANVAS_W / 2, CANVAS_H / 2 - 30, 360)
-  inp.container.x = 0
-  inp.container.y = 30
-  cardCon.addChild(inp.container)
-  activeInput = inp
-
-  const joinBtn = makeBtn('加入 →', 280, 0x12213a, 0x5b8def, () => {
-    const val = inp.getValue().trim()
-    if (val) handleJoinRoom(val)
-  })
-  joinBtn.x = 0
-  joinBtn.y = 140
-  cardCon.addChild(joinBtn)
-
-  statusText = makeText('', 20, 0xff7766)
-  statusText.anchor.set(0.5)
-  statusText.y = 196
-  cardCon.addChild(statusText)
-
-  root.addChild(cardCon)
-
-  const backBtn = makeBtn('← 返回', 200, 0x1c1c2e, 0x334466, drawMainView)
-  backBtn.x = CANVAS_W / 2
-  backBtn.y = CANVAS_H - 140
-  root.addChild(backBtn)
-
-  setTimeout(() => inp.focus(), 100)
-}
-
-// ----------------------------------------------------------------
 // 模式选择视图
 // ----------------------------------------------------------------
 function drawModeSelectView(): void {
@@ -699,15 +634,6 @@ function drawMainView(): void {
   searchBtn.y = 554
   root.addChild(searchBtn)
 
-  const codeJoinT = makeText('用房间码加入', 18, 0x445577)
-  codeJoinT.anchor.set(0.5)
-  codeJoinT.x = CANVAS_W / 2
-  codeJoinT.y = 634
-  codeJoinT.eventMode = 'static'
-  codeJoinT.cursor = 'pointer'
-  codeJoinT.on('pointerdown', drawJoinRoomView)
-  root.addChild(codeJoinT)
-
   const backBtn = makeBtn('← 返回主菜单', 220, 0x1c1c2e, 0x334466, () => SceneManager.goto('menu'))
   backBtn.x = CANVAS_W / 2
   backBtn.y = CANVAS_H - 140
@@ -724,41 +650,17 @@ function drawHostWaitingView(): void {
 
   if (!root) return
 
-  // 房间码卡片
-  const codeCardG = new Graphics()
-  codeCardG.roundRect(CANVAS_W / 2 - 220, 212, 440, 148, 20).fill({ color: 0x111828 })
-  codeCardG.roundRect(CANVAS_W / 2 - 222, 210, 444, 152, 21).fill({ color: 0x5b8def, alpha: 0.25 })
-  root.addChild(codeCardG)
-
-  const codeLabelT = makeText('房间码', 20, 0x6677aa)
-  codeLabelT.anchor.set(0.5)
-  codeLabelT.x = CANVAS_W / 2
-  codeLabelT.y = 238
-  root.addChild(codeLabelT)
-
-  const codeT = makeText(roomCode, 64, 0xffd86b, true)
-  codeT.anchor.set(0.5)
-  codeT.x = CANVAS_W / 2
-  codeT.y = 292
-  root.addChild(codeT)
-
-  const hintT = makeText('发给好友，输入此码即可加入', 20, 0x445566)
-  hintT.anchor.set(0.5)
-  hintT.x = CANVAS_W / 2
-  hintT.y = 344
-  root.addChild(hintT)
-
   // 玩家列表
   const listLabelT = makeText('玩家列表', 22, 0x6677aa)
   listLabelT.anchor.set(0.5)
   listLabelT.x = CANVAS_W / 2
-  listLabelT.y = 398
+  listLabelT.y = 228
   root.addChild(listLabelT)
 
   const players = pvpRoom?.players ?? []
   for (let i = 0; i < players.length; i++) {
     const player = players[i]!
-    const cardY = 430 + i * 78
+    const cardY = 260 + i * 78
     const cardG = new Graphics()
     cardG.roundRect(CANVAS_W / 2 - 220, cardY, 440, 64, 12).fill({ color: 0x131828 })
     root.addChild(cardG)
@@ -773,10 +675,10 @@ function drawHostWaitingView(): void {
   statusText = makeText('', 20, 0xff9966)
   statusText.anchor.set(0.5)
   statusText.x = CANVAS_W / 2
-  statusText.y = 430 + players.length * 78 + 28
+  statusText.y = 260 + players.length * 78 + 28
   root.addChild(statusText)
 
-  const startY = 430 + players.length * 78 + 92
+  const startY = 260 + players.length * 78 + 92
   const startBtn = makeBtn('开始游戏 ▶', PANEL_W - 60, 0x163a22, 0x4caf50, handleStartGame)
   startBtn.x = CANVAS_W / 2
   startBtn.y = startY

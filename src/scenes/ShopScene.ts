@@ -29,6 +29,7 @@ import { createItemStatBadges } from '@/ui/itemStatBadges'
 import { PhaseManager } from '@/core/PhaseManager'
 import { clearBattleSnapshot, getBattleSnapshot, setBattleSnapshot, type BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 import { PvpContext } from '@/pvp/PvpContext'
+import { getOpponentFromAlive } from '@/pvp/PvpTypes'
 import { clearBattleOutcome, consumeBattleOutcome } from '@/combat/BattleOutcomeStore'
 import { BRONZE_SKILL_PICKS, getBronzeSkillById } from '@/skills/bronzeSkillConfig'
 import { SILVER_SKILL_PICKS, getSilverSkillById } from '@/skills/silverSkillConfig'
@@ -86,8 +87,10 @@ let settingsOverlay:  Container       | null = null
 let skillTestOverlay: Container       | null = null
 let eventTestOverlay: Container       | null = null
 let itemTestOverlay:  Container       | null = null
-let pvpPlayerListOverlay: Container  | null = null
-let pvpWaitingPanel:      Container  | null = null
+let pvpPlayerListOverlay:   Container | null = null
+let pvpWaitingPanel:        Container | null = null
+let pvpBackpackReturnBtn:   Container | null = null
+let pvpOpponentBadge:       Container | null = null
 let hintToastCon:     Container       | null = null
 let hintToastBg:      Graphics        | null = null
 let hintToastText:    Text            | null = null
@@ -11350,8 +11353,18 @@ function buildPvpWaitingPanelContent(panel: Container): void {
   mask.eventMode = 'static'  // 拦截点击，锁定商店
   panel.addChild(mask)
 
+  // ── 本轮对手计算 ──
+  const aliveIndices = alivePlayers.map(p => p.index)
+  const opponentIdx = session.currentOpponentPlayerIndex
+    ?? getOpponentFromAlive(session.myIndex, aliveIndices, session.currentDay - 1)
+  const opponentPlayer = opponentIdx >= 0 ? session.players.find(p => p.index === opponentIdx) : null
+  const opponentHp = opponentIdx >= 0 ? (session.playerHps?.[opponentIdx] ?? session.initialHp) : 0
+  const opponentLastSnap = opponentIdx >= 0 ? snapshots[opponentIdx] : undefined
+
   // ── 面板主体 ──
-  const PANEL_H = Math.min(110 + alivePlayers.length * 90 + 24, CANVAS_H - 160)
+  const OPPONENT_CARD_H = 88
+  const BOTTOM_BTN_H = 68
+  const PANEL_H = Math.min(66 + OPPONENT_CARD_H + 14 + alivePlayers.length * 90 + BOTTOM_BTN_H + 24, CANVAS_H - 80)
   const PANEL_Y = (CANVAS_H - PANEL_H) / 2
   const PANEL_X = 30
   const PANEL_W = CANVAS_W - 60
@@ -11378,11 +11391,69 @@ function buildPvpWaitingPanelContent(panel: Container): void {
   titleT.y = PANEL_Y + 18
   panel.addChild(titleT)
 
+  // ── 本轮对手预告卡 ──
+  const ROW_W = PANEL_W - 32
+  const OPP_CARD_X = PANEL_X + 16
+  const OPP_CARD_Y = PANEL_Y + 62
+
+  const oppCardG = new Graphics()
+  oppCardG.roundRect(OPP_CARD_X, OPP_CARD_Y, ROW_W, OPPONENT_CARD_H, 12)
+    .fill({ color: 0x14102e })
+  oppCardG.roundRect(OPP_CARD_X, OPP_CARD_Y, ROW_W, OPPONENT_CARD_H, 12)
+    .stroke({ color: 0x5544aa, width: 1.5 })
+  panel.addChild(oppCardG)
+
+  const oppLabelT = new Text({ text: '⚔️ 本轮对手', style: { fill: 0x8877cc, fontSize: 18 } })
+  oppLabelT.anchor.set(0, 0.5)
+  oppLabelT.x = OPP_CARD_X + 14
+  oppLabelT.y = OPP_CARD_Y + 24
+  panel.addChild(oppLabelT)
+
+  if (opponentPlayer) {
+    const oppNameT = new Text({
+      text: opponentPlayer.nickname,
+      style: { fill: 0xddeeff, fontSize: 26, fontWeight: 'bold' },
+    })
+    oppNameT.anchor.set(0, 0.5)
+    oppNameT.x = OPP_CARD_X + 14
+    oppNameT.y = OPP_CARD_Y + 60
+    panel.addChild(oppNameT)
+
+    const oppHpT = new Text({
+      text: `❤️ ${opponentHp}/${session.initialHp}`,
+      style: { fill: 0xff9999, fontSize: 20 },
+    })
+    oppHpT.anchor.set(0, 0.5)
+    oppHpT.x = OPP_CARD_X + 14 + oppNameT.width + 16
+    oppHpT.y = OPP_CARD_Y + 60
+    panel.addChild(oppHpT)
+
+    if (opponentLastSnap) {
+      const oppSnapT = new Text({
+        text: `${opponentLastSnap.entities.length} 单位（上轮）`,
+        style: { fill: 0x6688aa, fontSize: 18 },
+      })
+      oppSnapT.anchor.set(1, 0.5)
+      oppSnapT.x = OPP_CARD_X + ROW_W - 14
+      oppSnapT.y = OPP_CARD_Y + 60
+      panel.addChild(oppSnapT)
+    }
+  } else {
+    // 对手未知（轮空/镜像尚未到达）：显示占位，等待 onOpponentKnown 触发刷新
+    const oppPendingT = new Text({
+      text: '对手信息加载中...',
+      style: { fill: 0x556688, fontSize: 20 },
+    })
+    oppPendingT.anchor.set(0, 0.5)
+    oppPendingT.x = OPP_CARD_X + 14
+    oppPendingT.y = OPP_CARD_Y + OPPONENT_CARD_H / 2
+    panel.addChild(oppPendingT)
+  }
+
   // ── 玩家列表 ──
   const ROW_H = 76
   const ROW_GAP = 8
-  const ROW_W = PANEL_W - 32
-  let cursorY = PANEL_Y + 66
+  let cursorY = OPP_CARD_Y + OPPONENT_CARD_H + 14
 
   alivePlayers.forEach((player) => {
     const isReady = readySet.has(player.index)
@@ -11507,6 +11578,168 @@ function buildPvpWaitingPanelContent(panel: Container): void {
     panel.addChild(rowCon)
     cursorY += ROW_H + ROW_GAP
   })
+
+  // ── 底部按钮：查看全员阵容 + 查看我的背包 ──
+  const BTN_Y = cursorY + 12
+  const HALF_BTN_W = Math.floor((ROW_W - 12) / 2)
+  const BTN_H = 52
+
+  // 查看全员阵容
+  const viewAllCon = new Container()
+  const viewAllBg = new Graphics()
+  viewAllBg.roundRect(0, 0, HALF_BTN_W, BTN_H, 10).fill({ color: 0x0e1d35 })
+  viewAllBg.roundRect(0, 0, HALF_BTN_W, BTN_H, 10).stroke({ color: 0x3355aa, width: 1.5 })
+  viewAllCon.addChild(viewAllBg)
+  const viewAllT = new Text({ text: '查看全员阵容', style: { fill: 0x5588dd, fontSize: 19, fontWeight: 'bold' } })
+  viewAllT.anchor.set(0.5, 0.5)
+  viewAllT.x = HALF_BTN_W / 2
+  viewAllT.y = BTN_H / 2
+  viewAllCon.addChild(viewAllT)
+  viewAllCon.x = PANEL_X + 16
+  viewAllCon.y = BTN_Y
+  viewAllCon.eventMode = 'static'
+  viewAllCon.cursor = 'pointer'
+  viewAllCon.on('pointerdown', (e) => { e.stopPropagation(); openPvpPlayerListOverlay() })
+  viewAllCon.on('pointerover', () => { viewAllBg.alpha = 0.75 })
+  viewAllCon.on('pointerout', () => { viewAllBg.alpha = 1 })
+  panel.addChild(viewAllCon)
+
+  // 查看我的背包
+  const bpViewCon = new Container()
+  const bpViewBg = new Graphics()
+  bpViewBg.roundRect(0, 0, HALF_BTN_W, BTN_H, 10).fill({ color: 0x0e2218 })
+  bpViewBg.roundRect(0, 0, HALF_BTN_W, BTN_H, 10).stroke({ color: 0x226644, width: 1.5 })
+  bpViewCon.addChild(bpViewBg)
+  const bpViewT = new Text({ text: '查看我的背包', style: { fill: 0x44bb88, fontSize: 19, fontWeight: 'bold' } })
+  bpViewT.anchor.set(0.5, 0.5)
+  bpViewT.x = HALF_BTN_W / 2
+  bpViewT.y = BTN_H / 2
+  bpViewCon.addChild(bpViewT)
+  bpViewCon.x = PANEL_X + 16 + HALF_BTN_W + 12
+  bpViewCon.y = BTN_Y
+  bpViewCon.eventMode = 'static'
+  bpViewCon.cursor = 'pointer'
+  bpViewCon.on('pointerdown', (e) => { e.stopPropagation(); showBackpackFromWaitingPanel() })
+  bpViewCon.on('pointerover', () => { bpViewBg.alpha = 0.75 })
+  bpViewCon.on('pointerout', () => { bpViewBg.alpha = 1 })
+  panel.addChild(bpViewCon)
+}
+
+// ── 本轮对手徽章（可重复调用：先销毁旧的，再按当前 session 状态重建）──
+function buildPvpOpponentBadge(): void {
+  const { stage } = getApp()
+  if (pvpOpponentBadge) {
+    stage.removeChild(pvpOpponentBadge)
+    pvpOpponentBadge.destroy({ children: true })
+    pvpOpponentBadge = null
+  }
+
+  const sess = PvpContext.getSession()
+  if (!sess) return
+
+  const aliveForBadge = sess.players.filter(p => !sess.eliminatedPlayers.includes(p.index))
+  const aliveIdxForBadge = aliveForBadge.map(p => p.index)
+  const oppIdxForBadge = sess.currentOpponentPlayerIndex
+    ?? getOpponentFromAlive(sess.myIndex, aliveIdxForBadge, sess.currentDay - 1)
+  if (oppIdxForBadge < 0) return
+
+  const oppForBadge = sess.players.find(p => p.index === oppIdxForBadge)
+  if (!oppForBadge) return
+
+  const oppHpForBadge = sess.playerHps?.[oppIdxForBadge] ?? sess.initialHp
+  const BW = 138, BH = 54
+  const badge = new Container()
+  badge.zIndex = 96
+
+  const badgeGlow = new Graphics()
+  badgeGlow.roundRect(-1, -1, BW + 2, BH + 2, 13).fill({ color: 0x9966ff, alpha: 0.18 })
+  badge.addChild(badgeGlow)
+
+  const badgeBg = new Graphics()
+  badgeBg.roundRect(0, 0, BW, BH, 12).fill({ color: 0x0d1020 })
+  badgeBg.roundRect(0, 0, BW, BH, 12).stroke({ color: 0x7755cc, width: 1.5 })
+  badgeBg.roundRect(2, 2, BW - 4, BH / 2 - 2, 10).fill({ color: 0xffffff, alpha: 0.04 })
+  badge.addChild(badgeBg)
+
+  const labelT = new Text({ text: '本轮对手', style: { fill: 0x9977cc, fontSize: 13 } })
+  labelT.anchor.set(0, 0.5)
+  labelT.x = 10
+  labelT.y = 15
+  badge.addChild(labelT)
+
+  const hpT = new Text({ text: `♥ ${oppHpForBadge}/${sess.initialHp}`, style: { fill: 0xff7777, fontSize: 13, fontWeight: 'bold' } })
+  hpT.anchor.set(1, 0.5)
+  hpT.x = BW - 10
+  hpT.y = 15
+  badge.addChild(hpT)
+
+  const divG = new Graphics()
+  divG.rect(8, 27, BW - 16, 1).fill({ color: 0x4433aa, alpha: 0.7 })
+  badge.addChild(divG)
+
+  const nameT = new Text({ text: oppForBadge.nickname, style: { fill: 0xeeddff, fontSize: 20, fontWeight: 'bold' } })
+  nameT.anchor.set(0.5, 0.5)
+  nameT.x = BW / 2
+  nameT.y = 41
+  badge.addChild(nameT)
+
+  badge.x = CANVAS_W - BW - 8
+  badge.y = 94
+  badge.eventMode = 'static'
+  badge.cursor = 'pointer'
+  badge.on('pointerdown', openPvpPlayerListOverlay)
+  badge.on('pointerover', () => { badge.alpha = 0.8 })
+  badge.on('pointerout', () => { badge.alpha = 1 })
+
+  pvpOpponentBadge = badge
+  stage.addChild(badge)
+}
+
+// ── 查看背包（等待面板临时隐藏，展示背包，浮层返回按钮）──
+function showBackpackFromWaitingPanel(): void {
+  if (!pvpWaitingPanel) return
+  pvpWaitingPanel.visible = false
+  if (backpackView) backpackView.visible = true
+
+  // 清理旧返回按钮
+  if (pvpBackpackReturnBtn) {
+    pvpBackpackReturnBtn.parent?.removeChild(pvpBackpackReturnBtn)
+    pvpBackpackReturnBtn.destroy({ children: true })
+    pvpBackpackReturnBtn = null
+  }
+
+  const { stage } = getApp()
+  const returnBtn = new Container()
+  returnBtn.zIndex = 300
+
+  const btnBg = new Graphics()
+  btnBg.roundRect(0, 0, 300, 72, 16).fill({ color: 0x1a0a2e })
+  btnBg.roundRect(0, 0, 300, 72, 16).stroke({ color: 0x7755cc, width: 2 })
+  returnBtn.addChild(btnBg)
+
+  const btnT = new Text({ text: '← 返回等待面板', style: { fill: 0xbb99ff, fontSize: 22, fontWeight: 'bold' } })
+  btnT.anchor.set(0.5, 0.5)
+  btnT.x = 150
+  btnT.y = 36
+  returnBtn.addChild(btnT)
+
+  returnBtn.x = (CANVAS_W - 300) / 2
+  returnBtn.y = CANVAS_H - 112
+  returnBtn.eventMode = 'static'
+  returnBtn.cursor = 'pointer'
+  returnBtn.on('pointerdown', () => {
+    if (pvpBackpackReturnBtn) {
+      pvpBackpackReturnBtn.parent?.removeChild(pvpBackpackReturnBtn)
+      pvpBackpackReturnBtn.destroy({ children: true })
+      pvpBackpackReturnBtn = null
+    }
+    if (pvpWaitingPanel) pvpWaitingPanel.visible = true
+  })
+  returnBtn.on('pointerover', () => { btnBg.alpha = 0.8 })
+  returnBtn.on('pointerout', () => { btnBg.alpha = 1 })
+
+  pvpBackpackReturnBtn = returnBtn
+  stage.addChild(returnBtn)
 }
 
 // ============================================================
@@ -11518,6 +11751,11 @@ export function clearPvpShopState(): void {
   pendingBattleTransition = false
   pendingAdvanceToNextDay = false
   pvpReadyLocked = false
+  if (pvpBackpackReturnBtn) {
+    pvpBackpackReturnBtn.parent?.removeChild(pvpBackpackReturnBtn)
+    pvpBackpackReturnBtn.destroy({ children: true })
+    pvpBackpackReturnBtn = null
+  }
 }
 
 // ============================================================
@@ -11549,9 +11787,8 @@ export const ShopScene: Scene = {
           PvpContext.onPlayerReady()
         }
       })
-      // 通知 PvpContext 商店已就绪（shop3 阶段会启动本地倒计时）
-      PvpContext.onShopReady()
-
+      // sync-a：通知 host 本玩家已进入商店（所有人到齐后才开始倒计时）
+      PvpContext.notifyShopEntered()
       // sync-a：注册回调
       if (PvpContext.getPvpMode() === 'sync-a') {
         pvpUrgeCooldownSet.clear()
@@ -11568,9 +11805,18 @@ export const ShopScene: Scene = {
             pvpWaitingPanel.destroy({ children: true })
             pvpWaitingPanel = null
           }
+          if (pvpBackpackReturnBtn) {
+            pvpBackpackReturnBtn.parent?.removeChild(pvpBackpackReturnBtn)
+            pvpBackpackReturnBtn.destroy({ children: true })
+            pvpBackpackReturnBtn = null
+          }
         }
         // eliminatedPlayers 变化时立即刷新等待面板（round_summary 延迟到达时的兜底）
         PvpContext.onEliminatedPlayersUpdate = () => {
+          refreshPvpWaitingPanel()
+        }
+        // 对手 index 确认后刷新等待面板对手卡（轮空/镜像场景：host 下发 opponent_snapshot 后触发）
+        PvpContext.onOpponentKnown = () => {
           refreshPvpWaitingPanel()
         }
       }
@@ -11670,6 +11916,13 @@ export const ShopScene: Scene = {
       pvpPlayersBtn.on('pointerover', () => { pvpPlayersBtn.alpha = 0.75 })
       pvpPlayersBtn.on('pointerout', () => { pvpPlayersBtn.alpha = 1 })
       stage.addChild(pvpPlayersBtn)
+
+      // ── 本轮对手徽章（sync-a：商店阶段始终可见）──
+      if (PvpContext.getPvpMode() === 'sync-a') {
+        buildPvpOpponentBadge()
+        // day_ready 携带轮空预分配时（onEnter 之后 ~300ms 到达），补建徽章
+        PvpContext.onOpponentPreAssigned = () => { buildPvpOpponentBadge() }
+      }
     }
 
     trophyText = new Text({
@@ -12615,9 +12868,21 @@ export const ShopScene: Scene = {
       pvpWaitingPanel.destroy({ children: true })
       pvpWaitingPanel = null
     }
+    if (pvpOpponentBadge) {
+      stage.removeChild(pvpOpponentBadge)
+      pvpOpponentBadge.destroy({ children: true })
+      pvpOpponentBadge = null
+    }
+    if (pvpBackpackReturnBtn) {
+      pvpBackpackReturnBtn.parent?.removeChild(pvpBackpackReturnBtn)
+      pvpBackpackReturnBtn.destroy({ children: true })
+      pvpBackpackReturnBtn = null
+    }
     PvpContext.onUrgeReceived = null
     PvpContext.onBeforeBattleTransition = null
     PvpContext.onEliminatedPlayersUpdate = null
+    PvpContext.onOpponentKnown = null
+    PvpContext.onOpponentPreAssigned = null
     pvpUrgeCooldownSet.clear()
     if (btnRow)       stage.removeChild(btnRow)
     if (dayDebugCon)  stage.removeChild(dayDebugCon)

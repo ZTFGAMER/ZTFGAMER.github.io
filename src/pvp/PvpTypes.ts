@@ -69,11 +69,12 @@ export type PvpMsgToHost =
   | { type: 'battle_sync_ready'; day: number }
   | { type: 'round_result'; day: number; winner: 'player' | 'enemy' | 'draw'; survivingDamage: number }
   | { type: 'urge'; targetPlayerIndex: number }
+  | { type: 'shop_entered'; day: number }
 
 export type PvpMsgToClient =
   | { type: 'room_state'; players: Omit<PvpPlayer, 'peerId'>[]; maxPlayers: number }
   | { type: 'game_start'; myIndex: number; totalPlayers: number; countdownMs: number; initialHp: number }
-  | { type: 'day_ready'; day: number; countdownMs: number }
+  | { type: 'day_ready'; day: number; countdownMs: number; byeOpponentMap?: Record<number, number> }
   | { type: 'player_status'; day: number; readyIndices: number[] }
   | { type: 'opponent_snapshot'; day: number; snapshot: BattleSnapshotBundle; opponentPlayerIndex?: number }
   | { type: 'game_over'; rankings: { nickname: string; wins: number | null; index: number }[] }
@@ -81,6 +82,7 @@ export type PvpMsgToClient =
   | { type: 'round_summary'; day: number; hpMap: Record<number, number>; newlyEliminated: number[]; snapshots: Record<number, BattleSnapshotBundle> }
   | { type: 'sync_ready_update'; day: number; readyIndices: number[] }
   | { type: 'urge_notify'; fromPlayerIndex: number; fromNickname: string }
+  | { type: 'countdown_start'; day: number }
 
 export type PvpMsg = PvpMsgToHost | PvpMsgToClient
 
