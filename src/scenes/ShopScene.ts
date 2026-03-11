@@ -477,6 +477,7 @@ let levelRewardCategoryPool: Array<'stone' | 'scroll' | 'medal'> = []
 let pendingLevelRewards: string[] = []
 let pendingHeroPeriodicRewards: PendingHeroPeriodicReward[] = []
 let pendingHeroPeriodicRewardDispatching = false
+const lockedBackpackRewardCells = new Set<string>()
 const levelRewardObtainedByKind = new Map<string, number>()
 let nextQuickBuyOffer: {
   itemId: string
@@ -502,6 +503,31 @@ type BattleStartTransitionState = {
 }
 
 let battleStartTransition: BattleStartTransitionState | null = null
+
+function makeGridCellKey(col: number, row: number): string {
+  return `${Math.round(col)},${Math.round(row)}`
+}
+
+function lockBackpackRewardCell(col: number, row: number): void {
+  lockedBackpackRewardCells.add(makeGridCellKey(col, row))
+}
+
+function unlockBackpackRewardCell(col: number, row: number): void {
+  lockedBackpackRewardCells.delete(makeGridCellKey(col, row))
+}
+
+function isBackpackDropLocked(col: number, row: number, size: ItemSizeNorm): boolean {
+  if (lockedBackpackRewardCells.size <= 0) return false
+  const { w, h } = getSizeCellDim(size)
+  const left = Math.round(col)
+  const top = Math.round(row)
+  for (let dx = 0; dx < w; dx++) {
+    for (let dy = 0; dy < h; dy++) {
+      if (lockedBackpackRewardCells.has(makeGridCellKey(left + dx, top + dy))) return true
+    }
+  }
+  return false
+}
 
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v))
@@ -3495,6 +3521,7 @@ function checkAndPopPendingRewards(): void {
   while (pendingLevelRewards.length > 0) {
     const slot = findFirstBackpackPlace('1x1')
     if (!slot) break  // 背包满，等待空格
+    lockBackpackRewardCell(slot.col, slot.row)
 
     const defId = pendingLevelRewards[0]!
     const def = getItemDefById(defId)
@@ -3517,9 +3544,13 @@ function checkAndPopPendingRewards(): void {
     const capturedDef = def
     const capturedSlot = { ...slot }
     flyRewardToBackpack(defId, slot.col, slot.row, () => {
-      if (!backpackView || !backpackSystem) return
+      if (!backpackView || !backpackSystem) {
+        unlockBackpackRewardCell(capturedSlot.col, capturedSlot.row)
+        return
+      }
       // 检查物品还在（没被移除）
       if (!backpackSystem.getItem(capturedId)) {
+        unlockBackpackRewardCell(capturedSlot.col, capturedSlot.row)
         checkAndPopPendingRewards()
         return
       }
@@ -3528,6 +3559,8 @@ function checkAndPopPendingRewards(): void {
         drag?.refreshZone(backpackView!)
         // 动画落地后检查是否还有更多待领取
         checkAndPopPendingRewards()
+      }).finally(() => {
+        unlockBackpackRewardCell(capturedSlot.col, capturedSlot.row)
       })
     })
 
@@ -4261,6 +4294,7 @@ function findSynthesisTargetAtPointer(
 
   if (backpackView && backpackView.visible && backpackSystem) {
     for (const it of backpackSystem.getAllItems()) {
+      if (isBackpackDropLocked(it.col, it.row, it.size)) continue
       const itTier = instanceToTier.get(it.instanceId) ?? 'Bronze'
       const itStar = getInstanceTierStar(it.instanceId)
       if (!canSynthesizePair(defId, it.defId, tier, star, itTier, itStar)) continue
@@ -4302,6 +4336,7 @@ function findSynthesisTargetByFootprint(
     const t = cell.row
     const b = cell.row + h
     for (const it of system.getAllItems()) {
+      if (zone === 'backpack' && isBackpackDropLocked(it.col, it.row, it.size)) continue
       const itTier = instanceToTier.get(it.instanceId) ?? 'Bronze'
       const itStar = getInstanceTierStar(it.instanceId)
       if (!canSynthesizePair(defId, it.defId, tier, star, itTier, itStar)) continue
@@ -5245,7 +5280,7 @@ const STARTER_CLASS_PRESETS: Record<StarterClass, {
   },
   hero1: {
     title: '占卜师',
-    subtitle: '不同物品合成，可以选择合成结果（每天限1次）',
+    subtitle: '不同物品合成时可以3选1（每天限1次）',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero1.png',
   },
@@ -5257,37 +5292,37 @@ const STARTER_CLASS_PRESETS: Record<StarterClass, {
   },
   hero3: {
     title: '魔术师',
-    subtitle: '每天首次丢弃物品，获得同等级的随机物品',
+    subtitle: '每天首次丢弃物品，获得同等级的其他物品',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero3.png',
   },
   hero4: {
     title: '戏法师',
-    subtitle: '相同物品合成，可以选择合成结果（每天限1次）',
+    subtitle: '相同物品合成时可以3选1（每天限1次）',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero4.png',
   },
   hero5: {
     title: '铁匠',
-    subtitle: '每隔5天获得1颗升级石：丢弃时随机升级1个物品',
+    subtitle: '每隔5天获得1颗升级石（效果：随机升级1个物品）',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero5.png',
   },
   hero6: {
     title: '冒险家',
-    subtitle: '每隔3天获得1张冒险券：丢弃时进行一次冒险',
+    subtitle: '每隔3天获得1张冒险券（效果：进行1次冒险）',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero6.png',
   },
   hero7: {
     title: '指挥官',
-    subtitle: '每隔3天获得1枚勋章：选择1个职业，获得该职业随机物品',
+    subtitle: '每隔3天获得1枚勋章（效果：获得1个特定职业物品）',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero7.png',
   },
   hero8: {
     title: '继承者',
-    subtitle: '第3天获得1个黄金宝箱：选择1个黄金物品',
+    subtitle: '第3天获得1个黄金宝箱（效果：获得1个黄金物品）',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero8.png',
   },
@@ -6546,6 +6581,7 @@ function findNeutralStoneTargetWithDragProbe(
   ): SynthesisTarget | null => {
     if (!system || !view || (zone === 'backpack' && !view.visible)) return null
     for (const it of system.getAllItems()) {
+      if (zone === 'backpack' && isBackpackDropLocked(it.col, it.row, it.size)) continue
       const targetDef = getItemDefById(it.defId)
       if (!targetDef) continue
       if (!isValidNeutralStoneTarget(sourceDef, targetDef)) continue
@@ -6569,6 +6605,7 @@ function findNeutralStoneTargetWithDragProbe(
     const t = cell.row
     const b = cell.row + h
     for (const it of system.getAllItems()) {
+      if (zone === 'backpack' && isBackpackDropLocked(it.col, it.row, it.size)) continue
       const targetDef = getItemDefById(it.defId)
       if (!targetDef) continue
       if (!isValidNeutralStoneTarget(sourceDef, targetDef)) continue
@@ -14195,6 +14232,10 @@ export const ShopScene: Scene = {
     drag = new DragController(stage, canvas)
     drag.addZone(battleSystem,  battleView)
     drag.addZone(backpackSystem, backpackView)
+    drag.onDropCellLocked = ({ view, col, row, size }) => {
+      if (view !== backpackView) return false
+      return isBackpackDropLocked(col, row, size)
+    }
     drag.onDragStart = (instanceId: string) => {
       clearSelection()
       const defId = instanceToDefId.get(instanceId)

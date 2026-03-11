@@ -72,6 +72,7 @@ export class DragController {
   onDragStart: (instanceId: string) => void = () => {}
   onDragMove:  (payload: DragMovePayload) => void = () => {}
   onSpecialDrop: (payload: SpecialDropPayload) => boolean = () => false
+  onDropCellLocked: (payload: { view: GridZone; col: number; row: number; size: ItemSizeNorm; instanceId: string }) => boolean = () => false
   onDragEnd:   ()               => void = () => {}
   private suppressSqueeze = false
   private inSpecialDropDispatch = false
@@ -326,6 +327,10 @@ export class DragController {
 
     // 行号按命中格 cell.row 走（背包 2 行允许自由重排）
     const finalRow = cell.row
+    if (this.onDropCellLocked({ view: targetPair.view, col: cell.col, row: finalRow, size: item.size, instanceId: id })) {
+      this.doSnapBack()
+      return
+    }
     const isLogicalSameZone = targetPair === home
 
     if (targetPair.system.rows > 1 && targetPair === home) {
@@ -730,6 +735,13 @@ export class DragController {
     if (best) {
       const { pair, cell } = best
       const finalRow = cell.row
+      if (this.onDropCellLocked({ view: pair.view, col: cell.col, row: finalRow, size: item.size, instanceId: this.activeId })) {
+        this.clearSqueezePreview()
+        for (const other of this.pairs)
+          if (other !== pair) other.view.clearHighlight()
+        pair.view.highlightCells(cell.col, finalRow, item.size, false)
+        return
+      }
       const isLogicalSameZone = pair === this.homeZone
       if (pair.system.rows > 1 && pair === this.homeZone) {
         this.clearSqueezePreview()
@@ -1069,6 +1081,7 @@ export class DragController {
     if (col < 0 || row < 0) return false
     if (col + w > pair.view.activeColCount) return false
     if (row + h > pair.system.rows) return false
+    if (this.onDropCellLocked({ view: pair.view, col, row, size, instanceId: excludeId ?? '' })) return false
     if (excludeId) return pair.system.canPlaceExcluding(col, row, size, excludeId)
     return pair.system.canPlace(col, row, size)
   }
