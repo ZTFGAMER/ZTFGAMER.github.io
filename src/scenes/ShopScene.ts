@@ -7733,12 +7733,14 @@ function applyNeutralStoneTargetEffect(sourceDef: ItemDef, target: SynthesisTarg
       return pickRandomElements(filteredDirect, 3).map((one) => ({ item: one, tier: displayTier, star: displayStar }))
     }
 
-    const all = collectPoolCandidatesByLevel(targetLevel)
-      .filter((one) => normalizeSize(one.item.size) === placed.size)
-      .filter((one) => one.item.id !== placed.defId)
+    const lvTierStar = levelToTierStar(targetLevel)
+    const displayTier = lvTierStar?.tier ?? 'Bronze'
+    const displayStar = lvTierStar?.star ?? 1
+    const picks: NeutralChoiceCandidate[] = []
+    const usedIds = new Set<string>([placed.defId])
 
-    const filtered = all.filter((one) => {
-      const arch = toSkillArchetype(getPrimaryArchetype(one.item.tags))
+    const passKindFilter = (item: ItemDef): boolean => {
+      const arch = toSkillArchetype(getPrimaryArchetype(item.tags))
       if (arch !== 'warrior' && arch !== 'archer' && arch !== 'assassin') return false
       if (kind === 'class_shift_stone') return arch !== targetArch
       if (kind === 'class_morph_stone') return true
@@ -7746,8 +7748,28 @@ function applyNeutralStoneTargetEffect(sourceDef: ItemDef, target: SynthesisTarg
       if (kind === 'archer_stone') return arch === 'archer'
       if (kind === 'assassin_stone') return arch === 'assassin'
       return false
-    })
-    return pickRandomElements(filtered, 3).map((one) => ({ item: one.item, tier: one.tier, star: one.star }))
+    }
+
+    let remaining = getAllItems()
+      .filter((it) => !isNeutralItemDef(it))
+      .filter((it) => normalizeSize(it.size) === placed.size)
+      .filter((it) => !usedIds.has(it.id))
+      .filter(passKindFilter)
+
+    for (let attempt = 0; attempt < 120 && picks.length < 3; attempt++) {
+      if (remaining.length <= 0) break
+      const availableTiers = Array.from(new Set(remaining.map((it) => parseTierName(it.starting_tier) ?? 'Bronze')))
+      const selectedTier = availableTiers.length > 0 ? pickQualityByPseudoRandomBag(targetLevel, availableTiers) : null
+      const tierPool = selectedTier
+        ? remaining.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === selectedTier)
+        : remaining
+      const picked = pickRandomElements(tierPool.length > 0 ? tierPool : remaining, 1)[0]
+      if (!picked) break
+      picks.push({ item: picked, tier: displayTier, star: displayStar })
+      usedIds.add(picked.id)
+      remaining = remaining.filter((it) => !usedIds.has(it.id))
+    }
+    return picks
   }
 
   const choices = buildChoices()
