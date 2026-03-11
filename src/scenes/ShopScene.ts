@@ -292,7 +292,7 @@ type SavedShopState = {
 let pendingBattleTransition = false
 let pendingAdvanceToNextDay = false
 let pvpReadyLocked = false
-// sync-a 催促冷却：每轮对同一玩家只能催一次
+// sync-a 臭鸡蛋：无冷却，可无限扔
 let pvpUrgeCooldownSet = new Set<number>()
 let pendingSkillBarMoveStartAtMs: number | null = null
 let savedShopState: SavedShopState | null = null
@@ -11314,8 +11314,120 @@ function buildPvpPlayerListContent(overlay: Container): void {
 }
 
 // ============================================================
+// 臭鸡蛋动效
+// ============================================================
+
+/** 扔蛋方：从按钮位置飞出一颗旋转上升的鸡蛋 */
+function spawnFloatingEggFx(stageRef: Container, fromX: number, fromY: number): void {
+  const eggT = new Text({ text: '🥚', style: { fontSize: 52 } })
+  eggT.anchor.set(0.5)
+  eggT.x = fromX
+  eggT.y = fromY
+  eggT.zIndex = 350
+  stageRef.addChild(eggT)
+
+  const totalMs = 750
+  let elapsed = 0
+  const tick = (ticker: { deltaMS: number }): void => {
+    elapsed += ticker.deltaMS
+    const t = Math.min(1, elapsed / totalMs)
+    eggT.y = fromY - 200 * t
+    eggT.x = fromX + Math.sin(t * Math.PI * 3) * 28
+    eggT.rotation = t * Math.PI * 4
+    eggT.scale.set(1 + Math.sin(t * Math.PI) * 0.35)
+    eggT.alpha = t < 0.55 ? 1 : 1 - (t - 0.55) / 0.45
+    if (t >= 1) {
+      Ticker.shared.remove(tick)
+      if (eggT.parent) eggT.parent.removeChild(eggT)
+      eggT.destroy()
+    }
+  }
+  Ticker.shared.add(tick)
+}
+
+/** 被扔方：全屏大字特效 + 背景闪烁 */
+function showEggSplatOverlay(fromNickname: string): void {
+  const stageRef = getApp().stage
+  const con = new Container()
+  con.zIndex = 400
+  con.sortableChildren = true
+  stageRef.addChild(con)
+
+
+  // 大鸡蛋
+  const bigEgg = new Text({ text: '🥚', style: { fontSize: 128 } })
+  bigEgg.anchor.set(0.5)
+  bigEgg.x = CANVAS_W / 2
+  bigEgg.y = CANVAS_H / 2 - 200
+  bigEgg.scale.set(0.1)
+  con.addChild(bigEgg)
+
+  // 爆炸符
+  const boomT = new Text({ text: '💥', style: { fontSize: 72 } })
+  boomT.anchor.set(0.5)
+  boomT.x = CANVAS_W / 2 + 60
+  boomT.y = CANVAS_H / 2 - 230
+  boomT.alpha = 0
+  con.addChild(boomT)
+
+  // 说明文字
+  const msgT = new Text({
+    text: `${fromNickname} 向你扔了一个臭鸡蛋！`,
+    style: {
+      fill: 0xffee55,
+      fontSize: 28,
+      fontWeight: 'bold',
+      stroke: { color: 0x000000, width: 5 },
+      align: 'center',
+      wordWrap: true,
+      wordWrapWidth: CANVAS_W - 80,
+    },
+  })
+  msgT.anchor.set(0.5)
+  msgT.x = CANVAS_W / 2
+  msgT.y = CANVAS_H / 2 - 60
+  msgT.alpha = 0
+  con.addChild(msgT)
+
+  const SCALE_IN_MS = 300
+  const HOLD_MS = 700
+  const FADE_MS = 400
+  let elapsed = 0
+
+  const tick = (ticker: { deltaMS: number }): void => {
+    elapsed += ticker.deltaMS
+    if (elapsed <= SCALE_IN_MS) {
+      const t = elapsed / SCALE_IN_MS
+      // 弹性弹入：超出后回弹
+      const scale = t < 0.65
+        ? 1.5 * (t / 0.65)
+        : 1.5 - 0.5 * ((t - 0.65) / 0.35)
+      bigEgg.scale.set(scale)
+      bigEgg.rotation = (1 - t) * 0.6 * (Math.sin(t * Math.PI * 6) > 0 ? 1 : -1)
+      boomT.alpha = t > 0.4 ? (t - 0.4) / 0.6 : 0
+      boomT.scale.set(0.5 + t * 0.7)
+      msgT.alpha = t > 0.5 ? (t - 0.5) / 0.5 : 0
+    } else if (elapsed <= SCALE_IN_MS + HOLD_MS) {
+      bigEgg.scale.set(1)
+      bigEgg.rotation = 0
+      boomT.alpha = 1
+      msgT.alpha = 1
+    } else {
+      const t = (elapsed - SCALE_IN_MS - HOLD_MS) / FADE_MS
+      con.alpha = Math.max(0, 1 - t)
+      if (t >= 1) {
+        Ticker.shared.remove(tick)
+        if (con.parent) con.parent.removeChild(con)
+        con.destroy({ children: true })
+      }
+    }
+  }
+  Ticker.shared.add(tick)
+}
+
+// ============================================================
 // sync-a 等待面板：按准备后显示，所有人就绪后自动消失
-// 展示玩家就绪状态 + 催促 + 偷看上局阵容
+// 展示玩家就绪状态 + 臭鸡蛋 + 偷看上局阵容
 // ============================================================
 
 function showPvpWaitingPanel(stage: Container): void {
@@ -11502,23 +11614,22 @@ function buildPvpWaitingPanelContent(panel: Container): void {
     const btnX = ROW_W - BTN_W - 10
 
     if (!isMe && !isReady) {
-      // 催促按钮
-      const onCooldown = pvpUrgeCooldownSet.has(player.index)
+      // 臭鸡蛋按钮（无冷却，可无限扔）
       const urgeBtnCon = new Container()
       urgeBtnCon.x = btnX
       urgeBtnCon.y = (ROW_H - BTN_H) / 2
 
       const urgeBg = new Graphics()
       urgeBg.roundRect(0, 0, BTN_W, BTN_H, 10)
-        .fill({ color: onCooldown ? 0x1a2030 : 0x7c2020, alpha: 0.95 })
+        .fill({ color: 0x3a3010, alpha: 0.95 })
       urgeBg.roundRect(0, 0, BTN_W, BTN_H, 10)
-        .stroke({ color: onCooldown ? 0x2a3040 : 0xcc4422, width: 1.5 })
+        .stroke({ color: 0xaaaa22, width: 1.5 })
       urgeBtnCon.addChild(urgeBg)
 
       const urgeT = new Text({
-        text: onCooldown ? '已催' : '催 ⏰',
+        text: '🥚 扔臭蛋',
         style: {
-          fill: onCooldown ? 0x445566 : 0xff8866,
+          fill: 0xffee55,
           fontSize: 20,
           fontWeight: 'bold',
         },
@@ -11528,18 +11639,28 @@ function buildPvpWaitingPanelContent(panel: Container): void {
       urgeT.y = BTN_H / 2
       urgeBtnCon.addChild(urgeT)
 
-      if (!onCooldown) {
-        urgeBtnCon.eventMode = 'static'
-        urgeBtnCon.cursor = 'pointer'
-        urgeBtnCon.on('pointerdown', (e) => {
-          e.stopPropagation()
-          pvpUrgeCooldownSet.add(player.index)
-          PvpContext.sendUrge(player.index)
-          refreshPvpWaitingPanel()
-        })
-        urgeBtnCon.on('pointerover', () => { urgeBg.alpha = 0.75 })
-        urgeBtnCon.on('pointerout', () => { urgeBg.alpha = 1 })
-      }
+      urgeBtnCon.eventMode = 'static'
+      urgeBtnCon.cursor = 'pointer'
+      urgeBtnCon.on('pointerdown', (e) => {
+        e.stopPropagation()
+        PvpContext.sendUrge(player.index)
+        // 按钮弹跳
+        let bounceElapsed = 0
+        const bounceTick = (ticker: { deltaMS: number }): void => {
+          bounceElapsed += ticker.deltaMS
+          const t = Math.min(1, bounceElapsed / 220)
+          const scale = t < 0.4 ? 1 - 0.22 * (t / 0.4) : 0.78 + 0.22 * ((t - 0.4) / 0.6)
+          urgeBtnCon.scale.set(scale)
+          if (t >= 1) { Ticker.shared.remove(bounceTick); urgeBtnCon.scale.set(1) }
+        }
+        Ticker.shared.add(bounceTick)
+        // 飞蛋特效：从按钮中心飞出
+        const btnStageX = rowCon.x + btnX + BTN_W / 2
+        const btnStageY = rowCon.y + ROW_H / 2
+        spawnFloatingEggFx(getApp().stage, btnStageX, btnStageY)
+      })
+      urgeBtnCon.on('pointerover', () => { urgeBg.alpha = 0.75 })
+      urgeBtnCon.on('pointerout', () => { urgeBg.alpha = 1 })
       rowCon.addChild(urgeBtnCon)
     } else if (!isMe && hasSnap) {
       // 偷看阵容按钮（已就绪 or 自己）
@@ -11796,7 +11917,7 @@ export const ShopScene: Scene = {
           const session = PvpContext.getSession()
           const fromPlayer = session?.players.find(p => p.index === fromPlayerIndex)
           const name = fromPlayer?.nickname ?? fromNickname
-          showHintToast('pvp_urge', `⏰ ${name} 在催你出战！`, 0xffd86b)
+          showEggSplatOverlay(name)
         }
         // 跳转战斗前主动清理等待面板（防止面板残留到战斗场景）
         PvpContext.onBeforeBattleTransition = () => {
