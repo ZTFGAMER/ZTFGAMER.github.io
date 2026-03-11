@@ -53,6 +53,9 @@ let pendingRoundWinner: 'player' | 'enemy' | 'draw' = 'draw'
 // 上局所有玩家快照（round_summary 下发，用于商店阶段查看阵容）
 let lastPlayerSnapshots: Record<number, import('@/combat/BattleSnapshotStore').BattleSnapshotBundle> = {}
 
+// sync-a 轮空预分配缓存：day_ready 可能早于 onBattleComplete 到达，需在 onBattleComplete 后补回
+let cachedByeOpponent: { day: number; opponentIdx: number } | undefined = undefined
+
 
 // ----------------------------------------------------------------
 // 公开 API（ShopScene / BattleScene 调用）
@@ -96,17 +99,19 @@ export const PvpContext = {
     backupAndClearPveSave()
 
     // 注册房间回调
-    pvpRoom.onDayReady = (_day, countdownMs, byeOpponentMap) => {
+    pvpRoom.onDayReady = (day, countdownMs, byeOpponentMap) => {
       // 异步PVP无倒计时：玩家手动点"准备"推进，无需自动提交
       if (isAsyncMode()) return
       // 注意：不在此处更新 session.currentDay！
       // currentDay 由 session 初始值(1) 和 onBattleComplete 负责推进。
       countdownTotalMs = countdownMs
+      cachedByeOpponent = undefined  // 新一天的 day_ready，清空旧缓存
       // 若 host 预计算了轮空配对，提前设置 currentOpponentPlayerIndex（商店徽章即可展示）
       if (session && byeOpponentMap) {
         const preAssigned = byeOpponentMap[session.myIndex]
         if (preAssigned !== undefined) {
           session.currentOpponentPlayerIndex = preAssigned
+          cachedByeOpponent = { day, opponentIdx: preAssigned }  // 缓存，防止被 onBattleComplete 清除
           PvpContext.onOpponentPreAssigned?.()
         }
       }
@@ -345,6 +350,13 @@ export const PvpContext = {
     consumeBattleOutcome()
     autoSubmitCallback = null
     session.currentOpponentPlayerIndex = undefined
+    // 若 day_ready 比本次 onBattleComplete 更早到达（BattleScene 退出过渡期间），
+    // currentOpponentPlayerIndex 已被上面清空，需从缓存补回。
+    const nextDayForBye = session.currentDay + 1
+    if (cachedByeOpponent && cachedByeOpponent.day === nextDayForBye) {
+      session.currentOpponentPlayerIndex = cachedByeOpponent.opponentIdx
+      cachedByeOpponent = undefined
+    }
 
     if (isAsyncMode() && (currentDayPhase === 'wild1' || currentDayPhase === 'wild2')) {
       // 野怪轮结束：发放奖励，进入下一个商店阶段
@@ -552,6 +564,7 @@ function applyOpponentSnapshot(day: number, opponentSnap: BattleSnapshotBundle):
     pvpEnemyBackpackItemCount: opponentSnap.playerBackpackItemCount,
     pvpEnemyGold: opponentSnap.playerGold,
     pvpEnemyTrophyWins: opponentSnap.playerTrophyWins,
+    pvpEnemyHeroId: opponentSnap.ownerHeroId,
   }
   setBattleSnapshot(pvpSnap)
   SceneManager.goto('battle')

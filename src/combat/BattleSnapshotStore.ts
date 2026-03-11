@@ -40,6 +40,10 @@ export interface BattleSnapshotBundle {
   pvpEnemyBackpackItemCount?: number
   pvpEnemyGold?: number
   pvpEnemyTrophyWins?: number
+  /** 快照提交方的英雄 ID（starterClass） */
+  ownerHeroId?: string
+  /** PVP 专用：对手的英雄 ID，由 ownerHeroId 传递而来 */
+  pvpEnemyHeroId?: string
 }
 
 let currentSnapshot: BattleSnapshotBundle | null = null
@@ -62,6 +66,8 @@ export function setBattleSnapshot(snapshot: BattleSnapshotBundle): void {
     pvpEnemyBackpackItemCount: snapshot.pvpEnemyBackpackItemCount,
     pvpEnemyGold: snapshot.pvpEnemyGold,
     pvpEnemyTrophyWins: snapshot.pvpEnemyTrophyWins,
+    ownerHeroId: snapshot.ownerHeroId,
+    pvpEnemyHeroId: snapshot.pvpEnemyHeroId,
   }
   console.log('[Snapshot] setBattleSnapshot day=' + snapshot.day + ' entities=' + snapshot.entities.length + ' pvpEnemyEntities=' + (snapshot.pvpEnemyEntities?.length ?? 'none'))
 }
@@ -85,6 +91,8 @@ export function getBattleSnapshot(): BattleSnapshotBundle | null {
     pvpEnemyBackpackItemCount: currentSnapshot.pvpEnemyBackpackItemCount,
     pvpEnemyGold: currentSnapshot.pvpEnemyGold,
     pvpEnemyTrophyWins: currentSnapshot.pvpEnemyTrophyWins,
+    ownerHeroId: currentSnapshot.ownerHeroId,
+    pvpEnemyHeroId: currentSnapshot.pvpEnemyHeroId,
   }
 }
 

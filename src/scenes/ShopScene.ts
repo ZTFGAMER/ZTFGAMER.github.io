@@ -992,6 +992,7 @@ function buildBattleSnapshot(skillBarMoveStartAtMs?: number): BattleSnapshotBund
     playerTrophyWins: Math.max(0, Math.round(trophy.wins)),
     playerBattleHp,
     ownerSkillIds: pickedSkills.map((s) => s.id),
+    ownerHeroId: starterClass ?? undefined,
     entities: snap.entities.map((it) => ({
       ...it,
       tier: getInstanceTier(it.instanceId) ?? 'Bronze',
@@ -13529,7 +13530,7 @@ function buildPvpWaitingPanelContent(panel: Container): void {
       urgeBtnCon.addChild(urgeBg)
 
       const urgeT = new Text({
-        text: '🥚 扔臭蛋',
+        text: '🥚 扔蛋',
         style: {
           fill: 0xffee55,
           fontSize: 20,

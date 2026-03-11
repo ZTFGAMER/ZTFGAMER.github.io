@@ -2535,7 +2535,12 @@ export const BattleScene: Scene = {
     root.addChild(playerHeroFlashSprite)
 
     try {
-      const enemyHeroId = randomHeroVisualId()
+      const snap = getBattleSnapshot()
+      const pvpEnemyHeroId = snap?.pvpEnemyHeroId
+      const isPvpRealBattle = PvpContext.isActive() && !PvpContext.isWildRound()
+      const enemyHeroId = isPvpRealBattle && pvpEnemyHeroId && (HERO_VISUAL_IDS as readonly string[]).includes(pvpEnemyHeroId)
+        ? pvpEnemyHeroId as HeroVisualId
+        : randomHeroVisualId()
       const tex = await Assets.load<Texture>(`/resource/hero/${enemyHeroId}.png`)
       if (enemyBossSprite) {
         enemyBossSprite.texture = tex
