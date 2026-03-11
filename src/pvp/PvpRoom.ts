@@ -390,6 +390,10 @@ export class PvpRoom {
     this.broadcastToClients({ type: 'day_ready', day, countdownMs, byeOpponentMap })
     this.onDayReady?.(day, countdownMs, byeOpponentMap)
 
+    // 补检：若所有玩家已在 hostStartDay 之前进入商店（shop_entered 先于 day 初始化到达），
+    // 在此处补触发倒计时，此时 countdownTotalMs 已由 onDayReady 设置为正确值
+    this.checkAndStartCountdown(day)
+
     // 安全兜底：10分钟后对所有尚未收到分发的存活玩家强制用昨日快照分发
     if (this.dayCountdownTimer) clearTimeout(this.dayCountdownTimer)
     this.dayCountdownTimer = setTimeout(() => {
@@ -412,6 +416,9 @@ export class PvpRoom {
   /** 检查所有存活且在线玩家是否已进入商店，若是则广播倒计时开始 */
   private checkAndStartCountdown(day: number): void {
     if (this.countdownStartedDays.has(day)) return
+    // 只有 hostStartDay 已初始化该天后才允许启动倒计时，防止 shop_entered 比 hostStartDay 更早到达时
+    // 以 countdownTotalMs=0 触发即时倒计时（500ms 后自动提交空快照直接开战）
+    if (!this.latestDaySnapshots.has(day)) return
     const entered = this.shopEnteredByDay.get(day) ?? new Set()
     const aliveHumans = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index) && p.connected)
     if (aliveHumans.length > 0 && aliveHumans.every((p) => entered.has(p.index))) {
