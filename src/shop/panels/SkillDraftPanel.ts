@@ -25,6 +25,7 @@ import type { SkillTier } from '@/common/items/ItemDef'
 import type { ShopSceneCtx, SkillPick, ToastReason } from '../ShopSceneContext'
 
 import { CANVAS_W, CANVAS_H } from '@/config/layoutConstants'
+import { getItemInfoPanelBottomAnchorByBattle } from '../ShopMathHelpers'
 
 // ---- 技能草稿功能開關（與 ShopScene.ts 保持一致）----
 const SKILL_DRAFT_ENABLED = true
@@ -220,7 +221,7 @@ export class SkillDraftPanel extends Container {
     const contentBottom = Math.max(iconY + iconSize, descY + desc.height)
     const panelH = Math.max(getDebugCfg('itemInfoMinHSmall'), contentBottom + pad)
     const px = CANVAS_W / 2 - panelW / 2
-    let panelBottomY = getDebugCfg('shopAreaY') - getDebugCfg('itemInfoBottomGapToShop') - 92
+    let panelBottomY = getItemInfoPanelBottomAnchorByBattle(ctx)
     if (ctx.skillIconBarCon?.visible) {
       panelBottomY = Math.min(panelBottomY, ctx.skillIconBarCon.y - 44)
     }

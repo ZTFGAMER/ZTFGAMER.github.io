@@ -190,6 +190,7 @@ const GAMEPLAY_KEYS = [
   'gameplayBurnDecayPct',
   'gameplayHealCleansePct',
   'gameplayBackpackRows',
+  'gameplayBackpackRowsDynamicByDay',
   'gameplayBackpackCols',
   'gameplayLevelRewardPreset',
   'gameplayLevelQuickDraft',
@@ -207,9 +208,11 @@ const GAMEPLAY_CHECKBOX_KEYS = [
   'gameplayEventDraftRerollEnabled',
   'gameplayStarterHeroShowAll',
   'gameplayBaseBuyBronzeOnly',
+  'gameplayBackpackRowsDynamicByDay',
 ]
 const FORCE_GAMEPLAY_KEYS = new Set([
   'gameplayBackpackRows',
+  'gameplayBackpackRowsDynamicByDay',
   'gameplayBackpackCols',
   'gameplayLevelRewardPreset',
   'gameplayItemFrameColorByArchetype',

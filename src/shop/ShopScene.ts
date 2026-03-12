@@ -17,7 +17,7 @@ import {
   resetLifeState,
 } from '@/core/RunState'
 import type { ItemSizeNorm } from '@/common/grid/GridSystem'
-import { CELL_HEIGHT } from '@/common/grid/GridZone'
+import { CELL_HEIGHT, CELL_SIZE } from '@/common/grid/GridZone'
 import type { ItemDef } from '@/common/items/ItemDef'
 import { ShopManager, getDailyGoldForDay, type TierKey } from '@/shop/ShopManager'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
@@ -115,7 +115,10 @@ import {
   getSizeCellDim, makeGridCellKey,
   toVisualTier,
   getDayActiveCols,
-  getBattleItemScale, getBattleZoneX, getBackpackZoneYByBattle,
+  getBattleItemScale, getBattleZoneX, getBackpackZoneX, getBackpackZoneYByBattle,
+  getBackpackRowsByDay,
+  getAdjustedBattleZoneY,
+  getAdjustedBattleZoneYInBattleOffset,
 } from './ShopMathHelpers'
 import {
   type ToastReason,
@@ -515,11 +518,11 @@ function setTransitionInputEnabled(enabled: boolean, ctx: ShopSceneCtx = _ctx): 
 function beginBattleStartTransition(ctx: ShopSceneCtx = _ctx): void {
   if (ctx.battleStartTransition) return
   const transitionMs = Math.max(1, getDebugCfg('shopToBattleTransitionMs'))
-  const battleDropPx = Math.max(0, getDebugCfg('battleZoneYInBattleOffset'))
+  const battleDropPx = Math.max(0, getAdjustedBattleZoneYInBattleOffset(ctx.currentDay))
   const backpackDropPx = Math.max(0, getDebugCfg('shopToBattleBackpackDropPx'))
   const backpackTargetAlpha = clamp01(getDebugCfg('shopToBattleBackpackAlpha'))
   const buttonsTargetAlpha = clamp01(getDebugCfg('shopToBattleButtonsAlpha'))
-  const currentBattleY = ctx.battleView?.y ?? (getDebugCfg('battleZoneY') + (CELL_HEIGHT * (1 - getBattleItemScale(ctx))) / 2)
+  const currentBattleY = ctx.battleView?.y ?? (getAdjustedBattleZoneY(ctx.currentDay) + (CELL_HEIGHT * (1 - getBattleItemScale(ctx))) / 2)
   const currentBackpackY = ctx.backpackView?.y ?? getBackpackZoneYByBattle(ctx)
 
   clearSelection(ctx)
@@ -1295,7 +1298,7 @@ function updateMiniMap(ctx: ShopSceneCtx = _ctx): void {
   if (!ctx.miniMapGfx || !ctx.backpackSystem) return
   const g = ctx.miniMapGfx
   g.clear()
-  const rows = ctx.backpackSystem.rows
+  const rows = ctx.backpackSystem.getActiveRows()
   const cols = ctx.backpackView?.activeColCount ?? 6
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -1494,6 +1497,10 @@ function setDay(day: number, ctx: ShopSceneCtx = _ctx): void {
     ctx.nextQuickBuyOffer = null
   }
   const newCols = getDayActiveCols(ctx.currentDay)
+  const newBackpackRows = getBackpackRowsByDay(ctx.currentDay)
+
+  if (ctx.backpackSystem) ctx.backpackSystem.setActiveRows(newBackpackRows)
+  if (ctx.backpackView) ctx.backpackView.setActiveRowCount(newBackpackRows)
 
   // 1. 更新 GridZone 格子背景（立即重绘）
   if (ctx.battleView) ctx.battleView.setActiveColCount(newCols)
@@ -1501,8 +1508,10 @@ function setDay(day: number, ctx: ShopSceneCtx = _ctx): void {
   // 2. 动画：ctx.battleView.x 从当前值平滑移至新居中位置
   if (ctx.battleView) {
     const fromX = ctx.battleView.x
-    const toX   = getBattleZoneX(newCols, ctx)
-    if (ctx.expandTickFn) { Ticker.shared.remove(ctx.expandTickFn); ctx.expandTickFn = null }
+      const toX   = getBattleZoneX(newCols, ctx)
+      const toY   = getAdjustedBattleZoneY(ctx.currentDay) + (CELL_HEIGHT * (1 - getBattleItemScale(ctx))) / 2
+      if (ctx.expandTickFn) { Ticker.shared.remove(ctx.expandTickFn); ctx.expandTickFn = null }
+      ctx.battleView.y = toY
     if (Math.abs(toX - fromX) > 1) {
       const durationMs = getDebugCfg('battleZoneExpandMs')
       const startMs    = Date.now()
@@ -1517,8 +1526,38 @@ function setDay(day: number, ctx: ShopSceneCtx = _ctx): void {
       Ticker.shared.add(ctx.expandTickFn)
     } else {
       ctx.battleView.x = toX
+      ctx.battleView.y = getAdjustedBattleZoneY(ctx.currentDay) + (CELL_HEIGHT * (1 - getBattleItemScale(ctx))) / 2
       applyAreaLabelLeftAlign(ctx)
       skillDraftPanel?.layoutSkillIconBar()
+    }
+  }
+
+  if (ctx.backpackView) {
+    ctx.backpackView.x = getBackpackZoneX(ctx.backpackView.activeColCount, ctx)
+    ctx.backpackView.y = getBackpackZoneYByBattle(ctx)
+    ctx.backpackView.setLabelGlobalTop(ctx.backpackView.y - 60)
+    ctx.drag?.refreshZone(ctx.backpackView)
+  }
+  if (ctx.battleZoneTitleText && ctx.battleView) {
+    const s = getBattleItemScale(ctx)
+    ctx.battleZoneTitleText.x = ctx.battleView.x + (ctx.battleView.activeColCount * CELL_SIZE * s) / 2
+    ctx.battleZoneTitleText.y = ctx.battleView.y - 28
+  }
+  if (ctx.backpackZoneTitleText && ctx.backpackView) {
+    const s = getBattleItemScale(ctx)
+    ctx.backpackZoneTitleText.x = ctx.backpackView.x + (ctx.backpackView.activeColCount * CELL_SIZE * s) / 2
+    ctx.backpackZoneTitleText.y = ctx.backpackView.y - 22
+  }
+  PlayerStatusUI.layoutPlayerStatusPanel(ctx)
+  RewardSystem.refreshLevelQuickRewardLayout(ctx)
+  DebugLayout.applyItemInfoPanelLayout(ctx)
+  const popupId = ctx.skillDetailSkillId
+  if (ctx.skillDetailPopupCon?.visible && popupId) {
+    if (popupId === '__hero_passive__') {
+      HeroSystem.showHeroPassiveDetailPopup(ctx, getApp().stage)
+    } else {
+      const picked = ctx.pickedSkills.find((s) => s.id === popupId)
+      if (picked) skillDraftPanel?.showSkillDetailPopup(picked)
     }
   }
 
@@ -1686,6 +1725,8 @@ export const ShopScene: Scene = {
     const battleOutcome = consumeBattleOutcome()
     if (restoredState) {
       applySavedShopState(restoredState, _ctx, makeApplyCallbacks())
+      // 恢复存档后根据当前天数重算动态背包行数与联动布局
+      setDay(_ctx.currentDay)
       RewardSystem.restoreSavedLevelQuickDraftQueue(_ctx)
       _ctx.savedShopState = null
       if (_ctx.pendingAdvanceToNextDay || PvpContext.isActive()) {

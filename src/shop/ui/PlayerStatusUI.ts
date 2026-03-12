@@ -19,6 +19,7 @@ import { PvpContext } from '@/pvp/PvpContext'
 import type { ShopSceneCtx } from '../ShopSceneContext'
 import { getApp } from '@/core/AppContext'
 import { CANVAS_W } from '@/config/layoutConstants'
+import { getBattleZoneDisplayY } from '../ShopMathHelpers'
 
 // ============================================================
 // 品质等级辅助
@@ -191,7 +192,7 @@ export function layoutPlayerStatusPanel(ctx: ShopSceneCtx): void {
   const expY = avatarY + avatarH + expOffsetY
 
   ctx.playerStatusCon.x = getDebugCfg('shopPlayerStatusX')
-  ctx.playerStatusCon.y = getDebugCfg('battleZoneY') + getDebugCfg('shopPlayerStatusY')
+  ctx.playerStatusCon.y = getBattleZoneDisplayY(ctx) + getDebugCfg('shopPlayerStatusY')
 
   ctx.playerStatusAvatar.x = avatarX
   ctx.playerStatusAvatar.y = avatarY

@@ -208,7 +208,7 @@ export function sortBackpackItemsByRule(ctx: ShopSceneCtx, deps: ShopDragDeps): 
   })
 
   const slots: Array<{ col: number; row: number }> = []
-  for (let row = 0; row < ctx.backpackSystem.rows; row++)
+  for (let row = 0; row < ctx.backpackSystem.getActiveRows(); row++)
     for (let col = 0; col < ctx.backpackView.activeColCount; col++)
       slots.push({ col, row })
 
@@ -217,7 +217,7 @@ export function sortBackpackItemsByRule(ctx: ShopSceneCtx, deps: ShopDragDeps): 
     return { instanceId: it.instanceId, defId: it.defId, size: it.size, preferredCol: preferred.col, preferredRow: preferred.row }
   })
 
-  const plan = planAutoPack(packItems, ctx.backpackView.activeColCount, ctx.backpackSystem.rows)
+  const plan = planAutoPack(packItems, ctx.backpackView.activeColCount, ctx.backpackSystem.getActiveRows())
   if (!plan) { showHintToast('backpack_full_buy' as ToastReason, '整理失败：背包空间异常', 0xff8f8f, ctx); return }
   applyBackpackAutoPackExisting(plan, ctx)
   deps.refreshShopUI()

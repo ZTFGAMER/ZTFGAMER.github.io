@@ -79,6 +79,27 @@ export function getBattleZoneX(activeCols: number, ctx: ShopSceneCtx): number {
   return getDebugCfg('battleZoneX') + (CANVAS_W - activeCols * CELL_SIZE * s) / 2
 }
 
+export function getBackpackRowsByDay(day: number): number {
+  const dynamicEnabled = getDebugCfg('gameplayBackpackRowsDynamicByDay') >= 0.5
+  if (!dynamicEnabled) return Math.max(1, Math.min(6, Math.round(getDebugCfg('gameplayBackpackRows') || 3)))
+  const d = Math.max(1, Math.round(day || 1))
+  if (d <= 2) return 1
+  if (d <= 5) return 2
+  return 3
+}
+
+export function getAdjustedBattleZoneY(day: number): number {
+  const baseY = getDebugCfg('battleZoneY')
+  const rows = getBackpackRowsByDay(day)
+  return baseY + (3 - rows) * 120
+}
+
+export function getAdjustedBattleZoneYInBattleOffset(day: number): number {
+  const baseOffset = getDebugCfg('battleZoneYInBattleOffset')
+  const rows = getBackpackRowsByDay(day)
+  return baseOffset - (3 - rows) * 120
+}
+
 export function getBackpackZoneX(activeCols: number, ctx: ShopSceneCtx): number {
   const s = getBattleItemScale(ctx)
   return (CANVAS_W - activeCols * CELL_SIZE * s) / 2
@@ -86,7 +107,16 @@ export function getBackpackZoneX(activeCols: number, ctx: ShopSceneCtx): number 
 
 export function getBackpackZoneYByBattle(ctx: ShopSceneCtx): number {
   const s = getBattleItemScale(ctx)
-  return getDebugCfg('battleZoneY') + CELL_HEIGHT * s + BACKPACK_GAP_FROM_BATTLE + (CELL_HEIGHT * (1 - s)) / 2
+  return getAdjustedBattleZoneY(ctx.currentDay) + CELL_HEIGHT * s + BACKPACK_GAP_FROM_BATTLE + (CELL_HEIGHT * (1 - s)) / 2
+}
+
+export function getBattleZoneDisplayY(ctx: ShopSceneCtx): number {
+  return ctx.battleView?.y ?? (getAdjustedBattleZoneY(ctx.currentDay) + (CELL_HEIGHT * (1 - getBattleItemScale(ctx))) / 2)
+}
+
+export function getItemInfoPanelBottomAnchorByBattle(ctx: ShopSceneCtx): number {
+  const battleY = getBattleZoneDisplayY(ctx)
+  return battleY + getDebugCfg('itemInfoBottomGapToShop')
 }
 
 // ── 格子放置检测（纯函数，不依赖 ctx）────────────────────────────
@@ -101,7 +131,7 @@ export function canPlaceInVisibleCols(
   const { w, h } = system.getSizeDim(size)
   if (col < 0 || row < 0) return false
   if (col + w > view.activeColCount) return false
-  if (row + h > system.rows) return false
+  if (row + h > system.getActiveRows()) return false
   return system.canPlace(col, row, size)
 }
 
@@ -109,7 +139,7 @@ export function hasAnyPlaceInVisibleCols(system: GridSystem, view: GridZone, siz
   const { w, h } = system.getSizeDim(size)
   const maxCol = view.activeColCount - w
   if (maxCol < 0) return false
-  const maxRow = system.rows - h
+  const maxRow = system.getActiveRows() - h
   if (maxRow < 0) return false
   for (let r = 0; r <= maxRow; r++)
     for (let c = 0; c <= maxCol; c++)

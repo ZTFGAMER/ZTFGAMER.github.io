@@ -17,6 +17,9 @@ import {
   getBattleZoneX,
   getBackpackZoneX,
   getBackpackZoneYByBattle,
+  getItemInfoPanelBottomAnchorByBattle,
+  getAdjustedBattleZoneY,
+  getBackpackRowsByDay,
 } from '../ShopMathHelpers'
 import { layoutPlayerStatusPanel } from './PlayerStatusUI'
 
@@ -67,7 +70,7 @@ export function applyItemInfoPanelLayout(ctx: ShopSceneCtx): void {
     desc:  getDebugCfg('itemInfoDescFontSize'),
     simpleDesc: getDebugCfg('itemInfoSimpleDescFontSize'),
   })
-  let panelBottomY = getDebugCfg('shopAreaY') - getDebugCfg('itemInfoBottomGapToShop') - 92
+  let panelBottomY = getItemInfoPanelBottomAnchorByBattle(ctx)
   if (ctx.skillIconBarCon?.visible) {
     panelBottomY = Math.min(panelBottomY, ctx.skillIconBarCon.y - 44)
   }
@@ -188,12 +191,15 @@ export function applyLayoutFromDebug(ctx: ShopSceneCtx, callbacks: DebugLayoutCa
   if (ctx.battleView) {
     ctx.battleView.scale.set(s)
     ctx.battleView.x = getBattleZoneX(getDayActiveCols(ctx.currentDay), ctx)
-    ctx.battleView.y = getDebugCfg('battleZoneY') + (CELL_HEIGHT * (1 - s)) / 2
+    ctx.battleView.y = getAdjustedBattleZoneY(ctx.currentDay) + (CELL_HEIGHT * (1 - s)) / 2
     ctx.battleView.setTierBorderWidth(getDebugCfg('tierBorderWidth'))
     ctx.battleView.setCornerRadius(getDebugCfg('gridItemCornerRadius'))
     ctx.battleView.setCellBorderWidth(getDebugCfg('gridCellBorderWidth'))
   }
   if (ctx.backpackView) {
+    const activeRows = getBackpackRowsByDay(ctx.currentDay)
+    ctx.backpackSystem?.setActiveRows(activeRows)
+    ctx.backpackView.setActiveRowCount(activeRows)
     ctx.backpackView.scale.set(s)
     ctx.backpackView.x = getBackpackZoneX(ctx.backpackView.activeColCount, ctx)
     ctx.backpackView.y = getBackpackZoneYByBattle(ctx)

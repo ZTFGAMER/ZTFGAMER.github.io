@@ -24,7 +24,7 @@ import {
   getInstanceTierStar,
 } from '../systems/ShopInstanceRegistry'
 import { layoutPlayerStatusPanel } from './PlayerStatusUI'
-import { toVisualTier } from '../ShopMathHelpers'
+import { toVisualTier, getBattleZoneDisplayY } from '../ShopMathHelpers'
 import {
   isShopInputEnabled,
   resolveInfoMode,
@@ -125,7 +125,7 @@ export function buildTopAreaUI(
   ctx.playerStatusCon = new Container()
   ctx.playerStatusCon.zIndex = 95
   ctx.playerStatusCon.x = getDebugCfg('shopPlayerStatusX')
-  ctx.playerStatusCon.y = getDebugCfg('battleZoneY') + getDebugCfg('shopPlayerStatusY')
+  ctx.playerStatusCon.y = getBattleZoneDisplayY(ctx) + getDebugCfg('shopPlayerStatusY')
 
   ctx.playerStatusAvatar = new Sprite(Texture.WHITE)
   ctx.playerStatusAvatar.x = 260
@@ -334,7 +334,7 @@ export function buildButtonRowUI(
     if (!isShopInputEnabled(ctx)) { SceneManager.goto('shop'); return }
     if (ctx.battleStartTransition) return
     if (ctx.levelQuickRewardOverlay) {
-      showHintToast('no_gold_buy', '请先选择升级奖励', 0xffd86b, ctx)
+      showHintToast('no_gold_buy', '请先选择奖励', 0xffd86b, ctx)
       return
     }
     const boardItemCount = ctx.battleSystem?.getAllItems().length ?? 0
@@ -431,6 +431,11 @@ export function buildButtonRowUI(
   ctx.shopPanel!.onTap = (slotIndex) => handleShopSlotTap(slotIndex)
 
   ctx.sellPopup = new SellPopup(CANVAS_W, CANVAS_H)
+  const rawSellPopupShow = ctx.sellPopup.show.bind(ctx.sellPopup)
+  ctx.sellPopup.show = ((...args: Parameters<SellPopup['show']>) => {
+    callbacks.hideSkillDetailPopup()
+    return rawSellPopupShow(...args)
+  }) as SellPopup['show']
   ctx.sellPopup.zIndex = 20
   stage.addChild(ctx.sellPopup)
   applyLayoutFromDebug(ctx, callbacks.debugLayoutCallbacks)
@@ -457,6 +462,7 @@ export function buildButtonRowUI(
       'itemInfoPriceCornerFontSize','itemInfoCooldownFontSize','itemInfoDescFontSize',
       'itemInfoSimpleDescFontSize','battleOrbColorHp','battleColorShield',
       'battleColorBurn','battleColorPoison','battleColorRegen','gameplayItemFrameColorByArchetype',
+      'gameplayBackpackRows','gameplayBackpackRowsDynamicByDay',
     ] as const
     if ((layoutKeys as readonly string[]).includes(key)) {
       applyLayoutFromDebug(ctx, callbacks.debugLayoutCallbacks)

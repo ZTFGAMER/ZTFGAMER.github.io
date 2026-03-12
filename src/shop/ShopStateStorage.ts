@@ -34,6 +34,7 @@ import type {
   SavedShopState, SavedPlacedItem,
   PendingHeroPeriodicReward,
 } from './ShopSceneContext'
+import { getBackpackRowsByDay } from './ShopMathHelpers'
 
 const SHOP_STATE_STORAGE_VERSION = 2
 
@@ -228,6 +229,9 @@ export function applySavedShopState(
   const byId = new Map(all.map((it) => [it.id, it] as const))
 
   ctx.currentDay = state.day
+  const restoredBackpackRows = getBackpackRowsByDay(ctx.currentDay)
+  ctx.backpackSystem.setActiveRows(restoredBackpackRows)
+  ctx.backpackView.setActiveRowCount(restoredBackpackRows)
   ctx.starterClass = state.starterClass ?? null
   ctx.starterGranted = state.starterGranted ?? false
   ctx.starterBattleGuideShown = state.starterBattleGuideShown ?? false
@@ -467,7 +471,8 @@ export function applySavedShopState(
   clearAllInstanceMaps()
 
   const restoreOne = (it: SavedPlacedItem, system: GridSystem, view: GridZone) => {
-    system.place(it.col, it.row, it.size, it.defId, it.instanceId)
+    const placed = system.place(it.col, it.row, it.size, it.defId, it.instanceId)
+    if (!placed) return
     instanceToDefId.set(it.instanceId, it.defId)
     const migratedLevel = typeof it.level === 'number'
       ? clampLevel(it.level)
@@ -477,7 +482,7 @@ export function applySavedShopState(
     instanceToPermanentDamageBonus.set(it.instanceId, Math.max(0, Math.round(it.permanentDamageBonus ?? 0)))
     const restoredTier = getInstanceTier(it.instanceId) ?? it.tier
     const restoredStar = getInstanceTierStar(it.instanceId)
-    view.addItem(it.instanceId, it.defId, it.size, it.col, it.row, toVisualTier(restoredTier, restoredStar)).then(() => {
+    view.addItem(it.instanceId, it.defId, it.size, it.col, it.row, toVisualTier(restoredTier, restoredStar), { playAcquireFx: false }).then(() => {
       view.setItemTier(it.instanceId, toVisualTier(restoredTier, restoredStar))
       ctx.drag?.refreshZone(view)
     })

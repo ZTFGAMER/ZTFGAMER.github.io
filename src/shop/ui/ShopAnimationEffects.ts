@@ -39,19 +39,7 @@ export function playSynthesisFlashEffect(ctx: ShopSceneCtx, stage: Container, re
   if (!ctx.battleSystem || !ctx.backpackSystem || !ctx.battleView || !ctx.backpackView) return
   const system = result.targetZone === 'battle' ? ctx.battleSystem : ctx.backpackSystem
   const view = result.targetZone === 'battle' ? ctx.battleView : ctx.backpackView
-  const item = system.getItem(result.instanceId)
-  if (!item) return
-
-  const w = item.size === '1x1' ? CELL_SIZE : item.size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
-  const h = CELL_HEIGHT
-  const a = view.toGlobal({ x: item.col * CELL_SIZE, y: item.row * CELL_HEIGHT })
-  const b = view.toGlobal({ x: item.col * CELL_SIZE + w, y: item.row * CELL_HEIGHT + h })
-  const p0 = stage.toLocal(a)
-  const p1 = stage.toLocal(b)
-  const x = Math.min(p0.x, p1.x)
-  const y = Math.min(p0.y, p1.y)
-  const rectW = Math.abs(p1.x - p0.x)
-  const rectH = Math.abs(p1.y - p0.y)
+  if (!system.getItem(result.instanceId)) return
   const flash = new Graphics()
   flash.eventMode = 'none'
   stage.addChild(flash)
@@ -59,6 +47,23 @@ export function playSynthesisFlashEffect(ctx: ShopSceneCtx, stage: Container, re
   const durationMs = getDebugCfg('synthFlashDurationMs')
   const start = Date.now()
   const tick = () => {
+    const it = system.getItem(result.instanceId)
+    if (!it) {
+      Ticker.shared.remove(tick)
+      flash.parent?.removeChild(flash)
+      flash.destroy()
+      return
+    }
+    const w = it.size === '1x1' ? CELL_SIZE : it.size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
+    const h = CELL_HEIGHT
+    const a = view.toGlobal({ x: it.col * CELL_SIZE, y: it.row * CELL_HEIGHT })
+    const b = view.toGlobal({ x: it.col * CELL_SIZE + w, y: it.row * CELL_HEIGHT + h })
+    const p0 = stage.toLocal(a)
+    const p1 = stage.toLocal(b)
+    const x = Math.min(p0.x, p1.x)
+    const y = Math.min(p0.y, p1.y)
+    const rectW = Math.abs(p1.x - p0.x)
+    const rectH = Math.abs(p1.y - p0.y)
     const t = Math.min(1, (Date.now() - start) / durationMs)
     const alpha = Math.sin(Math.PI * t) * 0.78
     const corner = Math.max(6, Math.round(getDebugCfg('gridItemCornerRadius') * (view.scale.x || 1)))
@@ -90,20 +95,8 @@ export function playTransformOrUpgradeFlashEffect(ctx: ShopSceneCtx, instanceId:
 
   const system = zone === 'battle' ? ctx.battleSystem : ctx.backpackSystem
   const view = zone === 'battle' ? ctx.battleView : ctx.backpackView
-  const item = system.getItem(instanceId)
-  if (!item) return
+  if (!system.getItem(instanceId)) return
   const stage = getApp().stage
-
-  const w = item.size === '1x1' ? CELL_SIZE : item.size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
-  const h = CELL_HEIGHT
-  const a = view.toGlobal({ x: item.col * CELL_SIZE, y: item.row * CELL_HEIGHT })
-  const b = view.toGlobal({ x: item.col * CELL_SIZE + w, y: item.row * CELL_HEIGHT + h })
-  const p0 = stage.toLocal(a)
-  const p1 = stage.toLocal(b)
-  const x = Math.min(p0.x, p1.x)
-  const y = Math.min(p0.y, p1.y)
-  const rectW = Math.abs(p1.x - p0.x)
-  const rectH = Math.abs(p1.y - p0.y)
 
   const flash = new Graphics()
   flash.eventMode = 'none'
@@ -111,6 +104,23 @@ export function playTransformOrUpgradeFlashEffect(ctx: ShopSceneCtx, instanceId:
   const durationMs = getDebugCfg('synthFlashDurationMs')
   const start = Date.now()
   const tick = () => {
+    const it = system.getItem(instanceId)
+    if (!it) {
+      Ticker.shared.remove(tick)
+      flash.parent?.removeChild(flash)
+      flash.destroy()
+      return
+    }
+    const w = it.size === '1x1' ? CELL_SIZE : it.size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
+    const h = CELL_HEIGHT
+    const a = view.toGlobal({ x: it.col * CELL_SIZE, y: it.row * CELL_HEIGHT })
+    const b = view.toGlobal({ x: it.col * CELL_SIZE + w, y: it.row * CELL_HEIGHT + h })
+    const p0 = stage.toLocal(a)
+    const p1 = stage.toLocal(b)
+    const x = Math.min(p0.x, p1.x)
+    const y = Math.min(p0.y, p1.y)
+    const rectW = Math.abs(p1.x - p0.x)
+    const rectH = Math.abs(p1.y - p0.y)
     const t = Math.min(1, (Date.now() - start) / durationMs)
     const alpha = Math.sin(Math.PI * t) * 0.78
     const corner = Math.max(6, Math.round(getDebugCfg('gridItemCornerRadius') * (view.scale.x || 1)))
@@ -592,4 +602,3 @@ export function stopUnlockRevealPlayback(ctx: ShopSceneCtx): void {
   ctx.unlockRevealLayer.visible = false
   ctx.unlockRevealLayer.removeChildren().forEach((ch) => ch.destroy({ children: true }))
 }
-

@@ -73,6 +73,7 @@ export class DragController {
   onDragMove:  (payload: DragMovePayload) => void = () => {}
   onSpecialDrop: (payload: SpecialDropPayload) => boolean = () => false
   onDropCellLocked: (payload: { view: GridZone; col: number; row: number; size: ItemSizeNorm; instanceId: string }) => boolean = () => false
+  shouldShowLockedHighlight: (payload: { view: GridZone; col: number; row: number; size: ItemSizeNorm; instanceId: string }) => boolean = () => true
   onDragEnd:   ()               => void = () => {}
   private suppressSqueeze = false
   private inSpecialDropDispatch = false
@@ -333,7 +334,7 @@ export class DragController {
     }
     const isLogicalSameZone = targetPair === home
 
-    if (targetPair.system.rows > 1 && targetPair === home) {
+    if (targetPair.system.getActiveRows() > 1 && targetPair === home) {
       const handled = this.tryDropToBackpack(targetPair, home, item, container, finalRow, cell.col)
       if (!handled) this.doSnapBack()
       return
@@ -361,10 +362,10 @@ export class DragController {
     let plannedDropRow = finalRow
     if (!canDrop) {
       const squeezeEnabled = getConfig('dragSqueezeEnabled') >= 0.5 && !this.suppressSqueeze
-      const backpackToBattle = home.system.rows > 1 && targetPair.system.rows === 1
+      const backpackToBattle = home.system.getActiveRows() > 1 && targetPair.system.getActiveRows() === 1
       const allowCrossSqueeze = !backpackToBattle
       const canUseLocalSqueeze = targetPair === home
-        ? (targetPair.system.rows > 1 ? isLogicalSameZone : squeezeEnabled)
+        ? (targetPair.system.getActiveRows() > 1 ? isLogicalSameZone : squeezeEnabled)
         : (backpackToBattle && squeezeEnabled)
       const unifiedHomeZone = allowCrossSqueeze
         ? { system: home.system, activeColCount: home.view.activeColCount }
@@ -377,7 +378,7 @@ export class DragController {
         id,
         unifiedHomeZone,
         this.dragOrigItem,
-        targetPair.system.rows > 1 ? finalRow : undefined,
+        targetPair.system.getActiveRows() > 1 ? finalRow : undefined,
         undefined,
       )
       const unified = unifiedRaw && (
@@ -398,7 +399,7 @@ export class DragController {
           this.dragOrigItem.col,
           this.dragOrigItem.row,
           this.dragOrigItem.size,
-          targetPair.system.rows > 1,
+          targetPair.system.getActiveRows() > 1,
         )
         if (swap) {
           swapTransfers = swap.transfers
@@ -502,7 +503,7 @@ export class DragController {
       } else {
         const sourcePair = targetPair
         const destPair = home
-        if (swapRepackPlan && destPair.system.rows > 1) {
+        if (swapRepackPlan && destPair.system.getActiveRows() > 1) {
           const moved = this.backpackLogic.applyPlacementPlan(destPair.system, swapRepackPlan.existing)
           const squeezeMs = getConfig('squeezeMs')
           for (const mv of moved) {
@@ -544,7 +545,7 @@ export class DragController {
         dropRow,
         item.size,
         this.dragOrigItem ?? undefined,
-        targetPair.system.rows > 1 ? dropRow : undefined,
+        targetPair.system.getActiveRows() > 1 ? dropRow : undefined,
       )
       if (cleanup?.moves && cleanup.moves.length > 0) {
         const committed = this.commitLocalSqueezeMoves(targetPair, cleanup.moves, getConfig('squeezeMs'))
@@ -564,7 +565,7 @@ export class DragController {
         dropRow,
         item.size,
         id,
-        targetPair.system.rows > 1 ? dropRow : undefined,
+        targetPair.system.getActiveRows() > 1 ? dropRow : undefined,
       )
       if (!fallback) {
         for (let i = localCommits.length - 1; i >= 0; i--) {
@@ -634,7 +635,7 @@ export class DragController {
         snapRow = origItem.row
         useNewCell = true
       } else {
-        const rows = Array.from({ length: home.system.rows }, (_, i) => i)
+        const rows = Array.from({ length: home.system.getActiveRows() }, (_, i) => i)
         outer: for (let c = 0; c < home.system.cols; c++) {
           for (const r of rows) {
             if (home.system.canPlace(c, r, origItem.size)) {
@@ -739,11 +740,16 @@ export class DragController {
         this.clearSqueezePreview()
         for (const other of this.pairs)
           if (other !== pair) other.view.clearHighlight()
-        pair.view.highlightCells(cell.col, finalRow, item.size, false)
+        const lockedPayload = { view: pair.view, col: cell.col, row: finalRow, size: item.size, instanceId: this.activeId }
+        if (this.shouldShowLockedHighlight(lockedPayload)) {
+          pair.view.highlightCells(cell.col, finalRow, item.size, false)
+        } else {
+          pair.view.clearHighlight()
+        }
         return
       }
       const isLogicalSameZone = pair === this.homeZone
-      if (pair.system.rows > 1 && pair === this.homeZone) {
+      if (pair.system.getActiveRows() > 1 && pair === this.homeZone) {
         this.clearSqueezePreview()
         const plan = this.backpackLogic.buildDropPlan(
           pair.system,
@@ -766,10 +772,10 @@ export class DragController {
 
       if (!canDrop) {
         const squeezeEnabled = getConfig('dragSqueezeEnabled') >= 0.5 && !this.suppressSqueeze
-        const backpackToBattle = this.homeZone.system.rows > 1 && pair.system.rows === 1
+        const backpackToBattle = this.homeZone.system.getActiveRows() > 1 && pair.system.getActiveRows() === 1
         const allowCrossSqueeze = !backpackToBattle
         const canUseLocalSqueeze = pair === this.homeZone
-          ? (pair.system.rows > 1 ? isLogicalSameZone : squeezeEnabled)
+          ? (pair.system.getActiveRows() > 1 ? isLogicalSameZone : squeezeEnabled)
           : (backpackToBattle && squeezeEnabled)
         const unifiedHomeZone = allowCrossSqueeze
           ? { system: this.homeZone.system, activeColCount: this.homeZone.view.activeColCount }
@@ -782,7 +788,7 @@ export class DragController {
           this.activeId,
           unifiedHomeZone,
           this.dragOrigItem,
-          pair.system.rows > 1 ? finalRow : undefined,
+          pair.system.getActiveRows() > 1 ? finalRow : undefined,
           undefined,
         )
         const unified = unifiedRaw && (
@@ -813,7 +819,7 @@ export class DragController {
           this.dragOrigItem.col,
           this.dragOrigItem.row,
           this.dragOrigItem.size,
-          pair.system.rows > 1,
+          pair.system.getActiveRows() > 1,
         )
         if (swap) {
           this.clearSqueezePreview()
@@ -971,7 +977,7 @@ export class DragController {
 
     // 挤出一旦提交，拖拽物的“逻辑锚点”更新到当前目标位。
     // 这样后续继续移动时，可基于新位置再次发生互换/挤出（支持来回连续挤出）。
-    if (this.dragOrigItem && pair.system.rows === 1) {
+    if (this.dragOrigItem && pair.system.getActiveRows() === 1) {
       this.dragOrigItem = {
         ...this.dragOrigItem,
         col,
@@ -1080,7 +1086,7 @@ export class DragController {
     const { w, h } = getSizeCellDim(size)
     if (col < 0 || row < 0) return false
     if (col + w > pair.view.activeColCount) return false
-    if (row + h > pair.system.rows) return false
+    if (row + h > pair.system.getActiveRows()) return false
     if (this.onDropCellLocked({ view: pair.view, col, row, size, instanceId: excludeId ?? '' })) return false
     if (excludeId) return pair.system.canPlaceExcluding(col, row, size, excludeId)
     return pair.system.canPlace(col, row, size)
@@ -1096,7 +1102,7 @@ export class DragController {
   ): { col: number; row: number } | null {
     const { w, h } = getSizeCellDim(size)
     const maxCol = pair.view.activeColCount - w
-    const maxRow = pair.system.rows - h
+    const maxRow = pair.system.getActiveRows() - h
     if (maxCol < 0 || maxRow < 0) return null
 
     let best: { col: number; row: number; score: number } | null = null
@@ -1127,7 +1133,7 @@ export class DragController {
   ): { transfers: Array<{ instanceId: string; newCol: number; newRow: number }>; dropCol: number; dropRow: number } | null {
     const { w } = getSizeCellDim(draggedSize)
     const maxCol = targetZone.activeColCount - w
-    const maxRow = Math.max(0, targetZone.system.rows - 1)
+    const maxRow = Math.max(0, targetZone.system.getActiveRows() - 1)
     const candidates = [targetCol, targetCol - 1, targetCol + 1, targetCol - 2, targetCol + 2]
       .filter((v, i, arr) => arr.indexOf(v) === i)
       .filter((col) => col >= 0 && col <= maxCol)
@@ -1165,8 +1171,8 @@ export class DragController {
     preferredIncomingRow?: number,
   ): CrossSwapRepackPlan | null {
     if (targetPair === homePair) return null
-    if (targetPair.system.rows !== 1) return null
-    if (homePair.system.rows <= 1) return null
+    if (targetPair.system.getActiveRows() !== 1) return null
+    if (homePair.system.getActiveRows() <= 1) return null
 
     const blockerIds = this.listOverlapIds(targetPair, dropCol, dropRow, draggedSize, draggedId)
     if (blockerIds.length === 0) return null

@@ -53,7 +53,7 @@ export class BackpackLogic {
       preferredRow: preferred.row,
     })
 
-    const placements = planAutoPack(items, activeColCount, system.rows)
+    const placements = planAutoPack(items, activeColCount, system.getActiveRows())
     if (!placements) return null
     const incomingPlacement = placements.find((p) => p.instanceId === incoming.instanceId)
     if (!incomingPlacement) return null
@@ -117,7 +117,7 @@ export class BackpackLogic {
         })
       }
 
-      return planAutoPack(items, activeColCount, system.rows)
+      return planAutoPack(items, activeColCount, system.getActiveRows())
     }
 
     const SIZE: Record<ItemSizeNorm, { w: number; h: number }> = {
@@ -154,12 +154,12 @@ export class BackpackLogic {
       return a.instanceId.localeCompare(b.instanceId)
     })
 
-    const occ = Array.from({ length: activeColCount }, () => Array<boolean>(system.rows).fill(false))
+    const occ = Array.from({ length: activeColCount }, () => Array<boolean>(system.getActiveRows()).fill(false))
     const placed = new Map<string, PackPlacement>()
 
     const canPlace = (col: number, row: number, size: ItemSizeNorm): boolean => {
       const dim = SIZE[size]
-      if (col < 0 || row < 0 || col + dim.w > activeColCount || row + dim.h > system.rows) return false
+      if (col < 0 || row < 0 || col + dim.w > activeColCount || row + dim.h > system.getActiveRows()) return false
       for (let c = col; c < col + dim.w; c++) {
         for (let r = row; r < row + dim.h; r++) {
           if (occ[c][r]) return false
@@ -178,7 +178,7 @@ export class BackpackLogic {
     const candidates = (it: typeof all[number]): Array<{ col: number; row: number }> => {
       const dim = SIZE[it.size]
       const maxCol = activeColCount - dim.w
-      const maxRow = system.rows - dim.h
+      const maxRow = system.getActiveRows() - dim.h
       if (maxCol < 0 || maxRow < 0) return []
       const rows = it.incoming
         ? [lockedIncomingRow]

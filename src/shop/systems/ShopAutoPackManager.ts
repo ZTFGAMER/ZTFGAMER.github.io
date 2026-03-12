@@ -60,7 +60,7 @@ export function getBackpackStateSignature(ctx: ShopSceneCtx): string {
     .getAllItems()
     .map((it) => `${it.instanceId}@${it.defId}@${it.size}@${it.col},${it.row}`)
     .sort()
-  return `ac${ctx.backpackView.activeColCount}|rows${ctx.backpackSystem.rows}|${items.join(';')}`
+  return `ac${ctx.backpackView.activeColCount}|rows${ctx.backpackSystem.getActiveRows()}|${items.join(';')}`
 }
 
 export function getAutoPackPlanCached(cacheKey: string, build: () => PackPlacement[] | null): PackPlacement[] | null {
@@ -97,7 +97,7 @@ export function buildBackpackAutoPackPlan(incomingDefId: string, incomingSize: I
     defId: incomingDefId,
     size: incomingSize,
   })
-  const plan = getAutoPackPlanCached(cacheKey, () => planAutoPack(items, bpView.activeColCount, bpSystem.rows))
+  const plan = getAutoPackPlanCached(cacheKey, () => planAutoPack(items, bpView.activeColCount, bpSystem.getActiveRows()))
   if (!plan) return null
   const incoming = plan.find(p => p.instanceId === BACKPACK_INCOMING_TMP_ID)
   if (!incoming) return null
@@ -186,7 +186,7 @@ export function buildBackpackPlanForTransferred(
     if (base.some((b) => b.instanceId === tr.instanceId)) continue
     base.push({ instanceId: tr.instanceId, defId: tr.defId, size: tr.size })
   }
-  return getAutoPackPlanCached(cacheKey, () => planAutoPack(base, bpView.activeColCount, bpSystem.rows))
+  return getAutoPackPlanCached(cacheKey, () => planAutoPack(base, bpView.activeColCount, bpSystem.getActiveRows()))
 }
 
 export function applyBackpackPlanWithTransferred(

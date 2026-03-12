@@ -583,21 +583,14 @@ export function buyRandomBronzeToBoardOrBackpack(ctx: ShopSceneCtx, deps: BuyRan
       const pickedBronze = bronzePool[Math.floor(Math.random() * bronzePool.length)]
       if (pickedBronze) itemForced = pickedBronze.item
     } else {
-      const targetArchetype = toSkillArchetype(getPrimaryArchetype(itemForced.tags))
-      const pickedDefCount = sameLevelCountByDef.get(itemForced.id) ?? 0
       const scored = allBronze.map((one) => ({ one, count: sameLevelCountByDef.get(one.item.id) ?? 0 }))
-      const lowerCountPool = pickedDefCount >= 2
-        ? scored.filter((it) => it.count < pickedDefCount)
-        : scored
-      const basePool = lowerCountPool.length > 0 ? lowerCountPool : scored
-      const minCount = basePool.reduce((min, it) => Math.min(min, it.count), Number.MAX_SAFE_INTEGER)
-      const minCountPool = basePool
-        .filter((it) => it.count === minCount)
-        .map((it) => it.one)
-      const sameArchetypePool = minCountPool.filter((one) =>
-        toSkillArchetype(getPrimaryArchetype(one.item.tags)) === targetArchetype,
-      )
-      const bronzePool = sameArchetypePool.length > 0 ? sameArchetypePool : minCountPool
+      const underTwoPool = scored.filter((it) => it.count < 2).map((it) => it.one)
+      const bronzePool = underTwoPool.length > 0
+        ? underTwoPool
+        : (() => {
+          const minCount = scored.reduce((min, it) => Math.min(min, it.count), Number.MAX_SAFE_INTEGER)
+          return scored.filter((it) => it.count === minCount).map((it) => it.one)
+        })()
       const pickedBronze = bronzePool[Math.floor(Math.random() * bronzePool.length)]
       if (pickedBronze) itemForced = pickedBronze.item
     }

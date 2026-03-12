@@ -36,6 +36,7 @@ import {
 import type { ShopSceneCtx, StarterClass, PendingHeroPeriodicReward } from '../ShopSceneContext'
 import type { NeutralChoiceCandidate } from '../panels/NeutralItemPanel'
 import { clampPlayerLevel, getPlayerMaxLifeByLevel } from '../ui/PlayerStatusUI'
+import { getItemInfoPanelBottomAnchorByBattle } from '../ShopMathHelpers'
 
 // ============================================================
 // 本地常量
@@ -428,15 +429,11 @@ export function tryRunHeroCrossSynthesisReroll(
   if (callbacks.isLevelQuickDraftEnabled()) {
     const queued = callbacks.enqueueLevelQuickDraftChoices('占卜师：选择合成结果', choices, {
       consumePickedAsReward: true,
-      onPicked: (picked) => {
-        void picked
-        callbacks.showHintToast('no_gold_buy', '占卜师：本次异物合成可选结果', 0x9be5ff)
-        callbacks.refreshShopUI()
-      },
     })
     if (queued) {
       markHeroDailyCardRerollUsed(ctx, { refreshPlayerStatusUI: callbacks.refreshPlayerStatusUI })
       callbacks.removePlacedItemInstance(synth.instanceId, synth.targetZone)
+      callbacks.showHintToast('no_gold_buy', '占卜师：本次异物合成可选结果', 0x9be5ff)
       callbacks.refreshShopUI()
       return true
     }
@@ -539,7 +536,7 @@ export function showHeroPassiveDetailPopup(ctx: ShopSceneCtx, stage: Container):
   const contentBottom = Math.max(iconY + iconSize, descY + desc.height)
   const panelH = Math.max(getDebugCfg('itemInfoMinHSmall'), contentBottom + pad)
   const px = CANVAS_W / 2 - panelW / 2
-  let panelBottomY = getDebugCfg('shopAreaY') - getDebugCfg('itemInfoBottomGapToShop') - 92
+  let panelBottomY = getItemInfoPanelBottomAnchorByBattle(ctx)
   if (ctx.skillIconBarCon?.visible) {
     panelBottomY = Math.min(panelBottomY, ctx.skillIconBarCon.y - 44)
   }

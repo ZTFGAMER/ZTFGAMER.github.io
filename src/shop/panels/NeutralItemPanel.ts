@@ -1926,14 +1926,11 @@ export class NeutralItemPanel extends Container {
     if (this.cb.isLevelQuickDraftEnabled()) {
       const queued = this.cb.enqueueLevelQuickDraftChoices(title, choices, {
         consumePickedAsReward: true,
-        onPicked: () => {
-          this.cb.showHintToast('no_gold_buy', `${sourceDef.name_cn}：已转化目标物品`, 0x9be5ff)
-          this.cb.refreshShopUI()
-        },
       })
       if (!queued) return false
       const consumed = this._consumePlacedInstance(target.instanceId, target.zone)
       if (!consumed) return false
+      this.cb.showHintToast('no_gold_buy', `${sourceDef.name_cn}：已转化目标物品`, 0x9be5ff)
       this.cb.refreshShopUI()
       return true
     }
@@ -1980,12 +1977,6 @@ export class NeutralItemPanel extends Container {
       if (!consumeSource()) return false
       const queued = this.cb.enqueueLevelQuickDraftChoices('戏法师：选择合成结果', choices, {
         consumePickedAsReward: true,
-        onPicked: (picked) => {
-          void picked
-          this.cb.grantSynthesisExp(1)
-          this.cb.showHintToast('no_gold_buy', '戏法师：本次同物合成可选其他物品', 0x9be5ff)
-          this.cb.refreshShopUI()
-        },
       })
       if (!queued) {
         this.cb.showHintToast('backpack_full_buy', '戏法师：当前无可重选候选', 0xffb27a)
@@ -1993,6 +1984,8 @@ export class NeutralItemPanel extends Container {
       }
       this.cb.markHeroSameItemSynthesisChoiceTriggered()
       this._consumePlacedInstance(target.instanceId, target.zone)
+      this.cb.grantSynthesisExp(1)
+      this.cb.showHintToast('no_gold_buy', '戏法师：本次同物合成可选其他物品', 0x9be5ff)
       this.cb.refreshShopUI()
       return true
     }

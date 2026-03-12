@@ -40,6 +40,8 @@ import {
   getBattleZoneX,
   getBackpackZoneX,
   getBackpackZoneYByBattle,
+  getBackpackRowsByDay,
+  getAdjustedBattleZoneY,
 } from '../ShopMathHelpers'
 import {
   isOverGridDragSellArea,
@@ -193,19 +195,24 @@ export function buildBattleZoneUI(
     : (cfg.dailyBattleSlots[0] ?? 4)
   const fallbackRows = compactMode?.enabled
     ? (compactMode.backpackRows ?? 3)
-    : 2
+    : 3
   const fallbackCols = 6
-  const backpackRows = Math.max(1, Math.min(6, Math.round(getDebugCfg('gameplayBackpackRows') || fallbackRows)))
+  const dynamicBackpackRows = getDebugCfg('gameplayBackpackRowsDynamicByDay') >= 0.5
+  const manualBackpackRows = Math.max(1, Math.min(6, Math.round(getDebugCfg('gameplayBackpackRows') || fallbackRows)))
+  const maxBackpackRows = dynamicBackpackRows ? 3 : manualBackpackRows
+  const backpackRows = getBackpackRowsByDay(ctx.currentDay || 1)
   const backpackCols = Math.max(3, Math.min(6, Math.round(getDebugCfg('gameplayBackpackCols') || fallbackCols)))
   ctx.battleSystem   = new GridSystem(6)
-  ctx.backpackSystem = new GridSystem(backpackCols, backpackRows)
+  ctx.backpackSystem = new GridSystem(backpackCols, maxBackpackRows)
   ctx.battleView     = new GridZone('上阵区', 6, activeCols, 1)
-  ctx.backpackView   = new GridZone('背包', backpackCols, backpackCols, backpackRows)
+  ctx.backpackView   = new GridZone('背包', backpackCols, backpackCols, maxBackpackRows)
+  ctx.backpackSystem.setActiveRows(backpackRows)
+  ctx.backpackView.setActiveRowCount(backpackRows)
   ctx.backpackView.setAutoPackEnabled(false)
   ctx.battleView.setStatBadgeMode('archetype')
   ctx.backpackView.setStatBadgeMode('archetype')
   ctx.battleView.x   = getBattleZoneX(activeCols, ctx)
-  ctx.battleView.y   = getDebugCfg('battleZoneY')
+  ctx.battleView.y   = getAdjustedBattleZoneY(ctx.currentDay || 1)
   ctx.backpackView.x = getBackpackZoneX(ctx.backpackView.activeColCount, ctx)
   ctx.backpackView.y = getBackpackZoneYByBattle(ctx)
   ctx.backpackView.visible = true
@@ -254,6 +261,7 @@ export function buildBattleZoneUI(
     if (view !== ctx.backpackView) return false
     return isBackpackDropLocked(col, row, size)
   }
+  ctx.drag.shouldShowLockedHighlight = ({ view }) => view !== ctx.levelQuickRewardView
   ctx.drag.onDragStart = (instanceId: string) => {
     clearSelection()
     const defId = instanceToDefId.get(instanceId)

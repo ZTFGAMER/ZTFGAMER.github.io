@@ -557,7 +557,7 @@ export function planUnifiedSqueeze(
   rowLock?: number,
   homeRowLock?: number,
 ): UnifiedSqueezePlan | null {
-  const targetRows = Math.max(1, targetZone.system.rows)
+  const targetRows = Math.max(1, targetZone.system.getActiveRows())
   const local = trySqueezePlace(
     targetZone.system,
     draggedId,
@@ -622,7 +622,7 @@ export function planUnifiedSqueeze(
     return null
   }
   const transfers: CrossZoneTransfer[] = []
-  const homeRows = Math.max(1, homeZone.system.rows)
+  const homeRows = Math.max(1, homeZone.system.getActiveRows())
 
   const dfs = (index: number): boolean => {
     if (index >= blockers.length) return true
@@ -670,7 +670,7 @@ export function planCrossZoneSwap(
   const { w: fw, h: fh } = VSIZE_MAP[footprintSize]
   if (footprintCol < 0 || footprintRow < 0) return null
   if (footprintCol + fw > homeZone.activeColCount) return null
-  if (footprintRow + fh > Math.max(1, homeZone.system.rows)) return null
+  if (footprintRow + fh > Math.max(1, homeZone.system.getActiveRows())) return null
 
   const blockerIds = collectTargetBlockerIds(targetVg, targetCol, targetRow, draggedSize)
   if (blockerIds.length === 0) return null
@@ -713,7 +713,7 @@ export function planCrossZoneSwap(
       const blocker = blockers[index]!
       const { w, h } = VSIZE_MAP[blocker.size]
       const maxCol = homeZone.activeColCount - w
-      const maxRow = Math.max(1, homeZone.system.rows) - h
+      const maxRow = Math.max(1, homeZone.system.getActiveRows()) - h
       if (maxCol < 0 || maxRow < 0) return false
 
       for (let row = 0; row <= maxRow; row++) {

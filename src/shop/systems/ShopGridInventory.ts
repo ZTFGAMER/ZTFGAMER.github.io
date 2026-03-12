@@ -50,7 +50,7 @@ export type GridInventoryCallbacks = {
 
 export function findFirstBackpackPlace(size: ItemSizeNorm, ctx: ShopSceneCtx): { col: number; row: number } | null {
   if (!ctx.backpackSystem || !ctx.backpackView) return null
-  for (let row = 0; row < ctx.backpackSystem.rows; row++) {
+  for (let row = 0; row < ctx.backpackSystem.getActiveRows(); row++) {
     for (let col = 0; col < ctx.backpackView.activeColCount; col++) {
       const finalRow = row
       if (canPlaceInVisibleCols(ctx.backpackSystem, ctx.backpackView, col, finalRow, size)) {

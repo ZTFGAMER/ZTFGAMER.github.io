@@ -38,6 +38,7 @@ export interface CombatSnapshot {
 export class GridSystem {
   readonly cols: number
   readonly rows: number
+  private activeRows: number
 
   // grid[col][row] = instanceId | null
   private grid: (string | null)[][]
@@ -46,14 +47,23 @@ export class GridSystem {
   constructor(cols: number = 5, rows: number = 1) {
     this.cols = cols
     this.rows = Math.max(1, Math.floor(rows))
+    this.activeRows = this.rows
     this.grid = Array.from({ length: cols }, () => Array<string | null>(this.rows).fill(null))
+  }
+
+  getActiveRows(): number {
+    return this.activeRows
+  }
+
+  setActiveRows(rows: number): void {
+    this.activeRows = Math.max(1, Math.min(this.rows, Math.floor(rows)))
   }
 
   // ---- 放置检测 ----
 
   canPlace(col: number, row: number, size: ItemSizeNorm): boolean {
     const { w, h } = SIZE_MAP[size]
-    if (col < 0 || row < 0 || col + w > this.cols || row + h > this.rows) return false
+    if (col < 0 || row < 0 || col + w > this.cols || row + h > this.activeRows) return false
     for (let c = col; c < col + w; c++)
       for (let r = row; r < row + h; r++)
         if (this.grid[c][r] !== null) return false
@@ -63,7 +73,7 @@ export class GridSystem {
   /** 同 canPlace，但忽略指定物品自身占据的格子（拖拽中校验用） */
   canPlaceExcluding(col: number, row: number, size: ItemSizeNorm, excludeId: string): boolean {
     const { w, h } = SIZE_MAP[size]
-    if (col < 0 || row < 0 || col + w > this.cols || row + h > this.rows) return false
+    if (col < 0 || row < 0 || col + w > this.cols || row + h > this.activeRows) return false
     for (let c = col; c < col + w; c++)
       for (let r = row; r < row + h; r++) {
         const cell = this.grid[c][r]

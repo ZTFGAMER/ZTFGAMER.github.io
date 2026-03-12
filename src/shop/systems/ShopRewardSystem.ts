@@ -93,14 +93,14 @@ function toSavedQuickDraftCandidate(pick: QuickDraftCandidate): SavedLevelQuickD
 
 function toSavedQuickDraftEntry(entry: QuickDraftQueueEntry): SavedLevelQuickDraftEntry {
   return {
-    title: entry.title.trim().length > 0 ? entry.title.trim() : '奖励区',
+    title: entry.title.trim().length > 0 ? entry.title.trim() : '升级奖励',
     picks: entry.picks.slice(0, 3).map((pick) => toSavedQuickDraftCandidate(pick)),
   }
 }
 
 function fromSavedQuickDraftEntry(entry: SavedLevelQuickDraftEntry): QuickDraftQueueEntry {
   return {
-    title: entry.title.trim().length > 0 ? entry.title.trim() : '奖励区',
+    title: entry.title.trim().length > 0 ? entry.title.trim() : '升级奖励',
     picks: entry.picks.slice(0, 3).map((pick) => ({
       defId: pick.defId,
       level: pick.level,
@@ -430,27 +430,28 @@ function applyLevelQuickRewardItemSpacing(ctx: ShopSceneCtx, battleScale: number
   }
 }
 
-function refreshLevelQuickRewardBackdrop(quickX: number, quickY: number, quickW: number, quickH: number, ctx: ShopSceneCtx): void {
+function refreshLevelQuickRewardBackdrop(quickX: number, quickY: number, _quickW: number, quickH: number, ctx: ShopSceneCtx): void {
   if (ctx.levelQuickRewardBackdrop?.parent) ctx.levelQuickRewardBackdrop.parent.removeChild(ctx.levelQuickRewardBackdrop)
   ctx.levelQuickRewardBackdrop?.destroy()
   ctx.levelQuickRewardBackdrop = null
 
-  const gapPad = 30
+  const battleScale = Math.max(0.1, Number(ctx.backpackView?.scale.x || ctx.battleView?.scale.x || 1))
+  const cellW = CELL_SIZE * battleScale
+  const slotXs = [quickX - 30, quickX + cellW, quickX + cellW * 2 + 30]
+  const r = Math.max(8, getDebugCfg('gridItemCornerRadius'))
   const g = new Graphics()
   g.zIndex = 17
   g.eventMode = 'none'
-  g.roundRect(quickX - gapPad, quickY, quickW + gapPad * 2, quickH, Math.max(8, getDebugCfg('gridItemCornerRadius')))
-  g.fill({ color: 0x2a2a3e, alpha: 1 })
-  g.roundRect(quickX - gapPad, quickY, quickW + gapPad * 2, quickH, Math.max(8, getDebugCfg('gridItemCornerRadius')))
-  g.stroke({ color: 0x4a4a6e, width: Math.max(1, getDebugCfg('gridCellBorderWidth')), alpha: 1 })
+  for (const x of slotXs) {
+    g.roundRect(x, quickY, cellW, quickH, r)
+    g.fill({ color: 0x2a2a3e, alpha: 1 })
+  }
   ctx.levelQuickRewardBackdrop = g
   getApp().stage.addChild(g)
 }
 
 function refreshLevelQuickRewardOverlayTitle(quickX: number, quickW: number, quickY: number, ctx: ShopSceneCtx): void {
-  const queue = getLevelQuickRewardQueue(ctx)
   const active = getLevelQuickRewardActiveEntry(ctx)
-  const pendingGroups = ctx.levelQuickRewardInstanceIds.size > 0 ? (queue.length + 1) : queue.length
   const battleScale = Math.max(0.1, Number(ctx.backpackView?.scale.x || ctx.battleView?.scale.x || 1))
   refreshLevelQuickRewardBackdrop(quickX, quickY, quickW, CELL_HEIGHT * battleScale, ctx)
   if (ctx.levelQuickRewardOverlay?.parent) ctx.levelQuickRewardOverlay.parent.removeChild(ctx.levelQuickRewardOverlay)
@@ -461,9 +462,9 @@ function refreshLevelQuickRewardOverlayTitle(quickX: number, quickW: number, qui
   overlay.eventMode = 'none'
   const bubbleX = Math.round(quickX + quickW / 2)
   const labelFontSize = Math.max(20, Math.round(getDebugCfg('gridZoneLabelFontSize')))
-  const baseTitle = active?.title ?? '奖励区'
+  const baseTitle = active?.title ?? '升级奖励'
   const title = new Text({
-    text: pendingGroups > 1 ? `${baseTitle}（剩余${pendingGroups}组）` : baseTitle,
+    text: baseTitle,
     style: {
       fontSize: labelFontSize,
       fill: 0xd8e5ff,
@@ -565,6 +566,7 @@ function ensureLevelQuickRewardUi(ctx: ShopSceneCtx): boolean {
     ctx.levelQuickRewardView.setAutoPackEnabled(false)
     ctx.levelQuickRewardView.setStatBadgeMode('archetype')
     ctx.levelQuickRewardView.setLabelVisible(false)
+    ctx.levelQuickRewardView.setCellBackgroundVisible(false)
     ctx.levelQuickRewardView.onTap = (instanceId) => {
       const defId = instanceToDefId.get(instanceId)
       const def = defId ? getItemDefById(defId) : null
@@ -638,7 +640,7 @@ export function enqueueLevelQuickDraftChoices(
   if (picks.length <= 0) return false
   return enqueueLevelQuickRewardEntry(ctx, {
     picks,
-    title: title.trim().length > 0 ? title.trim() : '奖励区',
+    title: title.trim().length > 0 ? title.trim() : '升级奖励',
     consumePickedAsReward: opts?.consumePickedAsReward !== false,
     onPicked: opts?.onPicked
       ? (picked) => {
@@ -683,7 +685,7 @@ function openQuickDraftLevelRewardOverlay(level: number, ctx: ShopSceneCtx, call
   if (picks.length <= 0) return false
   return enqueueLevelQuickRewardEntry(ctx, {
     picks,
-    title: '奖励区',
+    title: '升级奖励',
     consumePickedAsReward: true,
   })
 }

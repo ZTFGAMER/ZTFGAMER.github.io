@@ -1,5 +1,370 @@
 # 大巴扎 — 开发进度记录
 
+## 验收优化追加（2026-03-12，版本号升级到1.0.1）
+
+- 用户需求：将项目版本更新为 `1.0.1`。
+- 已完成：
+  - `package.json` 版本号更新为 `1.0.1`；
+  - `package-lock.json` 顶层与根包版本同步为 `1.0.1`；
+  - `src/menu/MenuScene.ts` 底部版本文案更新为 `v1.0.1`；
+  - `ios/project.yml` 中 `MARKETING_VERSION` 同步为 `1.0.1`。
+- 当前阶段：等待用户确认 GHE 上传完成。
+
+## 验收优化追加（2026-03-12，快捷三选一奖励等级权重更新）
+
+- 用户需求：按新表更新“快捷三选一模式”的奖励等级概率（Lv2~Lv7）。
+- 已完成：`data/game_config.json`
+  - 更新 `levelQuickDraftLevelWeightsByPlayerLevel` 为 26 行新分布；
+  - 第 1~26 级概率已按你给的表替换（末段为 `0,0,0,0,0.4,0.6`）。
+- 校验：已确认该配置行数为 26，最后一行为 `[0, 0, 0, 0, 0.4, 0.6]`。
+- 当前阶段：等待用户确认升级奖励抽取结果是否符合新曲线预期。
+
+## 验收优化追加（2026-03-12，钻石图标方向倒置）
+
+- 用户需求：钻石品质点“倒过来”。
+- 已完成：`src/common/grid/GridZone.ts`
+  - `drawGemShape(...)` 顶底方向翻转，宝石轮廓整体上下倒置。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认钻石方向。
+
+## 验收优化追加（2026-03-12，钻石品质点去发光并放大10%）
+
+- 用户需求：钻石品质点不要闪烁发光，只保留基础形状，并在当前基础上再放大 10%；描边保持 5px。
+- 已完成：`src/common/grid/GridZone.ts`
+  - 去除钻石品质点内层高光与闪烁发光，仅保留基础宝石轮廓；
+  - 钻石半径从原系数 `0.8` 调整为 `0.88`（相对当前放大约 10%）；
+  - 描边维持 `5px`（`qualityDot.stroke(... width: 5 ...)`）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认钻石品质点最终样式。
+
+## 验收优化追加（2026-03-12，钻石品质点改为💎样式）
+
+- 用户需求：钻石品质点不是普通菱形，要更接近“💎”宝石轮廓。
+- 已完成：`src/common/grid/GridZone.ts`
+  - 新增 `drawGemShape(...)`，使用多折面轮廓绘制宝石形；
+  - 钻石品质点外轮廓/内高光统一改为该宝石形，不再使用规则多边形。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认钻石品质点视觉是否达到预期“💎感”。
+
+## 验收优化追加（2026-03-12，Day1金币改为30）
+
+- 用户需求：第一天金币数量改为 `30`。
+- 已完成：`data/game_config.json`
+  - 配置项 `daily_gold_by_day` 第 1 天由 `15` 调整为 `30`。
+- 说明：当前项目优先读取按天金币曲线，因此本次改动已直接生效于 Day1 发放金币。
+- 当前阶段：等待用户确认 Day1 进局金币是否为 30。
+
+## 验收优化追加（2026-03-12，钻石品质点改为菱形）
+
+- 用户需求：钻石品质点直接使用钻石（菱形）形状。
+- 已完成：`src/common/grid/GridZone.ts`
+  - 将钻石品质点外轮廓由八边形改为 45° 旋转四边形（菱形）；
+  - 内层高光轮廓同步改为菱形，保持与外轮廓一致。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认钻石品质点形状。
+
+## 验收优化追加（2026-03-12，品质圆点位置微调）
+
+- 用户需求：在当前基础上再“向上 10px，向左 10px”。
+- 已完成：`src/common/grid/GridZone.ts`
+  - `updateStatBadgePosition(...)` 中品质圆点偏移由 `(+50, -2)` 调整为 `(+40, -12)`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认该微调位置。
+
+## 验收优化追加（2026-03-12，动态背包行数恢复时机修正）
+
+- 用户反馈：随天数动态增加背包行数时，底行物品偶发被清掉，怀疑恢复时未按当天行数初始化。
+- 根因：`applySavedShopState(...)` 在恢复实例前，背包系统仍可能停留在旧 activeRows，导致底行 `place(...)` 失败并被遗漏。
+- 已完成：`src/shop/ShopStateStorage.ts`
+  - 恢复状态时，在还原物品前先按 `state.day` 调用 `getBackpackRowsByDay(...)`，并同步：
+    - `ctx.backpackSystem.setActiveRows(...)`
+    - `ctx.backpackView.setActiveRowCount(...)`
+  - `restoreOne(...)` 增加 `place(...)` 结果校验，只有放置成功才继续写入实例映射和视图，避免脏映射导致后续丢失。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“切天/回商店后底行物品不再被误清”。
+
+## 验收优化追加（2026-03-12，战斗回商店恢复时禁用全量出现特效）
+
+- 用户反馈：战斗结束回到商店后，所有物品刷新出现特效的位置不对。
+- 已完成：`src/shop/ShopStateStorage.ts`
+  - 在 `applySavedShopState -> restoreOne(...)` 中，恢复战斗区/背包区物品时改为 `playAcquireFx: false`；
+  - 避免“整场景恢复”触发逐件入场特效导致的错位视觉。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“回商店后不再出现错位的全量出现特效”。
+
+## 验收优化追加（2026-03-12，品质圆点规则与尺寸修正）
+
+- 用户需求：
+  - 白银/黄金圆点放大 20%；
+  - 钻石圆点缩小 20%；
+  - 描边统一加粗到 5px；
+  - 圆点显示应严格按“品质”判定，青铜2星不应显示白银圆点。
+- 已完成：`src/common/grid/GridZone.ts`
+  - `updateNodeQualityDot(...)` 改为按 `defId` 对应基础品质判定（不再按等级/旧 tier-star 派生品质），修复青铜Lv2误显示问题；
+  - 白银/黄金半径按 +20% 调整，钻石半径按 -20% 调整；
+  - 描边保持 5px；
+  - 钻石内高光与闪烁十字按新半径同比缩放。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复验“青铜Lv2无圆点、白银/黄金更大、钻石更小且描边5px”。
+
+## 验收优化追加（2026-03-12，品质标记样式二次调整）
+
+- 用户反馈：品质标记需要整体上移约 20px、尺寸放大 1 倍，并调整几何形状；且战斗场景不显示。
+- 已完成：
+  - `src/common/grid/GridZone.ts`
+    - 品质标记位置上移 `20px`，整体尺寸放大约 `2x`；
+    - 形状改为：白银=菱形、黄金=六边形、钻石=八边形（保留钻石闪耀）；
+    - 新增 `setItemQualityMarkerEnabled(...)` 开关。
+  - `src/battle/BattleScene.ts`
+    - 战斗场景样式应用时强制 `zone.setItemQualityMarkerEnabled(false)`，战斗中不显示品质标记。
+  - `src/shop/ui/ShopPanelView.ts`
+    - 商店卡片同步同样的形状/尺寸/位置规则（含钻石闪耀）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“商店/商店网格标记样式正确，战斗场景不显示”。
+
+### 验收补充（同阶段）
+
+- 用户追加：白银/黄金再放大 20%，钻石缩小 20%，所有描边加粗到 `5px`。
+- 已完成：
+  - `src/common/grid/GridZone.ts`
+    - 白银/黄金半径调整为约 `12`；钻石半径调整为约 `13`（相对上一版缩小）；
+    - 品质标记描边统一 `5px`；钻石闪耀描边同步 `5px`。
+  - `src/shop/ui/ShopPanelView.ts`
+    - 商店卡片同步同样半径与描边规则。
+- 验证：`npm run build` 通过。
+
+## 验收优化追加（2026-03-12，头像未刷新与回店闪光错位修复）
+
+- 用户复验反馈：
+  - 英雄头像位置“依然没有刷新”；
+  - 回到商店时，上阵区物品闪光位置不对。
+- 已完成：
+  - `src/shop/ShopScene.ts`
+    - 在 `setDay(...)` 的统一重排链中追加 `PlayerStatusUI.layoutPlayerStatusPanel(ctx)`，确保切天/回店后头像容器立即按最新战斗区Y重排，不依赖其他间接刷新。
+  - `src/shop/ui/ShopAnimationEffects.ts`
+    - `playTransformOrUpgradeFlashEffect(...)` 与 `playSynthesisFlashEffect(...)` 改为“每帧实时取当前物品格子与区域变换”计算闪光矩形；
+    - 解决回店当帧布局/动画仍在变化时，闪光沿用旧坐标导致的错位。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复验“头像实时刷新 + 回店闪光对齐”是否通过。
+
+## 验收优化追加（2026-03-12，职业边框品质圆点显示修正）
+
+- 用户反馈：职业边框模式下，战斗区未看到新增品质圆点。
+- 根因：`GridZone` 已实现圆点绘制函数，但主渲染流程 `applyNodeVisualLayout(...)` 未调用该函数，导致仅在拖拽回位等分支偶发显示。
+- 已完成：`src/common/grid/GridZone.ts`
+  - 在 `applyNodeVisualLayout(...)` 中补上 `updateNodeQualityDot(node)` 调用；
+  - 保证商店/战斗常规渲染路径都会绘制品质圆点。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“职业边框模式下，战斗与商店都稳定显示品质圆点（青铜无、白银银、黄金金、钻石大圆点+闪耀）”。
+
+## 验收优化追加（2026-03-12，英雄头像改为锚定真实战斗区Y）
+
+- 用户复验反馈：仅英雄头像位置仍异常，未与其他相对战斗区模块完全一致。
+- 原因定位：头像容器Y使用“理论战斗区Y推导值”，在缩放/重排后与真实 `battleView.y` 可能有细微偏差。
+- 已完成：
+  - `src/shop/ShopMathHelpers.ts`
+    - 新增 `getBattleZoneDisplayY(ctx)`（优先使用 `ctx.battleView.y`，无视图时再回退计算）。
+    - `getItemInfoPanelBottomAnchorByBattle(ctx)` 同步改为基于该函数。
+  - `src/shop/ui/PlayerStatusUI.ts`
+    - 英雄头像容器Y改为 `getBattleZoneDisplayY(ctx) + shopPlayerStatusY`。
+  - `src/shop/ui/ShopUIBuilders.ts`
+    - 初始构建时同样使用 `getBattleZoneDisplayY(ctx)`，保证首帧与后续刷新口径一致。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复验 Day1/Day3/Day6 下英雄头像与战斗区联动是否已正确。
+
+## 验收优化追加（2026-03-12，职业边框模式增加品质圆点）
+
+- 用户需求：在“物品边框按职业显示”模式下，商店与战斗/背包物品都要在图标下方显示品质圆点：
+  - 青铜不显示；
+  - 白银显示银色小圆点；
+  - 黄金显示金色小圆点；
+  - 钻石显示更大圆点并带闪亮动效。
+- 已完成：
+  - `src/common/grid/GridZone.ts`
+    - 为战斗/背包格子物品新增 `qualityDot + qualitySparkle` 叠加层；
+    - 仅在 `gameplayItemFrameColorByArchetype=1` 时显示；
+    - 按当前物品品质绘制圆点，钻石启用呼吸闪耀动画；
+    - 拖拽开始/回位/跨区、移除与销毁流程都补齐显示与 tick 生命周期管理。
+  - `src/shop/ui/ShopPanelView.ts`
+    - 商店卡片新增同款品质圆点逻辑（基于 `slot.tier`）；
+    - 钻石增加闪耀动画，且随卡片重建自动启停。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“职业边框模式下，商店与战斗区品质圆点显示与动效一致”。
+
+## 验收优化追加（2026-03-12，所有战斗区Y相对模块动态联动）
+
+- 用户补充需求：凡是“相对战斗区Y偏移”的模块都需在动态背包行数切换时同步适配，包括奖励区、上阵区、背包、英雄信息、英雄/物品/技能详情。
+- 已完成：`src/shop/ShopScene.ts`
+  - 在 `setDay(...)` 中统一追加“相对布局重算链”:
+    - 重新定位上阵区/背包区/标题；
+    - 调用 `RewardSystem.refreshLevelQuickRewardLayout(ctx)` 同步奖励区位置；
+    - 调用 `DebugLayout.applyItemInfoPanelLayout(ctx)` 同步物品详情面板；
+    - 若当前打开的是英雄详情/技能详情，按当前选中项重绘弹窗，确保随战斗区Y一起移动。
+- 配套修正：
+  - `src/shop/ui/ShopBattleZoneBuilder.ts` 背包底层改为“最大行数创建 + activeRows 按天切换”，避免 Day3 只位移不增行。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户基于 Day3/Day6 场景复验“所有相对战斗区Y模块联动”。
+
+## 验收优化追加（2026-03-12，动态背包可扩行与头像联动修正）
+
+- 用户反馈：Day3 时背包位置变了但行数未变；人物头像未跟随偏移。
+- 原因定位：初始化时按 Day1 直接创建了 1 行背包系统，后续天数无法扩展到 2/3 行。
+- 已完成：
+  - `src/shop/ui/ShopBattleZoneBuilder.ts`
+    - 背包系统/视图改为按“最大行数”创建（动态模式=3行上限），再用 activeRows 按天切换当前可用行；
+    - 解决 Day3/Day6 无法从 1 行扩到 2/3 行的问题。
+  - `src/shop/ShopScene.ts`
+    - 恢复存档后立即执行 `setDay(currentDay)`，强制重算动态背包行数与联动布局。
+- 当前阶段：等待用户复验 Day3 是否显示 2 行，以及头像是否同步到联动后的战斗区Y。
+
+## 验收优化追加（2026-03-12，英雄/物品/技能详情互斥）
+
+- 用户反馈：打开英雄详情后再点物品详情，英雄详情未自动关闭；期望英雄/物品/技能三类详情互斥，仅显示一个。
+- 已完成：`src/shop/ui/ShopUIBuilders.ts`
+  - 在 `SellPopup.show(...)` 入口统一加互斥处理：每次显示物品详情前先执行 `hideSkillDetailPopup()`；
+  - 由于英雄详情与技能详情共用同一详情容器，这一步会同时关闭英雄/技能详情，确保切到物品详情时单窗显示。
+- 交互结果：
+  - 打开英雄详情后点任意物品详情，会自动关闭英雄详情；
+  - 技能详情与物品详情切换也保持互斥，不会重叠显示。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“三类详情互斥仅显示1个”。
+
+## 验收优化追加（2026-03-12，背包行数按天动态与战斗区Y联动）
+
+- 用户需求：新增“背包按天动态行数”开关（默认开启），规则为 Day1-2=1 行、Day3-5=2 行、Day6+=3 行；并要求联动：
+  - 相对“三行基准”每减少一行，商店战斗区 Y `+120`；
+  - 战斗场景偏移 `-120`。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增 `gameplayBackpackRowsDynamicByDay`（0/1，默认 1）。
+  - `data/debug_defaults.json`
+    - 新增默认值 `gameplayBackpackRowsDynamicByDay: 1`。
+  - `src/debug/DebugPage.ts`
+    - 将该开关加入“玩法数值”分组与强制归位集合。
+  - `src/shop/ShopMathHelpers.ts`
+    - 新增按天行数与Y联动计算：`getBackpackRowsByDay(day)`、`getAdjustedBattleZoneY(day)`、`getAdjustedBattleZoneYInBattleOffset(day)`；
+    - `getBackpackZoneYByBattle(ctx)` 改为基于联动后的 battleY。
+  - `src/common/grid/GridSystem.ts`、`src/common/grid/GridZone.ts`
+    - 增加活动行概念（`setActiveRows/getActiveRows`、`setActiveRowCount`），支持不重建网格切换可用行数与显示行数。
+  - `src/shop/ui/ShopBattleZoneBuilder.ts`、`src/shop/ui/ShopDebugLayout.ts`、`src/shop/ShopScene.ts`
+    - 商店构建/调试布局/切天逻辑统一接入动态行数；
+    - 切天时同步刷新背包活动行、战斗区与背包区位置、标题位置与拖拽区。
+  - `src/shop/ui/PlayerStatusUI.ts`、`src/shop/ui/ShopUIBuilders.ts`
+    - 玩家信息面板 Y 改为跟随联动后的 battleY。
+  - `src/battle/BattleScene.ts`
+    - 战斗场景我方区 Y 改为使用联动后的 `battleZoneY + battleZoneYInBattleOffset`。
+  - `src/common/grid/DragController.ts`、`src/common/grid/SqueezeLogic.ts`、`src/common/grid/BackpackLogic.ts`、`src/shop/systems/ShopDragSystem.ts`、`src/shop/systems/ShopGridInventory.ts`、`src/shop/systems/ShopAutoPackManager.ts`
+    - 行边界判断与自动整理统一改为基于活动行数，避免隐藏行仍可放置。
+- 当前阶段：等待用户验收“按天动态行数、Y联动、商店/战斗场景位置同步”是否符合预期。
+
+## 验收优化追加（2026-03-12，三类详情面板绑定战斗区Y偏移）
+
+- 用户需求：商店物品详情、英雄详情、技能详情三者位置统一绑定到战斗区Y，并使用同一偏移配置。
+- 已完成：
+  - `src/shop/ShopMathHelpers.ts`
+    - 新增 `getItemInfoPanelBottomAnchorByBattle(ctx)`，统一计算详情面板底边锚点：`battleY + offset`。
+  - `src/shop/ui/ShopDebugLayout.ts`
+    - 商店物品详情（SellPopup）改为使用统一锚点计算，不再基于商店区Y。
+  - `src/shop/panels/SkillDraftPanel.ts`
+    - 技能详情弹窗底边锚点改为使用统一锚点计算。
+  - `src/shop/systems/ShopHeroSystem.ts`
+    - 英雄详情弹窗底边锚点改为使用统一锚点计算。
+  - `src/config/debugConfig.ts`
+    - 复用现有键 `itemInfoBottomGapToShop` 作为统一偏移配置，改文案与范围：
+      - 名称：`详情面板相对战斗区Y偏移`
+      - 语义：`面板底边 = 战斗区Y + 偏移`
+      - 默认：`-220`，范围：`-800~400`。
+  - `data/debug_defaults.json`
+    - `itemInfoBottomGapToShop` 默认值调整为 `-220`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“调节同一偏移时，三类详情面板同步上下移动”。
+
+## 验收优化追加（2026-03-12，奖励区禁用红色拾取高亮）
+
+- 用户反馈：升级奖励区域不应显示拖拽拾取时的红色锁定框。
+- 已完成：
+  - `src/common/grid/DragController.ts`
+    - 新增 `shouldShowLockedHighlight(...)` 回调，支持按区域关闭 locked 状态高亮绘制。
+  - `src/shop/ui/ShopBattleZoneBuilder.ts`
+    - 对快捷奖励区返回 `false`，禁用该区域红色锁定高亮；
+    - 仍保留锁定本身（不可拖入、松手回弹）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“奖励区拖拽时不再出现红框，同时位置通过 offset 手调”。
+
+## 验收优化追加（2026-03-12，奖励区去除残留细线）
+
+- 用户反馈：奖励区仍有细线残留。
+- 已完成：
+  - `src/common/grid/GridZone.ts`
+    - 新增 `setCellBackgroundVisible(...)`，支持关闭网格底板绘制层。
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 快捷奖励区创建时关闭 `GridZone` 自带 cell 背景（含外框/内部格线），仅保留自定义 backdrop 与物品框。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“奖励区细线已完全消失”。
+
+## 验收优化追加（2026-03-12，所有快捷三选一队列刷新后恢复）
+
+- 用户反馈：当前仅部分快捷三选一可恢复（看起来只保存了升级奖励），希望所有快捷三选一都能在刷新后保留。
+- 已完成：
+  - `src/shop/panels/NeutralItemPanel.ts`
+    - 石头转化、戏法师三选一改为“入队成功即结算副作用”（提示/经验/刷新），移除队列内回调依赖，保证可序列化恢复；
+  - `src/shop/systems/ShopHeroSystem.ts`
+    - 占卜师三选一同样改为“入队成功即提示+刷新”，移除队列内回调依赖；
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 维持队列快照持久化与恢复逻辑，现可覆盖上述全部快捷三选一来源。
+- 结果：升级奖励、宝箱奖励、石头转化、占卜师、戏法师进入快捷队列后，页面刷新可继续恢复该队列。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“所有快捷三选一来源在刷新后都能恢复”。
+
+## 验收优化追加（2026-03-12，升级奖励标题文案调整）
+
+- 用户需求：升级时奖励区文本改为“升级奖励”，并移除“剩余几组”提示文案。
+- 已完成：`src/shop/systems/ShopRewardSystem.ts`
+  - 奖励区标题默认文案由“奖励区”统一改为“升级奖励”；
+  - 标题渲染不再拼接“（剩余N组）”；
+  - 队列持久化/恢复时的默认标题同步改为“升级奖励”。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“升级奖励区标题固定显示为升级奖励，且不再显示剩余组数”。
+
+## 验收优化追加（2026-03-12，奖励区去除细线描边）
+
+- 用户反馈：奖励区仍有不需要的细线描边。
+- 已完成：`src/shop/systems/ShopRewardSystem.ts`
+  - 保留三张独立圆角底板，但移除每张底板的细线 `stroke`，仅保留纯色填充背景。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“奖励区细线已去除，视觉更干净”。
+
+## 验收优化追加（2026-03-12，奖励区线框拆分为三张独立圆角框）
+
+- 用户反馈：奖励区线框不应连成一整块，应对应三个物品各自独立的圆角矩形。
+- 已完成：`src/shop/systems/ShopRewardSystem.ts`
+  - 奖励区 backdrop 从“整块单框”改为“三个独立圆角框”；
+  - 三个框按当前缩放与 `30px` 间隔分别绘制，和三件候选物品一一对应，不再连在一起。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“线框已拆分且位置与三张物品卡一致”。
+
+## 验收优化追加（2026-03-12，战斗拦截文案泛化）
+
+- 用户需求：快捷三选一已包含多来源奖励，禁止开战提示不应再写“升级奖励”。
+- 已完成：`src/shop/ui/ShopUIBuilders.ts`
+  - 战斗按钮拦截提示由“请先选择升级奖励”改为“请先选择奖励”。
+- 交互结果：
+  - 有任意快捷奖励队列未处理时，文案统一且不限定来源类型。
+- 当前阶段：等待用户验收“战斗拦截 toast 文案已更新为通用奖励提示”。
+
+## 验收优化追加（2026-03-12，仅青铜同等级分阶段随机规则）
+
+- 用户要求：仅青铜模式下，规则应限定在“同等级”内：
+  - 同等级某物品数量 `<2` 时，先在 `<2` 集合中纯随机；
+  - 同等级数量 `>=2` 的先从池中剔除；
+  - 直到该等级所有物品都 `>=2` 后，再从同等级“最少数量”集合中随机。
+- 已完成：`src/shop/systems/ShopSkillSystem.ts`
+  - 调整为严格基于 `sourceLevel` 的计数池；
+  - 新增两阶段选择：`underTwoPool`（纯随机）→ `minCountPool`（最少数量随机）；
+  - 移除该分支下的职业偏置，避免干扰“纯随机/最少数量”口径。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“同等级下先补到2，再做最少数随机”符合预期。
+
 ## 验收优化追加（2026-03-12，奖励区背景扩宽适配30px间隔）
 
 - 用户反馈：三选一物品拉开间距后，奖励区底板背景没有同步扩宽。

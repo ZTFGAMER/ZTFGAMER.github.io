@@ -26,6 +26,7 @@ import { BattleFXPool, type BattleFxPerfStats } from './BattleFXPool'
 import { BattleTransition } from './BattleTransition'
 import { BattleSettlement } from './BattleSettlement'
 import { CANVAS_W, CANVAS_H } from '@/config/layoutConstants'
+import { getAdjustedBattleZoneY, getAdjustedBattleZoneYInBattleOffset } from '@/shop/ShopMathHelpers'
 
 const HERO_VISUAL_IDS = ['hero1', 'hero2', 'hero3', 'hero4', 'hero5', 'hero6', 'hero7', 'hero8', 'hero9', 'hero10'] as const
 type HeroVisualId = typeof HERO_VISUAL_IDS[number]
@@ -325,6 +326,7 @@ function drawHeroBars(
 }
 
 function applyZoneVisualStyle(zone: GridZone): void {
+  zone.setItemQualityMarkerEnabled(false)
   zone.setItemFrameUseArchetypeColor(getDebugCfg('gameplayItemFrameColorByArchetype') >= 0.5)
   zone.setTierBorderWidth(getDebugCfg('tierBorderWidth'))
   zone.setCornerRadius(getDebugCfg('gridItemCornerRadius'))
@@ -429,7 +431,7 @@ function applyLayout(activeCols: number): void {
   if (playerZone) {
     playerZone.scale.set(playerScale)
     playerZone.x = getPlayerZoneX(activeCols)
-    playerZone.y = getDebugCfg('battleZoneY') + getDebugCfg('battleZoneYInBattleOffset') + (CELL_HEIGHT * (1 - playerScale)) / 2
+    playerZone.y = getAdjustedBattleZoneY(battleDay) + getAdjustedBattleZoneYInBattleOffset(battleDay) + (CELL_HEIGHT * (1 - playerScale)) / 2
   }
   if (portraitFX.enemyBossSprite) {
     const widthRatio = Math.max(0.2, getDebugCfg('battleEnemyPortraitWidthRatio'))

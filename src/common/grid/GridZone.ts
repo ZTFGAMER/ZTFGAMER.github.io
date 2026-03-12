@@ -159,6 +159,8 @@ interface ItemNode {
   ammoText: Text
   starBadgeBg: Graphics
   starText: Text
+  qualityDot: Graphics
+  qualitySparkle: Graphics
   upgradeArrow: ArrowNodeView
   crossUpgradeArrow: ArrowNodeView
   upgradeBaseY: number
@@ -191,6 +193,34 @@ function parseTierName(raw: string): string {
   if (raw.includes('Gold')) return 'Gold'
   if (raw.includes('Diamond')) return 'Diamond'
   return 'Bronze'
+}
+
+function drawRegularPolygon(g: Graphics, sides: number, radius: number, rotation = 0): void {
+  if (sides < 3 || radius <= 0) return
+  for (let i = 0; i < sides; i++) {
+    const a = rotation + (Math.PI * 2 * i) / sides
+    const x = Math.cos(a) * radius
+    const y = Math.sin(a) * radius
+    if (i === 0) g.moveTo(x, y)
+    else g.lineTo(x, y)
+  }
+  g.closePath()
+}
+
+function drawGemShape(g: Graphics, radius: number): void {
+  if (radius <= 0) return
+  const topY = radius
+  const upperY = radius * 0.35
+  const midY = -radius * 0.18
+  const bottomY = -radius
+  g.moveTo(0, topY)
+  g.lineTo(radius * 0.58, upperY)
+  g.lineTo(radius * 0.96, midY)
+  g.lineTo(radius * 0.42, bottomY)
+  g.lineTo(-radius * 0.42, bottomY)
+  g.lineTo(-radius * 0.96, midY)
+  g.lineTo(-radius * 0.58, upperY)
+  g.closePath()
 }
 
 function tierScoreFromRaw(raw?: string): number {
@@ -247,7 +277,9 @@ export class GridZone extends Container {
   readonly zoneCols:        number
   readonly zoneRows:        number
   private _activeColCount:  number   // 已解锁的列数（其余显示为暗格）
+  private _activeRowCount:  number
   get activeColCount(): number { return this._activeColCount }
+  get activeRowCount(): number { return this._activeRowCount }
   autoPackEnabled = false
 
   private cellBg:     Graphics   // 静态格子背景
@@ -271,10 +303,12 @@ export class GridZone extends Container {
   private tierStarOffsetY = 0
   private ammoBadgeOffsetY = 0
   private itemFrameUseArchetypeColor = getDebugCfg('gameplayItemFrameColorByArchetype') >= 0.5
+  private itemQualityMarkerEnabled = true
   private upgradeHintIds = new Set<string>()
   private crossUpgradeHintIds = new Set<string>()
   private crossGuideArrowMode: 'cross' | 'convert' = 'cross'
   private upgradeHintTick: (() => void) | null = null
+  private qualityDotTick: (() => void) | null = null
 
   // 当前被拖拽的节点（状态追踪；位置由 DragController/dragLayer 管理）
   dragNode: ItemNode | null = null
@@ -293,6 +327,7 @@ export class GridZone extends Container {
     this.zoneCols        = zoneCols
     this.zoneRows        = zoneRows
     this._activeColCount = activeColCount
+    this._activeRowCount = zoneRows
 
     // 分层：bg → itemLayer → hlOverlay
     this.cellBg    = new Graphics()
@@ -326,7 +361,7 @@ export class GridZone extends Container {
 
     // 背包/战斗区背景：一整块底板（不按每格单独填充）
     const w = this._activeColCount * CELL_SIZE
-    const h = this.zoneRows * CELL_HEIGHT
+    const h = this._activeRowCount * CELL_HEIGHT
     const inset = Math.max(1, Math.ceil(borderWidth / 2))
 
     // 底板 fill
@@ -345,7 +380,7 @@ export class GridZone extends Container {
       g.lineTo(x, h)
       g.stroke({ color: 0x4a4a6e, width: borderWidth, alpha: lineAlpha })
     }
-    for (let r = 1; r < this.zoneRows; r++) {
+    for (let r = 1; r < this._activeRowCount; r++) {
       const y = r * CELL_HEIGHT
       g.moveTo(0, y)
       g.lineTo(w, y)
@@ -356,6 +391,11 @@ export class GridZone extends Container {
   /** 动态更新活跃列数并重绘格子背景 */
   setActiveColCount(cols: number): void {
     this._activeColCount = Math.max(1, Math.min(this.zoneCols, cols))
+    this.drawCells()
+  }
+
+  setActiveRowCount(rows: number): void {
+    this._activeRowCount = Math.max(1, Math.min(this.zoneRows, rows))
     this.drawCells()
   }
 
@@ -370,7 +410,7 @@ export class GridZone extends Container {
     const local = this.toLocal({ x: globalX, y: globalY })
     const col   = Math.floor(local.x / CELL_SIZE)
     const row   = Math.floor(local.y / CELL_HEIGHT)
-    if (col < 0 || col >= this._activeColCount || row < 0 || row >= this.zoneRows) return null
+    if (col < 0 || col >= this._activeColCount || row < 0 || row >= this._activeRowCount) return null
     return { col, row }
   }
 
@@ -413,8 +453,8 @@ export class GridZone extends Container {
     if (col < 0 || col + w > this._activeColCount) return null
 
     const row = Math.floor(pointerLocal.y / CELL_HEIGHT)
-    if (row < 0 || row >= this.zoneRows) return null
-    if (pointerLocal.y < -(ph / 2) || pointerLocal.y > CELL_HEIGHT * this.zoneRows + ph / 2) return null
+    if (row < 0 || row >= this._activeRowCount) return null
+    if (pointerLocal.y < -(ph / 2) || pointerLocal.y > CELL_HEIGHT * this._activeRowCount + ph / 2) return null
     return { col, row }
   }
 
@@ -452,7 +492,7 @@ export class GridZone extends Container {
     container.y     = oy
 
      // 多行区域适当缩小下边缘拾取范围，减少下方误触
-     const hitH = this.zoneRows > 1 ? Math.max(CELL_SIZE, ph - MULTI_ROW_PICKUP_BOTTOM_TRIM) : ph
+     const hitH = this._activeRowCount > 1 ? Math.max(CELL_SIZE, ph - MULTI_ROW_PICKUP_BOTTOM_TRIM) : ph
      container.hitArea = new Rectangle(0, 0, pw, hitH)
 
      // 视觉层：整体缩放并居中留白
@@ -518,6 +558,14 @@ export class GridZone extends Container {
     starText.eventMode = 'none'
     this.badgeLayer.addChild(starText)
 
+    const qualityDot = new Graphics()
+    qualityDot.eventMode = 'none'
+    this.badgeLayer.addChild(qualityDot)
+
+    const qualitySparkle = new Graphics()
+    qualitySparkle.eventMode = 'none'
+    this.badgeLayer.addChild(qualitySparkle)
+
     const upgradeArrow = createArrowNode()
     upgradeArrow.scale.set(UPGRADE_ARROW_SCALE)
 
@@ -545,6 +593,8 @@ export class GridZone extends Container {
       ammoText,
       starBadgeBg,
       starText,
+      qualityDot,
+      qualitySparkle,
       upgradeArrow,
       crossUpgradeArrow,
       upgradeBaseY: 0,
@@ -744,12 +794,17 @@ export class GridZone extends Container {
     node.starBadgeBg.destroy()
     if (node.starText.parent) node.starText.parent.removeChild(node.starText)
     node.starText.destroy()
+    if (node.qualityDot.parent) node.qualityDot.parent.removeChild(node.qualityDot)
+    node.qualityDot.destroy()
+    if (node.qualitySparkle.parent) node.qualitySparkle.parent.removeChild(node.qualitySparkle)
+    node.qualitySparkle.destroy()
     if (this.dragNode === node) this.dragNode = null
     if (this.selectedId === instanceId) this.selectedId = null
     this.upgradeHintIds.delete(instanceId)
     this.crossUpgradeHintIds.delete(instanceId)
     this.itemOffsetX.delete(instanceId)
     this.nodes.delete(instanceId)
+    this.ensureQualityDotAnimState()
   }
 
   // ---- 拖拽协作 API（供 DragController 调用）----
@@ -776,6 +831,8 @@ export class GridZone extends Container {
     node.ammoBadge.visible = false
     node.starBadgeBg.visible = false
     node.starText.visible = false
+    node.qualityDot.visible = false
+    node.qualitySparkle.visible = false
     node.upgradeArrow.visible = false
     node.crossUpgradeArrow.visible = false
 
@@ -814,6 +871,7 @@ export class GridZone extends Container {
     const showStarBadge = this.statBadgeMode !== 'archetype' && node.starText.text.length > 0
     node.starBadgeBg.visible = showStarBadge
     node.starText.visible = showStarBadge
+    this.updateNodeQualityDot(node)
     node.upgradeArrow.visible = this.upgradeHintIds.has(instanceId)
     node.crossUpgradeArrow.visible = this.crossUpgradeHintIds.has(instanceId)
     this.updateNodeAmmoBadge(node)
@@ -842,6 +900,7 @@ export class GridZone extends Container {
     const showStarBadge = this.statBadgeMode !== 'archetype' && node.starText.text.length > 0
     node.starBadgeBg.visible = showStarBadge
     node.starText.visible = showStarBadge
+    this.updateNodeQualityDot(node)
     node.upgradeArrow.visible = this.upgradeHintIds.has(instanceId)
     node.crossUpgradeArrow.visible = this.crossUpgradeHintIds.has(instanceId)
     this.updateNodeAmmoBadge(node)
@@ -869,10 +928,15 @@ export class GridZone extends Container {
     node?.starBadgeBg.destroy()
     if (node?.starText.parent) node.starText.parent.removeChild(node.starText)
     node?.starText.destroy()
+    if (node?.qualityDot.parent) node.qualityDot.parent.removeChild(node.qualityDot)
+    node?.qualityDot.destroy()
+    if (node?.qualitySparkle.parent) node.qualitySparkle.parent.removeChild(node.qualitySparkle)
+    node?.qualitySparkle.destroy()
     this.upgradeHintIds.delete(instanceId)
     this.crossUpgradeHintIds.delete(instanceId)
     this.itemOffsetX.delete(instanceId)
     this.nodes.delete(instanceId)
+    this.ensureQualityDotAnimState()
   }
 
   // ---- 高亮层 ----
@@ -954,6 +1018,10 @@ export class GridZone extends Container {
     this.labelText.visible = visible
   }
 
+  setCellBackgroundVisible(visible: boolean): void {
+    this.cellBg.visible = visible
+  }
+
   setStatBadgeFontSize(size: number): void {
     this.statBadgeFontSize = Math.max(8, size)
     for (const node of this.nodes.values()) {
@@ -1012,6 +1080,13 @@ export class GridZone extends Container {
 
   setItemFrameUseArchetypeColor(enabled: boolean): void {
     this.itemFrameUseArchetypeColor = enabled
+    for (const node of this.nodes.values()) {
+      this.redrawItemBorder(node)
+    }
+  }
+
+  setItemQualityMarkerEnabled(enabled: boolean): void {
+    this.itemQualityMarkerEnabled = enabled
     for (const node of this.nodes.values()) {
       this.redrawItemBorder(node)
     }
@@ -1187,6 +1262,7 @@ export class GridZone extends Container {
     const showStarBadge = this.statBadgeMode !== 'archetype' && node.starText.text.length > 0
     node.starBadgeBg.visible = showStarBadge
     node.starText.visible = showStarBadge
+    this.updateNodeQualityDot(node)
 
     // 箭头位于物品可视区域中心
     node.upgradeArrow.x = frameInset + frameW / 2
@@ -1196,6 +1272,77 @@ export class GridZone extends Container {
     node.crossUpgradeArrow.y = node.upgradeBaseY
 
     if (node.selectedG.visible) this.redrawSelection(node)
+  }
+
+  private updateNodeQualityDot(node: ItemNode): void {
+    node.qualityDot.clear()
+    node.qualitySparkle.clear()
+    node.qualityDot.visible = false
+    node.qualitySparkle.visible = false
+    if (!this.itemFrameUseArchetypeColor || !this.itemQualityMarkerEnabled) {
+      this.ensureQualityDotAnimState()
+      return
+    }
+
+    // 品质圆点严格跟“品质”走，不跟等级/旧 TierStar 映射走。
+    // 例如：青铜Lv2 仍视为青铜，不显示白银圆点。
+    const quality = parseTierName(getBaseTier(node.defId))
+    if (quality === 'Bronze') {
+      this.ensureQualityDotAnimState()
+      return
+    }
+
+    const isDiamond = quality === 'Diamond'
+    const color = quality === 'Silver' ? 0xdbe6ff : quality === 'Gold' ? 0xffd45a : 0x8beaff
+    const baseRadius = 12
+    const radius = isDiamond
+      ? Math.round(baseRadius * 0.88)  // 在现有基础上放大 10%
+      : Math.round(baseRadius * 1.2)   // 白银/黄金放大 20%
+    if (quality === 'Silver') {
+      drawRegularPolygon(node.qualityDot, 4, radius, Math.PI / 2)
+    } else if (quality === 'Gold') {
+      drawRegularPolygon(node.qualityDot, 6, radius, Math.PI / 6)
+    } else {
+      drawGemShape(node.qualityDot, radius)
+    }
+    node.qualityDot.fill({ color, alpha: 0.95 })
+    if (quality === 'Silver') {
+      drawRegularPolygon(node.qualityDot, 4, radius, Math.PI / 2)
+    } else if (quality === 'Gold') {
+      drawRegularPolygon(node.qualityDot, 6, radius, Math.PI / 6)
+    } else {
+      drawGemShape(node.qualityDot, radius)
+    }
+    node.qualityDot.stroke({ color: isDiamond ? 0xf4feff : 0x111827, width: 5, alpha: 0.95 })
+    if (isDiamond) {
+      // 仅保留基础宝石形状：无内层高光、无闪烁发光
+      node.qualitySparkle.visible = false
+    }
+    node.qualityDot.visible = true
+    this.ensureQualityDotAnimState()
+  }
+
+  private ensureQualityDotAnimState(): void {
+    const hasDiamondSparkle = Array.from(this.nodes.values()).some((node) => node.qualitySparkle.visible)
+    if (!hasDiamondSparkle) {
+      if (this.qualityDotTick) {
+        Ticker.shared.remove(this.qualityDotTick)
+        this.qualityDotTick = null
+      }
+      return
+    }
+    if (this.qualityDotTick) return
+    this.qualityDotTick = () => {
+      const t = Date.now() / 1000
+      for (const node of this.nodes.values()) {
+        if (!node.qualitySparkle.visible) continue
+        const pulse = 0.72 + 0.28 * (0.5 + 0.5 * Math.sin(t * 6 + node.col * 0.6 + node.row * 0.9))
+        const scale = 0.92 + 0.18 * (0.5 + 0.5 * Math.sin(t * 4.2 + node.col))
+        node.qualitySparkle.alpha = pulse
+        node.qualitySparkle.scale.set(scale)
+      }
+    }
+    Ticker.shared.add(this.qualityDotTick)
   }
 
   private updateNodeStatBadges(node: ItemNode): void {
@@ -1446,6 +1593,11 @@ export class GridZone extends Container {
     const ammoMaxY = node.starBadgeBg.y - node.ammoBadge.height - 4
     node.ammoBadge.x = node.container.x + frameInset + (frameW - node.ammoBadge.width) / 2
     node.ammoBadge.y = node.starBadgeBg.visible ? Math.min(ammoBaseY, ammoMaxY) : ammoBaseY
+    const dotY = node.container.y + frameInset + frameH - Math.max(7, Math.round(this.tierBorderWidth * 0.8)) - 12
+    node.qualityDot.x = node.container.x + frameInset + frameW / 2 + 40
+    node.qualityDot.y = dotY
+    node.qualitySparkle.x = node.qualityDot.x
+    node.qualitySparkle.y = dotY
   }
 
   override destroy(options?: DestroyOptions): void {
@@ -1460,6 +1612,10 @@ export class GridZone extends Container {
     this.squeezeTicks.clear()
     for (const tick of this.previewTicks.values()) Ticker.shared.remove(tick)
     this.previewTicks.clear()
+    if (this.qualityDotTick) {
+      Ticker.shared.remove(this.qualityDotTick)
+      this.qualityDotTick = null
+    }
     // 清空 nodes，使进行中的异步 loadIcon/loadGuideArrows 的 guard 生效
     this.nodes.clear()
     super.destroy(options)

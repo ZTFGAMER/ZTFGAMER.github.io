@@ -43,6 +43,18 @@ function getItemClassColor(tagsRaw: string): number {
   return getClassColor('中立')
 }
 
+function drawRegularPolygon(g: Graphics, sides: number, radius: number, rotation = 0): void {
+  if (sides < 3 || radius <= 0) return
+  for (let i = 0; i < sides; i++) {
+    const a = rotation + (Math.PI * 2 * i) / sides
+    const x = Math.cos(a) * radius
+    const y = Math.sin(a) * radius
+    if (i === 0) g.moveTo(x, y)
+    else g.lineTo(x, y)
+  }
+  g.closePath()
+}
+
 export class ShopPanelView extends Container {
   private cards: Container[] = []
   private tierBorderWidth = 4
@@ -61,6 +73,8 @@ export class ShopPanelView extends Container {
   private upgradeHintSlots = new Set<number>()
   private upgradeHintTick: (() => void) | null = null
   private upgradeHintT = 0
+  private qualitySparkleTick: (() => void) | null = null
+  private qualitySparkleT = 0
   private itemFrameUseArchetypeColor = getDebugCfg('gameplayItemFrameColorByArchetype') >= 0.5
 
   // 内容容器：用于整体缩放（5/6）+ 居中
@@ -214,6 +228,7 @@ export class ShopPanelView extends Container {
       this.content.addChild(card)
       this.cards.push(card)
     }
+    this.refreshQualitySparkleAnim()
   }
 
   private _buildCard(slot: ShopSlot, slotIndex: number, gold: number): Container {
@@ -263,6 +278,49 @@ export class ShopPanelView extends Container {
     const statBadges = createItemStatBadges(slot.item, this.textSize.itemStatBadge, Math.max(44, iconW - 8))
     statBadges.x = iconX + iconW / 2
     statBadges.y = iconY + this.itemStatBadgeOffsetY
+
+    if (this.itemFrameUseArchetypeColor) {
+      const quality = parseTierName(slot.tier)
+      if (quality !== 'Bronze') {
+        const isDiamond = quality === 'Diamond'
+        const dotColor = quality === 'Silver' ? 0xdbe6ff : quality === 'Gold' ? 0xffd45a : 0x8beaff
+        const dot = new Graphics()
+        dot.name = 'shop-quality-dot'
+        const radius = isDiamond ? 13 : 12
+        if (quality === 'Silver') drawRegularPolygon(dot, 4, radius, Math.PI / 2)
+        else if (quality === 'Gold') drawRegularPolygon(dot, 6, radius, Math.PI / 6)
+        else drawRegularPolygon(dot, 8, radius, Math.PI / 8)
+        dot.fill({ color: dotColor, alpha: 0.95 })
+        if (quality === 'Silver') drawRegularPolygon(dot, 4, radius, Math.PI / 2)
+        else if (quality === 'Gold') drawRegularPolygon(dot, 6, radius, Math.PI / 6)
+        else drawRegularPolygon(dot, 8, radius, Math.PI / 8)
+        dot.stroke({ color: isDiamond ? 0xf4feff : 0x111827, width: 5, alpha: 0.95 })
+        if (isDiamond) {
+          drawRegularPolygon(dot, 8, radius - 5, Math.PI / 8)
+          dot.fill({ color: 0xffffff, alpha: 0.45 })
+        }
+        dot.x = iconX + iconW / 2
+        dot.y = iconY + iconH - Math.max(8, Math.round(this.tierBorderWidth * 0.9)) - 20
+        card.addChild(dot)
+
+        if (isDiamond) {
+          const sparkle = new Graphics()
+          sparkle.name = 'shop-quality-dot-sparkle'
+          sparkle.moveTo(-18, 0)
+          sparkle.lineTo(18, 0)
+          sparkle.moveTo(0, -18)
+          sparkle.lineTo(0, 18)
+          sparkle.moveTo(-12, -12)
+          sparkle.lineTo(12, 12)
+          sparkle.moveTo(12, -12)
+          sparkle.lineTo(-12, 12)
+          sparkle.stroke({ color: 0xe8ffff, width: 5, alpha: 0.75 })
+          sparkle.x = dot.x
+          sparkle.y = dot.y
+          card.addChild(sparkle)
+        }
+      }
+    }
 
     // 图标 Sprite（异步加载）
     const iconSprite = new Sprite(Texture.WHITE)
@@ -436,8 +494,37 @@ export class ShopPanelView extends Container {
     this.upgradeHintTick = null
   }
 
+  private refreshQualitySparkleAnim(): void {
+    const hasSparkle = this.cards.some((card) => !!card.getChildByName('shop-quality-dot-sparkle'))
+    if (!hasSparkle) {
+      if (this.qualitySparkleTick) {
+        Ticker.shared.remove(this.qualitySparkleTick)
+        this.qualitySparkleTick = null
+      }
+      return
+    }
+    if (this.qualitySparkleTick) return
+    this.qualitySparkleT = 0
+    this.qualitySparkleTick = () => {
+      this.qualitySparkleT += 0.08
+      for (let i = 0; i < this.cards.length; i++) {
+        const sparkle = this.cards[i]?.getChildByName('shop-quality-dot-sparkle') as Graphics | null
+        if (!sparkle) continue
+        const wave = (Math.sin(this.qualitySparkleT + i * 0.8) + 1) / 2
+        sparkle.alpha = 0.55 + wave * 0.45
+        const scale = 0.9 + wave * 0.22
+        sparkle.scale.set(scale)
+      }
+    }
+    Ticker.shared.add(this.qualitySparkleTick)
+  }
+
   override destroy(options?: DestroyOptions): void {
     this.stopUpgradeHintAnim()
+    if (this.qualitySparkleTick) {
+      Ticker.shared.remove(this.qualitySparkleTick)
+      this.qualitySparkleTick = null
+    }
     super.destroy(options)
   }
 }
