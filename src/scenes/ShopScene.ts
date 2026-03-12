@@ -192,6 +192,7 @@ import {
   getArchetypeSortOrder,
 } from './shop/ShopAutoPackManager'
 import { buildBattleSnapshot } from './shop/ShopBattleSnapshot'
+import { refreshUpgradeHints } from './shop/ShopUpgradeHints'
 
 // ---- 場景共享狀態上下文 ----
 const _ctx: ShopSceneCtx = createShopSceneCtx()
@@ -295,7 +296,7 @@ function tryRunHeroCrossSynthesisReroll(stage: Container, synth: SynthesizeResul
     setInstanceQualityLevel: (id, defId, q, lv) => setInstanceQualityLevel(id, defId, q, lv),
     applyInstanceTierVisuals: () => applyInstanceTierVisuals(),
     syncShopOwnedTierRules: () => syncShopOwnedTierRules(),
-    refreshUpgradeHints: () => refreshUpgradeHints(),
+    refreshUpgradeHints: () => refreshUpgradeHints(_ctx),
     showHintToast: (r, m, c) => showHintToast(r as ToastReason, m, c, ctx),
     refreshShopUI: () => refreshShopUI(),
     refreshPlayerStatusUI: () => refreshPlayerStatusUI(),
@@ -729,12 +730,7 @@ function makeApplyCallbacks(ctx: ShopSceneCtx = _ctx): ApplySavedShopStateCallba
 
 
 
-type UpgradeMatch = {
-  shopSlots: number[]
-  battleIds: string[]
-  backpackIds: string[]
-  hasBackpackMatch: boolean
-}
+// UpgradeMatch / computeUpgradeMatch / refreshUpgradeHints -> moved to ./shop/ShopUpgradeHints.ts
 
 type SynthesizeResult = {
   instanceId: string
@@ -1268,107 +1264,7 @@ function applyPostBattleEffects(snapshot: BattleSnapshotBundle | null): void {
   }
 }
 
-function computeUpgradeMatch(ctx: ShopSceneCtx = _ctx): UpgradeMatch {
-  const battleIds: string[] = []
-  const backpackIds: string[] = []
-  const shopSlots: number[] = []
-  let hasBackpackMatch = false
 
-  if (!ctx.shopManager || !ctx.battleSystem || !ctx.backpackSystem) {
-    return { shopSlots, battleIds, backpackIds, hasBackpackMatch }
-  }
-
-  const ownedByKey = new Map<string, { inBattle: string[]; inBackpack: string[]; defIds: Set<string> }>()
-  const ownedByArchetypeKey = new Map<string, { inBattle: string[]; inBackpack: string[]; defIds: Set<string> }>()
-  for (const it of ctx.battleSystem.getAllItems()) {
-    const tier = instanceToTier.get(it.instanceId) ?? 'Bronze'
-    const star = getInstanceTierStar(it.instanceId)
-    const key = `${it.defId}:${tier}:${star}`
-    const obj = ownedByKey.get(key) ?? { inBattle: [], inBackpack: [], defIds: new Set<string>() }
-    obj.inBattle.push(it.instanceId)
-    obj.defIds.add(it.defId)
-    ownedByKey.set(key, obj)
-
-    const def = getItemDefById(it.defId)
-    const archetype = getPrimaryArchetype(def?.tags ?? '')
-    const archKey = `${archetype}:${tier}:${star}`
-    const archObj = ownedByArchetypeKey.get(archKey) ?? { inBattle: [], inBackpack: [], defIds: new Set<string>() }
-    archObj.inBattle.push(it.instanceId)
-    archObj.defIds.add(it.defId)
-    ownedByArchetypeKey.set(archKey, archObj)
-  }
-  for (const it of ctx.backpackSystem.getAllItems()) {
-    const tier = instanceToTier.get(it.instanceId) ?? 'Bronze'
-    const star = getInstanceTierStar(it.instanceId)
-    const key = `${it.defId}:${tier}:${star}`
-    const obj = ownedByKey.get(key) ?? { inBattle: [], inBackpack: [], defIds: new Set<string>() }
-    obj.inBackpack.push(it.instanceId)
-    obj.defIds.add(it.defId)
-    ownedByKey.set(key, obj)
-
-    const def = getItemDefById(it.defId)
-    const archetype = getPrimaryArchetype(def?.tags ?? '')
-    const archKey = `${archetype}:${tier}:${star}`
-    const archObj = ownedByArchetypeKey.get(archKey) ?? { inBattle: [], inBackpack: [], defIds: new Set<string>() }
-    archObj.inBackpack.push(it.instanceId)
-    archObj.defIds.add(it.defId)
-    ownedByArchetypeKey.set(archKey, archObj)
-  }
-
-  for (const [key, match] of ownedByKey) {
-    const parts = key.split(':')
-    const tier = (parts[1] ?? 'Bronze') as TierKey
-    const star = Number(parts[2]) === 2 ? 2 : 1
-    if (!nextTierLevel(tier, star)) continue
-    const count = match.inBattle.length + match.inBackpack.length
-    if (count < 2) continue
-    battleIds.push(...match.inBattle)
-    backpackIds.push(...match.inBackpack)
-    if (match.inBackpack.length > 0) hasBackpackMatch = true
-  }
-
-  for (const [key, match] of ownedByArchetypeKey) {
-    const parts = key.split(':')
-    const archetype = parts[0] ?? ''
-    const tier = (parts[1] ?? 'Bronze') as TierKey
-    const star = Number(parts[2]) === 2 ? 2 : 1
-    if (!archetype || !nextTierLevel(tier, star)) continue
-    if (match.defIds.size < 2) continue
-    const count = match.inBattle.length + match.inBackpack.length
-    if (count < 2) continue
-    battleIds.push(...match.inBattle)
-    backpackIds.push(...match.inBackpack)
-    if (match.inBackpack.length > 0) hasBackpackMatch = true
-  }
-
-  for (let i = 0; i < ctx.shopManager.pool.length; i++) {
-    const slot = ctx.shopManager.pool[i]
-    if (!slot || slot.purchased || slot.tier === 'Diamond') continue
-    const directMatch = ownedByKey.get(`${slot.item.id}:${slot.tier}:1`)
-    const slotArch = getPrimaryArchetype(slot.item.tags)
-    const archMatch = ownedByArchetypeKey.get(`${slotArch}:${slot.tier}:1`)
-    const canDirect = !!directMatch && (directMatch.inBattle.length + directMatch.inBackpack.length > 0)
-    const canCross = !!archMatch
-      && (archMatch.inBattle.length + archMatch.inBackpack.length > 0)
-      && (archMatch.defIds.size > 1 || !archMatch.defIds.has(slot.item.id))
-    if (!canDirect && !canCross) continue
-    shopSlots.push(i)
-  }
-
-  return {
-    shopSlots,
-    battleIds: Array.from(new Set(battleIds)),
-    backpackIds: Array.from(new Set(backpackIds)),
-    hasBackpackMatch,
-  }
-}
-
-function refreshUpgradeHints(ctx: ShopSceneCtx = _ctx): void {
-  const match = computeUpgradeMatch()
-  ctx.shopPanel?.setUpgradeHints(match.shopSlots)
-  ctx.battleView?.setUpgradeHints(match.battleIds)
-  ctx.backpackView?.setUpgradeHints(match.backpackIds)
-}
 
 function isPointInItemBounds(view: GridZone, item: PlacedItem, gx: number, gy: number): boolean {
   const w = item.size === '1x1' ? CELL_SIZE : item.size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
@@ -1724,7 +1620,7 @@ function synthesizeTarget(
   }
   applyInstanceTierVisuals()
   syncShopOwnedTierRules()
-  refreshUpgradeHints()
+  refreshUpgradeHints(_ctx)
   grantSynthesisExp(1, { instanceId: targetInstanceId, zone })
   // 合成释放了背包空间，尝试发放待领取升级奖励
   checkAndPopPendingRewards()
@@ -2304,7 +2200,7 @@ function refreshShopUI(ctx: ShopSceneCtx = _ctx): void {
     setBaseShopPrimaryButtonsVisible(false)
   }
   updateMiniMap()
-  refreshUpgradeHints()
+  refreshUpgradeHints(_ctx)
   refreshBattlePassiveStatBadges(true)
   skillDraftPanel?.layoutSkillIconBar()
   checkAndPopPendingRewards()
@@ -3569,7 +3465,7 @@ function initPanelInstances(stage: Container, ctx: ShopSceneCtx = _ctx): void {
       collectUpgradeableOwnedPlacedItems: (zone) => collectUpgradeableOwnedPlacedItems(zone),
       applyInstanceTierVisuals: () => applyInstanceTierVisuals(),
       syncShopOwnedTierRules: () => syncShopOwnedTierRules(),
-      refreshUpgradeHints: () => refreshUpgradeHints(),
+      refreshUpgradeHints: () => refreshUpgradeHints(_ctx),
       grantSynthesisExp: (amount, from) => grantSynthesisExp(amount, from),
       playTransformOrUpgradeFlashEffect: (instanceId, zone) => playTransformOrUpgradeFlashEffect(ctx, instanceId, zone),
       canTriggerHeroSameItemSynthesisChoice: () => canTriggerHeroSameItemSynthesisChoice(ctx),
