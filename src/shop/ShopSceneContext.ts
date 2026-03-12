@@ -187,6 +187,18 @@ export type PendingHeroPeriodicReward = {
   source: string
 }
 
+export type SavedLevelQuickDraftCandidate = {
+  defId: string
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7
+  tier: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
+  star: 1 | 2
+}
+
+export type SavedLevelQuickDraftEntry = {
+  picks: SavedLevelQuickDraftCandidate[]
+  title: string
+}
+
 export type SavedPlacedItem = {
   instanceId: string
   defId: string
@@ -277,6 +289,7 @@ export type SavedShopState = {
   heroCommanderMedalGrantedDays?: number[]
   heroHeirGoldEquipGrantedDays?: number[]
   heroTycoonGoldGrantedDays?: number[]
+  levelQuickDraftSavedEntries?: SavedLevelQuickDraftEntry[]
 }
 
 // ============================================================
@@ -344,6 +357,12 @@ export interface ShopSceneCtx {
   skillDraftOverlay:         Container | null
   eventDraftOverlay:         Container | null
   specialShopOverlay:        Container | null
+  levelQuickRewardOverlay:   Container | null
+  levelQuickRewardBackdrop:  Graphics  | null
+  levelQuickRewardView:      GridZone | null
+  levelQuickRewardSystem:    GridSystem | null
+  levelQuickRewardInstanceIds: Set<string>
+  levelQuickRewardZoneAdded: boolean
 
   crossSynthesisConfirmOverlay:    Container                         | null
   crossSynthesisConfirmTick:       (() => void)                      | null
@@ -508,6 +527,7 @@ export interface ShopSceneCtx {
     star:   1 | 2
     price:  number
   } | null
+  levelQuickDraftSavedEntries: SavedLevelQuickDraftEntry[]
 
   // ---- 技能折扣状态 ----
   skill15NextBuyDiscountPrepared: boolean
@@ -583,6 +603,12 @@ export function createShopSceneCtx(): ShopSceneCtx {
     skillDraftOverlay:    null,
     eventDraftOverlay:    null,
     specialShopOverlay:   null,
+    levelQuickRewardOverlay: null,
+    levelQuickRewardBackdrop: null,
+    levelQuickRewardView: null,
+    levelQuickRewardSystem: null,
+    levelQuickRewardInstanceIds: new Set(),
+    levelQuickRewardZoneAdded: false,
 
     crossSynthesisConfirmOverlay:    null,
     crossSynthesisConfirmTick:       null,
@@ -741,6 +767,7 @@ export function createShopSceneCtx(): ShopSceneCtx {
     lockedBackpackRewardCells:         new Set(),
     levelRewardObtainedByKind:         new Map(),
     nextQuickBuyOffer:                 null,
+    levelQuickDraftSavedEntries:       [],
 
     // 技能折扣
     skill15NextBuyDiscountPrepared: false,

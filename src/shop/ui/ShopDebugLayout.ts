@@ -26,7 +26,6 @@ const BACKPACK_LABEL_GLOBAL_Y_GAP = 60
 const BATTLE_ZONE_TITLE_TOP_GAP = 28
 const BACKPACK_ZONE_TITLE_TOP_GAP = 22
 const MINI_CELL = 20
-const MINI_W = 6 * MINI_CELL
 
 export type DebugLayoutCallbacks = {
   applyPhaseUiVisibility: () => void
@@ -76,6 +75,7 @@ export function applyItemInfoPanelLayout(ctx: ShopSceneCtx): void {
 }
 
 export function applyTextSizesFromDebug(ctx: ShopSceneCtx): void {
+  const useArchetypeFrameColor = getDebugCfg('gameplayItemFrameColorByArchetype') >= 0.5
   const buttonSize = getDebugCfg('shopButtonLabelFontSize')
   const phaseButtonSize = getDebugCfg('phaseButtonLabelFontSize')
   const sellSubSize = getDebugCfg('sellButtonSubPriceFontSize')
@@ -146,8 +146,11 @@ export function applyTextSizesFromDebug(ctx: ShopSceneCtx): void {
   ctx.backpackView?.setTierStarOffsetY(getDebugCfg('itemTierStarOffsetY'))
   ctx.battleView?.setStatBadgeOffsetY(getDebugCfg('itemStatBadgeOffsetY'))
   ctx.backpackView?.setStatBadgeOffsetY(getDebugCfg('itemStatBadgeOffsetY'))
+  ctx.battleView?.setItemFrameUseArchetypeColor(useArchetypeFrameColor)
+  ctx.backpackView?.setItemFrameUseArchetypeColor(useArchetypeFrameColor)
   ctx.shopPanel?.setStatBadgeFontSize(getDebugCfg('itemStatBadgeFontSize'))
   ctx.shopPanel?.setStatBadgeOffsetY(getDebugCfg('itemStatBadgeOffsetY'))
+  ctx.shopPanel?.setItemFrameUseArchetypeColor(useArchetypeFrameColor)
 
   ctx.shopPanel?.setTextSizes({
     itemName: getDebugCfg('shopItemNameFontSize'),
@@ -233,7 +236,9 @@ export function applyLayoutFromDebug(ctx: ShopSceneCtx, callbacks: DebugLayoutCa
   }
   layoutPlayerStatusPanel(ctx)
   if (ctx.miniMapCon) {
-    ctx.miniMapCon.x = getDebugCfg('backpackBtnX') - MINI_W / 2
+    const miniCols = Math.max(1, ctx.backpackView?.activeColCount ?? 6)
+    const miniW = miniCols * MINI_CELL
+    ctx.miniMapCon.x = getDebugCfg('backpackBtnX') - miniW / 2
     ctx.miniMapCon.y = getDebugCfg('backpackBtnY') + BTN_RADIUS + 8
   }
   callbacks.layoutSkillIconBar()

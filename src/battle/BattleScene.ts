@@ -325,6 +325,7 @@ function drawHeroBars(
 }
 
 function applyZoneVisualStyle(zone: GridZone): void {
+  zone.setItemFrameUseArchetypeColor(getDebugCfg('gameplayItemFrameColorByArchetype') >= 0.5)
   zone.setTierBorderWidth(getDebugCfg('tierBorderWidth'))
   zone.setCornerRadius(getDebugCfg('gridItemCornerRadius'))
   zone.setCellBorderWidth(getDebugCfg('gridCellBorderWidth'))

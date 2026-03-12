@@ -217,6 +217,7 @@ export interface GameConfig {
       ownedWeightMultiplier?: number
     }>
     quickBuyLevelChancesByDay?: number[][]
+    levelQuickDraftLevelWeightsByPlayerLevel?: number[][]
     qualityLevelRange?: {
       Bronze?: { min?: number; max?: number }
       Silver?: { min?: number; max?: number }

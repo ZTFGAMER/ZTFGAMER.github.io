@@ -87,6 +87,7 @@ export type BattleZoneUICallbacks = {
   clearSelection: () => void
   grantHeroDiscardSameLevelReward: (defId: string, level: 1 | 2 | 3 | 4 | 5 | 6 | 7) => void
   checkAndPopPendingRewards: () => void
+  tryFinalizeLevelQuickRewardPick: () => void
   grantSynthesisExp: (amount?: number, from?: { instanceId: string; zone: 'battle' | 'backpack' }) => void
   updateMiniMap: () => void
   refreshBattlePassiveStatBadges: (showJump?: boolean) => void
@@ -190,13 +191,16 @@ export function buildBattleZoneUI(
   const activeCols = compactMode?.enabled
     ? (compactMode.battleCols ?? 6)
     : (cfg.dailyBattleSlots[0] ?? 4)
-  const backpackRows = compactMode?.enabled
+  const fallbackRows = compactMode?.enabled
     ? (compactMode.backpackRows ?? 3)
     : 2
+  const fallbackCols = 6
+  const backpackRows = Math.max(1, Math.min(6, Math.round(getDebugCfg('gameplayBackpackRows') || fallbackRows)))
+  const backpackCols = Math.max(3, Math.min(6, Math.round(getDebugCfg('gameplayBackpackCols') || fallbackCols)))
   ctx.battleSystem   = new GridSystem(6)
-  ctx.backpackSystem = new GridSystem(6, backpackRows)
+  ctx.backpackSystem = new GridSystem(backpackCols, backpackRows)
   ctx.battleView     = new GridZone('上阵区', 6, activeCols, 1)
-  ctx.backpackView   = new GridZone('背包', 6, 6, backpackRows)
+  ctx.backpackView   = new GridZone('背包', backpackCols, backpackCols, backpackRows)
   ctx.backpackView.setAutoPackEnabled(false)
   ctx.battleView.setStatBadgeMode('archetype')
   ctx.backpackView.setStatBadgeMode('archetype')
@@ -240,7 +244,13 @@ export function buildBattleZoneUI(
   ctx.drag = new DragController(stage, canvas)
   ctx.drag.addZone(ctx.battleSystem,  ctx.battleView)
   ctx.drag.addZone(ctx.backpackSystem, ctx.backpackView)
-  ctx.drag.onDropCellLocked = ({ view, col, row, size }) => {
+  ctx.drag.onDropCellLocked = ({ view, col, row, size, instanceId }) => {
+    if (view === ctx.levelQuickRewardView) return true
+    const dragFromLevelQuickReward = ctx.levelQuickRewardInstanceIds.has(instanceId)
+    if (dragFromLevelQuickReward) {
+      if (view === ctx.battleView && ctx.battleSystem && !ctx.battleSystem.canPlace(col, row, size)) return true
+      if (view === ctx.backpackView && ctx.backpackSystem && !ctx.backpackSystem.canPlace(col, row, size)) return true
+    }
     if (view !== ctx.backpackView) return false
     return isBackpackDropLocked(col, row, size)
   }
@@ -264,7 +274,8 @@ export function buildBattleZoneUI(
     applySellButtonState()
 
     // 按钮闪烁提示：可出售则闪出售；战斗区->背包（背包未打开且有空位）则闪背包按钮
-    const canSell = true
+    const isLevelQuickRewardSource = ctx.levelQuickRewardInstanceIds.has(instanceId)
+    const canSell = !isLevelQuickRewardSource
     const canToBackpack = inBattle && !ctx.showingBackpack
       && canBackpackAcceptByAutoPack(item.id, normalizeSize(item.size), ctx)
     startGridDragButtonFlash(stage, canSell, canToBackpack, 0)
@@ -279,6 +290,11 @@ export function buildBattleZoneUI(
     const overSellArea = isOverGridDragSellArea(anchorGx, anchorGy)
     const overAnyDropTarget = isOverAnyGridDropTarget(anchorGx, anchorGy, size, ctx)
     const forceDiscardForNeutralStone = !!sourceDef && isNeutralTargetStone(sourceDef) && overSellArea
+
+    if (homeView === ctx.levelQuickRewardView && overSellArea) {
+      showHintToast('backpack_full_buy', '升级奖励不能丢弃，请拖到上阵区或背包区', 0xffd48f, ctx)
+      return false
+    }
 
     // 1) 拖到下方丢弃区域：直接丢弃
     // 普通物品：未命中任意格子候选时才丢弃；
@@ -593,6 +609,7 @@ export function buildBattleZoneUI(
     applyInstanceTierVisuals()
     updateMiniMap()
     refreshBattlePassiveStatBadges(true)
+    callbacks.tryFinalizeLevelQuickRewardPick()
     clearSelection()
   }
 }

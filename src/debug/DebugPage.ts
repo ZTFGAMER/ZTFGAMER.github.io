@@ -34,11 +34,14 @@ const LAYOUT_POSITION_KEYS = [
   'goldTextCenterX',
   'goldTextY',
   'shopPlayerStatusY',
+  'shopPlayerStatusX',
   'shopPlayerStatusLvY',
   'shopPlayerStatusExpBarWidth',
   'shopPlayerStatusExpBarHeight',
   'shopPlayerStatusExpBarOffsetX',
   'shopPlayerStatusExpBarOffsetY',
+  'levelQuickRewardOffsetX',
+  'levelQuickRewardOffsetY',
   'dayDebugX',
   'dayDebugY',
   'tierBorderWidth',
@@ -104,6 +107,9 @@ const TOAST_KEYS = [
   'toastShowBackpackFullBuy',
   'toastShowBackpackFullTransfer',
   'toastShowFatigueStart',
+]
+const TOAST_PARAM_KEYS = [
+  'toastOffsetY',
 ]
 const BATTLE_VFX_KEYS = [
   'battleFirePulseScaleMax',
@@ -183,6 +189,12 @@ const GAMEPLAY_KEYS = [
   'gameplayBurnShieldFactor',
   'gameplayBurnDecayPct',
   'gameplayHealCleansePct',
+  'gameplayBackpackRows',
+  'gameplayBackpackCols',
+  'gameplayLevelRewardPreset',
+  'gameplayLevelQuickDraft',
+  'gameplayItemFrameColorByArchetype',
+  'gameplayBaseBuyBronzeOnly',
 ]
 const GAMEPLAY_CHECKBOX_KEYS = [
   'gameplayGrantAllClassItems',
@@ -194,7 +206,14 @@ const GAMEPLAY_CHECKBOX_KEYS = [
   'gameplaySkillDraftRerollEnabled',
   'gameplayEventDraftRerollEnabled',
   'gameplayStarterHeroShowAll',
+  'gameplayBaseBuyBronzeOnly',
 ]
+const FORCE_GAMEPLAY_KEYS = new Set([
+  'gameplayBackpackRows',
+  'gameplayBackpackCols',
+  'gameplayLevelRewardPreset',
+  'gameplayItemFrameColorByArchetype',
+])
 const ENEMY_DATA_PARAM_KEYS: string[] = [
   'enemyDraftSameArchetypeBias',
 ]
@@ -244,7 +263,7 @@ const COLOR_KEYS = [
   'classColorAssassin',
   'classColorNeutral',
 ]
-const DRAG_KEYS = Object.keys(CONFIG_DEFS).filter((key) => !LAYOUT_KEYS.includes(key) && !PERSPECTIVE_KEYS.includes(key) && !TOAST_KEYS.includes(key) && !BATTLE_VFX_KEYS.includes(key) && !GAMEPLAY_KEYS.includes(key) && !GAMEPLAY_CHECKBOX_KEYS.includes(key) && !ENEMY_DATA_PARAM_KEYS.includes(key) && !ENEMY_DATA_CHECKBOX_KEYS.includes(key) && !COLOR_KEYS.includes(key) && !ANIM_TIMING_KEYS.includes(key))
+const DRAG_KEYS = Object.keys(CONFIG_DEFS).filter((key) => !LAYOUT_KEYS.includes(key) && !PERSPECTIVE_KEYS.includes(key) && !TOAST_KEYS.includes(key) && !TOAST_PARAM_KEYS.includes(key) && !BATTLE_VFX_KEYS.includes(key) && !GAMEPLAY_KEYS.includes(key) && !GAMEPLAY_CHECKBOX_KEYS.includes(key) && !ENEMY_DATA_PARAM_KEYS.includes(key) && !ENEMY_DATA_CHECKBOX_KEYS.includes(key) && !COLOR_KEYS.includes(key) && !ANIM_TIMING_KEYS.includes(key) && !key.startsWith('gameplay') && !FORCE_GAMEPLAY_KEYS.has(key))
 
 function buildSearchText(key: string): string {
   const def = CONFIG_DEFS[key]
@@ -349,6 +368,7 @@ function buildParamRow(key: string, sectionId: string): void {
 
   row.append(label, slider, valEl, unitEl, num, resetBtn)
   section.appendChild(row)
+  row.dataset.key = key
   row.dataset.searchText = buildSearchText(key)
 
   // ---- 事件 ----
@@ -414,6 +434,7 @@ function buildCheckboxRow(key: string, sectionId: string): void {
 
   row.append(label, toggle, state, unit, spacer, resetBtn)
   section.appendChild(row)
+  row.dataset.key = key
   row.dataset.searchText = buildSearchText(key)
 
   const applyChecked = (checked: boolean): void => {
@@ -472,6 +493,7 @@ function buildColorRow(key: string, sectionId: string): void {
 
   row.append(label, picker, valEl, unitEl, hexInput, resetBtn)
   section.appendChild(row)
+  row.dataset.key = key
   row.dataset.searchText = buildSearchText(key)
 
   const applyColor = (nextValue: number): void => {
@@ -529,6 +551,51 @@ function updateUIFromExternal(key: string, value: number): void {
   if (hex) hex.value = toHexColor(value)
 }
 
+function enforceGameplaySectionPlacement(): void {
+  const gameplaySection = document.getElementById('params-gameplay')
+  const dragSection = document.getElementById('params-drag')
+  if (!gameplaySection) return
+
+  const getRowKey = (row: HTMLElement): string => {
+    if (row.dataset.key) return row.dataset.key
+    const slider = row.querySelector<HTMLInputElement>('input[id^="slider-"]')
+    if (slider?.id) return slider.id.replace('slider-', '')
+    const checkbox = row.querySelector<HTMLInputElement>('input[id^="chk-"]')
+    if (checkbox?.id) return checkbox.id.replace('chk-', '')
+    const color = row.querySelector<HTMLInputElement>('input[id^="color-"]')
+    if (color?.id) return color.id.replace('color-', '')
+    return ''
+  }
+
+  const allRows = Array.from(document.querySelectorAll<HTMLElement>('.param-row'))
+  const gameplayRows = allRows.filter((row) => {
+    const key = getRowKey(row)
+    if (!key) return false
+    row.dataset.key = key
+    return key.startsWith('gameplay')
+  })
+
+  for (const row of gameplayRows) {
+    gameplaySection.appendChild(row)
+  }
+
+  if (dragSection) {
+    const dragRows = Array.from(dragSection.querySelectorAll<HTMLElement>('.param-row'))
+    for (const row of dragRows) {
+      const key = getRowKey(row)
+      if (!key.startsWith('gameplay')) continue
+      gameplaySection.appendChild(row)
+    }
+  }
+
+  const staleRows = Array.from(document.querySelectorAll<HTMLElement>('#params-drag .param-row'))
+  for (const row of staleRows) {
+    const key = getRowKey(row)
+    if (!key.startsWith('gameplay')) continue
+    row.remove()
+  }
+}
+
 function buildSnapshotJson(): string {
   return JSON.stringify(getConfigSnapshot(), null, 2)
 }
@@ -580,6 +647,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   for (const key of DRAG_KEYS) {
     if (!CONFIG_DEFS[key]) continue
+    if (FORCE_GAMEPLAY_KEYS.has(key)) continue
     buildParamRow(key, 'params-drag')
   }
 
@@ -591,6 +659,11 @@ document.addEventListener('DOMContentLoaded', () => {
   for (const key of TOAST_KEYS) {
     if (!CONFIG_DEFS[key]) continue
     buildCheckboxRow(key, 'params-toast')
+  }
+
+  for (const key of TOAST_PARAM_KEYS) {
+    if (!CONFIG_DEFS[key]) continue
+    buildParamRow(key, 'params-toast')
   }
 
   for (const key of BATTLE_VFX_KEYS) {
@@ -627,6 +700,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!CONFIG_DEFS[key]) continue
     buildColorRow(key, 'params-color')
   }
+
+  enforceGameplaySectionPlacement()
+  setTimeout(enforceGameplaySectionPlacement, 0)
 
   onConfigChange((key, value) => {
     updateUIFromExternal(key, value)

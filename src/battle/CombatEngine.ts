@@ -294,13 +294,29 @@ export class CombatEngine {
               runtimeDamage = Math.max(0, Math.round(runtimeDamage * emptyAmmoBurstMul))
             }
           }
-          const explode = lines.find((s) => /弹药耗尽时摧毁自身.*最大生命值.*%.*伤害/.test(s))
-          if (explode) {
-            const pctSeries = explode.match(/最大生命值\s*([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*)\s*的伤害/)
+          // 特殊实现（仅用于面板展示）：
+          // 自爆型支援物品战斗中始终展示“自爆伤害”，
+          // 但真实伤害触发仍以 resolveFire 的耗尽分支为准。
+          const selfDestroyExplodeLine = lines.find((s) => /弹药耗尽时摧毁自身.*伤害/.test(s))
+          const allTeamRefillLine = lines.find((s) => /为其他物品补充\d+(?:[\/|]\d+)*发弹药/.test(s))
+          const selfDestructOnlyDamage = !!selfDestroyExplodeLine && !!allTeamRefillLine
+          if (selfDestroyExplodeLine) {
+            const pctSeries = selfDestroyExplodeLine.match(/最大生命值\s*([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*)\s*的伤害/)
             const pct = pctSeries?.[1]
               ? (/[\/|]/.test(pctSeries[1]) ? pickTierSeriesValue(pctSeries[1], tIdx) : Number(pctSeries[1].replace(/%$/u, '')))
               : 0
-            if (pct > 0) runtimeDamage = Math.max(runtimeDamage, Math.round(targetHero.maxHp * (pct / 100)))
+            const fixedSeries = selfDestroyExplodeLine.match(/造成\s*(\d+(?:[\/|]\d+)*)\s*伤害/)
+            const fixedDamage = fixedSeries?.[1] ? Math.max(0, Math.round(pickTierSeriesValue(fixedSeries[1], tIdx))) : 0
+            const normalAttackLine = lines.find((s) => /攻击造成\d+(?:[\/|]\d+)*伤害/.test(s))
+            const fallbackAttackDamage = normalAttackLine ? Math.max(0, Math.round(tierValueFromLine(normalAttackLine, tIdx))) : 0
+            const explodeDamage = pct > 0
+              ? Math.round(targetHero.maxHp * (pct / 100))
+              : (fixedDamage > 0 ? fixedDamage : (selfDestructOnlyDamage ? fallbackAttackDamage : 0))
+            if (selfDestructOnlyDamage) {
+              runtimeDamage = Math.max(0, explodeDamage)
+            } else if (explodeDamage > 0) {
+              runtimeDamage = Math.max(runtimeDamage, explodeDamage)
+            }
           }
         }
         runtimeDamage = Math.max(0, Math.min(ITEM_DAMAGE_CAP, Math.round(runtimeDamage)))
@@ -854,6 +870,12 @@ export class CombatEngine {
     const tIdx = tierIndexFromRaw(def, item.tier)
     const sourceArch = itemArchetype(def)
     const isAllAmmoShot = lines.some((s) => /(?:一次)?打出所有弹药/.test(s))
+    // 特殊实现（火药桶口径）：
+    // 同时命中「为其他物品补充X发弹药」+「弹药耗尽时摧毁自身造成伤害」时，
+    // 视为“自爆型支援物品”——平时不打伤害，仅在耗尽时自爆结算伤害。
+    const selfDestroyExplodeLine = lines.find((s) => /弹药耗尽时摧毁自身.*伤害/.test(s))
+    const allTeamRefillLine = lines.find((s) => /为其他物品补充\d+(?:[\/|]\d+)*发弹药/.test(s))
+    const selfDestructOnlyDamage = !!selfDestroyExplodeLine && !!allTeamRefillLine
     const emptyAmmoBurstLine = lines.find((s) => /弹药耗尽时造成\d+(?:[\/|]\d+)*倍伤害/.test(s))
     const emptyAmmoBurstMul = emptyAmmoBurstLine
       ? Math.max(1, tierValueFromLine(emptyAmmoBurstLine, tIdx))
@@ -1286,7 +1308,7 @@ export class CombatEngine {
       if (v > 0) damageAfterBonus += v
     }
 
-    if (damageAfterBonus > 0) {
+    if (damageAfterBonus > 0 && !selfDestructOnlyDamage) {
       const isLastShotDoubleTriggered = this.hasSkill(item.side, 'skill50')
         && item.runtime.ammoMax > 0
         && ((isAllAmmoShot && ammoBeforeUse > 0) || (!isAllAmmoShot && ammoBeforeUse === 1))
@@ -1425,7 +1447,6 @@ export class CombatEngine {
       }
     }
 
-    const selfDestroyExplodeLine = lines.find((s) => /弹药耗尽时摧毁自身.*伤害/.test(s))
     if (selfDestroyExplodeLine && item.runtime.ammoMax > 0 && item.runtime.ammoCurrent <= 0) {
       const pctSeries = selfDestroyExplodeLine.match(/最大生命值\s*([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*)\s*的伤害/)
       const pct = pctSeries?.[1]
@@ -1433,7 +1454,11 @@ export class CombatEngine {
         : 0
       const fixedSeries = selfDestroyExplodeLine.match(/造成\s*(\d+(?:[\/|]\d+)*)\s*伤害/)
       const fixedDamage = fixedSeries?.[1] ? Math.max(0, Math.round(pickTierSeriesValue(fixedSeries[1], tIdx))) : 0
-      const explodeDamage = pct > 0 ? Math.round(targetHero.maxHp * (pct / 100)) : fixedDamage
+      const normalAttackLine = lines.find((s) => /攻击造成\d+(?:[\/|]\d+)*伤害/.test(s))
+      const fallbackAttackDamage = normalAttackLine ? Math.max(0, Math.round(tierValueFromLine(normalAttackLine, tIdx))) : 0
+      const explodeDamage = pct > 0
+        ? Math.round(targetHero.maxHp * (pct / 100))
+        : (fixedDamage > 0 ? fixedDamage : (selfDestructOnlyDamage ? fallbackAttackDamage : 0))
       if (explodeDamage > 0) this.skillSystem.applyDirectSkillDamage(item.side, explodeDamage, item.id, 'item')
       this.removeItemFromBattle(item.id)
       return

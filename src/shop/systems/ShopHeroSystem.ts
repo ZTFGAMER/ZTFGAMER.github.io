@@ -14,14 +14,14 @@
 // ============================================================
 
 import { getAllItems } from '@/core/DataLoader'
-import { setLifeState } from '@/core/RunState'
+import { getPlayerProgressState, setLifeState } from '@/core/RunState'
 import { normalizeSize, type ItemDef } from '@/common/items/ItemDef'
 import { resolveItemTierBaseStats } from '@/common/items/ItemTierStats'
 import type { TierKey } from '@/shop/ShopManager'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import { getItemIconUrl } from '@/core/AssetPath'
 import { createItemStatBadges } from '@/common/ui/ItemStatBadges'
-import { getTierColor } from '@/config/colorPalette'
+import { getTierColor, getClassColor } from '@/config/colorPalette'
 import { calcSkill94DailyGoldBonus } from '@/common/skills/GoldSkillRules'
 import {
   Container, Graphics, Text, Sprite,
@@ -35,6 +35,7 @@ import {
 } from './ShopSynthesisLogic'
 import type { ShopSceneCtx, StarterClass, PendingHeroPeriodicReward } from '../ShopSceneContext'
 import type { NeutralChoiceCandidate } from '../panels/NeutralItemPanel'
+import { clampPlayerLevel, getPlayerMaxLifeByLevel } from '../ui/PlayerStatusUI'
 
 // ============================================================
 // 本地常量
@@ -379,6 +380,16 @@ export function tryRunHeroCrossSynthesisReroll(
       onConfirm?: (c: NeutralChoiceCandidate) => boolean,
       mode?: 'default' | 'special_shop_like',
     ) => boolean
+    isLevelQuickDraftEnabled: () => boolean
+    enqueueLevelQuickDraftChoices: (
+      title: string,
+      choices: NeutralChoiceCandidate[],
+      opts?: {
+        consumePickedAsReward?: boolean
+        onPicked?: (picked: NeutralChoiceCandidate) => void
+      },
+    ) => boolean
+    removePlacedItemInstance: (instanceId: string, zone: 'battle' | 'backpack') => boolean
     transformPlacedItemKeepLevelTo: (
       instanceId: string,
       zone: 'battle' | 'backpack',
@@ -413,6 +424,23 @@ export function tryRunHeroCrossSynthesisReroll(
     { item: currentDef, tier: synth.toTier, star: synth.toStar },
     ...altPicks.map((one) => ({ item: one.item, tier: one.tier, star: one.star })),
   ]
+
+  if (callbacks.isLevelQuickDraftEnabled()) {
+    const queued = callbacks.enqueueLevelQuickDraftChoices('占卜师：选择合成结果', choices, {
+      consumePickedAsReward: true,
+      onPicked: (picked) => {
+        void picked
+        callbacks.showHintToast('no_gold_buy', '占卜师：本次异物合成可选结果', 0x9be5ff)
+        callbacks.refreshShopUI()
+      },
+    })
+    if (queued) {
+      markHeroDailyCardRerollUsed(ctx, { refreshPlayerStatusUI: callbacks.refreshPlayerStatusUI })
+      callbacks.removePlacedItemInstance(synth.instanceId, synth.targetZone)
+      callbacks.refreshShopUI()
+      return true
+    }
+  }
 
   return callbacks.showNeutralChoiceOverlay(stage, '占卜师：选择合成结果', choices, (picked) => {
     if (picked.item.id !== currentDefId) {
@@ -484,7 +512,13 @@ export function showHeroPassiveDetailPopup(ctx: ShopSceneCtx, stage: Container):
   const descFontSize = getDebugCfg('itemInfoSimpleDescFontSize')
 
   const title = new Text({
-    text: detail.name,
+    text: (() => {
+      const progress = getPlayerProgressState()
+      const level = clampPlayerLevel(progress.level)
+      let battleHp = getPlayerMaxLifeByLevel(level)
+      if (isSelectedHero(ctx, 'hero10')) battleHp = Math.max(1, Math.round(battleHp * 1.3))
+      return `${detail.name}  Lv${level}  生命${battleHp}`
+    })(),
     style: { fontSize: titleFontSize, fill: 0xffefc8, fontFamily: 'Arial', fontWeight: 'bold' },
   })
   const desc = new Text({
@@ -986,7 +1020,16 @@ export function createGuideItemCard(item: ItemDef, levelText: string, tierForFra
   const spriteInset = frameInset + Math.max(2, Math.ceil(borderW / 2))
 
   const levelNum = Math.max(1, Math.round(Number(levelText) || 1))
-  const tierColor = getTierColor(tierForFrame)
+  const useArchetypeFrame = getDebugCfg('gameplayItemFrameColorByArchetype') >= 0.5
+  const tierColor = useArchetypeFrame
+    ? (() => {
+      const tags = String(item.tags ?? '')
+      if (tags.includes('战') || /warrior/i.test(tags)) return getClassColor('战士')
+      if (tags.includes('弓') || /archer/i.test(tags)) return getClassColor('弓手')
+      if (tags.includes('刺') || /assassin/i.test(tags)) return getClassColor('刺客')
+      return getClassColor('中立')
+    })()
+    : getTierColor(tierForFrame)
 
   const frame = new Graphics()
   frame.roundRect(frameInset, frameInset, frameW, frameH, frameRadius)

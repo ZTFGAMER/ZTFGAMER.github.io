@@ -150,9 +150,11 @@ export function clearSelection(ctx: ShopSceneCtx, deps: ShopDragDeps): void {
   resetInfoModeSelection(ctx)
   deps.hideSkillDetailPopup()
   deps.hideSynthesisHoverInfo()
+  clearBackpackSynthesisGuideArrows(ctx)
   ctx.shopPanel?.setSelectedSlot(-1)
   ctx.battleView?.setSelected(null)
   ctx.backpackView?.setSelected(null)
+  ctx.levelQuickRewardView?.setSelected(null)
   ctx.sellPopup?.hide()
   applySellButtonState(ctx)
 }

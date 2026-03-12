@@ -153,3 +153,13 @@ export function getInstanceTierStar(instanceId: string): 1 | 2 {
   const legacy = levelToTierStar(level)
   return legacy?.star ?? 1
 }
+
+export function forceInstanceLevel(instanceId: string, level: number): void {
+  const bounded = clampLevel(level)
+  instanceToLevel.set(instanceId, bounded)
+  const legacy = levelToTierStar(bounded)
+  if (legacy) {
+    instanceToTier.set(instanceId, legacy.tier)
+    instanceToTierStar.set(instanceId, legacy.star)
+  }
+}

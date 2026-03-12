@@ -19,7 +19,8 @@ import {
 import type { ItemSizeNorm, PlacedItem } from './GridSystem'
 import { getAllItems, getConfig as getGameConfig } from '@/core/DataLoader'
 import { getItemIconUrl, getUiImageUrl } from '@/core/AssetPath'
-import { getTierColor } from '@/config/colorPalette'
+import { getClassColor, getTierColor } from '@/config/colorPalette'
+import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import {
   createItemStatBadges,
   type ItemBadgeDisplayMode,
@@ -175,14 +176,14 @@ interface ItemNode {
   origY:      number
 }
 
-function getArchetypeBadgeByDefId(defId: string): { label: string; color: number; showLevel: boolean } {
+function getArchetypeBadgeByDefId(defId: string): { label: string; className: '战士' | '弓手' | '刺客' | '中立'; color: number; showLevel: boolean } {
   const item = getAllItems().find((it) => it.id === defId)
   const tags = `${item?.tags ?? ''}`
-  if (tags.includes('战士')) return { label: '战', color: 0xcc4b4b, showLevel: true }
-  if (tags.includes('弓手')) return { label: '弓', color: 0x34a853, showLevel: true }
-  if (tags.includes('刺客')) return { label: '刺', color: 0x4b7bcc, showLevel: true }
-  if (tags.includes('中立')) return { label: '中立', color: 0xb07a27, showLevel: false }
-  return { label: '?', color: 0x7b6ad2, showLevel: true }
+  if (tags.includes('战士')) return { label: '战', className: '战士', color: getClassColor('战士'), showLevel: true }
+  if (tags.includes('弓手')) return { label: '弓', className: '弓手', color: getClassColor('弓手'), showLevel: true }
+  if (tags.includes('刺客')) return { label: '刺', className: '刺客', color: getClassColor('刺客'), showLevel: true }
+  if (tags.includes('中立')) return { label: '中立', className: '中立', color: getClassColor('中立'), showLevel: false }
+  return { label: '?', className: '中立', color: getClassColor('中立'), showLevel: true }
 }
 
 function parseTierName(raw: string): string {
@@ -256,6 +257,7 @@ export class GridZone extends Container {
   private labelText:  Text
 
   private nodes = new Map<string, ItemNode>()
+  private itemOffsetX = new Map<string, number>()
   private tierBorderWidth = 4
   private cornerRadius = 10
   private cellBorderWidth = 1
@@ -268,6 +270,7 @@ export class GridZone extends Container {
   private tierStarOffsetX = 0
   private tierStarOffsetY = 0
   private ammoBadgeOffsetY = 0
+  private itemFrameUseArchetypeColor = getDebugCfg('gameplayItemFrameColorByArchetype') >= 0.5
   private upgradeHintIds = new Set<string>()
   private crossUpgradeHintIds = new Set<string>()
   private crossGuideArrowMode: 'cross' | 'convert' = 'cross'
@@ -445,7 +448,7 @@ export class GridZone extends Container {
     const visualScale = 1
 
     const container = new Container()
-    container.x     = ox
+    container.x     = ox + (this.itemOffsetX.get(instanceId) ?? 0)
     container.y     = oy
 
      // 多行区域适当缩小下边缘拾取范围，减少下方误触
@@ -745,6 +748,7 @@ export class GridZone extends Container {
     if (this.selectedId === instanceId) this.selectedId = null
     this.upgradeHintIds.delete(instanceId)
     this.crossUpgradeHintIds.delete(instanceId)
+    this.itemOffsetX.delete(instanceId)
     this.nodes.delete(instanceId)
   }
 
@@ -798,7 +802,7 @@ export class GridZone extends Container {
   restoreFromDrag(instanceId: string, container: Container): void {
     const node = this.nodes.get(instanceId)
     if (!node) return
-    container.x = node.origX
+    container.x = node.origX + (this.itemOffsetX.get(instanceId) ?? 0)
     container.y = node.origY
     container.scale.set(1)
     container.alpha = 1
@@ -807,8 +811,9 @@ export class GridZone extends Container {
     node.bg.visible = true
     node.selectedG.visible = this.selectedId === instanceId
     node.statBadges.visible = true
-    node.starBadgeBg.visible = this.statBadgeMode !== 'archetype'
-    node.starText.visible = this.statBadgeMode !== 'archetype'
+    const showStarBadge = this.statBadgeMode !== 'archetype' && node.starText.text.length > 0
+    node.starBadgeBg.visible = showStarBadge
+    node.starText.visible = showStarBadge
     node.upgradeArrow.visible = this.upgradeHintIds.has(instanceId)
     node.crossUpgradeArrow.visible = this.crossUpgradeHintIds.has(instanceId)
     this.updateNodeAmmoBadge(node)
@@ -825,7 +830,7 @@ export class GridZone extends Container {
     const node = this.nodes.get(instanceId)
     if (!node) return
     const { x, y } = this.cellToLocal(col, row)
-    container.x    = x
+    container.x    = x + (this.itemOffsetX.get(instanceId) ?? 0)
     container.y    = y
     container.scale.set(1)
     container.alpha = 1
@@ -834,8 +839,9 @@ export class GridZone extends Container {
     node.bg.visible = true
     node.selectedG.visible = this.selectedId === instanceId
     node.statBadges.visible = true
-    node.starBadgeBg.visible = this.statBadgeMode !== 'archetype'
-    node.starText.visible = this.statBadgeMode !== 'archetype'
+    const showStarBadge = this.statBadgeMode !== 'archetype' && node.starText.text.length > 0
+    node.starBadgeBg.visible = showStarBadge
+    node.starText.visible = showStarBadge
     node.upgradeArrow.visible = this.upgradeHintIds.has(instanceId)
     node.crossUpgradeArrow.visible = this.crossUpgradeHintIds.has(instanceId)
     this.updateNodeAmmoBadge(node)
@@ -865,6 +871,7 @@ export class GridZone extends Container {
     node?.starText.destroy()
     this.upgradeHintIds.delete(instanceId)
     this.crossUpgradeHintIds.delete(instanceId)
+    this.itemOffsetX.delete(instanceId)
     this.nodes.delete(instanceId)
   }
 
@@ -900,7 +907,7 @@ export class GridZone extends Container {
     const node = this.nodes.get(item.instanceId)
     if (!node) return
     const { x, y } = this.cellToLocal(item.col, item.row)
-    node.container.x = x
+    node.container.x = x + (this.itemOffsetX.get(item.instanceId) ?? 0)
     node.container.y = y
     node.origX       = x
     node.origY       = y
@@ -1003,6 +1010,13 @@ export class GridZone extends Container {
     }
   }
 
+  setItemFrameUseArchetypeColor(enabled: boolean): void {
+    this.itemFrameUseArchetypeColor = enabled
+    for (const node of this.nodes.values()) {
+      this.redrawItemBorder(node)
+    }
+  }
+
   setLabelGlobalLeft(globalX: number): void {
     const sx = this.scale.x || 1
     this.labelText.x = (globalX - this.x) / sx
@@ -1039,6 +1053,16 @@ export class GridZone extends Container {
       }
     }
     this.updateNodeAmmoBadge(node)
+    this.updateStatBadgePosition(node)
+  }
+
+  setItemOffsetX(instanceId: string, offsetX: number): void {
+    const normalized = Math.abs(offsetX) <= 0.5 ? 0 : offsetX
+    if (normalized === 0) this.itemOffsetX.delete(instanceId)
+    else this.itemOffsetX.set(instanceId, normalized)
+    const node = this.nodes.get(instanceId)
+    if (!node) return
+    node.container.x = node.origX + (this.itemOffsetX.get(instanceId) ?? 0)
     this.updateStatBadgePosition(node)
   }
 
@@ -1106,7 +1130,8 @@ export class GridZone extends Container {
   private applyNodeVisualLayout(node: ItemNode): void {
     const { pw, ph } = SIZE_PX[node.size]
     const tier = getBaseTier(node.defId)
-    const tierColor = getTierColor(tier)
+    const arch = getArchetypeBadgeByDefId(node.defId)
+    const frameColor = this.itemFrameUseArchetypeColor ? arch.color : getTierColor(tier)
     const frameInset = this.getItemFrameInset()
     const frameW = Math.max(1, pw - frameInset * 2)
     const frameH = Math.max(1, ph - frameInset * 2)
@@ -1117,11 +1142,11 @@ export class GridZone extends Container {
     // 物品底色不应染色图标；保留极低透明 fill 以确保 stroke 稳定渲染
     node.bg.fill({ color: 0x000000, alpha: 0.001 })
     node.bg.stroke({
-      color: tierColor,
+      color: frameColor,
       width: this.tierBorderWidth,
       alpha: 0.98,
     })
-    if (tier === 'Diamond') {
+    if (!this.itemFrameUseArchetypeColor && tier === 'Diamond') {
       const innerInset = frameInset + this.tierBorderWidth + 1
       const innerW = Math.max(1, pw - innerInset * 2)
       const innerH = Math.max(1, ph - innerInset * 2)
@@ -1144,8 +1169,9 @@ export class GridZone extends Container {
     this.updateStatBadgePosition(node)
 
     const levelText = tierToLevelLabel(node.tier)
-    const arch = getArchetypeBadgeByDefId(node.defId)
-    node.starText.text = arch.showLevel ? `${arch.label}${levelText}` : arch.label
+    node.starText.text = this.itemFrameUseArchetypeColor
+      ? (arch.showLevel ? levelText : '')
+      : (arch.showLevel ? `${arch.label}${levelText}` : arch.label)
     node.starText.style.fill = 0xffffff
     node.starText.style.stroke = { color: 0x000000, width: 2 }
     node.starText.style.fontSize = this.statBadgeFontSize
@@ -1158,8 +1184,9 @@ export class GridZone extends Container {
     node.starBadgeBg.fill({ color: arch.color, alpha: 0.95 })
     node.starBadgeBg.roundRect(0, 0, badgeW, badgeH, 6)
     node.starBadgeBg.stroke({ color: 0x000000, width: 2, alpha: 0.88 })
-    node.starBadgeBg.visible = this.statBadgeMode !== 'archetype'
-    node.starText.visible = this.statBadgeMode !== 'archetype'
+    const showStarBadge = this.statBadgeMode !== 'archetype' && node.starText.text.length > 0
+    node.starBadgeBg.visible = showStarBadge
+    node.starText.visible = showStarBadge
 
     // 箭头位于物品可视区域中心
     node.upgradeArrow.x = frameInset + frameW / 2
@@ -1193,6 +1220,8 @@ export class GridZone extends Container {
         this.statBadgeMode,
         {
           archetypeSuffix: this.statBadgeMode === 'archetype' ? tierToLevelLabel(node.tier) : '',
+          archetypeLevelOnly: this.itemFrameUseArchetypeColor,
+          hideNeutralArchetype: this.itemFrameUseArchetypeColor,
         },
       )
       node.statBadges.addChild(badges)
@@ -1323,6 +1352,7 @@ export class GridZone extends Container {
     if (!node) return
 
     const { x: toX, y: toY } = this.cellToLocal(col, row)
+    const targetX = toX + (this.itemOffsetX.get(instanceId) ?? 0)
 
     // 打断旧挤出动画
     const oldTick = this.squeezeTicks.get(instanceId)
@@ -1341,7 +1371,7 @@ export class GridZone extends Container {
     const tick = (): void => {
       const t    = Math.min((Date.now() - startMs) / durationMs, 1)
       const ease = 1 - Math.pow(1 - t, 3)  // cubic ease-out
-      node.container.x = fromX + (toX - fromX) * ease
+      node.container.x = fromX + (targetX - fromX) * ease
       node.container.y = fromY + (toY - fromY) * ease
       this.updateStatBadgePosition(node)
       if (t >= 1) {
@@ -1393,7 +1423,7 @@ export class GridZone extends Container {
     if (oldP) { Ticker.shared.remove(oldP); this.previewTicks.delete(instanceId) }
     const node = this.nodes.get(instanceId)
     if (!node) return
-    node.container.x = node.origX
+    node.container.x = node.origX + (this.itemOffsetX.get(instanceId) ?? 0)
     node.container.y = node.origY
     this.updateStatBadgePosition(node)
   }

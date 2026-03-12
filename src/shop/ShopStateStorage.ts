@@ -188,6 +188,15 @@ export function captureShopState(ctx: ShopSceneCtx): SavedShopState | null {
     heroCommanderMedalGrantedDays: Array.from(ctx.heroCommanderMedalGrantedDays),
     heroHeirGoldEquipGrantedDays: Array.from(ctx.heroHeirGoldEquipGrantedDays),
     heroTycoonGoldGrantedDays: Array.from(ctx.heroTycoonGoldGrantedDays),
+    levelQuickDraftSavedEntries: ctx.levelQuickDraftSavedEntries.map((entry) => ({
+      title: String(entry.title ?? '').trim() || '奖励区',
+      picks: (entry.picks ?? []).slice(0, 3).map((pick) => ({
+        defId: String(pick.defId ?? ''),
+        level: clampLevel(Number(pick.level ?? 1)),
+        tier: pick.tier,
+        star: Math.max(1, Math.min(2, Math.round(Number(pick.star ?? 1)))) as 1 | 2,
+      })).filter((pick) => pick.defId.length > 0),
+    })).filter((entry) => entry.picks.length > 0),
   }
 }
 
@@ -391,6 +400,29 @@ export function applySavedShopState(
       .filter((v): v is PendingHeroPeriodicReward => !!v)
     : []
   ctx.pendingHeroPeriodicRewardDispatching = false
+  ctx.levelQuickDraftSavedEntries = Array.isArray(state.levelQuickDraftSavedEntries)
+    ? state.levelQuickDraftSavedEntries
+      .map((entry) => {
+        const title = String(entry?.title ?? '').trim() || '奖励区'
+        const picks = Array.isArray(entry?.picks)
+          ? entry.picks
+            .map((pick) => {
+              const defId = String(pick?.defId ?? '').trim()
+              if (!defId) return null
+              const level = clampLevel(Number(pick?.level ?? 1))
+              const tier = (String(pick?.tier ?? 'Bronze') as import('@/shop/ShopManager').TierKey)
+              if (tier !== 'Bronze' && tier !== 'Silver' && tier !== 'Gold' && tier !== 'Diamond') return null
+              const star = Math.max(1, Math.min(2, Math.round(Number(pick?.star ?? 1)))) as 1 | 2
+              return { defId, level, tier, star }
+            })
+            .filter((v): v is { defId: string; level: 1 | 2 | 3 | 4 | 5 | 6 | 7; tier: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'; star: 1 | 2 } => !!v)
+            .slice(0, 3)
+          : []
+        if (picks.length <= 0) return null
+        return { title, picks }
+      })
+      .filter((v): v is NonNullable<typeof v> => !!v)
+    : []
   ctx.levelRewardObtainedByKind.clear()
   for (const row of state.levelRewardObtainedCounts ?? []) {
     const kind = String(row?.kind ?? '').trim()

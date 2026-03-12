@@ -19,6 +19,7 @@ import { SkillDraftPanel } from './panels/SkillDraftPanel'
 import { EventDraftPanel } from './panels/EventDraftPanel'
 import { SpecialShopPanel } from './panels/SpecialShopPanel'
 import { NeutralItemPanel } from './panels/NeutralItemPanel'
+import type { NeutralChoiceCandidate } from './panels/NeutralItemPanel'
 import { SynthesisPanel } from './panels/SynthesisPanel'
 
 import {
@@ -182,6 +183,15 @@ export type PanelInitDeps = {
   rewriteNeutralRandomPick: (item: ItemDef) => ItemDef
   canRandomNeutralItem: (item: ItemDef) => boolean
   getItemDefByCn: (nameCn: string) => ItemDef | null
+  isLevelQuickDraftEnabled: () => boolean
+  enqueueLevelQuickDraftChoices: (
+    title: string,
+    choices: NeutralChoiceCandidate[],
+    opts?: {
+      consumePickedAsReward?: boolean
+      onPicked?: (picked: NeutralChoiceCandidate) => void
+    },
+  ) => boolean
 }
 
 // ============================================================
@@ -364,6 +374,8 @@ export function initPanelInstances(
     getGuideFrameTierByLevel: (levelText) => getGuideFrameTierByLevel(levelText),
     pickSkillChoicesExactTier: (tier) => pickSkillChoicesExactTier(ctx, tier),
     pickRandomEventDraftChoices: (day) => pickRandomEventDraftChoices(ctx, day),
+    isLevelQuickDraftEnabled: () => deps.isLevelQuickDraftEnabled(),
+    enqueueLevelQuickDraftChoices: (title, choices, opts) => deps.enqueueLevelQuickDraftChoices(title, choices, opts),
   })
   stage.addChild(neutralItemPanel)
 

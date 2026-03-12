@@ -19,6 +19,7 @@ import { getSceneImageUrl } from '@/core/AssetPath'
 import { setBattleSnapshot, type BattleSnapshotBundle } from '@/battle/BattleSnapshotStore'
 import { normalizeSize } from '@/common/items/ItemDef'
 import { CANVAS_W as BASE_W, CANVAS_H as BASE_H } from '@/config/layoutConstants'
+import { EventBus, type SceneName } from '@/core/EventBus'
 
 type SoakTestOptions = {
   rounds: number
@@ -431,9 +432,30 @@ async function bootstrap(): Promise<void> {
   bgSprite.tint = 0x1a1a2e  // 先用深色占位，避免背景图加载前闪白
   app.stage.addChildAt(bgSprite, 0)
   try {
-    const tex = await Assets.load<Texture>(getSceneImageUrl('background.png'))
+    const defaultBgTex = await Assets.load<Texture>(getSceneImageUrl('background.png'))
     bgSprite.tint = 0xffffff  // 恢复正常着色
-    bgSprite.texture = tex
+    bgSprite.texture = defaultBgTex
+
+    let shopBgTex: Texture | null = null
+    try {
+      shopBgTex = await Assets.load<Texture>(getSceneImageUrl('background2.png'))
+    } catch (shopErr) {
+      console.warn('[main] 商店背景图 background2.png 加载失败，回退默认背景', shopErr)
+    }
+
+    const applyBackgroundByScene = (scene: SceneName | null): void => {
+      if (scene === 'shop' && shopBgTex) {
+        bgSprite.texture = shopBgTex
+        return
+      }
+      bgSprite.texture = defaultBgTex
+    }
+
+    EventBus.on('game:scene_change', ({ to }) => {
+      applyBackgroundByScene(to)
+    })
+
+    applyBackgroundByScene(SceneManager.currentName())
   } catch (err) {
     console.warn('[main] 背景图加载失败，使用纯色背景兜底', err)
   }

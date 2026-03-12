@@ -59,7 +59,8 @@ export function showHintToast(reason: ToastReason, message: string, color = 0xff
   const boxW = ctx.hintToastText.width + padX * 2
   const boxH = ctx.hintToastText.height + padY * 2
   const boxX = (CANVAS_W - boxW) / 2
-  const boxY = (CANVAS_H - boxH) / 2
+  const offsetY = Math.round(getDebugCfg('toastOffsetY'))
+  const boxY = (CANVAS_H - boxH) / 2 + offsetY
   const corner = Math.max(10, Math.round(getDebugCfg('gridItemCornerRadius')))
   ctx.hintToastBg.clear()
   ctx.hintToastBg.roundRect(boxX, boxY, boxW, boxH, corner)

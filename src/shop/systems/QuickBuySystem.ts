@@ -14,6 +14,7 @@
 // ============================================================
 
 import { getConfig, getAllItems } from '@/core/DataLoader'
+import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import { normalizeSize, type ItemDef } from '@/common/items/ItemDef'
 import type { TierKey } from '@/shop/ShopManager'
 import {
@@ -509,21 +510,24 @@ export function rollNextQuickBuyOffer(
   force: boolean,
   callbacks: RollNextQuickBuyOfferCallbacks,
 ): PoolCandidate | null {
-  const forcedLowLevelPair = pickForcedLowLevelPairCandidate(ctx, ctx.currentDay, {
-    findFirstBattlePlace: callbacks.findFirstBattlePlace,
-    findFirstBackpackPlace: callbacks.findFirstBackpackPlace,
-    getInstanceLevel: callbacks.getInstanceLevel,
-    getInstanceTier: callbacks.getInstanceTier,
-    getInstanceTierStar: callbacks.getInstanceTierStar,
-  })
-  if (forcedLowLevelPair) {
-    ctx.nextQuickBuyOffer = {
-      itemId: forcedLowLevelPair.item.id,
-      tier: forcedLowLevelPair.tier,
-      star: forcedLowLevelPair.star,
-      price: forcedLowLevelPair.price,
+  const bronzeOnly = getDebugCfg('gameplayBaseBuyBronzeOnly') >= 0.5
+  if (!bronzeOnly) {
+    const forcedLowLevelPair = pickForcedLowLevelPairCandidate(ctx, ctx.currentDay, {
+      findFirstBattlePlace: callbacks.findFirstBattlePlace,
+      findFirstBackpackPlace: callbacks.findFirstBackpackPlace,
+      getInstanceLevel: callbacks.getInstanceLevel,
+      getInstanceTier: callbacks.getInstanceTier,
+      getInstanceTierStar: callbacks.getInstanceTierStar,
+    })
+    if (forcedLowLevelPair) {
+      ctx.nextQuickBuyOffer = {
+        itemId: forcedLowLevelPair.item.id,
+        tier: forcedLowLevelPair.tier,
+        star: forcedLowLevelPair.star,
+        price: forcedLowLevelPair.price,
+      }
+      return forcedLowLevelPair
     }
-    return forcedLowLevelPair
   }
 
   if (!force) {

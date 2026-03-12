@@ -11,8 +11,11 @@
 // ============================================================
 
 import { getConfig, getAllItems } from '@/core/DataLoader'
+import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import { normalizeSize, type ItemDef, type SkillArchetype, type SkillTier } from '@/common/items/ItemDef'
 import type { TierKey } from '@/shop/ShopManager'
+import { getMinQuickBuyLevelForDay, getUnlockPoolBuyPriceByLevel, levelToTierStar } from './QuickBuySystem'
+import { getInstanceLevel } from './ShopInstanceRegistry'
 import { BRONZE_SKILL_PICKS, getBronzeSkillById } from '@/common/skills/BronzeSkillConfig'
 import { SILVER_SKILL_PICKS, getSilverSkillById } from '@/common/skills/SilverSkillConfig'
 import { GOLD_SKILL_PICKS, getGoldSkillById } from '@/common/skills/GoldSkillConfig'
@@ -447,6 +450,7 @@ export type BuyRandomBronzeCallbacks = {
   toVisualTier: (tier: TierKey, star: 1 | 2) => string | undefined
   instanceToDefId: Map<string, string>
   setInstanceQualityLevel: (instanceId: string, defId: string, quality: TierKey, level: number) => void
+  forceInstanceLevel: (instanceId: string, level: number) => void
   levelFromLegacyTierStar: (tier: TierKey, star: 1 | 2) => 1 | 2 | 3 | 4 | 5 | 6 | 7
   instanceToPermanentDamageBonus: Map<string, number>
   recordNeutralItemObtained: (itemId: string) => void
@@ -454,9 +458,52 @@ export type BuyRandomBronzeCallbacks = {
   unlockItemToPool: (itemId: string) => void
 }
 
+function pickBronzeOnlyLowLevelOddTarget(
+  ctx: ShopSceneCtx,
+): { level: 1 | 2 | 3 | 4 | 5 | 6 | 7; archetype: SkillArchetype } | null {
+  if (!ctx.battleSystem || !ctx.backpackSystem) return null
+  const dayMinLevel = getMinQuickBuyLevelForDay(ctx.currentDay)
+  const lowLevelArchetypeCount = new Map<string, number>()
+  const collectLowLevelArchetypeCounts = (items: ReturnType<NonNullable<ShopSceneCtx['battleSystem']>['getAllItems']>) => {
+    for (const it of items) {
+      const lv = getInstanceLevel(it.instanceId)
+      if (lv >= dayMinLevel) continue
+      const def = getItemDefById(it.defId)
+      const arch = toSkillArchetype(getPrimaryArchetype(def?.tags ?? ''))
+      if (!arch || arch === 'utility') continue
+      const key = `${lv}|${arch}`
+      lowLevelArchetypeCount.set(key, (lowLevelArchetypeCount.get(key) ?? 0) + 1)
+    }
+  }
+  collectLowLevelArchetypeCounts(ctx.battleSystem.getAllItems())
+  collectLowLevelArchetypeCounts(ctx.backpackSystem.getAllItems())
+
+  const pending = Array.from(lowLevelArchetypeCount.entries())
+    .map(([key, count]) => {
+      const [lvRaw, archRaw] = key.split('|')
+      return {
+        level: Math.max(1, Math.min(7, Number(lvRaw) || 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7,
+        archetype: archRaw as SkillArchetype,
+        count,
+      }
+    })
+    .filter((it) => (it.count % 2) === 1)
+    .sort((a, b) => (a.level - b.level) || (a.count - b.count))
+
+  const firstPending = pending[0]
+  return firstPending ? { level: firstPending.level, archetype: firstPending.archetype } : null
+}
+
+export function getBronzeOnlyForcedLowLevelPrice(ctx: ShopSceneCtx): number | null {
+  if (getDebugCfg('gameplayBaseBuyBronzeOnly') < 0.5) return null
+  const target = pickBronzeOnlyLowLevelOddTarget(ctx)
+  return target ? getUnlockPoolBuyPriceByLevel(target.level) : null
+}
+
 export function buyRandomBronzeToBoardOrBackpack(ctx: ShopSceneCtx, deps: BuyRandomBronzeCallbacks): void {
   if (!ctx.shopManager || !ctx.battleSystem || !ctx.battleView || !ctx.backpackSystem || !ctx.backpackView) return
   const manager = ctx.shopManager
+  const bronzeOnly = getDebugCfg('gameplayBaseBuyBronzeOnly') >= 0.5
 
   deps.syncShopOwnedTierRules()
   let picked = deps.rollNextQuickBuyOffer(false)
@@ -475,10 +522,30 @@ export function buyRandomBronzeToBoardOrBackpack(ctx: ShopSceneCtx, deps: BuyRan
     }
   }
 
-  let tierForced = picked.tier
-  let starForced = picked.star
-  if (ctx.dayEventState.forceBuyArchetype && ctx.dayEventState.forceBuyRemaining > 0) {
-    const level = tierStarLevelIndex(tierForced, starForced) + 1
+  let sourceTier: TierKey = picked.tier
+  let sourceStar: 1 | 2 = picked.star
+  let tierForced: TierKey = bronzeOnly ? 'Bronze' : picked.tier
+  let starForced: 1 | 2 = bronzeOnly ? 1 : picked.star
+  let forceLowLevelArchetype: SkillArchetype | null = null
+  let forceLowLevelLevel: 1 | 2 | 3 | 4 | 5 | 6 | 7 | null = null
+
+  if (bronzeOnly) {
+    const forcedTarget = pickBronzeOnlyLowLevelOddTarget(ctx)
+    if (forcedTarget) {
+      forceLowLevelArchetype = forcedTarget.archetype
+      forceLowLevelLevel = forcedTarget.level
+      const legacy = levelToTierStar(forceLowLevelLevel)
+      if (legacy) {
+        sourceTier = legacy.tier
+        sourceStar = legacy.star
+        tierForced = 'Bronze'
+        starForced = 1
+      }
+    }
+  }
+
+  if (!forceLowLevelArchetype && ctx.dayEventState.forceBuyArchetype && ctx.dayEventState.forceBuyRemaining > 0) {
+    const level = tierStarLevelIndex(sourceTier, sourceStar) + 1
     const levelKey = Math.max(1, Math.min(7, level)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
     const forcePool = deps.collectPoolCandidatesByLevel(levelKey).filter((one) =>
       toSkillArchetype(getPrimaryArchetype(one.item.tags)) === ctx.dayEventState.forceBuyArchetype,
@@ -486,12 +553,57 @@ export function buyRandomBronzeToBoardOrBackpack(ctx: ShopSceneCtx, deps: BuyRan
     const forced = forcePool[Math.floor(Math.random() * forcePool.length)]
     if (forced) {
       picked = forced
-      tierForced = forced.tier
-      starForced = forced.star
+      sourceTier = forced.tier
+      sourceStar = forced.star
+      tierForced = bronzeOnly ? 'Bronze' : forced.tier
+      starForced = bronzeOnly ? 1 : forced.star
     }
   }
-  const itemForced = picked.item
-  const buyPrice = picked.price
+  let itemForced = picked.item
+  if (bronzeOnly) {
+    const sourceLevel = deps.levelFromLegacyTierStar(sourceTier, sourceStar)
+    const sameLevelCountByDef = new Map<string, number>()
+    const collectLevelCounts = (items: ReturnType<NonNullable<ShopSceneCtx['battleSystem']>['getAllItems']>) => {
+      for (const it of items) {
+        const lv = getInstanceLevel(it.instanceId)
+        if (lv !== sourceLevel) continue
+        sameLevelCountByDef.set(it.defId, (sameLevelCountByDef.get(it.defId) ?? 0) + 1)
+      }
+    }
+    collectLevelCounts(ctx.battleSystem.getAllItems())
+    collectLevelCounts(ctx.backpackSystem.getAllItems())
+
+    const allBronze = deps.collectPoolCandidatesByLevel(1)
+      .filter((one) => (parseTierName(one.item.starting_tier) ?? 'Bronze') === 'Bronze')
+    if (forceLowLevelArchetype) {
+      const sameArchetypePool = allBronze.filter((one) =>
+        toSkillArchetype(getPrimaryArchetype(one.item.tags)) === forceLowLevelArchetype,
+      )
+      const bronzePool = sameArchetypePool.length > 0 ? sameArchetypePool : allBronze
+      const pickedBronze = bronzePool[Math.floor(Math.random() * bronzePool.length)]
+      if (pickedBronze) itemForced = pickedBronze.item
+    } else {
+      const targetArchetype = toSkillArchetype(getPrimaryArchetype(itemForced.tags))
+      const pickedDefCount = sameLevelCountByDef.get(itemForced.id) ?? 0
+      const scored = allBronze.map((one) => ({ one, count: sameLevelCountByDef.get(one.item.id) ?? 0 }))
+      const lowerCountPool = pickedDefCount >= 2
+        ? scored.filter((it) => it.count < pickedDefCount)
+        : scored
+      const basePool = lowerCountPool.length > 0 ? lowerCountPool : scored
+      const minCount = basePool.reduce((min, it) => Math.min(min, it.count), Number.MAX_SAFE_INTEGER)
+      const minCountPool = basePool
+        .filter((it) => it.count === minCount)
+        .map((it) => it.one)
+      const sameArchetypePool = minCountPool.filter((one) =>
+        toSkillArchetype(getPrimaryArchetype(one.item.tags)) === targetArchetype,
+      )
+      const bronzePool = sameArchetypePool.length > 0 ? sameArchetypePool : minCountPool
+      const pickedBronze = bronzePool[Math.floor(Math.random() * bronzePool.length)]
+      if (pickedBronze) itemForced = pickedBronze.item
+    }
+  }
+  const forcedPrice = forceLowLevelLevel ? getUnlockPoolBuyPriceByLevel(forceLowLevelLevel) : null
+  const buyPrice = forcedPrice ?? picked.price
   const priced = resolveBuyPriceWithSkills(ctx, buyPrice)
 
   if (!deps.canBuyItemUnderFirstPurchaseRule(itemForced)) {
@@ -526,7 +638,7 @@ export function buyRandomBronzeToBoardOrBackpack(ctx: ShopSceneCtx, deps: BuyRan
   }
   deps.markShopPurchaseDone()
   const id = deps.nextId()
-  const visualTier = deps.toVisualTier(tierForced, starForced)
+  const visualTier = deps.toVisualTier(bronzeOnly ? sourceTier : tierForced, bronzeOnly ? sourceStar : starForced)
   if (battleSlot && ctx.battleSystem && ctx.battleView) {
     ctx.battleSystem.place(battleSlot.col, battleSlot.row, size, itemForced.id, id)
     void ctx.battleView.addItem(id, itemForced.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
@@ -540,11 +652,17 @@ export function buyRandomBronzeToBoardOrBackpack(ctx: ShopSceneCtx, deps: BuyRan
       ctx.backpackView!.setItemTier(id, visualTier)
       ctx.drag?.refreshZone(ctx.backpackView!)
     })
-    deps.showHintToast('backpack_full_buy', '上阵区已满，已放入背包', 0xffd48f)
     console.log(`[SkillSystem] 购买(${tierForced}#${starForced})→背包 ${itemForced.name_cn} -${priced.finalPrice}G，金币: ${manager.gold}`)
   }
   deps.instanceToDefId.set(id, itemForced.id)
-  deps.setInstanceQualityLevel(id, itemForced.id, parseTierName(itemForced.starting_tier) ?? 'Bronze', deps.levelFromLegacyTierStar(tierForced, starForced))
+  const sourceLevel = deps.levelFromLegacyTierStar(sourceTier, sourceStar)
+  deps.setInstanceQualityLevel(
+    id,
+    itemForced.id,
+    bronzeOnly ? 'Bronze' : (parseTierName(itemForced.starting_tier) ?? 'Bronze'),
+    sourceLevel,
+  )
+  if (bronzeOnly) deps.forceInstanceLevel(id, sourceLevel)
   deps.instanceToPermanentDamageBonus.set(id, 0)
   deps.recordNeutralItemObtained(itemForced.id)
   deps.updateNeutralPseudoRandomCounterOnPurchase(itemForced)

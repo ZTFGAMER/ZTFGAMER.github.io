@@ -1,5 +1,693 @@
 # 大巴扎 — 开发进度记录
 
+## 验收优化追加（2026-03-12，奖励区背景扩宽适配30px间隔）
+
+- 用户反馈：三选一物品拉开间距后，奖励区底板背景没有同步扩宽。
+- 已完成：
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 新增奖励区 backdrop 绘制，宽度按“原3格宽 + 左右各30px”扩展，颜色/描边风格与网格区一致；
+    - backdrop 随奖励区位置实时刷新，并在关闭时正确清理。
+  - `src/shop/ShopScene.ts`
+    - 场景 teardown 增加 `levelQuickRewardBackdrop` 销毁，避免残留。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“奖励区背景已与30px间隔后的视觉宽度匹配”。
+
+## 验收优化追加（2026-03-12，快捷三选一池子刷新后保留）
+
+- 用户需求：快捷三选一池子在页面刷新后不应被清空，需要保留并继续选择。
+- 已完成：
+  - `src/shop/ShopSceneContext.ts`
+    - 新增可持久化字段 `levelQuickDraftSavedEntries` 与对应存档类型，专用于保存“可序列化”的快捷三选一队列条目。
+  - `src/shop/ShopStateStorage.ts`
+    - `captureShopState/applySavedShopState` 新增快捷三选一队列快照读写；
+    - 刷新后可恢复未完成的快捷三选一候选组（标题+3候选）。
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 新增队列持久化同步与恢复入口 `restoreSavedLevelQuickDraftQueue(...)`；
+    - 入队、切组、结算、清理时同步更新持久化快照并落盘。
+  - `src/shop/ShopScene.ts`
+    - 读取商店存档后自动调用快捷三选一队列恢复；
+    - 新开局路径会清空该持久化字段，避免脏数据继承。
+- 说明：当前持久化范围为“可序列化奖励队列条目”（无回调的标准奖励三选一）；依赖运行时回调的特殊条目不纳入持久化，避免刷新后语义错乱。
+- 当前阶段：等待用户验收“刷新后标准快捷三选一池子保持不丢失”。
+
+## 验收优化追加（2026-03-12，占卜师/戏法师触发时机修正）
+
+- 用户反馈：占卜师、戏法师在快捷三选一模式下“每天仅一次”判定时机错误；应在“三选一入队”时立即消耗，不应等玩家最终选择后才消耗。
+- 已完成：
+  - `src/shop/systems/ShopHeroSystem.ts`
+    - 占卜师：快捷队列入队成功后立即执行 `markHeroDailyCardRerollUsed(...)`，星星立即熄灭；
+    - 从队列选中回调中移除重复消耗，避免时机滞后。
+  - `src/shop/panels/NeutralItemPanel.ts`
+    - 戏法师：快捷队列入队成功后立即执行 `markHeroSameItemSynthesisChoiceTriggered()`，星星立即熄灭；
+    - 从队列选中回调中移除该消耗逻辑，避免变成“选择后才消耗”。
+- 交互结果：
+  - 只要占卜师/戏法师三选一成功进入队列，当天触发资格即被占用；
+  - UI 星星状态会立即更新，不再出现“已入队但仍可触发”的窗口期。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“入队即熄星、当天不可再次触发”。
+
+## 备注追加（2026-03-12，火药桶特殊实现说明）
+
+- 用户要求：补充“火药桶特殊实现”备注，便于后续维护时识别该例外口径。
+- 已完成：`src/battle/CombatEngine.ts`
+  - 在运行时伤害展示与实际结算两处都补充了注释说明：
+    - 命中“补弹 + 耗尽自毁”的物品按“自爆型支援物品”处理；
+    - 平时不打实伤，仅耗尽时自爆结算；
+    - 战斗面板可常显自爆伤害值，但不代表每次触发都造成该伤害。
+- 当前阶段：等待用户确认该备注描述是否满足团队协作需求。
+
+## 验收优化追加（2026-03-12，快捷队列触发时源/目标立即消失）
+
+- 用户反馈：戏法师/占卜师三选一出现后，原物品仍存在且可拖动；石头转化入队后目标物品未立即消失。
+- 已完成：
+  - `src/shop/panels/NeutralItemPanel.ts`
+    - 戏法师（同物合成）在快捷队列模式下：入队成功后立即移除目标物品；
+    - 各类石头（战士石/弓手石/刺客石/变化石/点金石/真钻石）在快捷队列模式下：入队成功后立即移除被转化目标；
+    - 选择后保留“奖励区拖出所选物品”流程，并在回调中执行提示与刷新。
+  - `src/shop/systems/ShopHeroSystem.ts`
+    - 占卜师（异物合成）在快捷队列模式下：入队成功后立即移除当前合成结果物品（不再可拖动）。
+  - `src/shop/ShopScene.ts`
+    - 新增 `removePlacedItemInstance(...)` 并透传给 HeroSystem，用于统一移除实例+视图+元数据并刷新拖拽区域。
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 快捷队列结算时统一触发 `onPicked` 回调（包含“保留所选物品”模式），保证占卜师/戏法师/石头等队列来源在选中后执行后置逻辑。
+- 交互结果：
+  - 戏法师：触发后“拖动者/被合成者”不再留在场上可拖动；
+  - 占卜师：触发后原合成产物不再留在场上可拖动；
+  - 石头转化：触发后目标物品立即消失，等待从奖励区选中并拖出新物品。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“触发即消失 + 不可再拖动 + 队列选择后流程正常”。
+
+## 验收优化追加（2026-03-12，自爆型物品战斗中展示伤害）
+
+- 用户反馈：自爆型物品（如火药桶）在战斗中应展示伤害值，当前未展示。
+- 已完成：`src/battle/CombatEngine.ts`
+  - 调整运行时面板伤害口径：
+    - 对“补弹 + 弹药耗尽摧毁自身”自爆型物品，战斗中始终展示其自爆伤害值；
+    - 仅修正展示，不改变实战结算逻辑（仍然只有弹药耗尽时才实际造成伤害并自毁）。
+- 当前阶段：等待用户验收“战斗中可见伤害展示，且实战仍仅耗尽触发伤害”。
+
+## 验收优化追加（2026-03-12，奖励区间隔30px并显示or）
+
+- 用户需求：奖励区三个物品之间固定间隔 30px，并在两个间隔中间显示 `or` 字样，字体风格参考“奖励区”标签。
+- 已完成：
+  - `src/common/grid/GridZone.ts`
+    - 新增 `setItemOffsetX(instanceId, offsetX)`，支持按实例设置水平偏移并兼容拖拽回弹/吸附/同步位置逻辑。
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 奖励区展示时对三件候选应用左右对称偏移，实现屏幕坐标下约 30px 间隔；
+    - 在两处间隔中心新增 `or` 文本，字号/描边风格与“奖励区”标签保持同类视觉。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“30px 间隔与 or 文案位置/样式是否满足预期”。
+
+## 验收优化追加（2026-03-12，火药桶改为仅弹药耗尽时造成伤害）
+
+- 用户反馈：火药桶应为“平时不造成攻击伤害，只在弹药耗尽时造成伤害”。
+- 已完成：`src/battle/CombatEngine.ts`
+  - 新增“弹药支援自爆型”判定（命中“为其他物品补充X发弹药 + 弹药耗尽时摧毁自身造成伤害”文案）：
+    - 常规攻击阶段不再入 `pendingHits`（平时不打伤害）；
+    - 仅在 `ammoCurrent<=0` 时进入自爆伤害结算并移除自身。
+  - 自爆伤害解析补强：
+    - 优先取“最大生命值X%”或“造成N伤害”；
+    - 若自爆行未写具体数值，则回退读取“攻击造成A|B|C伤害”作为自爆伤害值。
+  - 战斗面板实时伤害显示同步口径：
+    - 未耗尽弹药前显示 `0`；
+    - 耗尽时显示自爆伤害值。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“火药桶平时仅补弹，只有耗尽时造成伤害并自毁”。
+
+## 验收优化追加（2026-03-12，快捷三选一扩展为通用奖励队列）
+
+- 用户需求：在“升级快捷三选一”模式下，不仅升级奖励走快捷队列；占卜师/戏法师合成三选一、六类石头转化三选一、白银/黄金/钻石宝箱三选一也统一走同一快捷队列并按顺序处理。
+- 已完成：
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 快捷三选一队列升级为“通用队列条目”：支持标题、是否保留所选物品、以及选中回调（用于转化/重选类效果）；
+    - 新增导出：`isLevelQuickDraftEnabled()`、`enqueueLevelQuickDraftChoices(...)`；
+    - 选中结算时支持“非奖励型选择”：可消费拖出的候选实例并执行回调（如转化目标物品），随后自动切到下一组。
+  - `src/shop/panels/NeutralItemPanel.ts`
+    - 在快捷三选一模式下改为入队处理：
+      - 战士石/弓手石/刺客石/变化石/点金石/真钻石（目标转化）
+      - 白银宝箱/黄金宝箱/钻石宝箱（奖励三选一）
+      - 戏法师（同物合成）三选一
+    - 戏法师在入队成功后按需求“源物品立即消失”，后续从快捷队列完成选择与结算。
+  - `src/shop/systems/ShopHeroSystem.ts`
+    - 占卜师（异物合成）三选一在快捷模式下改为入快捷队列，选中后执行转化/保留与每日次数消耗。
+  - `src/shop/ShopPanelInitializer.ts`、`src/shop/ShopScene.ts`
+    - 补充并透传快捷队列能力给 Neutral/Hero 相关逻辑（启用判定 + 入队接口）。
+- 交互结果：
+  - 在快捷三选一模式开启时，以上来源统一进入同一个“奖励区”队列；
+  - 按进入顺序逐组处理，前一组未完成不会被新组覆盖；
+  - 全部队列处理完前，战斗按钮仍保持拦截。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“多来源三选一都走快捷队列、顺序处理、无覆盖、全部完成前不可战斗”。
+
+## 验收优化追加（2026-03-12，奖励区相对战斗区XY可配置）
+
+- 用户需求：希望手动调整升级奖励区位置，新增“相对战斗区 X/Y 偏移”配置。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增 `levelQuickRewardOffsetX`、`levelQuickRewardOffsetY` 配置项（px）。
+  - `data/debug_defaults.json`
+    - 新增默认值：`levelQuickRewardOffsetX=120`、`levelQuickRewardOffsetY=-360`。
+  - `src/debug/DebugPage.ts`
+    - 将上述两项接入“界面位置”分组，可在网页调试页直接调节。
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 奖励区位置计算改为：`battleView.x/y + offsetX/offsetY`（并做画布边界限制）；
+    - 新增 `refreshLevelQuickRewardLayout(ctx)`，用于奖励区显示期间实时重排。
+  - `src/shop/ui/ShopUIBuilders.ts`
+    - 配置热更新监听中接入上述两个 key，调整后即时刷新奖励区位置。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户手动微调并确认“奖励区可通过 XY 偏移精准摆位”。
+
+## 验收优化追加（2026-03-12，快捷三选一奖励队列）
+
+- 用户需求：连续升级时，新的三选一不应覆盖旧选择；需要按队列依次展示，前一组选完再显示下一组，全部选完前禁止开始战斗。
+- 已完成：`src/shop/systems/ShopRewardSystem.ts`
+  - 新增快捷三选一内存队列（按升级顺序入队），后续升级奖励不再覆盖当前正在选择的一组；
+  - 当前组被拖出并结算后，自动显示队列下一组；
+  - 仅当队列清空且当前组完成后，才关闭奖励区 overlay；
+  - 奖励区标题在存在多组待选时显示“剩余N组”，便于确认队列状态。
+- 交互结果：
+  - 连续升两级及以上时，会连续弹出多组三选一，按顺序处理；
+  - 在任意一组未完成前，奖励区持续存在，战斗按钮仍会被“请先选择升级奖励”拦截。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“多次升级三选一按队列依次显示、不会覆盖、全部选完前不能战斗”。
+
+## 验收优化追加（2026-03-12，仅青铜补双价格预览修正）
+
+- 用户反馈：规则2触发补双时，购买按钮预览仍显示原 offer 价格（如 6），但实际扣费是补双价格（如 3）。
+- 已完成：
+  - `src/shop/systems/ShopSkillSystem.ts`
+    - 抽出统一判定 `pickBronzeOnlyLowLevelOddTarget(...)`；
+    - 新增 `getBronzeOnlyForcedLowLevelPrice(ctx)`，用于对外返回补双生效时的真实基础价格。
+  - `src/shop/ShopScene.ts`
+    - `getQuickBuyMinPrice()` 与 `getQuickBuyPricePreviewLabel()` 改为优先使用 `SkillSystem.getBronzeOnlyForcedLowLevelPrice(ctx)`；
+    - 与实际购买扣费口径保持一致。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“规则2触发时，按钮预览价格与实际扣费一致（例如 3）”。
+
+## 验收优化追加（2026-03-12，升级三选一去气泡与红框区域定位）
+
+- 用户反馈：
+  - 快捷奖励区不应再有气泡背景；
+  - 标题应改为类似“上阵区”风格的简洁区域字样；
+  - 快捷奖励区应落在头像右侧、上阵区上方的红框空白区域。
+- 已完成：`src/shop/systems/ShopRewardSystem.ts`
+  - 移除快捷奖励提示气泡背景与尾巴，仅保留文字标签；
+  - 标题改为 `奖励区`，样式改为与区域标签一致（描边+同风格字号）；
+  - 快捷奖励区 Y 定位从“头像中线对齐”改为“上方空白带约束定位”：
+    - 优先放在头像右侧上方；
+    - 强制限制在上阵区上方可用带内（避免跑到过高/过低位置）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“无气泡背景 + 奖励区位置在红框区域内 + 标签风格符合预期”。
+
+## 验收优化追加（2026-03-12，规则2职业统计排除 utility）
+
+- 用户反馈：仅有 1 个低等级弓手物品时未触发补双。
+- 根因：规则2职业奇偶统计把 `utility`（如石头）也算进候选，可能抢占补双目标职业。
+- 已完成：`src/shop/systems/ShopSkillSystem.ts`
+  - 规则2计数时排除 `utility`，仅统计战士/弓手/刺客三职业的低等级奇偶；
+  - 避免被功能道具干扰补双判定。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“仅有单数低等级职业物品时会触发补双”。
+
+## 验收优化追加（2026-03-12，升级三选一右侧定位与标题缩小）
+
+- 用户反馈：快捷奖励图标样式已接近像素级，但位置应在头像右侧；“拖拽选择升级奖励”标题需更小、更接近“上阵区/背包区”字样风格。
+- 已完成：`src/shop/systems/ShopRewardSystem.ts`
+  - 快捷奖励区位置改为“头像右侧优先”：
+    - 有头像时按 `avatarBounds.right + gap` 定位，并做画布边界 clamp；
+    - 无头像时回退到背包区居中逻辑。
+  - 快捷奖励区 Y 改为与头像中线对齐（有头像时），保证“在头像右侧”视觉关系稳定。
+  - 气泡标题字号改为基于 `gridZoneLabelFontSize` 的缩放值（约 0.8x），并下调字重与边框线宽，整体更贴近区域标签风格。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“快捷区是否稳定在头像右侧、标题大小是否符合预期”。
+
+## 验收优化追加（2026-03-12，仅青铜模式等级被压到Lv1修复）
+
+- 用户反馈：仅青铜模式下基础购买“总是 Lv1”。
+- 根因定位：`forceBuyArchetype` 分支里等级来源错误地使用了“青铜强制 tier/star”，导致该分支等级被固定为 1。
+- 已完成：`src/shop/systems/ShopSkillSystem.ts`
+  - `forceBuyArchetype` 分支改为使用 `sourceTier/sourceStar` 计算等级桶；
+  - 保持其余规则不变（仅青铜改写、重复规避、职业奇偶补双）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“仅青铜模式下等级不再被固定为Lv1”。
+
+## 验收优化追加（2026-03-12，选中即显示合成/转化提示）
+
+- 用户需求：当前仅在拖拽物品时才显示“可合成/可转化”提示；希望点击选中物品时也显示，取消选中时取消显示（拖拽中依然保持显示）。
+- 已完成：
+  - `src/shop/ui/ShopUIBuilders.ts`
+    - 战斗区/背包区点击选中物品时，立即触发目标提示：
+      - 若为目标石（转化类），调用中立石目标提示刷新；
+      - 否则调用合成目标提示刷新（排除自身实例）。
+    - 点击商店槽位时，清除已有合成/转化提示，避免残留。
+  - `src/shop/systems/ShopDragSystem.ts`
+    - `clearSelection(...)` 补充统一清理合成/转化提示，确保“取消选中即取消提示”；
+    - 不影响现有拖拽链路，拖拽期间提示仍按原逻辑实时显示。
+  - `src/shop/ShopScene.ts`
+    - `makeButtonRowUICallbacks()` 补充中立石提示刷新回调透传。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“点击选中即显示提示、取消选中即取消提示、拖拽中提示逻辑不变”。
+
+## 验收优化追加（2026-03-12，升级三选一像素级样式对齐）
+
+- 用户反馈：快捷三选一与主网格在尺寸、描边、角标样式上仍明显不一致。
+- 已完成：`src/shop/systems/ShopRewardSystem.ts`
+  - 快捷奖励区样式改为每次打开时同步使用当前主网格调试参数：
+    - `scale` 对齐战斗/背包当前缩放；
+    - `tierBorderWidth / gridItemCornerRadius / gridCellBorderWidth` 与主网格一致；
+    - 角标与徽标参数（字体、描边、偏移）与主网格一致；
+    - “按职业着色”开关同步到快捷区。
+  - 快捷奖励区定位改为按缩放后的背包网格列宽居中（`CELL_SIZE * scale`），避免缩放场景下 x 轴错位。
+  - 气泡锚点改为基于快捷区实时宽度计算（随 scale 变化），避免提示框与卡槽脱节。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“快捷区与主网格的尺寸/描边/角标是否达到像素级一致”。
+
+## 验收优化追加（2026-03-12，仅青铜规则2按职业奇偶补双）
+
+- 用户修正规则2：低等级补双不按“单个物品”判断，改为“该等级下该职业数量是否为单数”；若该职业已有可合成对（偶数）则不补。
+- 已完成：`src/shop/systems/ShopSkillSystem.ts`
+  - 仅青铜模式下，统计“来源等级”在场物品：
+    - 同时维护 defId 计数（规则1）与职业计数（规则2）。
+  - 规则2触发条件改为：`sourceLevel < dayMinLevel` 且 `sourceArchetype` 计数为奇数；
+  - 触发补双时，从青铜池优先选同职业物品补齐；否则进入规则1（重复规避）分支。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“有两件可合成（职业偶数）时不再错误补双；职业单数时才补双”。
+
+## 验收优化追加（2026-03-12，升级三选一换位禁入与像素对齐）
+
+- 用户反馈：
+  - 快捷三选一区域与主网格仍有明显像素不对齐；
+  - 从快捷奖励拖拽到已占用格会触发换位，把战斗/背包物品挤进快捷区（不符合“只能拖出不能拖入”）。
+- 已完成：
+  - `src/shop/ui/ShopBattleZoneBuilder.ts`
+    - `onDropCellLocked` 新增“快捷奖励来源拖拽”的占位锁定：
+      - 若目标战斗/背包格不可直接放置（已占用/不可放），直接判定锁定；
+      - 拖拽高亮改为红色，松手后按 DragController 原生逻辑回弹到快捷区；
+      - 从入口侧阻断换位/挤出链路，避免普通物品被交换进快捷奖励区。
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 快捷奖励区隐藏区域标题（`setLabelVisible(false)`），减少视觉噪声；
+    - 快捷奖励区 X 改为基于背包列数的居中计算，Y 改为基于战斗区的相对定位，避免固定坐标造成的错位。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“占用格拖拽红框+回弹、普通物品不再进入快捷区、快捷区位置与主网格像素对齐”。
+
+## 验收优化追加（2026-03-12，仅青铜重复规避加强）
+
+- 用户反馈：仅青铜模式下仍连续刷新同一物品（如短剑），重复规避不够强。
+- 已完成：`src/shop/systems/ShopSkillSystem.ts`
+  - 仅青铜模式、且非“低级补双”分支下，改为按“当前来源等级的场上数量”做最小计数优先：
+    - 若当前候选物品数量已 ≥2，优先从数量更低的物品中选；
+    - 再从候选中取“该等级场上数量最少”的物品集合；
+    - 最后仅在该最小集合内再做同职业优先。
+  - 结果：在有其它可选物品时，不会优先连续刷出已堆高数量的同物品。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“未补双阶段下，同等级重复物品刷新显著降低，优先补齐其它物品”。
+
+## 验收优化追加（2026-03-12，升级三选一详情/层级对齐）
+
+- 用户继续要求：在不阻断商店操作的前提下，进一步对齐快捷三选一与原生拖拽体验（详情展示、选中反馈、遮挡关系）。
+- 已完成：
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 快捷奖励格子点击后，补齐与原生选中一致的状态流：清空战斗/背包选中、设置奖励格选中、清空商店槽选中、禁用出售动作；
+    - 详情展示改用 `getDefaultItemInfoMode()`，与商店默认详情模式对齐；
+    - 快捷奖励区层级从 `zIndex=25` 下调到 `18`，提示气泡层级从 `24` 下调到 `19`，保证不压住 `sellPopup(zIndex=20)` 的详情区域；
+    - 清理快捷奖励 overlay 时同步清空奖励格选中态，避免残留绿框。
+  - `src/shop/systems/ShopDragSystem.ts`
+    - `clearSelection(...)` 增加 `ctx.levelQuickRewardView?.setSelected(null)`，统一清除所有区域选中态。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户继续验收“快捷奖励点击后详情是否稳定显示、绿框反馈是否一致、是否仍遮挡详情区”。
+
+## 验收优化追加（2026-03-12，仅青铜购买规则增强）
+
+- 用户新增规则（仅在“基础购买仅青铜”开启时生效）：
+  1) 若场上某个“当前等级”的同物品数量 ≥ 2，尽可能不再刷新该物品（优先同等级其他物品）；
+  2) 若场上存在“单数件且等级低于当日最低刷新等级”的物品，必须先补成双数，再回到当天等级逻辑。
+- 已完成：`src/shop/systems/ShopSkillSystem.ts`
+  - 规则 2 优先：仅青铜模式下，若本次来源等级 `< 当日最低等级`，保留原候选物品用于补双，不做青铜池改写；
+  - 规则 1 次之：仅青铜模式下，青铜池选物品时统计“当前来源等级”在场物品计数，对数量 ≥2 的 defId 做优先避让；
+  - 保持原有口径不变：等级仍来自原等级桶、品质仍固定青铜、价格仍按原 offer。
+- 说明：
+  - “首购职业限制”在当前仓库已为关闭状态（`isFirstPurchaseLockedToStarterClass() => false`），本轮无需额外改动。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“仅青铜模式下，补双优先 + 同等级重复规避”是否符合预期。
+
+## 验收优化追加（2026-03-12，升级三选一区域化与拖拽体验对齐）
+
+- 用户反馈：快捷三选一仍与上阵/背包拖拽体验存在差异（拾取判定、合成提示、遮挡、气泡尾巴、交互阻断）。
+- 本轮调整目标：把三选一改造成“只能拖出、不能拖入”的额外背包区，尽量复用现有拖拽链路。
+- 已完成：
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 快捷三选一从“自定义卡片拖拽”改为“临时 GridZone + GridSystem（3x1）”；
+    - 奖励物品按普通格子物品方式渲染（边框/角标/详情口径与现有格子一致）；
+    - 使用现有 DragController 区域拖拽链路，拖到上阵/背包时沿用原判定与高亮反馈；
+    - 新增 `tryFinalizeLevelQuickRewardPick(ctx)`：检测到奖励区物品被成功拖出后，自动结算并清理剩余候选。
+  - `src/shop/ui/ShopBattleZoneBuilder.ts`
+    - `onDropCellLocked` 增加对升级奖励区的锁定（禁止拖入，符合“只能拖出”）；
+    - 奖励区来源拖拽时禁用“丢弃售卖”入口；
+    - 拖拽结束回调接入 `tryFinalizeLevelQuickRewardPick()`。
+  - `src/shop/ShopSceneContext.ts`
+    - 新增快捷奖励区运行态字段：`levelQuickRewardView/system/instanceIds/zoneAdded`。
+  - `src/shop/ShopScene.ts`
+    - 场景退出时补全快捷奖励区资源释放；
+    - 去掉“快捷奖励 overlay 导致底部主按钮全隐藏”的逻辑（保留战斗按钮专门拦截提示）。
+  - `src/shop/systems/ShopHeroSystem.ts`
+    - 引导卡边框着色改为遵循“职业边框开关”口径（开=职业色，关=品质色）。
+- 视觉与交互结果：
+  - 三选一显示为独立小背包区，不再用悬浮卡片遮挡主要详情区；
+  - 气泡尾巴从角色头像方向指向奖励提示区；
+  - 仍支持点击候选看详情、拖拽到上阵/背包放置；
+  - 未完成选择前，战斗按钮提示“请先选择升级奖励”。
+- 验证：`npm run build` 通过。
+- 自主调试记录：已创建会话目录 `agent-sessions/202603121656-升级快捷三选一交互迭`。
+- 当前阶段：等待用户继续验收“拖拽手感、合成提示、拾取高亮、遮挡与气泡位置”并给出下一轮微调意见。
+
+## 验收优化追加（2026-03-12，升级快捷三选一交互对齐）
+
+- 用户反馈：快捷三选一交互与商店拖拽手感不一致，且遮挡上阵区/限制过强。
+- 已完成：
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 交互改为“非阻断商店操作”：快捷奖励出现时，仍可点击/拖拽上阵区与背包已有物品；
+    - 气泡位置上移到上阵区上方，文案改为“拖拽选择升级奖励”，避免遮挡主操作区；
+    - 三选一卡片拖拽接入与商店拖拽同风格的区域高亮（上阵区/背包可放置提示）；
+    - 卡片点击继续可看详情，拖拽失败回弹。
+  - `src/shop/ui/ShopUIBuilders.ts`
+    - 战斗按钮新增兜底：若存在快捷三选一未处理，提示“请先选择升级奖励”，禁止进入战斗。
+  - `src/shop/systems/ShopHeroSystem.ts`
+    - 快捷三选一卡片边框着色口径与现有“职业边框开关”对齐（开启时按职业色，关闭时按品质色）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“拖拽手感/判定、非阻断操作、战斗拦截提示、视觉一致性”是否达标。
+
+## 验收优化追加（2026-03-12，升级快捷三选一）
+
+- 用户需求：
+  - 在“玩法数值”新增 `升级快捷三选一` 开关；
+  - 开启后升级不走旧奖励，而是弹出英雄气泡三选一，拖拽选牌到上阵区/背包区；
+  - 关闭后恢复旧升级奖励；
+  - 若 `升级奖励开关=false`，则无任何升级奖励。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增 `gameplayLevelQuickDraft`（0/1）。
+  - `data/debug_defaults.json`
+    - 新增默认值 `gameplayLevelQuickDraft: 0`。
+  - `src/debug/DebugPage.ts`
+    - 将 `gameplayLevelQuickDraft` 接入“玩法数值”分组。
+  - `data/game_config.json`
+    - `shop_rules` 新增 `levelQuickDraftLevelWeightsByPlayerLevel`（按玩家等级 1~25 对应 lv2~lv7 权重）。
+  - `src/common/items/ItemDef.ts`
+    - `shopRules` 类型补充 `levelQuickDraftLevelWeightsByPlayerLevel?: number[][]`。
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 升级奖励入口新增逻辑：
+      - `gameplayLevelRewardPreset=0` => 直接无奖励；
+      - `gameplayLevelQuickDraft=1` => 弹出快捷三选一气泡；
+      - 否则走原 `rollLevelRewardDefIds` 旧路径。
+    - 新增快捷三选一气泡与拖拽结算：
+      - 展示 3 张候选物品卡（同格子风格），点击可看详情；
+      - 拖拽到上阵区/背包区时尝试放入对应区域；
+      - 放置成功即结算本次三选一并关闭气泡。
+  - `src/shop/ShopSceneContext.ts`、`src/shop/ShopScene.ts`
+    - 新增并接入 `levelQuickRewardOverlay` 生命周期与场景退出清理。
+- 验证：`npm run build` 通过。
+- 当前阶段：该功能进入验收阶段，等待用户确认“开关开/关与拖拽选牌流程符合预期”。
+
+## 验收优化追加（2026-03-12，商店玩家信息新增 X 偏移配置）
+
+- 用户需求：给商店玩家信息增加一个 X 偏移配置。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增 `shopPlayerStatusX`（默认 `0`，范围 `-320~320`）。
+  - `src/debug/DebugPage.ts`
+    - 将 `shopPlayerStatusX` 归入“界面位置”参数分组。
+  - `src/shop/ui/ShopUIBuilders.ts`
+    - 初始化与布局热更新读取 `shopPlayerStatusX`，驱动 `playerStatusCon.x`。
+  - `src/shop/ui/PlayerStatusUI.ts`
+    - 刷新玩家信息时同步读取 `shopPlayerStatusX`。
+  - `data/debug_defaults.json`
+    - 新增默认值 `shopPlayerStatusX: 0`。
+- 验证：`npm run build` 通过。
+- 当前阶段：该配置能力进入验收阶段，等待用户确认“调节 X 偏移后商店玩家信息可左右移动”。
+
+## 验收优化追加（2026-03-12，Debug 页入口大小写与玩法分组修复）
+
+- 用户反馈：5 个玩法项仍显示在“拖拽参数”。
+- 根因：
+  - `debug.html` 入口脚本路径使用了 `/src/debug/debugPage.ts`（小写），与实际文件 `DebugPage.ts` 大小写不一致；
+  - 同时 `gameplayBaseBuyBronzeOnly` 未纳入玩法数值数组，存在落入拖拽分组风险。
+- 已完成：
+  - `debug.html`
+    - 入口改为 `/src/debug/DebugPage.ts`，与实际文件一致，避免热更新/缓存命中旧模块；
+  - `src/debug/DebugPage.ts`
+    - 将 `gameplayBaseBuyBronzeOnly` 加入 `GAMEPLAY_KEYS`；
+    - 保留并强化 `enforceGameplaySectionPlacement()`，渲染后强制归位并清理 `params-drag` 中全部 `gameplay*` 行；
+    - 增加一次 `setTimeout(..., 0)` 兜底归位，覆盖初始化顺序差异。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“背包行数/背包列数/升级奖励开关/物品框按职业着色/基础购买仅青铜”仅在玩法数值分页显示。
+
+## 验收优化追加（2026-03-12，玩法项分页最终兜底）
+
+- 用户反馈：5 个玩法项仍出现在“拖拽参数”。
+- 已完成：`src/debug/DebugPage.ts`
+  - 所有参数行统一写入 `data-key`；
+  - 新增 `enforceGameplaySectionPlacement()`：渲染完成后扫描全页，将所有 `gameplay*` 参数强制迁移到 `params-gameplay` 并去重；
+  - 对 `params-drag` 再次清理 `gameplay*` 行，防止兜底逻辑或历史缓存导致重复。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在最新本地构建中确认“背包行数/背包列数/升级奖励开关/物品框按职业着色/基础购买仅青铜”仅显示在玩法数值分页。
+
+## 验收优化追加（2026-03-12，只买青铜显示修正）
+
+- 用户确认：详情中等级正确，问题出在购买后格子角标显示。
+- 根因：购买时传给格子视图的 `visualTier` 使用了青铜强制值，导致角标先显示 Lv1；后续合成触发全量刷新才恢复。
+- 已完成：`src/shop/systems/ShopSkillSystem.ts`
+  - 只买青铜模式下，格子显示层改为使用“原等级桶的 tier/star”来计算角标等级；
+  - 同时保留“物品从青铜池选 + 品质口径青铜”的逻辑不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“购买后立即显示正确等级（无需先合成）”。
+
+## 验收优化追加（2026-03-12，只买青铜逻辑修正：青铜池选物品）
+
+- 用户反馈：当前实现会走高等级桶随机，但显示等级被压成 Lv1；期望是“等级桶照旧，具体物品从青铜池随机”。
+- 已完成：
+  - `src/shop/systems/ShopSkillSystem.ts`
+    - 开关开启时：
+      - 等级来源继续使用原等级桶（source tier/star）；
+      - 具体物品改为从 **Lv1 青铜池** 随机（优先同职业，不足则青铜池兜底）；
+      - 品质显示保持青铜；
+      - 通过强制回写实例 level，避免被 quality-range 夹成 Lv1。
+  - `src/shop/systems/ShopInstanceRegistry.ts`
+    - 新增 `forceInstanceLevel(...)`，用于在特殊模式下保持实例等级。
+  - `src/shop/ShopScene.ts`
+    - 基础购买回调接入 `forceInstanceLevel(...)`。
+- 验证：`npm run build` 通过。
+- 当前阶段：该修正进入验收阶段，等待用户确认“等级桶不变，物品来自青铜池，等级显示正确”。
+
+## 约定更新（2026-03-12，Vercel 发布改为用户显式触发）
+
+- 用户要求：不要自动更新 Vercel，只有用户明确要求时才发布。
+- 已完成：`CLAUDE.md`
+  - 新增“发布规则”：仅在用户明确提出“更新/发布/上传 Vercel”时，才执行 `vercel --prod --yes`；
+  - 未收到明确发布指令时，默认只做本地修改与本地验证。
+- 当前阶段：该约定更新进入验收阶段，等待用户确认“后续不再自动发布 Vercel”。
+
+## 验收优化追加（2026-03-12，玩法分页强制归位）
+
+- 用户反馈：4 个玩法项仍在“拖拽参数”中出现。
+- 已完成：`src/debug/DebugPage.ts`
+  - 给所有参数行写入 `data-key`（数值/勾选/颜色三类统一）；
+  - 新增 `enforceGameplaySectionPlacement()`：页面渲染完成后，强制将所有 `gameplay*` 项归位到 `params-gameplay`，并删除重复行；
+  - 对历史分组误吸入、缓存导致的重复渲染增加兜底修正。
+- 发布：已重新部署 Vercel 生产 `https://bigbazzar.vercel.app`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户强刷后确认“4 个玩法项只在玩法数值出现，不再出现在拖拽参数”。
+
+## 验收优化追加（2026-03-12，基础购买仅青铜口径修正）
+
+- 用户澄清："只买青铜" 的含义是“等级仍按原配置走，只有品质固定青铜”。
+- 已完成：`src/shop/systems/ShopSkillSystem.ts`
+  - 开关开启时：
+    - 保留原购买池给出的等级来源（tier/star）用于等级计算；
+    - 实例品质强制写为 `Bronze`；
+    - 价格恢复按原购买池价格计算；
+  - 即：等级不被降到 Lv1，仅品质维度固定为青铜。
+- 验证：`npm run build` 通过。
+- 当前阶段：该口径修正进入验收阶段，等待用户确认“开启时等级仍随原配置，品质固定青铜”。
+
+## 验收优化追加（2026-03-12，基础购买仅青铜开关）
+
+- 用户需求：在网页“玩法参数”中新增开关，使商店基础购买只能买到青铜级物品，且默认开启。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增开关 `gameplayBaseBuyBronzeOnly`，默认值 `1`（开启）。
+  - `src/debug/DebugPage.ts`
+    - 将该开关加入玩法参数复选项分组。
+  - `src/shop/systems/ShopSkillSystem.ts`
+    - 基础购买流程接入该开关：开启时强制按 `Bronze#1` 购买与显示，并按青铜价格结算。
+  - `data/debug_defaults.json`
+    - 新增默认值 `gameplayBaseBuyBronzeOnly: 1`。
+- 验证：`npm run build` 通过。
+- 当前阶段：该改动进入验收阶段，等待用户确认“开关开启时基础购买仅出青铜，关闭后恢复原购买池品质”。
+
+## 验收优化追加（2026-03-12，玩法分页线上同步修复）
+
+- 用户反馈：4 个玩法项仍显示在“拖拽参数”中。
+- 根因：调试页 Drag 分组存在兜底吸入逻辑，线上旧 bundle 仍保留重复分组表现。
+- 已完成：
+  - `src/debug/DebugPage.ts`
+    - 新增 `FORCE_GAMEPLAY_KEYS`；
+    - `DRAG_KEYS` 过滤增加 `!FORCE_GAMEPLAY_KEYS.has(key)` 与 `!key.startsWith('gameplay')`；
+    - Drag 渲染循环再次防守：命中 `FORCE_GAMEPLAY_KEYS` 直接跳过。
+  - 已重新部署 Vercel 生产：`https://bigbazzar.vercel.app`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户强刷后确认“背包行数/背包列数/升级奖励开关/物品框按职业着色”仅在“玩法数值”分页出现。
+
+## 验收优化追加（2026-03-12，玩法分页去重修正）
+
+- 用户反馈：4 个玩法项仍出现在非“玩法数值”分页。
+- 已完成：`src/debug/DebugPage.ts`
+  - `DRAG_KEYS` 过滤新增 `!key.startsWith('gameplay')`，强制所有 `gameplay*` 项只在“玩法数值”分页渲染；
+  - 避免同一配置项被 Drag 分组重复吸入，导致看起来“没进玩法分页”。
+- 验证：`npm run build` 通过。
+- 当前阶段：该分组修正进入验收阶段，等待用户确认“4 个玩法项仅在玩法数值分页显示”。
+
+## 验收优化追加（2026-03-12，升级奖励改为 true/false 开关）
+
+- 用户需求：升级奖励项只保留 true/false；true 走奖励表，false 不给奖励。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - `gameplayLevelRewardPreset` 语义改为布尔开关（0/1）：
+      - `1`=按原升级奖励表发放；
+      - `0`=升级不发放任何奖励。
+  - `data/debug_defaults.json`
+    - 默认值改为 `1`（保持原行为）。
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - `handleLevelReward(...)` 新增开关判断：关闭时直接跳过奖励发放。
+  - `src/shop/panels/NeutralItemPanel.ts`
+    - 回退此前“多预设覆盖基础奖励项”逻辑，恢复仅使用原固定奖励表。
+- 验证：`npm run build` 通过。
+- 当前阶段：该开关化改动进入验收阶段，等待用户确认“true 有奖励、false 无奖励”。
+
+## 验收优化追加（2026-03-12，英雄详情生命值改为战斗生命）
+
+- 用户反馈：英雄详情中的生命值不应显示红心（局外生命），应显示战斗生命。
+- 已完成：`src/shop/systems/ShopHeroSystem.ts`
+  - 英雄详情标题中的生命值改为“战斗生命值”口径：
+    - 基于玩家等级的 `getPlayerMaxLifeByLevel(level)`；
+    - 若为继承者（`hero10`），同步应用 `+30%` 生命加成；
+  - 标题展示为：`英雄名  LvX  生命Y`（不再显示红心 `current/max`）。
+- 验证：`npm run build` 通过。
+- 当前阶段：该修正进入验收阶段，等待用户确认“英雄详情生命值已与战斗生命口径一致”。
+
+## 验收优化追加（2026-03-12，玩法项分组调整）
+
+- 用户需求：将“背包行数/列数、升级奖励基础项、物品框按职业着色”归到同一“玩法数值”分类下。
+- 已完成：`src/debug/DebugPage.ts`
+  - 将 `gameplayItemFrameColorByArchetype` 从 `GAMEPLAY_CHECKBOX_KEYS` 移入 `GAMEPLAY_KEYS`；
+  - 现与 `gameplayBackpackRows`、`gameplayBackpackCols`、`gameplayLevelRewardPreset` 同组显示为数值项。
+- 当前阶段：该分组调整进入验收阶段，等待用户确认“这几个选项都出现在玩法数值分类”。
+
+## 验收优化追加（2026-03-12，玩家头像Y改为相对战斗区偏移）
+
+- 用户需求：商店中英雄头像位置的 Y 配置改为“相对于战斗区”的偏移；修改战斗区位置时头像跟随变化。
+- 已完成：
+  - `src/shop/ui/PlayerStatusUI.ts`：非 PVP 布局改为 `playerStatusCon.y = battleZoneY + shopPlayerStatusY`。
+  - `src/shop/ui/ShopUIBuilders.ts`：初始化时同步使用相对逻辑，避免首帧偏差。
+  - `src/config/debugConfig.ts`：`shopPlayerStatusY` 文案改为“Y 偏移”，并调整默认值与范围（默认 `-270`，支持负偏移）。
+  - `data/debug_defaults.json`：`shopPlayerStatusY` 默认值同步为 `-270`。
+- 当前阶段：该布局逻辑进入验收阶段，等待用户确认“移动战斗区后玩家头像会保持相对偏移并同步移动”。
+
+## 验收优化追加（2026-03-12，英雄详情显示等级与当前生命值）
+
+- 用户需求：查看英雄详情时，在英雄名称后显示“当前等级”和“当前生命值”。
+- 已完成：`src/shop/systems/ShopHeroSystem.ts`
+  - 英雄被动详情弹窗标题改为：`英雄名  LvX  生命当前/上限`；
+  - 等级读取玩家进度（`getPlayerProgressState`）；
+  - 生命值按模式读取：
+    - PVE 读取 `getLifeState()`；
+    - PVP 读取 `PvpContext` 的当前 HP/初始 HP。
+- 验证：`npm run build` 通过。
+- 当前阶段：该改动进入验收阶段，等待用户确认“英雄详情标题中的等级与生命值显示符合预期”。
+
+## 验收优化追加（2026-03-12，升级奖励支持在线配置）
+
+- 用户需求：希望在网页在线配置中“可选择玩家升级时发放的奖励”。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增玩法参数 `gameplayLevelRewardPreset`（0~7）：
+      - `0`=默认奖励表；
+      - `1`=白银宝箱；`2`=青铜卷轴；`3`=白银卷轴；
+      - `4`=黄金宝箱；`5`=黄金卷轴；`6`=钻石宝箱；
+      - `7`=无基础项（仅保留随机转化石奖励）。
+  - `src/debug/DebugPage.ts`
+    - 将该参数接入“玩法参数”分组，可在网页直接调节。
+  - `src/shop/panels/NeutralItemPanel.ts`
+    - 升级奖励生成逻辑接入 `gameplayLevelRewardPreset`；
+    - 当值为 `0` 时继续走原本分级奖励表；其余值按配置覆盖“基础奖励项”。
+  - `data/debug_defaults.json`
+    - 新增默认值 `gameplayLevelRewardPreset: 0`（保持旧逻辑）。
+- 验证：`npm run build` 通过。
+- 当前阶段：该能力进入验收阶段，等待用户确认“在线配置改值后，升级奖励按所选预设发放”。
+
+## 验收优化追加（2026-03-12，商店/战斗背景图分离）
+
+- 用户需求：商店界面使用 `background2.png`，战斗中继续使用原 `background.png`。
+- 已完成：`src/main.ts`
+  - 全局背景层保留默认背景 `background.png`；
+  - 额外加载商店背景 `background2.png`；
+  - 监听 `game:scene_change`，进入 `shop` 时切换 `background2.png`，其余场景回到 `background.png`；
+  - 若 `background2.png` 加载失败，自动回退默认背景并输出 warning。
+- 验证：`npm run build` 通过。
+- 当前阶段：该背景切换进入验收阶段，等待用户确认“商店=background2，战斗=background”。
+
+## 验收优化追加（2026-03-12，新增“物品框按职业着色”开关）
+
+- 用户需求：增加网页可配置选项；开启后商店与战斗中的物品框按职业色显示（中立也按中立色），且“职业+等级”改为仅显示等级，中立不显示。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增开关 `gameplayItemFrameColorByArchetype`（调试页可配置）。
+  - `src/debug/DebugPage.ts`
+    - 将该开关加入“玩法参数”复选项分组。
+  - `src/common/grid/GridZone.ts`
+    - 新增 `setItemFrameUseArchetypeColor(...)`；
+    - 物品框支持按职业色绘制（战士/弓手/刺客/中立）；
+    - 开关开启时：等级角标文案改为仅等级，中立不显示；
+    - 开关开启时：顶部职业角标改为仅等级，中立不显示。
+  - `src/shop/ui/ShopPanelView.ts`
+    - 商店卡片物品框支持按职业色绘制（开关控制）。
+  - `src/shop/ui/ShopDebugLayout.ts`
+    - 布局/文本刷新时同步下发该开关到商店与网格视图。
+  - `src/shop/ui/ShopUIBuilders.ts`
+    - Debug 热更新监听加入该开关，页面切换时实时生效。
+  - `src/battle/BattleScene.ts`
+    - 战斗场景网格样式应用中接入该开关。
+- 验证：`npm run build` 通过。
+- 当前阶段：该改动进入验收阶段，等待用户确认“开关开启/关闭下商店与战斗显示均符合口径”。
+
+## 约定更新（2026-03-12，Notebook 询问改为用户触发）
+
+- 用户需求：执行新需求时不要主动询问 Notebook，只有用户主动要求时再询问。
+- 已完成：`CLAUDE.md`
+  - 开发与 Debug 流程新增“Notebook 询问触发规则（最高优先）”；
+  - 技术方案流程改为“默认可直接实施，用户要求时再走主程确认”；
+  - 代码 Review 改为“仅用户明确要求主程 Review 时执行”；
+  - 设计确认改为“仅用户明确要求设计确认时才询问设计师 Notebook”。
+- 当前阶段：该工作约定更新进入验收阶段，等待用户确认“后续默认不主动询问 Notebook”。
+
+## 验收优化追加（2026-03-12，新增 Toast Y 偏移配置）
+
+- 用户需求：提供可配置的 Toast Y 偏移值。
+- 已完成：
+  - `src/config/debugConfig.ts`：新增参数 `toastOffsetY`（`-500~500px`，默认 `0`）。
+  - `src/debug/debugPage.ts`：将 `toastOffsetY` 接入“Toast 显示”分组，支持网页滑块调整。
+  - `src/shop/ui/ShopToastSystem.ts`：Toast 纵向位置改为“居中 + `toastOffsetY`”。
+  - `data/debug_defaults.json`：新增默认值 `toastOffsetY: 0`。
+- 当前阶段：该配置能力进入验收阶段，等待用户确认“调节 toastOffsetY 后提示框可按预期上下偏移”。
+
+## 验收优化追加（2026-03-12，移除“上阵区已满，已放入背包”提示-补全商店链路）
+
+- 用户需求：去掉 toast 文案“上阵区已满，已放入背包”。
+- 已完成：
+  - `src/shop/systems/ShopSkillSystem.ts`：移除技能系统购买落背包时的该 toast；
+  - `src/shop/panels/SpecialShopPanel.ts`：移除特殊商店购买落背包时的该 toast。
+- 说明：仅移除提示，不影响“上阵区满时自动放入背包”的落位逻辑。
+- 当前阶段：该优化进入验收阶段，等待用户确认“购买落背包时不再弹该提示（普通/特殊商店均生效）”。
+
 ## CombatEngine.ts P1 拆分重构（2026-03-12，已完成）
 
 ### 完成内容
@@ -13664,3 +14352,26 @@ ShopSceneContext.ts、ShopStateStorage.ts、SynthesisLogic.ts、NeutralItemPanel
    - 已清空（阶段2.5 全部完成）
 3. **阶段 3：战斗引擎骨架**
    - CombatEngine（纯逻辑）+ CombatScene（表现层）+ 事件流
+
+### 本次对话追加（2026-03-12，网页可配置背包行列）
+
+- 用户需求：希望在网页调试页中直接配置背包格数（行数、列数）。
+- 主程沟通：尝试调用 NotebookLM 主程确认方案，但当前鉴权过期（Authentication expired or invalid），本轮按最小侵入方案先落地。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增玩法数值项：
+      - `gameplayBackpackRows`（1~6，默认 2）
+      - `gameplayBackpackCols`（3~6，默认 6）
+    - 说明文案标注“修改后下次进入商店场景生效”。
+  - `src/debug/DebugPage.ts`
+    - 将以上两个参数接入“玩法数值”分组，支持网页直接调节。
+  - `data/debug_defaults.json`
+    - 新增默认值：`gameplayBackpackRows=2`、`gameplayBackpackCols=6`。
+  - `src/shop/ui/ShopBattleZoneBuilder.ts`
+    - 背包网格初始化改为读取调试配置：
+      - `GridSystem(backpackCols, backpackRows)`
+      - `GridZone('背包', backpackCols, backpackCols, backpackRows)`
+  - `src/shop/ui/ShopDebugLayout.ts`
+    - 小地图宽度改为按当前背包列数动态计算，避免列数变化后按钮居中偏移。
+- 验证：`npm run build` 通过。
+- 当前阶段：该功能进入验收阶段，等待用户确认“网页玩法项可调背包行列且背包网格按配置创建”。

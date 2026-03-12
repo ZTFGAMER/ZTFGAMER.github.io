@@ -50,7 +50,8 @@ import {
   instanceToDefId,
   instanceToTier, instanceToPermanentDamageBonus,
   clearAllInstanceMaps,
-  setInstanceQualityLevel, getInstanceLevel,
+  removeInstanceMeta,
+  setInstanceQualityLevel, forceInstanceLevel, getInstanceLevel,
   getInstanceTier, getInstanceTierStar,
   levelFromLegacyTierStar,
 } from './systems/ShopInstanceRegistry'
@@ -255,6 +256,9 @@ function tryRunHeroCrossSynthesisReroll(stage: Container, synth: SynthesizeResul
   return HeroSystem.tryRunHeroCrossSynthesisReroll(ctx, stage, synth, {
     collectPoolCandidatesByLevel: (lv) => collectPoolCandidatesByLevel(lv),
     showNeutralChoiceOverlay: (s, t, c, onC, m) => showNeutralChoiceOverlay(s, t, c, onC, m),
+    isLevelQuickDraftEnabled: () => RewardSystem.isLevelQuickDraftEnabled(),
+    enqueueLevelQuickDraftChoices: (title, choices, opts) => RewardSystem.enqueueLevelQuickDraftChoices(ctx, title, choices, opts),
+    removePlacedItemInstance: (instanceId, zone) => removePlacedItemInstance(instanceId, zone, ctx),
     transformPlacedItemKeepLevelTo: (id, z, it, kl) => transformPlacedItemKeepLevelTo(id, z, it, kl),
     setInstanceQualityLevel: (id, defId, q, lv) => setInstanceQualityLevel(id, defId, q, lv),
     applyInstanceTierVisuals: () => applyInstanceTierVisuals(),
@@ -266,6 +270,19 @@ function tryRunHeroCrossSynthesisReroll(stage: Container, synth: SynthesizeResul
     tierStarLevelIndex: (t, s) => tierStarLevelIndex(t, s),
     pickRandomElements: (list, count) => pickRandomElements(list, count),
   })
+}
+
+function removePlacedItemInstance(instanceId: string, zone: 'battle' | 'backpack', ctx: ShopSceneCtx = _ctx): boolean {
+  const system = zone === 'battle' ? ctx.battleSystem : ctx.backpackSystem
+  const view = zone === 'battle' ? ctx.battleView : ctx.backpackView
+  if (!system || !view) return false
+  const it = system.getItem(instanceId)
+  if (!it) return false
+  system.remove(instanceId)
+  view.removeItem(instanceId)
+  removeInstanceMeta(instanceId)
+  ctx.drag?.refreshZone(view)
+  return true
 }
 
 function toggleHeroPassiveDetailPopup(ctx: ShopSceneCtx = _ctx): void {
@@ -885,6 +902,7 @@ function makeButtonRowUICallbacks(): ButtonRowUICallbacks {
     hideSkillDetailPopup: () => skillDraftPanel?.hideSkillDetailPopup(),
     refreshBattlePassiveStatBadges: (showJump) => refreshBattlePassiveStatBadges(showJump),
     handleSpecialShopBackpackItemTap: (id, kind) => handleSpecialShopBackpackItemTap(id, kind),
+    refreshNeutralStoneGuideArrows: (sourceDef, excludeId) => refreshNeutralStoneGuideArrows(sourceDef, excludeId),
     dragDeps: makeShopDragDeps(),
     debugLayoutCallbacks: makeDebugLayoutCallbacks(),
   }
@@ -898,6 +916,7 @@ function makeBattleZoneUICallbacks(): BattleZoneUICallbacks {
     clearSelection: () => clearSelection(),
     grantHeroDiscardSameLevelReward: (defId, level) => grantHeroDiscardSameLevelReward(defId, level),
     checkAndPopPendingRewards: () => checkAndPopPendingRewards(),
+    tryFinalizeLevelQuickRewardPick: () => RewardSystem.tryFinalizeLevelQuickRewardPick(_ctx),
     grantSynthesisExp: (amount, from) => grantSynthesisExp(amount, from),
     updateMiniMap: () => updateMiniMap(),
     refreshBattlePassiveStatBadges: (showJump) => refreshBattlePassiveStatBadges(showJump),
@@ -969,6 +988,8 @@ function makePanelInitDeps(): PanelInitDeps {
     rewriteNeutralRandomPick: (item) => rewriteNeutralRandomPick(item),
     canRandomNeutralItem: (item) => canRandomNeutralItem(item),
     getItemDefByCn: (nameCn) => getItemDefByCn(nameCn),
+    isLevelQuickDraftEnabled: () => RewardSystem.isLevelQuickDraftEnabled(),
+    enqueueLevelQuickDraftChoices: (title, choices, opts) => RewardSystem.enqueueLevelQuickDraftChoices(_ctx, title, choices, opts),
   }
 }
 
@@ -1005,6 +1026,11 @@ function makeRewardSystemCallbacks(): RewardSystemCallbacks {
     unlockItemToPool: (defId) => unlockItemToPool(defId),
     checkAndPopPendingHeroPeriodicRewards: () => checkAndPopPendingHeroPeriodicRewards(),
     rollLevelRewardDefIds: (level) => rollLevelRewardDefIds(level),
+    findFirstBattlePlace: (size) => findFirstBattlePlace(size),
+    findFirstBackpackPlace: (size) => findFirstBackpackPlace(size),
+    setTransitionInputEnabled: (enabled) => setTransitionInputEnabled(enabled),
+    setBaseShopPrimaryButtonsVisible: (visible) => setBaseShopPrimaryButtonsVisible(visible),
+    applyPhaseInputLock: () => applyPhaseInputLock(),
   }
 }
 
@@ -1247,7 +1273,7 @@ void ensureSpecialShopSelection
 function ensureDailyChoiceSelection(_stage: Container, ctx: ShopSceneCtx = _ctx): void {
   if (ctx.classSelectOverlay) return
   if (ctx.starterGuideOverlay) return
-  if (ctx.skillDraftOverlay || ctx.eventDraftOverlay || ctx.specialShopOverlay) return
+  if (ctx.skillDraftOverlay || ctx.eventDraftOverlay || ctx.specialShopOverlay || ctx.levelQuickRewardOverlay) return
   const hasPendingSkillDraft = !!(ctx.pendingSkillDraft && ctx.pendingSkillDraft.day === ctx.currentDay)
   if (hasPendingSkillDraft) {
     skillDraftPanel?.ensureSkillDraftSelection()
@@ -1382,13 +1408,15 @@ function updateNeutralPseudoRandomCounterOnPurchase(item: ItemDef): void {
 function getQuickBuyMinPrice(ctx: ShopSceneCtx = _ctx): number {
   const offer = rollNextQuickBuyOffer(false, ctx)
   if (!offer) return SHOP_QUICK_BUY_PRICE
-  return resolveBuyPriceWithSkills(ctx, offer.price).finalPrice
+  const forcedPrice = SkillSystem.getBronzeOnlyForcedLowLevelPrice(ctx)
+  return resolveBuyPriceWithSkills(ctx, forcedPrice ?? offer.price).finalPrice
 }
 
 function getQuickBuyPricePreviewLabel(ctx: ShopSceneCtx = _ctx): string {
   const offer = rollNextQuickBuyOffer(false, ctx)
   if (!offer) return '-'
-  return `${resolveBuyPriceWithSkills(ctx, offer.price).finalPrice}`
+  const forcedPrice = SkillSystem.getBronzeOnlyForcedLowLevelPrice(ctx)
+  return `${resolveBuyPriceWithSkills(ctx, forcedPrice ?? offer.price).finalPrice}`
 }
 
 function buyRandomBronzeToBoardOrBackpack(ctx: ShopSceneCtx = _ctx): void {
@@ -1408,6 +1436,7 @@ function buyRandomBronzeToBoardOrBackpack(ctx: ShopSceneCtx = _ctx): void {
     toVisualTier: (tier, star) => toVisualTier(tier, star),
     instanceToDefId,
     setInstanceQualityLevel: (id, defId, q, lv) => setInstanceQualityLevel(id, defId, q, lv),
+    forceInstanceLevel: (id, lv) => forceInstanceLevel(id, lv),
     levelFromLegacyTierStar: (tier, star) => levelFromLegacyTierStar(tier, star),
     instanceToPermanentDamageBonus,
     recordNeutralItemObtained: (itemId) => recordNeutralItemObtained(itemId),
@@ -1657,6 +1686,7 @@ export const ShopScene: Scene = {
     const battleOutcome = consumeBattleOutcome()
     if (restoredState) {
       applySavedShopState(restoredState, _ctx, makeApplyCallbacks())
+      RewardSystem.restoreSavedLevelQuickDraftQueue(_ctx)
       _ctx.savedShopState = null
       if (_ctx.pendingAdvanceToNextDay || PvpContext.isActive()) {
         if (PvpContext.isActive() && PvpContext.isMidDayShopPhase()) {
@@ -1716,6 +1746,7 @@ export const ShopScene: Scene = {
       _ctx.heroTycoonGoldGrantedDays.clear()
       _ctx.pendingHeroPeriodicRewards = []
       _ctx.pendingHeroPeriodicRewardDispatching = false
+      _ctx.levelQuickDraftSavedEntries = []
       syncUnlockPoolToManager()
       grantSkill20DailyBronzeItemIfNeeded()
     }
@@ -1828,6 +1859,18 @@ export const ShopScene: Scene = {
     if (_ctx.specialShopOverlay?.parent) _ctx.specialShopOverlay.parent.removeChild(_ctx.specialShopOverlay)
     _ctx.specialShopOverlay?.destroy({ children: true })
     _ctx.specialShopOverlay = null
+    if (_ctx.levelQuickRewardOverlay?.parent) _ctx.levelQuickRewardOverlay.parent.removeChild(_ctx.levelQuickRewardOverlay)
+    _ctx.levelQuickRewardOverlay?.destroy({ children: true })
+    _ctx.levelQuickRewardOverlay = null
+    if (_ctx.levelQuickRewardBackdrop?.parent) _ctx.levelQuickRewardBackdrop.parent.removeChild(_ctx.levelQuickRewardBackdrop)
+    _ctx.levelQuickRewardBackdrop?.destroy()
+    _ctx.levelQuickRewardBackdrop = null
+    if (_ctx.levelQuickRewardView?.parent) _ctx.levelQuickRewardView.parent.removeChild(_ctx.levelQuickRewardView)
+    _ctx.levelQuickRewardView?.destroy({ children: true })
+    _ctx.levelQuickRewardView = null
+    _ctx.levelQuickRewardSystem = null
+    _ctx.levelQuickRewardInstanceIds.clear()
+    _ctx.levelQuickRewardZoneAdded = false
     _ctx.playerStatusCon?.destroy({ children: true })
     _ctx.playerStatusCon = null
     _ctx.playerStatusAvatar = null
@@ -2011,4 +2054,3 @@ export const ShopScene: Scene = {
     }
   },
 }
-

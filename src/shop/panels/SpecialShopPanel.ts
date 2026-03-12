@@ -740,7 +740,6 @@ export class SpecialShopPanel extends Container {
         ctx.backpackView!.setItemTier(id, visualTier)
         ctx.drag?.refreshZone(ctx.backpackView!)
       })
-      cb.showHintToast('backpack_full_buy', '上阵区已满，已放入背包', 0xffd48f)
     }
 
     cb.markShopPurchaseDone()

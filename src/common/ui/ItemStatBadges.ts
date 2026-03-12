@@ -18,6 +18,8 @@ export interface ItemStatBadgeOverride {
 
 export interface ItemStatBadgeTextOptions {
   archetypeSuffix?: string
+  archetypeLevelOnly?: boolean
+  hideNeutralArchetype?: boolean
 }
 
 const STAT_ORDER: StatKey[] = ['damage', 'shield', 'heal', 'burn', 'poison']
@@ -85,12 +87,19 @@ export function createItemStatBadges(
   const isArchetypeMode = mode === 'archetype'
   const archetypes = isArchetypeMode ? parseArchetypes(item) : []
   const archetypeSuffix = (textOptions?.archetypeSuffix ?? '').trim()
+  const archetypeLevelOnly = textOptions?.archetypeLevelOnly === true
+  const hideNeutralArchetype = textOptions?.hideNeutralArchetype === true
   const badges = isArchetypeMode
-    ? archetypes.map((k) => ({
-      key: k,
-      text: k === 'neutral' ? getArchetypeLabel(k) : `${getArchetypeLabel(k)}${archetypeSuffix}`,
-      color: getArchetypeColor(k),
-    }))
+    ? archetypes
+      .filter((k) => !(hideNeutralArchetype && k === 'neutral'))
+      .map((k) => ({
+        key: k,
+        text: archetypeLevelOnly
+          ? archetypeSuffix
+          : (k === 'neutral' ? getArchetypeLabel(k) : `${getArchetypeLabel(k)}${archetypeSuffix}`),
+        color: getArchetypeColor(k),
+      }))
+      .filter((it) => it.text.length > 0)
     : STAT_ORDER
       .map((k) => ({ key: k, value: override?.[k] ?? item[k] }))
       .filter((it) => Number.isFinite(it.value) && it.value > 0)

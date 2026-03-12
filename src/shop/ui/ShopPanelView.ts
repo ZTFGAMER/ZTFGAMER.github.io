@@ -14,8 +14,9 @@ import type { ShopSlot } from '@/shop/ShopManager'
 import { normalizeSize } from '@/common/items/ItemDef'
 import { CELL_SIZE, CELL_HEIGHT } from '@/common/grid/GridZone'
 import { getConfig as getGameConfig } from '@/core/DataLoader'
+import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import { getItemIconUrl } from '@/core/AssetPath'
-import { getTierColor } from '@/config/colorPalette'
+import { getClassColor, getTierColor } from '@/config/colorPalette'
 import { createItemStatBadges } from '@/common/ui/ItemStatBadges'
 
 // ---- 布局常量 ----
@@ -32,6 +33,14 @@ function parseTierName(raw: string): string {
   if (raw.includes('Gold')) return 'Gold'
   if (raw.includes('Diamond')) return 'Diamond'
   return 'Bronze'
+}
+
+function getItemClassColor(tagsRaw: string): number {
+  const tags = String(tagsRaw)
+  if (tags.includes('战士')) return getClassColor('战士')
+  if (tags.includes('弓手')) return getClassColor('弓手')
+  if (tags.includes('刺客')) return getClassColor('刺客')
+  return getClassColor('中立')
 }
 
 export class ShopPanelView extends Container {
@@ -52,6 +61,7 @@ export class ShopPanelView extends Container {
   private upgradeHintSlots = new Set<number>()
   private upgradeHintTick: (() => void) | null = null
   private upgradeHintT = 0
+  private itemFrameUseArchetypeColor = getDebugCfg('gameplayItemFrameColorByArchetype') >= 0.5
 
   // 内容容器：用于整体缩放（5/6）+ 居中
   private content: Container
@@ -164,6 +174,13 @@ export class ShopPanelView extends Container {
     }
   }
 
+  setItemFrameUseArchetypeColor(enabled: boolean): void {
+    this.itemFrameUseArchetypeColor = enabled
+    if (this.lastPool && this.lastGold !== null) {
+      this._rebuildCards(this.lastPool, this.lastGold)
+    }
+  }
+
   // ---- 私有：卡片区 ----
 
   private _rebuildCards(pool: ShopSlot[], gold: number): void {
@@ -203,6 +220,9 @@ export class ShopPanelView extends Container {
     const card      = new Container()
     const tier      = parseTierName(slot.item.starting_tier)
     const tierColor = getTierColor(tier)
+    const frameColor = this.itemFrameUseArchetypeColor
+      ? getItemClassColor(slot.item.tags)
+      : tierColor
     const canAfford = gold >= slot.price
     const bought    = slot.purchased
 
@@ -230,8 +250,8 @@ export class ShopPanelView extends Container {
     const frameRadius = Math.max(0, this.cornerRadius - Math.floor(frameInset / 2))
     iconBg.roundRect(iconX + frameInset, iconY + frameInset, frameW, frameH, frameRadius)
     iconBg.fill({ color: 0x2a2a3e, alpha: 0.85 })
-    iconBg.stroke({ color: tierColor, width: this.tierBorderWidth, alpha: bought ? 0.55 : 0.98 })
-    if (tier === 'Diamond') {
+    iconBg.stroke({ color: frameColor, width: this.tierBorderWidth, alpha: bought ? 0.55 : 0.98 })
+    if (!this.itemFrameUseArchetypeColor && tier === 'Diamond') {
       const innerInset = frameInset + this.tierBorderWidth + 1
       const innerW = Math.max(1, iconW - innerInset * 2)
       const innerH = Math.max(1, iconH - innerInset * 2)

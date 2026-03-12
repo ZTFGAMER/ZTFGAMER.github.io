@@ -190,8 +190,8 @@ export function layoutPlayerStatusPanel(ctx: ShopSceneCtx): void {
   const expX = avatarCenterX - expW / 2 + expOffsetX
   const expY = avatarY + avatarH + expOffsetY
 
-  ctx.playerStatusCon.x = 0
-  ctx.playerStatusCon.y = getDebugCfg('shopPlayerStatusY')
+  ctx.playerStatusCon.x = getDebugCfg('shopPlayerStatusX')
+  ctx.playerStatusCon.y = getDebugCfg('battleZoneY') + getDebugCfg('shopPlayerStatusY')
 
   ctx.playerStatusAvatar.x = avatarX
   ctx.playerStatusAvatar.y = avatarY

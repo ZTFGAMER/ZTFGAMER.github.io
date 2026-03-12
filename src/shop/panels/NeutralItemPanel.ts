@@ -174,6 +174,15 @@ export interface NeutralItemPanelCallbacks {
   getGuideFrameTierByLevel: (levelText: string) => 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
   pickSkillChoicesExactTier: (tier: SkillTier) => Array<{ id: string; name: string; archetype: SkillArchetype; desc: string; detailDesc?: string; tier: SkillTier; icon?: string }>
   pickRandomEventDraftChoices: (day: number) => Array<unknown>
+  isLevelQuickDraftEnabled: () => boolean
+  enqueueLevelQuickDraftChoices: (
+    title: string,
+    choices: NeutralChoiceCandidate[],
+    opts?: {
+      consumePickedAsReward?: boolean
+      onPicked?: (picked: NeutralChoiceCandidate) => void
+    },
+  ) => boolean
 }
 
 // ============================================================
@@ -1622,6 +1631,11 @@ export class NeutralItemPanel extends Container {
         this.cb.showHintToast('no_gold_buy', '白银宝箱：当前无可选白银物品', 0xffb27a)
         return true
       }
+      if (this.cb.isLevelQuickDraftEnabled()) {
+        const queued = this.cb.enqueueLevelQuickDraftChoices('白银宝箱奖励', picks, { consumePickedAsReward: true })
+        if (!queued) this.cb.showHintToast('no_gold_buy', '白银宝箱：当前无可选白银物品', 0xffb27a)
+        return true
+      }
       const ok = this._showNeutralChoiceOverlay(stage, '白银宝箱：选择白银物品', picks, undefined, 'special_shop_like')
       if (!ok) this.cb.showHintToast('no_gold_buy', '白银宝箱：当前无可选白银物品', 0xffb27a)
       return true
@@ -1633,6 +1647,11 @@ export class NeutralItemPanel extends Container {
         this.cb.showHintToast('no_gold_buy', '黄金宝箱：当前无可选黄金物品', 0xffb27a)
         return true
       }
+      if (this.cb.isLevelQuickDraftEnabled()) {
+        const queued = this.cb.enqueueLevelQuickDraftChoices('黄金宝箱奖励', picks, { consumePickedAsReward: true })
+        if (!queued) this.cb.showHintToast('no_gold_buy', '黄金宝箱：当前无可选黄金物品', 0xffb27a)
+        return true
+      }
       const ok = this._showNeutralChoiceOverlay(stage, '黄金宝箱：选择黄金物品', picks, undefined, 'special_shop_like')
       if (!ok) this.cb.showHintToast('no_gold_buy', '黄金宝箱：当前无可选黄金物品', 0xffb27a)
       return true
@@ -1642,6 +1661,11 @@ export class NeutralItemPanel extends Container {
       const picks = this._buildTierChestChoiceCandidates('Diamond')
       if (picks.length <= 0) {
         this.cb.showHintToast('no_gold_buy', '钻石宝箱：当前无可选钻石物品', 0xffb27a)
+        return true
+      }
+      if (this.cb.isLevelQuickDraftEnabled()) {
+        const queued = this.cb.enqueueLevelQuickDraftChoices('钻石宝箱奖励', picks, { consumePickedAsReward: true })
+        if (!queued) this.cb.showHintToast('no_gold_buy', '钻石宝箱：当前无可选钻石物品', 0xffb27a)
         return true
       }
       const ok = this._showNeutralChoiceOverlay(stage, '钻石宝箱：选择钻石物品', picks, undefined, 'special_shop_like')
@@ -1899,6 +1923,21 @@ export class NeutralItemPanel extends Container {
       return false
     }
 
+    if (this.cb.isLevelQuickDraftEnabled()) {
+      const queued = this.cb.enqueueLevelQuickDraftChoices(title, choices, {
+        consumePickedAsReward: true,
+        onPicked: () => {
+          this.cb.showHintToast('no_gold_buy', `${sourceDef.name_cn}：已转化目标物品`, 0x9be5ff)
+          this.cb.refreshShopUI()
+        },
+      })
+      if (!queued) return false
+      const consumed = this._consumePlacedInstance(target.instanceId, target.zone)
+      if (!consumed) return false
+      this.cb.refreshShopUI()
+      return true
+    }
+
     return this._showNeutralChoiceOverlay(stage, title, choices, (picked) => {
       const ok = this._transformPlacedItemKeepLevelTo(target.instanceId, target.zone, picked.item, true)
       if (!ok) {
@@ -1937,6 +1976,26 @@ export class NeutralItemPanel extends Container {
       { item: sourceDef, tier: upgradeTo.tier, star: upgradeTo.star },
       ...altPicks.map((one) => ({ item: one.item, tier: one.tier, star: one.star })),
     ]
+    if (this.cb.isLevelQuickDraftEnabled()) {
+      if (!consumeSource()) return false
+      const queued = this.cb.enqueueLevelQuickDraftChoices('戏法师：选择合成结果', choices, {
+        consumePickedAsReward: true,
+        onPicked: (picked) => {
+          void picked
+          this.cb.grantSynthesisExp(1)
+          this.cb.showHintToast('no_gold_buy', '戏法师：本次同物合成可选其他物品', 0x9be5ff)
+          this.cb.refreshShopUI()
+        },
+      })
+      if (!queued) {
+        this.cb.showHintToast('backpack_full_buy', '戏法师：当前无可重选候选', 0xffb27a)
+        return false
+      }
+      this.cb.markHeroSameItemSynthesisChoiceTriggered()
+      this._consumePlacedInstance(target.instanceId, target.zone)
+      this.cb.refreshShopUI()
+      return true
+    }
     const opened = this._showNeutralChoiceOverlay(stage, '戏法师：选择合成结果', choices, (picked) => {
       if (!consumeSource()) return false
       const ok = this._transformPlacedItemKeepLevelTo(target.instanceId, target.zone, picked.item, true)
@@ -1955,6 +2014,19 @@ export class NeutralItemPanel extends Container {
       return true
     }, 'special_shop_like')
     return opened
+  }
+
+  private _consumePlacedInstance(instanceId: string, zone: 'battle' | 'backpack'): boolean {
+    const system = zone === 'battle' ? this.ctx.battleSystem : this.ctx.backpackSystem
+    const view = zone === 'battle' ? this.ctx.battleView : this.ctx.backpackView
+    if (!system || !view) return false
+    const item = system.getItem(instanceId)
+    if (!item) return false
+    system.remove(instanceId)
+    view.removeItem(instanceId)
+    this.cb.removeInstanceMeta(instanceId)
+    this.ctx.drag?.refreshZone(view)
+    return true
   }
 
   private _tryRunSameArchetypeDiffItemStoneSynthesis(

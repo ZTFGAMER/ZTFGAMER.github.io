@@ -12,6 +12,7 @@ import { setBattleSnapshot } from '@/battle/BattleSnapshotStore'
 import { Container, Graphics, Sprite, Text, Texture, Rectangle, type FederatedPointerEvent } from 'pixi.js'
 import { GridSystem } from '@/common/grid/GridSystem'
 import { GridZone } from '@/common/grid/GridZone'
+import type { ItemDef } from '@/common/items/ItemDef'
 import { getAllItems, getConfig as getGameCfg } from '@/core/DataLoader'
 import { getConfig as getDebugCfg, onConfigChange as onDebugCfgChange } from '@/config/debugConfig'
 import { SellPopup } from '@/common/ui/SellPopup'
@@ -32,6 +33,7 @@ import {
   showBuyGuideHand,
   showMoveToBattleGuideHand,
 } from './ShopAnimationEffects'
+import { showHintToast } from './ShopToastSystem'
 import { buildBattleSnapshot } from '../ShopBattleSnapshot'
 import { getShopSlotPreviewPrice } from '../systems/ShopPurchaseLogic'
 import {
@@ -43,6 +45,9 @@ import {
   onShopDragEnd as _onShopDragEnd,
 } from '../systems/ShopDragSystem'
 import type { ShopDragDeps } from '../systems/ShopDragSystem'
+import { isNeutralTargetStone } from '../panels/NeutralItemPanel'
+import { refreshBackpackSynthesisGuideArrows, clearBackpackSynthesisGuideArrows } from '../systems/ShopSynthesisController'
+import { refreshLevelQuickRewardLayout } from '../systems/ShopRewardSystem'
 import {
   applyLayoutFromDebug,
   applyTextSizesFromDebug,
@@ -72,6 +77,7 @@ export type ButtonRowUICallbacks = {
   hideSkillDetailPopup: () => void
   refreshBattlePassiveStatBadges: (showJump?: boolean) => void
   handleSpecialShopBackpackItemTap: (id: string, kind: 'battle' | 'backpack') => void
+  refreshNeutralStoneGuideArrows: (sourceDef: ItemDef | null | undefined, excludeInstanceId?: string) => void
   // 传入 drag/debug 依赖，供内部事件 handler 用
   dragDeps: ShopDragDeps
   debugLayoutCallbacks: DebugLayoutCallbacks
@@ -118,8 +124,8 @@ export function buildTopAreaUI(
 
   ctx.playerStatusCon = new Container()
   ctx.playerStatusCon.zIndex = 95
-  ctx.playerStatusCon.x = 0
-  ctx.playerStatusCon.y = getDebugCfg('shopPlayerStatusY')
+  ctx.playerStatusCon.x = getDebugCfg('shopPlayerStatusX')
+  ctx.playerStatusCon.y = getDebugCfg('battleZoneY') + getDebugCfg('shopPlayerStatusY')
 
   ctx.playerStatusAvatar = new Sprite(Texture.WHITE)
   ctx.playerStatusAvatar.x = 260
@@ -327,6 +333,10 @@ export function buildButtonRowUI(
   phaseBtn.container.on('pointerdown', () => {
     if (!isShopInputEnabled(ctx)) { SceneManager.goto('shop'); return }
     if (ctx.battleStartTransition) return
+    if (ctx.levelQuickRewardOverlay) {
+      showHintToast('no_gold_buy', '请先选择升级奖励', 0xffd86b, ctx)
+      return
+    }
     const boardItemCount = ctx.battleSystem?.getAllItems().length ?? 0
     const backpackItemCount = ctx.backpackSystem?.getAllItems().length ?? 0
     if (boardItemCount <= 0 && callbacks.canAffordQuickBuyNow()) {
@@ -380,6 +390,8 @@ export function buildButtonRowUI(
     if (kind === 'battle') callbacks.refreshBattlePassiveStatBadges(false)
     const tier = getInstanceTier(instanceId)
     const star = getInstanceTierStar(instanceId)
+    if (isNeutralTargetStone(item)) callbacks.refreshNeutralStoneGuideArrows(item, instanceId)
+    else refreshBackpackSynthesisGuideArrows(defId, tier ?? null, star, ctx, instanceId)
     const sellPrice = 0
     const infoMode = resolveInfoMode(`${kind}:${instanceId}:${tier}:${star}`, ctx)
     ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, infoMode)
@@ -396,6 +408,7 @@ export function buildButtonRowUI(
     if (!ctx.shopManager || !ctx.sellPopup) return
     const slot = ctx.shopManager.pool[slotIndex]
     if (!slot) return
+    clearBackpackSynthesisGuideArrows(ctx)
     ctx.shopPanel?.setSelectedSlot(slotIndex)
     ctx.battleView?.setSelected(null); ctx.backpackView?.setSelected(null)
     ctx.currentSelection = { kind: 'shop', slotIndex }; ctx.selectedSellAction = null
@@ -427,9 +440,10 @@ export function buildButtonRowUI(
       'shopAreaX','shopAreaY','shopItemScale','battleItemScale','battleItemScaleBackpackOpen',
       'enemyAreaScale','battleZoneX','battleZoneY','backpackZoneX','backpackZoneY',
       'backpackBtnX','backpackBtnY','sellBtnX','sellBtnY','refreshBtnX','refreshBtnY',
-      'phaseBtnX','phaseBtnY','goldTextCenterX','goldTextY','shopPlayerStatusY',
+      'phaseBtnX','phaseBtnY','goldTextCenterX','goldTextY','shopPlayerStatusY','shopPlayerStatusX',
       'shopPlayerStatusLvY','shopPlayerStatusExpBarWidth','shopPlayerStatusExpBarHeight',
       'shopPlayerStatusExpBarOffsetX','shopPlayerStatusExpBarOffsetY',
+      'levelQuickRewardOffsetX','levelQuickRewardOffsetY',
       'dayDebugX','dayDebugY','tierBorderWidth','gridItemCornerRadius','gridCellBorderWidth',
       'shopAreaBgWidth','shopAreaBgHeight','backpackAreaBgWidth','backpackAreaBgHeight',
       'itemInfoWidth','itemInfoMinH','itemInfoMinHSmall','itemInfoBottomGapToShop',
@@ -442,9 +456,12 @@ export function buildButtonRowUI(
       'itemInfoNameFontSize','itemInfoTierFontSize','itemInfoPriceFontSize',
       'itemInfoPriceCornerFontSize','itemInfoCooldownFontSize','itemInfoDescFontSize',
       'itemInfoSimpleDescFontSize','battleOrbColorHp','battleColorShield',
-      'battleColorBurn','battleColorPoison','battleColorRegen',
+      'battleColorBurn','battleColorPoison','battleColorRegen','gameplayItemFrameColorByArchetype',
     ] as const
-    if ((layoutKeys as readonly string[]).includes(key)) applyLayoutFromDebug(ctx, callbacks.debugLayoutCallbacks)
+    if ((layoutKeys as readonly string[]).includes(key)) {
+      applyLayoutFromDebug(ctx, callbacks.debugLayoutCallbacks)
+      refreshLevelQuickRewardLayout(ctx)
+    }
   })
 
   ctx.onStageTapHidePopup = () => { if (ctx.shopDragFloater) return; clearSelection(ctx, callbacks.dragDeps) }
