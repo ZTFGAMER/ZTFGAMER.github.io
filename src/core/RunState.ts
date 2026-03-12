@@ -13,6 +13,14 @@ const PLAYER_PROGRESS_STORAGE_VERSION = 1
 const DEFAULT_PLAYER_LEVEL = 1
 const DEFAULT_PLAYER_EXP = 0
 
+// PVP 模式内存覆盖：激活时读写均走内存，不碰 localStorage
+// 由 PvpContext.startSession / endSession 管理
+let pvpPlayerProgressOverride: PlayerProgressState | null = null
+
+export function setPvpPlayerProgressOverride(state: PlayerProgressState | null): void {
+  pvpPlayerProgressOverride = state
+}
+
 export type LifeState = {
   current: number
   max: number
@@ -161,6 +169,9 @@ export function clearCurrentRunState(): void {
 }
 
 export function getPlayerProgressState(): PlayerProgressState {
+  if (pvpPlayerProgressOverride !== null) {
+    return clampPlayerProgress(pvpPlayerProgressOverride.level, pvpPlayerProgressOverride.exp)
+  }
   try {
     const raw = localStorage.getItem(PLAYER_PROGRESS_STORAGE_KEY)
     if (!raw) return savePlayerProgressState({ level: DEFAULT_PLAYER_LEVEL, exp: DEFAULT_PLAYER_EXP })
@@ -180,6 +191,10 @@ export function getPlayerProgressState(): PlayerProgressState {
 }
 
 export function setPlayerProgressState(level: number, exp: number): PlayerProgressState {
+  if (pvpPlayerProgressOverride !== null) {
+    pvpPlayerProgressOverride = clampPlayerProgress(level, exp)
+    return { ...pvpPlayerProgressOverride }
+  }
   return savePlayerProgressState({ level, exp })
 }
 

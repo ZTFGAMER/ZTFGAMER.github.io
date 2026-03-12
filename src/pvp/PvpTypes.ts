@@ -31,6 +31,7 @@ export interface PvpSession {
   pvpMode: PvpMode
   rankings?: { nickname: string; wins: number | null; index: number }[]  // filled after game_over
   playerHps: Record<number, number>       // playerIndex → current HP
+  playerLevels?: Record<number, number>   // playerIndex → player level（从 round_summary 快照提取）
   eliminatedPlayers: number[]             // playerIndices eliminated (HP ≤ 0)
   currentOpponentPlayerIndex?: number    // 当天实际对手的 playerIndex（bye 轮由 host 解析后下发）
   initialHp: number                       // 初始血量（房主创建时设定）

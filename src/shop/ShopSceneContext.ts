@@ -351,6 +351,7 @@ export interface ShopSceneCtx {
   pvpBackpackReturnBtn:  Container | null
   pvpOpponentBadge:      Container | null
   pvpOpponentHeroLayer:  Container | null
+  pvpAllPlayersLayer:    Container | null
 
   classSelectOverlay:        Container | null
   starterGuideOverlay:       Container | null
@@ -597,6 +598,7 @@ export function createShopSceneCtx(): ShopSceneCtx {
     pvpBackpackReturnBtn: null,
     pvpOpponentBadge:     null,
     pvpOpponentHeroLayer: null,
+    pvpAllPlayersLayer:   null,
 
     classSelectOverlay:   null,
     starterGuideOverlay:  null,

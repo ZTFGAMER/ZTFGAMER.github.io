@@ -43,6 +43,8 @@ export interface BattleSnapshotBundle {
   pvpEnemyBattleHp?: number
   /** 快照提交方的英雄 ID（starterClass） */
   ownerHeroId?: string
+  /** 快照提交方的玩家等级 */
+  ownerLevel?: number
   /** PVP 专用：对手的英雄 ID，由 ownerHeroId 传递而来 */
   pvpEnemyHeroId?: string
 }
@@ -69,6 +71,7 @@ export function setBattleSnapshot(snapshot: BattleSnapshotBundle): void {
     pvpEnemyTrophyWins: snapshot.pvpEnemyTrophyWins,
     pvpEnemyBattleHp: typeof snapshot.pvpEnemyBattleHp === 'number' ? Math.max(1, Math.round(snapshot.pvpEnemyBattleHp)) : undefined,
     ownerHeroId: snapshot.ownerHeroId,
+    ownerLevel: typeof snapshot.ownerLevel === 'number' ? Math.max(1, Math.round(snapshot.ownerLevel)) : undefined,
     pvpEnemyHeroId: snapshot.pvpEnemyHeroId,
   }
   console.log('[Snapshot] setBattleSnapshot day=' + snapshot.day + ' entities=' + snapshot.entities.length + ' pvpEnemyEntities=' + (snapshot.pvpEnemyEntities?.length ?? 'none'))
@@ -95,6 +98,7 @@ export function getBattleSnapshot(): BattleSnapshotBundle | null {
     pvpEnemyTrophyWins: currentSnapshot.pvpEnemyTrophyWins,
     pvpEnemyBattleHp: currentSnapshot.pvpEnemyBattleHp,
     ownerHeroId: currentSnapshot.ownerHeroId,
+    ownerLevel: currentSnapshot.ownerLevel,
     pvpEnemyHeroId: currentSnapshot.pvpEnemyHeroId,
   }
 }

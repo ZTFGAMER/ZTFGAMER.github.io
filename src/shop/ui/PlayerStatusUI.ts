@@ -18,7 +18,6 @@ import { tierStarLevelIndex } from '../systems/ShopSynthesisLogic'
 import { PvpContext } from '@/pvp/PvpContext'
 import type { ShopSceneCtx } from '../ShopSceneContext'
 import { getApp } from '@/core/AppContext'
-import { CANVAS_W } from '@/config/layoutConstants'
 import { getBattleZoneDisplayY } from '../ShopMathHelpers'
 
 // ============================================================
@@ -147,38 +146,7 @@ export function refreshPlayerStatusUI(
 export function layoutPlayerStatusPanel(ctx: ShopSceneCtx): void {
   if (!ctx.playerStatusCon || !ctx.playerStatusAvatar || !ctx.playerStatusLvText || !ctx.playerStatusExpBg || !ctx.playerStatusExpBar) return
 
-  if (PvpContext.isActive()) {
-    // PVP 模式：右上角紧凑布局，替代已移除的对手徽章位置
-    // 位置与原来 buildPvpOpponentBadge 一致：x = CANVAS_W-138-8, y = 94
-    const BW = 138, avSize = 44
-    ctx.playerStatusCon.x = CANVAS_W - BW - 8
-    ctx.playerStatusCon.y = 94
-
-    ctx.playerStatusAvatar.x = 6
-    ctx.playerStatusAvatar.y = 5
-    ctx.playerStatusAvatar.width = avSize
-    ctx.playerStatusAvatar.height = avSize
-
-    if (ctx.playerStatusAvatarClickHit) {
-      ctx.playerStatusAvatarClickHit.clear()
-      ctx.playerStatusAvatarClickHit.rect(6, 5, avSize, avSize)
-      ctx.playerStatusAvatarClickHit.fill({ color: 0xffffff, alpha: 0.001 })
-    }
-
-    if (ctx.playerStatusDailySkillStar) ctx.playerStatusDailySkillStar.visible = false
-
-    // Lv 文本居中于头像右侧区域
-    ctx.playerStatusLvText.x = 6 + avSize + (BW - 6 - avSize) / 2
-    ctx.playerStatusLvText.y = 27
-
-    // 隐藏经验条
-    ctx.playerStatusExpBg.clear()
-    ctx.playerStatusExpBg.visible = false
-    ctx.playerStatusExpBar.visible = false
-    return
-  }
-
-  // 非 PVP 常规布局
+  // 常规布局（冒险模式与 PVP 模式统一）
   const avatarX = 260
   const avatarY = 10
   const avatarW = 120

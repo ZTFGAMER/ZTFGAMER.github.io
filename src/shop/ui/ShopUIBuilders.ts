@@ -60,9 +60,8 @@ import type { DebugLayoutCallbacks } from './ShopDebugLayout'
 export type TopAreaUICallbacks = {
   restartRunFromBeginning: () => void
   toggleHeroPassiveDetailPopup: () => void
-  pvpOpenPlayerList: () => void
-  pvpBuildOpponentBadge: () => void
-  pvpBuildOpponentHeroLayer: () => Promise<void>
+  pvpBuildAllPlayersLayer: () => void
+  pvpRefreshSideCardStates: () => void
 }
 
 export type ButtonRowUICallbacks = {
@@ -184,33 +183,19 @@ export function buildTopAreaUI(
   ctx.livesText.zIndex = 95
   stage.addChild(ctx.livesText)
 
-  if (PvpContext.isActive()) {
-    const pvpPlayersBtn = new Container()
-    pvpPlayersBtn.zIndex = 96
-    const btnBg = new Graphics()
-    btnBg.roundRect(0, 0, 110, 36, 10).fill({ color: 0x162238, alpha: 0.92 })
-    btnBg.roundRect(0, 0, 110, 36, 10).stroke({ color: 0x3a5a8a, width: 1.2 })
-    pvpPlayersBtn.addChild(btnBg)
-    const btnT = new Text({ text: '👥 查看玩家', style: { fill: 0x88bbee, fontSize: 17, fontWeight: 'bold' } })
-    btnT.anchor.set(0.5); btnT.x = 55; btnT.y = 18
-    pvpPlayersBtn.addChild(btnT)
-    pvpPlayersBtn.x = CANVAS_W - 118; pvpPlayersBtn.y = 52
-    pvpPlayersBtn.eventMode = 'static'; pvpPlayersBtn.cursor = 'pointer'
-    pvpPlayersBtn.on('pointerdown', () => callbacks.pvpOpenPlayerList())
-    pvpPlayersBtn.on('pointerover', () => { pvpPlayersBtn.alpha = 0.75 })
-    pvpPlayersBtn.on('pointerout', () => { pvpPlayersBtn.alpha = 1 })
-    stage.addChild(pvpPlayersBtn)
-
-    if (PvpContext.getPvpMode() === 'sync-a') {
-      callbacks.pvpBuildOpponentBadge()
-      void callbacks.pvpBuildOpponentHeroLayer()
-      PvpContext.onOpponentPreAssigned = () => {
-        callbacks.pvpBuildOpponentBadge()
-        void callbacks.pvpBuildOpponentHeroLayer()
-      }
-      PvpContext.onRoundSummaryReceived = () => {
-        void callbacks.pvpBuildOpponentHeroLayer()
-      }
+  if (PvpContext.isActive() && PvpContext.getPvpMode() === 'sync-a') {
+    callbacks.pvpBuildAllPlayersLayer()
+    PvpContext.onOpponentPreAssigned = () => {
+      callbacks.pvpBuildAllPlayersLayer()
+    }
+    PvpContext.onRoundSummaryReceived = () => {
+      callbacks.pvpBuildAllPlayersLayer()
+    }
+    PvpContext.onSyncReadyUpdate = () => {
+      callbacks.pvpRefreshSideCardStates()
+    }
+    PvpContext.onBeforeBattleTransition = () => {
+      if (ctx.pvpAllPlayersLayer) ctx.pvpAllPlayersLayer.visible = false
     }
   }
 

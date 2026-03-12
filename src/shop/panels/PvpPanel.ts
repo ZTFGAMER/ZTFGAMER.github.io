@@ -8,7 +8,7 @@ import {
   Assets, Texture, Ticker,
 } from 'pixi.js'
 import { PvpContext } from '@/pvp/PvpContext'
-import { getOpponentFromAlive } from '@/pvp/PvpTypes'
+import { getOpponentFromAlive, type PvpPlayer } from '@/pvp/PvpTypes'
 import { getItemIconUrl } from '@/core/AssetPath'
 import { getApp } from '@/core/AppContext'
 import type { ShopSceneCtx } from '../ShopSceneContext'
@@ -18,9 +18,21 @@ import { CANVAS_W, CANVAS_H } from '@/config/layoutConstants'
 // PvpPanel class
 // ============================================================
 
+// ---- 侧边玩家卡片布局常量 ----
+const SIDE_CARD_W = 84
+const SIDE_CARD_H = 148
+const SIDE_CARD_GAP = 8
+const SIDE_PORTRAIT_H = 110
+const SIDE_CARDS_TOP = 54
+const SIDE_CARDS_BOTTOM = 520
+
 export class PvpPanel extends Container {
   private ctx: ShopSceneCtx
   private pvpPlayerListExpandedIndex = -1
+  private pvpSideCardMeta = new Map<number, { readyOverlay: Graphics; portraitH: number }>()
+  private pvpSnapshotBubble: Container | null = null
+  private pvpSnapshotBubbleBackdrop: Graphics | null = null
+  private pvpAllPlayersLayerVersion = 0
 
   constructor(ctx: ShopSceneCtx) {
     super()
@@ -778,20 +790,30 @@ export class PvpPanel extends Container {
     }
   }
 
-  // ── 对手英雄立绘背景层（PVP 商店阶段，半透明置底）──
-  async buildPvpOpponentHeroLayer(): Promise<void> {
+  // ── 全员立绘背景层（PVP 商店阶段：中央大立绘 + 两侧小卡片）──
+  buildPvpAllPlayersLayer(): void {
     const ctx = this.ctx
     const { stage } = getApp()
-    if (ctx.pvpOpponentHeroLayer) {
-      stage.removeChild(ctx.pvpOpponentHeroLayer)
-      ctx.pvpOpponentHeroLayer.destroy({ children: true })
-      ctx.pvpOpponentHeroLayer = null
+
+    this.pvpAllPlayersLayerVersion++
+    const version = this.pvpAllPlayersLayerVersion
+    this.pvpSideCardMeta.clear()
+
+    if (ctx.pvpAllPlayersLayer) {
+      stage.removeChild(ctx.pvpAllPlayersLayer)
+      ctx.pvpAllPlayersLayer.destroy({ children: true })
+      ctx.pvpAllPlayersLayer = null
     }
 
     const sess = PvpContext.getSession()
     if (!sess) return
 
-    // 获取对手 index（与 badge 逻辑保持一致）
+    const layer = new Container()
+    layer.zIndex = 5
+    layer.eventMode = 'passive'
+    ctx.pvpAllPlayersLayer = layer
+    stage.addChild(layer)
+
     const aliveIdx = sess.players
       .filter(p => !sess.eliminatedPlayers.includes(p.index))
       .map(p => p.index)
@@ -799,57 +821,376 @@ export class PvpPanel extends Container {
       ?? getOpponentFromAlive(sess.myIndex, aliveIdx, sess.currentDay - 1)
 
     const lastSnaps = PvpContext.getLastPlayerSnapshots()
-    const heroId = lastSnaps[oppIdx]?.ownerHeroId
+    const readySet = new Set(PvpContext.getSyncReadyIndices())
 
-    if (oppIdx < 0 || !heroId) return
+    // ── 中央对手大立绘（仅当有快照/heroId 时显示）──
+    const oppHeroId = oppIdx >= 0 ? lastSnaps[oppIdx]?.ownerHeroId : undefined
+    const oppPlayer = oppIdx >= 0 ? sess.players.find(p => p.index === oppIdx) : null
+    const oppHp = oppIdx >= 0 ? (sess.playerHps?.[oppIdx] ?? sess.initialHp) : 0
 
-    // 对手昵称和 HP（供立绘下方标签使用）
-    const oppPlayer = sess.players.find(p => p.index === oppIdx)
-    const oppHp = sess.playerHps?.[oppIdx] ?? sess.initialHp
+    if (oppHeroId) {
+      const oppSprite = new Sprite(Texture.WHITE)
+      oppSprite.anchor.set(0.5, 1)
+      oppSprite.x = CANVAS_W / 2
+      oppSprite.y = 520
+      oppSprite.alpha = 0
+      layer.addChild(oppSprite)
 
-    try {
-      const tex = await Assets.load<Texture>(`/resource/hero/${heroId}.png`)
-      // 场景已切换则丢弃
-      if (!PvpContext.isActive()) return
+      const oppLevel = sess.playerLevels?.[oppIdx]
 
-      const layer = new Container()
-      layer.zIndex = 5
-      layer.eventMode = 'none'
+      void Assets.load<Texture>(`/resource/hero/${oppHeroId}.png`).then((tex) => {
+        if (version !== this.pvpAllPlayersLayerVersion || !PvpContext.isActive()) return
+        const maxW = 310
+        if (tex.width > maxW) oppSprite.scale.set(maxW / tex.width)
+        oppSprite.texture = tex
+        oppSprite.alpha = 0.5
 
-      // 立绘：上移到石墙区，放大，更不透明
-      const sprite = new Sprite(tex)
-      sprite.anchor.set(0.5, 1)
-      const maxW = 310
-      if (sprite.width > maxW) sprite.scale.set(maxW / tex.width)
-      sprite.x = CANVAS_W / 2
-      sprite.y = 520   // 石墙/沙地分界处
-      sprite.alpha = 0.5
-      layer.addChild(sprite)
+        if (oppPlayer) {
+          const topY = oppSprite.y - oppSprite.height  // 立绘顶端
+          const bottomY = oppSprite.y                   // 立绘底端
 
-      // 对手昵称 + HP 标签（立绘上方）
-      if (oppPlayer) {
-        const labelY = sprite.y - sprite.height - 44
-        const nameBg = new Graphics()
-        nameBg.roundRect(-90, 0, 180, 40, 10).fill({ color: 0x0d0d1a, alpha: 0.65 })
-        nameBg.x = CANVAS_W / 2
-        nameBg.y = labelY
-        layer.addChild(nameBg)
+          // 顶部：昵称（白字，无背景）
+          const oppNicknameT = new Text({
+            text: oppPlayer.nickname,
+            style: {
+              fill: 0xffffff,
+              fontSize: 20,
+              fontWeight: 'bold',
+              stroke: { color: 0x000000, width: 3 },
+              align: 'center',
+            },
+          })
+          oppNicknameT.anchor.set(0.5, 1)
+          oppNicknameT.x = CANVAS_W / 2
+          oppNicknameT.y = topY - 2
+          layer.addChild(oppNicknameT)
 
-        const nameT = new Text({
-          text: `${oppPlayer.nickname}  ♥${oppHp}`,
-          style: { fill: 0xffdde0, fontSize: 20, fontWeight: 'bold', align: 'center' },
-        })
-        nameT.anchor.set(0.5, 0)
-        nameT.x = CANVAS_W / 2
-        nameT.y = labelY + 3
-        layer.addChild(nameT)
+          // 底部：等级（白字）+ 血量（红字）
+          const lvStr = oppLevel !== undefined ? `Lv${oppLevel}` : ''
+          const oppLvT = new Text({
+            text: lvStr,
+            style: { fill: 0xffffff, fontSize: 18, fontWeight: 'bold', stroke: { color: 0x000000, width: 3 } },
+          })
+          const oppHpT = new Text({
+            text: `♥${oppHp}`,
+            style: { fill: 0xff6666, fontSize: 18, fontWeight: 'bold', stroke: { color: 0x000000, width: 3 } },
+          })
+          const bottomGap = 8
+          if (lvStr) {
+            const combinedW = oppLvT.width + bottomGap + oppHpT.width
+            const startX = CANVAS_W / 2 - combinedW / 2
+            oppLvT.anchor.set(0, 0)
+            oppLvT.x = startX
+            oppLvT.y = bottomY - 15
+            oppHpT.anchor.set(0, 0)
+            oppHpT.x = startX + oppLvT.width + bottomGap
+            oppHpT.y = bottomY - 15
+            layer.addChild(oppLvT)
+          } else {
+            oppHpT.anchor.set(0.5, 0)
+            oppHpT.x = CANVAS_W / 2
+            oppHpT.y = bottomY - 15
+          }
+          layer.addChild(oppHpT)
+
+          // 对手上局上阵物品：直接显示在立绘下方
+          const oppItems = (oppIdx >= 0 ? lastSnaps[oppIdx] : undefined)?.entities.filter(e => e.defId) ?? []
+          if (oppItems.length > 0) {
+            const ITEM_SIZE = 32
+            const ITEM_GAP = 5
+            const rowW = oppItems.length * ITEM_SIZE + (oppItems.length - 1) * ITEM_GAP
+            const rowStartX = CANVAS_W / 2 - rowW / 2
+            const rowY = bottomY + 8  // 立绘底端下方
+            oppItems.forEach((entity, i) => {
+              const ix = rowStartX + i * (ITEM_SIZE + ITEM_GAP)
+              const iconBg = new Graphics()
+              iconBg.roundRect(ix, rowY, ITEM_SIZE, ITEM_SIZE, 5).fill({ color: 0x0d1520, alpha: 0.75 })
+              layer.addChild(iconBg)
+              void Assets.load<Texture>(getItemIconUrl(entity.defId)).then((tex: Texture) => {
+                if (version !== this.pvpAllPlayersLayerVersion || !PvpContext.isActive()) return
+                const spr = new Sprite(tex)
+                spr.x = ix; spr.y = rowY
+                spr.width = ITEM_SIZE; spr.height = ITEM_SIZE
+                layer.addChild(spr)
+              }).catch(() => {})
+            })
+          }
+        }
+      }).catch(() => {})
+    }
+
+    // ── 侧边其他玩家小卡片 ──
+    const LEFT_X = 8
+    const RIGHT_X = CANVAS_W - 8 - SIDE_CARD_W
+    // SAFE_TOP：设置按钮下方，避免卡片进入顶部 UI 区域
+    // SAFE_BOTTOM：避免卡片延伸到玩家头像区域
+    const SAFE_TOP = 160
+    const SAFE_BOTTOM = 460
+    const safeAreaH = SAFE_BOTTOM - SAFE_TOP
+
+    const otherPlayers = sess.players.filter(p => p.index !== sess.myIndex && p.index !== oppIdx)
+    const leftPlayers = otherPlayers.filter((_, i) => i % 2 === 0)
+    const rightPlayers = otherPlayers.filter((_, i) => i % 2 === 1)
+
+    // 人数多时动态缩小卡片，使所有卡片都在安全区内不重叠玩家头像
+    const maxSideCount = Math.max(leftPlayers.length, rightPlayers.length, 1)
+    const dynCardH = Math.max(80, Math.min(SIDE_CARD_H, Math.floor((safeAreaH - (maxSideCount - 1) * SIDE_CARD_GAP) / maxSideCount)))
+    const dynPortraitH = Math.round(dynCardH * SIDE_PORTRAIT_H / SIDE_CARD_H)
+
+    const getStartY = (count: number): number => {
+      if (count === 0) return SAFE_TOP
+      const totalH = count * dynCardH + (count - 1) * SIDE_CARD_GAP
+      return SAFE_TOP + Math.max(0, (safeAreaH - totalH) / 2)
+    }
+
+    const buildSideCard = (player: PvpPlayer, x: number, y: number): void => {
+      const heroId = lastSnaps[player.index]?.ownerHeroId
+      // Day 1 无快照时不渲染（无立绘则整张卡不显示）
+      if (!heroId) return
+
+      const hp = sess.playerHps?.[player.index] ?? 0
+      const isElim = sess.eliminatedPlayers.includes(player.index)
+      const isReady = readySet.has(player.index)
+      const level = sess.playerLevels?.[player.index]
+
+      const cardCon = new Container()
+      cardCon.x = x
+      cardCon.y = y
+      cardCon.eventMode = 'static'
+      cardCon.cursor = 'pointer'
+      layer.addChild(cardCon)
+
+      // 立绘（按宽高均适配 SIDE_PORTRAIT_H，不溢出）
+      const portrait = new Sprite(Texture.WHITE)
+      portrait.alpha = 0
+      portrait.anchor.set(0.5, 0)
+      portrait.x = SIDE_CARD_W / 2
+      portrait.y = 0
+      cardCon.addChild(portrait)
+
+      // 立绘顶部：昵称（白字）
+      const shortName = player.nickname.length > 5 ? player.nickname.slice(0, 4) + '…' : player.nickname
+      const nameT = new Text({
+        text: shortName,
+        style: {
+          fill: isElim ? 0x888888 : 0xffffff,
+          fontSize: 12,
+          fontWeight: 'bold',
+          stroke: { color: 0x000000, width: 3 },
+        },
+      })
+      nameT.anchor.set(0.5, 1)
+      nameT.x = SIDE_CARD_W / 2
+      nameT.y = -3
+      cardCon.addChild(nameT)
+
+      // 立绘底部：等级（白字）+ 血量（红字）—— 在图片加载后用真实高度定位
+      const lvStr = level !== undefined ? `Lv${level}` : ''
+      const lvT = lvStr ? new Text({
+        text: lvStr,
+        style: {
+          fill: isElim ? 0x888888 : 0xffffff,
+          fontSize: 11,
+          fontWeight: 'bold',
+          stroke: { color: 0x000000, width: 2.5 },
+        },
+      }) : null
+      const hpT = new Text({
+        text: `♥${hp}`,
+        style: {
+          fill: isElim ? 0x887777 : 0xff6666,
+          fontSize: 11,
+          fontWeight: 'bold',
+          stroke: { color: 0x000000, width: 2.5 },
+        },
+      })
+
+      void Assets.load<Texture>(`/resource/hero/${heroId}.png`).then((tex) => {
+        if (!portrait.destroyed && version === this.pvpAllPlayersLayerVersion) {
+          portrait.texture = tex
+          const scale = Math.min(SIDE_CARD_W / tex.width, dynPortraitH / tex.height)
+          portrait.scale.set(scale)
+          portrait.alpha = isElim ? 0.3 : 0.88
+          // 紧贴真实立绘底部放置文字
+          const infoY = tex.height * scale + 1
+          const infoGap = 4
+          if (lvT) {
+            const combinedW = lvT.width + infoGap + hpT.width
+            const startX = SIDE_CARD_W / 2 - combinedW / 2
+            lvT.anchor.set(0, 0)
+            lvT.x = startX
+            lvT.y = infoY
+            hpT.anchor.set(0, 0)
+            hpT.x = startX + lvT.width + infoGap
+            hpT.y = infoY
+            cardCon.addChild(lvT)
+          } else {
+            hpT.anchor.set(0.5, 0)
+            hpT.x = SIDE_CARD_W / 2
+            hpT.y = infoY
+          }
+          cardCon.addChild(hpT)
+        }
+      }).catch(() => {})
+
+      // 未就绪遮罩（只有自己已准备时才显示，表示在等待谁）
+      const readyOverlay = new Graphics()
+      if (!isElim && !isReady && readySet.has(sess.myIndex)) {
+        readyOverlay.rect(0, 0, SIDE_CARD_W, dynPortraitH).fill({ color: 0x000000, alpha: 0.45 })
+      }
+      cardCon.addChild(readyOverlay)
+
+      // 淘汰遮罩
+      if (isElim) {
+        const elimG = new Graphics()
+        elimG.rect(0, 0, SIDE_CARD_W, dynPortraitH).fill({ color: 0x334455, alpha: 0.55 })
+        cardCon.addChild(elimG)
+        const elimFontSize = Math.max(24, Math.round(44 * dynPortraitH / SIDE_PORTRAIT_H))
+        const xT = new Text({ text: '×', style: { fill: 0x4a5e6a, fontSize: elimFontSize, fontWeight: 'bold' } })
+        xT.anchor.set(0.5, 0.5)
+        xT.x = SIDE_CARD_W / 2
+        xT.y = dynPortraitH / 2
+        cardCon.addChild(xT)
       }
 
-      ctx.pvpOpponentHeroLayer = layer
-      stage.addChild(layer)
-    } catch {
-      // 贴图加载失败静默忽略
+      // 点击：气泡展示该玩家阵容
+      const isLeftCard = x < CANVAS_W / 2
+      cardCon.on('pointerdown', (e) => {
+        e.stopPropagation()
+        this.togglePlayerSnapshotBubble(player, x, y, isLeftCard)
+      })
+      cardCon.on('pointerover', () => { cardCon.alpha = 0.8 })
+      cardCon.on('pointerout', () => { cardCon.alpha = 1 })
+
+      this.pvpSideCardMeta.set(player.index, { readyOverlay, portraitH: dynPortraitH })
     }
+
+    leftPlayers.forEach((p, i) => buildSideCard(p, LEFT_X, getStartY(leftPlayers.length) + i * (dynCardH + SIDE_CARD_GAP)))
+    rightPlayers.forEach((p, i) => buildSideCard(p, RIGHT_X, getStartY(rightPlayers.length) + i * (dynCardH + SIDE_CARD_GAP)))
+  }
+
+  // ── 玩家阵容气泡（点击侧边立绘弹出，再次点击或点外部关闭）──
+  private closePvpSnapshotBubble(): void {
+    const stage = getApp().stage
+    if (this.pvpSnapshotBubble) {
+      stage.removeChild(this.pvpSnapshotBubble)
+      this.pvpSnapshotBubble.destroy({ children: true })
+      this.pvpSnapshotBubble = null
+    }
+    if (this.pvpSnapshotBubbleBackdrop) {
+      stage.removeChild(this.pvpSnapshotBubbleBackdrop)
+      this.pvpSnapshotBubbleBackdrop.destroy()
+      this.pvpSnapshotBubbleBackdrop = null
+    }
+  }
+
+  private togglePlayerSnapshotBubble(player: PvpPlayer, cardX: number, cardY: number, isLeft: boolean): void {
+    const stage = getApp().stage
+    const sess = PvpContext.getSession()
+    // 再次点击同一张卡关闭
+    if (this.pvpSnapshotBubble) {
+      this.closePvpSnapshotBubble()
+      return
+    }
+
+    const snap = PvpContext.getLastPlayerSnapshots()[player.index]
+    const hp = sess?.playerHps?.[player.index] ?? 0
+    const level = sess?.playerLevels?.[player.index]
+    const items = snap?.entities.filter(e => e.defId) ?? []
+
+    const ICON_SIZE = 44
+    const ICON_GAP = 5
+    const PAD = 10
+    const HEADER_H = 34
+    const itemCount = Math.max(1, items.length)
+    const BUBBLE_W = PAD * 2 + itemCount * ICON_SIZE + (itemCount - 1) * ICON_GAP
+    const BUBBLE_H = HEADER_H + PAD + ICON_SIZE + PAD
+
+    const bxRaw = isLeft ? cardX + SIDE_CARD_W + 8 : cardX - BUBBLE_W - 8
+    const bx = Math.max(4, Math.min(bxRaw, CANVAS_W - BUBBLE_W - 4))
+    const by = Math.max(160, Math.min(cardY, CANVAS_H - BUBBLE_H - 10))
+
+    // 透明背景板：点击外部关闭
+    const backdrop = new Graphics()
+    backdrop.rect(0, 0, CANVAS_W, CANVAS_H).fill({ color: 0x000000, alpha: 0.001 })
+    backdrop.eventMode = 'static'
+    backdrop.zIndex = 149
+    backdrop.on('pointerdown', () => this.closePvpSnapshotBubble())
+    stage.addChild(backdrop)
+    this.pvpSnapshotBubbleBackdrop = backdrop
+
+    const bubble = new Container()
+    bubble.zIndex = 150
+    bubble.eventMode = 'static'
+    bubble.on('pointerdown', (e) => e.stopPropagation())
+
+    // 气泡背景
+    const bg = new Graphics()
+    bg.roundRect(bx, by, BUBBLE_W, BUBBLE_H, 10).fill({ color: 0x0d1520, alpha: 0.94 })
+    bg.roundRect(bx, by, BUBBLE_W, BUBBLE_H, 10).stroke({ color: 0x2a4a6a, width: 1.2 })
+    bubble.addChild(bg)
+
+    // 标题：名字 + Lv + HP
+    const headerParts = [player.nickname, level !== undefined ? `Lv${level}` : '', `♥${hp}`].filter(Boolean)
+    const headerT = new Text({
+      text: headerParts.join('  '),
+      style: { fill: 0xddeeff, fontSize: 15, fontWeight: 'bold' },
+    })
+    headerT.anchor.set(0, 0.5)
+    headerT.x = bx + PAD
+    headerT.y = by + HEADER_H / 2
+    bubble.addChild(headerT)
+
+    // 分隔线
+    const div = new Graphics()
+    div.rect(bx + PAD, by + HEADER_H - 1, BUBBLE_W - PAD * 2, 1).fill({ color: 0x1e2e44 })
+    bubble.addChild(div)
+
+    if (items.length === 0) {
+      const emptyT = new Text({ text: '（无阵容数据）', style: { fill: 0x446688, fontSize: 14 } })
+      emptyT.anchor.set(0.5, 0.5)
+      emptyT.x = bx + BUBBLE_W / 2
+      emptyT.y = by + HEADER_H + PAD + ICON_SIZE / 2
+      bubble.addChild(emptyT)
+    }
+
+    items.forEach((entity, i) => {
+      const ix = bx + PAD + i * (ICON_SIZE + ICON_GAP)
+      const iy = by + HEADER_H + PAD
+
+      const iconBg = new Graphics()
+      iconBg.roundRect(ix, iy, ICON_SIZE, ICON_SIZE, 6).fill({ color: 0x162030 })
+      bubble.addChild(iconBg)
+
+      void Assets.load<Texture>(getItemIconUrl(entity.defId)).then((tex) => {
+        if (!bubble.destroyed) {
+          const spr = new Sprite(tex)
+          spr.x = ix; spr.y = iy
+          spr.width = ICON_SIZE; spr.height = ICON_SIZE
+          bubble.addChild(spr)
+        }
+      }).catch(() => {})
+    })
+
+    stage.addChild(bubble)
+    this.pvpSnapshotBubble = bubble
+  }
+
+  // ── 就绪状态轻量刷新（仅更新未就绪遮罩）──
+  refreshPvpSideCardStates(): void {
+    const session = PvpContext.getSession()
+    if (!session) return
+    const readySet = new Set(PvpContext.getSyncReadyIndices())
+
+    const meReady = readySet.has(session.myIndex)
+    this.pvpSideCardMeta.forEach(({ readyOverlay, portraitH }, playerIndex) => {
+      const isElim = session!.eliminatedPlayers.includes(playerIndex)
+      const isReady = readySet.has(playerIndex)
+      readyOverlay.clear()
+      if (!isElim && !isReady && meReady) {
+        readyOverlay.rect(0, 0, SIDE_CARD_W, portraitH).fill({ color: 0x000000, alpha: 0.45 })
+      }
+    })
   }
 
   // ── 查看背包（等待面板临时隐藏，展示背包，浮层返回按钮）──
@@ -914,5 +1255,10 @@ export function clearPvpShopState(ctx: ShopSceneCtx): void {
     ctx.pvpBackpackReturnBtn.parent?.removeChild(ctx.pvpBackpackReturnBtn)
     ctx.pvpBackpackReturnBtn.destroy({ children: true })
     ctx.pvpBackpackReturnBtn = null
+  }
+  if (ctx.pvpAllPlayersLayer) {
+    ctx.pvpAllPlayersLayer.parent?.removeChild(ctx.pvpAllPlayersLayer)
+    ctx.pvpAllPlayersLayer.destroy({ children: true })
+    ctx.pvpAllPlayersLayer = null
   }
 }

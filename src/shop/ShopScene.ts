@@ -886,9 +886,8 @@ function makeTopAreaUICallbacks(): TopAreaUICallbacks {
   return {
     restartRunFromBeginning: () => restartRunFromBeginning(),
     toggleHeroPassiveDetailPopup: () => toggleHeroPassiveDetailPopup(),
-    pvpOpenPlayerList: () => pvpPanel?.openPvpPlayerListOverlay(),
-    pvpBuildOpponentBadge: () => pvpPanel?.buildPvpOpponentBadge(),
-    pvpBuildOpponentHeroLayer: () => pvpPanel?.buildPvpOpponentHeroLayer() ?? Promise.resolve(),
+    pvpBuildAllPlayersLayer: () => pvpPanel?.buildPvpAllPlayersLayer(),
+    pvpRefreshSideCardStates: () => pvpPanel?.refreshPvpSideCardStates(),
   }
 }
 

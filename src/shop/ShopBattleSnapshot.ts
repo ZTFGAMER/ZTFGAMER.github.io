@@ -39,6 +39,7 @@ export function buildBattleSnapshot(ctx: ShopSceneCtx, skillBarMoveStartAtMs?: n
     playerBattleHp,
     ownerSkillIds: ctx.pickedSkills.map((s) => s.id),
     ownerHeroId: ctx.starterClass ?? undefined,
+    ownerLevel: playerLevel,
     entities: snap.entities.map((it) => ({
       ...it,
       tier: getInstanceTier(it.instanceId) ?? 'Bronze',

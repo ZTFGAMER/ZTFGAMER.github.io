@@ -7,6 +7,7 @@ import { SceneManager } from '@/core/SceneManager'
 import { getConfig } from '@/core/DataLoader'
 import { getBattleSnapshot, setBattleSnapshot } from '@/battle/BattleSnapshotStore'
 import { consumeBattleOutcome } from '@/battle/BattleOutcomeStore'
+import { setPvpPlayerProgressOverride } from '@/core/RunState'
 
 import { getDailyGoldForDay } from '@/shop/ShopManager'
 import type { PvpSession, PvpDayPhase } from '@/pvp/PvpTypes'
@@ -94,6 +95,8 @@ export const PvpContext = {
     session = pvpSession
     currentDayPhase = 'shop1'
     pendingWildGoldBonus = 0
+    // PVP 模式使用独立内存进度，从 Lv1 开始，不污染冒险模式存档
+    setPvpPlayerProgressOverride({ level: 1, exp: 0 })
 
     // 注册房间回调
     pvpRoom.onDayReady = (day, countdownMs, byeOpponentMap) => {
@@ -195,6 +198,13 @@ export const PvpContext = {
       Object.entries(hpMap).forEach(([idx, hp]) => {
         session!.playerHps[Number(idx)] = hp
       })
+      // 更新所有玩家等级（从快照 ownerLevel 提取）
+      if (!session.playerLevels) session.playerLevels = {}
+      Object.entries(snapshots ?? {}).forEach(([idx, snap]) => {
+        if (snap.ownerLevel !== undefined) {
+          session!.playerLevels![Number(idx)] = snap.ownerLevel
+        }
+      })
       // 存储上局快照
       lastPlayerSnapshots = snapshots ?? {}
       // 通知 ShopScene 快照已就绪（解决 round_summary 晚于 onEnter 的竞态）
@@ -242,6 +252,7 @@ export const PvpContext = {
 
     pvpRoom.onSyncReadyUpdate = (_day, readyIndices) => {
       syncReadyIndices = readyIndices
+      PvpContext.onSyncReadyUpdate?.()
     }
 
     pvpRoom.onUrgeNotify = (fromPlayerIndex, fromNickname) => {
@@ -350,6 +361,9 @@ export const PvpContext = {
 
   /** round_summary 收到后触发（ShopScene 用于补建对手英雄立绘，解决竞态） */
   onRoundSummaryReceived: null as (() => void) | null,
+
+  /** sync_ready_update 收到后触发（ShopScene 用于刷新侧边卡就绪状态） */
+  onSyncReadyUpdate: null as (() => void) | null,
 
   /** Returns current PVP mode */
   getPvpMode(): import('./PvpTypes').PvpMode | null {
@@ -471,6 +485,8 @@ export const PvpContext = {
   endSession(): void {
     // 清理 ShopScene 的 in-memory 状态，防止 PVP 残留存档污染 PVE 商店
     clearShopStateCallback?.()
+    // 清除 PVP 内存进度覆盖，恢复冒险模式从 localStorage 读取
+    setPvpPlayerProgressOverride(null)
     room?.destroy()
     room = null
     session = null
