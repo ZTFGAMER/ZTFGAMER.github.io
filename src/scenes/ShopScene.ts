@@ -208,71 +208,71 @@ function makeHeroCallbacks() {
 }
 
 
-function markHeroSameItemSynthesisChoiceTriggered(): void {
-  HeroSystem.markHeroSameItemSynthesisChoiceTriggered(_ctx, { refreshPlayerStatusUI: () => refreshPlayerStatusUI() })
+function markHeroSameItemSynthesisChoiceTriggered(ctx: ShopSceneCtx = _ctx): void {
+  HeroSystem.markHeroSameItemSynthesisChoiceTriggered(ctx, { refreshPlayerStatusUI: () => refreshPlayerStatusUI() })
 }
 
-function checkAndPopPendingHeroPeriodicRewards(): void {
-  HeroSystem.checkAndPopPendingHeroPeriodicRewards(_ctx, makeHeroCallbacks())
+function checkAndPopPendingHeroPeriodicRewards(ctx: ShopSceneCtx = _ctx): void {
+  HeroSystem.checkAndPopPendingHeroPeriodicRewards(ctx, makeHeroCallbacks())
 }
 
-function grantHeroPeriodicRewardOrQueue(nameCn: string, source: string): boolean {
-  return HeroSystem.grantHeroPeriodicRewardOrQueue(_ctx, nameCn, source, {
+function grantHeroPeriodicRewardOrQueue(nameCn: string, source: string, ctx: ShopSceneCtx = _ctx): boolean {
+  return HeroSystem.grantHeroPeriodicRewardOrQueue(ctx, nameCn, source, {
     buildNamedPoolCandidate: (n) => buildNamedPoolCandidate(n),
     grantPoolCandidateToBoardOrBackpack: (c, s, o) => grantPoolCandidateToBoardOrBackpack(c, s, o),
-    showHintToast: (r, m, c) => showHintToast(r as ToastReason, m, c),
+    showHintToast: (r, m, c) => showHintToast(r as ToastReason, m, c, ctx),
     refreshPlayerStatusUI: () => refreshPlayerStatusUI(),
     captureAndSave: makeCaptureAndSave(),
   })
 }
 
-function grantHeroStartDayEffectsIfNeeded(): void {
-  HeroSystem.grantHeroStartDayEffectsIfNeeded(_ctx, {
-    showHintToast: (r, m, c) => showHintToast(r as ToastReason, m, c),
+function grantHeroStartDayEffectsIfNeeded(ctx: ShopSceneCtx = _ctx): void {
+  HeroSystem.grantHeroStartDayEffectsIfNeeded(ctx, {
+    showHintToast: (r, m, c) => showHintToast(r as ToastReason, m, c, ctx),
   })
 }
 
-function grantHeroPeriodicEffectsOnNewDay(day: number): void {
-  HeroSystem.grantHeroPeriodicEffectsOnNewDay(_ctx, day, {
-    showHintToast: (r, m, c) => showHintToast(r as ToastReason, m, c),
-    grantHeroPeriodicRewardOrQueue: (n, s) => grantHeroPeriodicRewardOrQueue(n, s),
+function grantHeroPeriodicEffectsOnNewDay(day: number, ctx: ShopSceneCtx = _ctx): void {
+  HeroSystem.grantHeroPeriodicEffectsOnNewDay(ctx, day, {
+    showHintToast: (r, m, c) => showHintToast(r as ToastReason, m, c, ctx),
+    grantHeroPeriodicRewardOrQueue: (n, s) => grantHeroPeriodicRewardOrQueue(n, s, ctx),
   })
 }
 
-function grantSilverDailyGoldBonusesOnNewDay(): void {
-  HeroSystem.grantSilverDailyGoldBonusesOnNewDay(_ctx, {
-    hasPickedSkill: (id) => hasPickedSkill(_ctx, id),
-    showHintToast: (r, m, c) => showHintToast(r as ToastReason, m, c),
+function grantSilverDailyGoldBonusesOnNewDay(ctx: ShopSceneCtx = _ctx): void {
+  HeroSystem.grantSilverDailyGoldBonusesOnNewDay(ctx, {
+    hasPickedSkill: (id) => hasPickedSkill(ctx, id),
+    showHintToast: (r, m, c) => showHintToast(r as ToastReason, m, c, ctx),
   })
 }
 
-function grantHeroDiscardSameLevelReward(discardedDefId: string, level: 1 | 2 | 3 | 4 | 5 | 6 | 7): void {
-  HeroSystem.grantHeroDiscardSameLevelReward(_ctx, discardedDefId, level, {
+function grantHeroDiscardSameLevelReward(discardedDefId: string, level: 1 | 2 | 3 | 4 | 5 | 6 | 7, ctx: ShopSceneCtx = _ctx): void {
+  HeroSystem.grantHeroDiscardSameLevelReward(ctx, discardedDefId, level, {
     collectPoolCandidatesByLevel: (lv) => collectPoolCandidatesByLevel(lv),
     grantPoolCandidateToBoardOrBackpack: (c, s, o) => grantPoolCandidateToBoardOrBackpack(c, s, o),
     refreshPlayerStatusUI: () => refreshPlayerStatusUI(),
   })
 }
 
-function refreshBattlePassiveStatBadges(showJump = true): void {
-  HeroSystem.refreshBattlePassiveStatBadges(_ctx, showJump, {
+function refreshBattlePassiveStatBadges(showJump = true, ctx: ShopSceneCtx = _ctx): void {
+  HeroSystem.refreshBattlePassiveStatBadges(ctx, showJump, {
     getInstanceTier: (id) => getInstanceTier(id),
     getInstanceTierStar: (id) => getInstanceTierStar(id),
     getInstancePermanentDamageBonus: (id) => Math.max(0, Math.round(instanceToPermanentDamageBonus.get(id) ?? 0)),
-    setZoneItemAmmo: (id, c, m) => { if (_ctx.battleView) setZoneItemAmmo(_ctx.battleView, id, c, m) },
+    setZoneItemAmmo: (id, c, m) => { if (ctx.battleView) setZoneItemAmmo(ctx.battleView, id, c, m) },
   })
 }
 
-function seedInitialUnlockPoolByStarterClass(pick: StarterClass): void {
-  HeroSystem.seedInitialUnlockPoolByStarterClass(_ctx, pick, {
-    resetSkill15NextBuyDiscountState: () => resetSkill15NextBuyDiscountState(_ctx),
-    resetSkill30BundleState: () => resetSkill30BundleState(_ctx),
+function seedInitialUnlockPoolByStarterClass(pick: StarterClass, ctx: ShopSceneCtx = _ctx): void {
+  HeroSystem.seedInitialUnlockPoolByStarterClass(ctx, pick, {
+    resetSkill15NextBuyDiscountState: () => resetSkill15NextBuyDiscountState(ctx),
+    resetSkill30BundleState: () => resetSkill30BundleState(ctx),
     syncUnlockPoolToManager: () => syncUnlockPoolToManager(),
   })
 }
 
-function tryRunHeroCrossSynthesisReroll(stage: Container, synth: SynthesizeResult): boolean {
-  return HeroSystem.tryRunHeroCrossSynthesisReroll(_ctx, stage, synth, {
+function tryRunHeroCrossSynthesisReroll(stage: Container, synth: SynthesizeResult, ctx: ShopSceneCtx = _ctx): boolean {
+  return HeroSystem.tryRunHeroCrossSynthesisReroll(ctx, stage, synth, {
     collectPoolCandidatesByLevel: (lv) => collectPoolCandidatesByLevel(lv),
     showNeutralChoiceOverlay: (s, t, c, onC, m) => showNeutralChoiceOverlay(s, t, c, onC, m),
     transformPlacedItemKeepLevelTo: (id, z, it, kl) => transformPlacedItemKeepLevelTo(id, z, it, kl),
@@ -280,7 +280,7 @@ function tryRunHeroCrossSynthesisReroll(stage: Container, synth: SynthesizeResul
     applyInstanceTierVisuals: () => applyInstanceTierVisuals(),
     syncShopOwnedTierRules: () => syncShopOwnedTierRules(),
     refreshUpgradeHints: () => refreshUpgradeHints(),
-    showHintToast: (r, m, c) => showHintToast(r as ToastReason, m, c),
+    showHintToast: (r, m, c) => showHintToast(r as ToastReason, m, c, ctx),
     refreshShopUI: () => refreshShopUI(),
     refreshPlayerStatusUI: () => refreshPlayerStatusUI(),
     tierStarLevelIndex: (t, s) => tierStarLevelIndex(t, s),
@@ -288,23 +288,23 @@ function tryRunHeroCrossSynthesisReroll(stage: Container, synth: SynthesizeResul
   })
 }
 
-function toggleHeroPassiveDetailPopup(): void {
-  HeroSystem.toggleHeroPassiveDetailPopup(_ctx, getApp().stage, {
+function toggleHeroPassiveDetailPopup(ctx: ShopSceneCtx = _ctx): void {
+  HeroSystem.toggleHeroPassiveDetailPopup(ctx, getApp().stage, {
     hideSkillDetailPopup: () => skillDraftPanel?.hideSkillDetailPopup(),
-    resetInfoModeSelection: () => resetInfoModeSelection(),
-    applySellButtonState: () => applySellButtonState(),
+    resetInfoModeSelection: () => resetInfoModeSelection(ctx),
+    applySellButtonState: () => applySellButtonState(ctx),
   })
 }
 
-function ensureStarterClassSelection(stage: Container): void {
-  HeroSystem.ensureStarterClassSelection(_ctx, stage, {
-    setTransitionInputEnabled: (enabled) => setTransitionInputEnabled(enabled),
-    applyPhaseInputLock: () => applyPhaseInputLock(),
+function ensureStarterClassSelection(stage: Container, ctx: ShopSceneCtx = _ctx): void {
+  HeroSystem.ensureStarterClassSelection(ctx, stage, {
+    setTransitionInputEnabled: (enabled) => setTransitionInputEnabled(enabled, ctx),
+    applyPhaseInputLock: () => applyPhaseInputLock(ctx),
     refreshShopUI: () => refreshShopUI(),
     captureAndSave: makeCaptureAndSave(),
     ensureDailyChoiceSelection: (s) => ensureDailyChoiceSelection(s),
-    grantHeroStartDayEffectsIfNeeded: () => grantHeroStartDayEffectsIfNeeded(),
-    seedInitialUnlockPoolByStarterClass: (pick) => seedInitialUnlockPoolByStarterClass(pick),
+    grantHeroStartDayEffectsIfNeeded: () => grantHeroStartDayEffectsIfNeeded(ctx),
+    seedInitialUnlockPoolByStarterClass: (pick) => seedInitialUnlockPoolByStarterClass(pick, ctx),
   })
 }
 
@@ -333,13 +333,13 @@ function makeEventCallbacks() {
   }
 }
 
-function applyEventEffect(event: EventChoice, fromTest = false): boolean {
-  return EventSystem.applyEventEffect(_ctx, event, makeEventCallbacks(), fromTest)
+function applyEventEffect(event: EventChoice, fromTest = false, ctx: ShopSceneCtx = _ctx): boolean {
+  return EventSystem.applyEventEffect(ctx, event, makeEventCallbacks(), fromTest)
 }
 
-function applyFutureEventEffectsOnNewDay(day: number): void {
-  EventSystem.applyFutureEventEffectsOnNewDay(_ctx, day, {
-    showHintToast: (reason, message, color) => showHintToast(reason as ToastReason, message, color),
+function applyFutureEventEffectsOnNewDay(day: number, ctx: ShopSceneCtx = _ctx): void {
+  EventSystem.applyFutureEventEffectsOnNewDay(ctx, day, {
+    showHintToast: (reason, message, color) => showHintToast(reason as ToastReason, message, color, ctx),
     collectUpgradeableOwnedPlacedItems: (zone?: 'battle' | 'backpack') => collectUpgradeableOwnedPlacedItems(zone),
     upgradePlacedItem: (instanceId, zone, withFx) => upgradePlacedItem(instanceId, zone, withFx),
   })
@@ -357,12 +357,12 @@ function applyFutureEventEffectsOnNewDay(day: number): void {
 
 // ---- QuickBuySystem 本地 shim 包裝 ----
 
-function makeQuickBuyCallbacks() {
+function makeQuickBuyCallbacks(ctx: ShopSceneCtx = _ctx) {
   return {
     findFirstBattlePlace: (size: ItemSizeNorm) => findFirstBattlePlace(size),
     findFirstBackpackPlace: (size: ItemSizeNorm) => findFirstBackpackPlace(size),
     isFirstPurchaseLockedToStarterClass: () => isFirstPurchaseLockedToStarterClass(),
-    isStarterClassItem: (item: ItemDef) => isStarterClassItem(_ctx, item),
+    isStarterClassItem: (item: ItemDef) => isStarterClassItem(ctx, item),
     collectNeutralQuickBuyCandidates: () => collectNeutralQuickBuyCandidates(),
     rewriteNeutralRandomPick: (item: ItemDef) => rewriteNeutralRandomPick(item),
     canRandomNeutralItem: (item: ItemDef) => canRandomNeutralItem(item),
@@ -377,22 +377,22 @@ function makeQuickBuyCallbacks() {
   }
 }
 
-function rollNextQuickBuyOffer(force = false) {
-  return QuickBuySystem.rollNextQuickBuyOffer(_ctx, force, makeQuickBuyCallbacks())
+function rollNextQuickBuyOffer(force = false, ctx: ShopSceneCtx = _ctx) {
+  return QuickBuySystem.rollNextQuickBuyOffer(ctx, force, makeQuickBuyCallbacks(ctx))
 }
 
 
 
 
-function collectPoolCandidatesByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): PoolCandidate[] {
-  return QuickBuySystem.collectPoolCandidatesByLevel(_ctx, level, {
+function collectPoolCandidatesByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7, ctx: ShopSceneCtx = _ctx): PoolCandidate[] {
+  return QuickBuySystem.collectPoolCandidatesByLevel(ctx, level, {
     findFirstBattlePlace: (size) => findFirstBattlePlace(size),
     findFirstBackpackPlace: (size) => findFirstBackpackPlace(size),
   })
 }
 
-function findCandidateByOffer(offer: { itemId: string; tier: TierKey; star: 1 | 2; price: number } | null): PoolCandidate | null {
-  return QuickBuySystem.findCandidateByOffer(_ctx, offer, {
+function findCandidateByOffer(offer: { itemId: string; tier: TierKey; star: 1 | 2; price: number } | null, ctx: ShopSceneCtx = _ctx): PoolCandidate | null {
+  return QuickBuySystem.findCandidateByOffer(ctx, offer, {
     findFirstBattlePlace: (size) => findFirstBattlePlace(size),
     findFirstBackpackPlace: (size) => findFirstBackpackPlace(size),
     rewriteNeutralRandomPick: (item) => rewriteNeutralRandomPick(item),
@@ -718,13 +718,13 @@ function showHintToast(reason: ToastReason, message: string, color = 0xffe8a3, c
   }, 1700)
 }
 
-function canAffordQuickBuyNow(): boolean {
-  if (!_ctx.shopManager) return false
-  const offer = rollNextQuickBuyOffer(false)
+function canAffordQuickBuyNow(ctx: ShopSceneCtx = _ctx): boolean {
+  if (!ctx.shopManager) return false
+  const offer = rollNextQuickBuyOffer(false, ctx)
   if (!offer) return false
-  if (!canBuyItemUnderFirstPurchaseRule(_ctx, offer.item)) return false
-  const price = resolveBuyPriceWithSkills(_ctx, offer.price).finalPrice
-  return _ctx.shopManager.gold >= price
+  if (!canBuyItemUnderFirstPurchaseRule(ctx, offer.item)) return false
+  const price = resolveBuyPriceWithSkills(ctx, offer.price).finalPrice
+  return ctx.shopManager.gold >= price
 }
 
 
@@ -979,42 +979,42 @@ function canAffordShopSlot(slot: ShopSlot, ctx: ShopSceneCtx = _ctx): boolean {
   return ctx.shopManager.gold >= getShopSlotPreviewPrice(slot, ctx)
 }
 
-function upsertPickedSkill(skillId: string): void {
-  SkillSystem.upsertPickedSkill(_ctx, skillId, { grantSkill20DailyBronzeItemIfNeeded: () => grantSkill20DailyBronzeItemIfNeeded() })
+function upsertPickedSkill(skillId: string, ctx: ShopSceneCtx = _ctx): void {
+  SkillSystem.upsertPickedSkill(ctx, skillId, { grantSkill20DailyBronzeItemIfNeeded: () => grantSkill20DailyBronzeItemIfNeeded() })
 }
 
-function removePickedSkill(skillId: string): void {
-  SkillSystem.removePickedSkill(_ctx, skillId, { getDefaultSkillDetailMode: () => getDefaultSkillDetailMode() })
+function removePickedSkill(skillId: string, ctx: ShopSceneCtx = _ctx): void {
+  SkillSystem.removePickedSkill(ctx, skillId, { getDefaultSkillDetailMode: () => getDefaultSkillDetailMode() })
 }
 
-function tryBuyShopSlotWithSkill(slot: ShopSlot): { ok: boolean; finalPrice: number; discount: number } {
-  if (!_ctx.shopManager || slot.purchased) return { ok: false, finalPrice: slot.price, discount: 0 }
-  if (_ctx.dayEventState.forceBuyArchetype && _ctx.dayEventState.forceBuyRemaining > 0) {
+function tryBuyShopSlotWithSkill(slot: ShopSlot, ctx: ShopSceneCtx = _ctx): { ok: boolean; finalPrice: number; discount: number } {
+  if (!ctx.shopManager || slot.purchased) return { ok: false, finalPrice: slot.price, discount: 0 }
+  if (ctx.dayEventState.forceBuyArchetype && ctx.dayEventState.forceBuyRemaining > 0) {
     const currentArch = toSkillArchetype(getPrimaryArchetype(slot.item.tags))
-    if (currentArch !== _ctx.dayEventState.forceBuyArchetype) {
+    if (currentArch !== ctx.dayEventState.forceBuyArchetype) {
       const candidates = getAllItems().filter((it) => {
         if (!parseAvailableTiers(it.available_tiers).includes(slot.tier)) return false
-        return toSkillArchetype(getPrimaryArchetype(it.tags)) === _ctx.dayEventState.forceBuyArchetype
+        return toSkillArchetype(getPrimaryArchetype(it.tags)) === ctx.dayEventState.forceBuyArchetype
       })
       const replacement = candidates[Math.floor(Math.random() * candidates.length)]
       if (replacement) {
         slot.item = replacement
-        slot.price = _ctx.shopManager.getItemPrice(replacement, slot.tier)
+        slot.price = ctx.shopManager.getItemPrice(replacement, slot.tier)
       }
     }
   }
-  const priced = resolveBuyPriceWithSkills(_ctx, slot.price)
-  if (_ctx.shopManager.gold < priced.finalPrice) return { ok: false, finalPrice: priced.finalPrice, discount: priced.discount }
-  _ctx.shopManager.gold -= priced.finalPrice
+  const priced = resolveBuyPriceWithSkills(ctx, slot.price)
+  if (ctx.shopManager.gold < priced.finalPrice) return { ok: false, finalPrice: priced.finalPrice, discount: priced.discount }
+  ctx.shopManager.gold -= priced.finalPrice
   slot.purchased = true
-  if (_ctx.dayEventState.forceBuyRemaining > 0) {
-    _ctx.dayEventState.forceBuyRemaining = Math.max(0, _ctx.dayEventState.forceBuyRemaining - 1)
-    if (_ctx.dayEventState.forceBuyRemaining <= 0) _ctx.dayEventState.forceBuyArchetype = null
+  if (ctx.dayEventState.forceBuyRemaining > 0) {
+    ctx.dayEventState.forceBuyRemaining = Math.max(0, ctx.dayEventState.forceBuyRemaining - 1)
+    if (ctx.dayEventState.forceBuyRemaining <= 0) ctx.dayEventState.forceBuyArchetype = null
   }
-  if (consumeSkill15NextBuyDiscountAfterSuccess(_ctx)) showHintToast('no_gold_buy', '砍价高手触发：本次-1G', 0x8ff0b0)
-  const skill30Ready = consumeSkill30BundleAfterSuccess(_ctx, priced.freeBySkill30)
-  if (priced.freeBySkill30) showHintToast('no_gold_buy', '打包购买触发：本次0金币', 0x9be5ff)
-  else if (skill30Ready) showHintToast('no_gold_buy', '打包购买就绪：下次购买0金币', 0x9be5ff)
+  if (consumeSkill15NextBuyDiscountAfterSuccess(ctx)) showHintToast('no_gold_buy', '砍价高手触发：本次-1G', 0x8ff0b0, ctx)
+  const skill30Ready = consumeSkill30BundleAfterSuccess(ctx, priced.freeBySkill30)
+  if (priced.freeBySkill30) showHintToast('no_gold_buy', '打包购买触发：本次0金币', 0x9be5ff, ctx)
+  else if (skill30Ready) showHintToast('no_gold_buy', '打包购买就绪：下次购买0金币', 0x9be5ff, ctx)
   updateNeutralPseudoRandomCounterOnPurchase(slot.item)
   return { ok: true, finalPrice: priced.finalPrice, discount: priced.discount }
 }
@@ -1023,11 +1023,11 @@ function closeSpecialShopOverlay(): void {
   specialShopPanel?.closeSpecialShopOverlay()
 }
 
-function setBaseShopPrimaryButtonsVisible(visible: boolean): void {
-  if (_ctx.bpBtnHandle) _ctx.bpBtnHandle.container.visible = visible
-  if (_ctx.refreshBtnHandle) _ctx.refreshBtnHandle.container.visible = visible
-  if (_ctx.sellBtnHandle) _ctx.sellBtnHandle.container.visible = visible
-  if (_ctx.phaseBtnHandle) _ctx.phaseBtnHandle.container.visible = visible
+function setBaseShopPrimaryButtonsVisible(visible: boolean, ctx: ShopSceneCtx = _ctx): void {
+  if (ctx.bpBtnHandle) ctx.bpBtnHandle.container.visible = visible
+  if (ctx.refreshBtnHandle) ctx.refreshBtnHandle.container.visible = visible
+  if (ctx.sellBtnHandle) ctx.sellBtnHandle.container.visible = visible
+  if (ctx.phaseBtnHandle) ctx.phaseBtnHandle.container.visible = visible
 }
 
 function renderSpecialShopCheckMarks(): void {
@@ -2467,29 +2467,29 @@ function updateNeutralPseudoRandomCounterOnPurchase(item: ItemDef): void {
   neutralItemPanel?.updateNeutralPseudoRandomCounterOnPurchase(item)
 }
 
-function getQuickBuyMinPrice(): number {
-  const offer = rollNextQuickBuyOffer(false)
+function getQuickBuyMinPrice(ctx: ShopSceneCtx = _ctx): number {
+  const offer = rollNextQuickBuyOffer(false, ctx)
   if (!offer) return SHOP_QUICK_BUY_PRICE
-  return resolveBuyPriceWithSkills(_ctx, offer.price).finalPrice
+  return resolveBuyPriceWithSkills(ctx, offer.price).finalPrice
 }
 
-function getQuickBuyPricePreviewLabel(): string {
-  const offer = rollNextQuickBuyOffer(false)
+function getQuickBuyPricePreviewLabel(ctx: ShopSceneCtx = _ctx): string {
+  const offer = rollNextQuickBuyOffer(false, ctx)
   if (!offer) return '-'
-  return `${resolveBuyPriceWithSkills(_ctx, offer.price).finalPrice}`
+  return `${resolveBuyPriceWithSkills(ctx, offer.price).finalPrice}`
 }
 
-function buyRandomBronzeToBoardOrBackpack(): void {
-  SkillSystem.buyRandomBronzeToBoardOrBackpack(_ctx, {
+function buyRandomBronzeToBoardOrBackpack(ctx: ShopSceneCtx = _ctx): void {
+  SkillSystem.buyRandomBronzeToBoardOrBackpack(ctx, {
     syncShopOwnedTierRules: () => syncShopOwnedTierRules(),
-    rollNextQuickBuyOffer: (force) => rollNextQuickBuyOffer(force),
-    findCandidateByOffer: (offer) => findCandidateByOffer(offer),
-    collectPoolCandidatesByLevel: (level) => collectPoolCandidatesByLevel(level),
-    canBuyItemUnderFirstPurchaseRule: (item) => canBuyItemUnderFirstPurchaseRule(_ctx, item),
+    rollNextQuickBuyOffer: (force) => rollNextQuickBuyOffer(force, ctx),
+    findCandidateByOffer: (offer) => findCandidateByOffer(offer, ctx),
+    collectPoolCandidatesByLevel: (level) => collectPoolCandidatesByLevel(level, ctx),
+    canBuyItemUnderFirstPurchaseRule: (item) => canBuyItemUnderFirstPurchaseRule(ctx, item),
     showFirstPurchaseRuleHint: () => showFirstPurchaseRuleHint(),
     findFirstBattlePlace: (size) => findFirstBattlePlace(size),
     findFirstBackpackPlace: (size) => findFirstBackpackPlace(size),
-    showHintToast: (reason, message, color) => showHintToast(reason as ToastReason, message, color),
+    showHintToast: (reason, message, color) => showHintToast(reason as ToastReason, message, color, ctx),
     refreshShopUI: () => refreshShopUI(),
     markShopPurchaseDone: () => markShopPurchaseDone(),
     nextId: () => nextId(),
