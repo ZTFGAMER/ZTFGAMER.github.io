@@ -637,15 +637,15 @@ function tickBattleStartTransition(dt: number, ctx: ShopSceneCtx = _ctx): void {
   }
 }
 
-function restartRunFromBeginning(): void {
+function restartRunFromBeginning(ctx: ShopSceneCtx = _ctx): void {
   clearCurrentRunState()
   resetLifeState()
   clearBattleSnapshot()
   clearBattleOutcome()
-  _ctx.savedShopState = null
-  _ctx.pendingBattleTransition = false
-  _ctx.pendingAdvanceToNextDay = false
-  _ctx.pvpReadyLocked = false
+  ctx.savedShopState = null
+  ctx.pendingBattleTransition = false
+  ctx.pendingAdvanceToNextDay = false
+  ctx.pvpReadyLocked = false
   window.location.reload()
 }
 
@@ -1075,15 +1075,15 @@ function shouldGuaranteeNewUnlock(resultTier: TierKey, resultStar: 1 | 2): boole
   return false
 }
 
-function applyInstanceTierVisuals(): void {
-  if (_ctx.battleView) {
+function applyInstanceTierVisuals(ctx: ShopSceneCtx = _ctx): void {
+  if (ctx.battleView) {
     for (const id of instanceToDefId.keys()) {
-      _ctx.battleView.setItemTier(id, toVisualTier(getInstanceTier(id), getInstanceTierStar(id)))
+      ctx.battleView.setItemTier(id, toVisualTier(getInstanceTier(id), getInstanceTierStar(id)))
     }
   }
-  if (_ctx.backpackView) {
+  if (ctx.backpackView) {
     for (const id of instanceToDefId.keys()) {
-      _ctx.backpackView.setItemTier(id, toVisualTier(getInstanceTier(id), getInstanceTierStar(id)))
+      ctx.backpackView.setItemTier(id, toVisualTier(getInstanceTier(id), getInstanceTierStar(id)))
     }
   }
 }
@@ -1098,40 +1098,40 @@ function collectOwnedTierByDef(): Map<string, TierKey> {
   return result
 }
 
-function syncShopOwnedTierRules(): void {
-  if (!_ctx.shopManager) return
-  _ctx.shopManager.setOwnedTiers(collectOwnedTierByDef())
+function syncShopOwnedTierRules(ctx: ShopSceneCtx = _ctx): void {
+  if (!ctx.shopManager) return
+  ctx.shopManager.setOwnedTiers(collectOwnedTierByDef())
 }
 
-function syncUnlockPoolToManager(): void {
-  if (!_ctx.shopManager) return
-  _ctx.shopManager.setUnlockedItemIds(Array.from(_ctx.unlockedItemIds))
+function syncUnlockPoolToManager(ctx: ShopSceneCtx = _ctx): void {
+  if (!ctx.shopManager) return
+  ctx.shopManager.setUnlockedItemIds(Array.from(ctx.unlockedItemIds))
 }
 
-function unlockItemToPool(defId: string): boolean {
+function unlockItemToPool(defId: string, ctx: ShopSceneCtx = _ctx): boolean {
   const item = getItemDefById(defId)
   if (!item) return false
-  if (_ctx.unlockedItemIds.has(defId)) return false
-  _ctx.unlockedItemIds.add(defId)
-  _ctx.shopManager?.unlockItem(defId)
+  if (ctx.unlockedItemIds.has(defId)) return false
+  ctx.unlockedItemIds.add(defId)
+  ctx.shopManager?.unlockItem(defId)
   return true
 }
 
-function showFirstPurchaseRuleHint(): void {
-  const tag = getStarterClassTag(_ctx)
+function showFirstPurchaseRuleHint(ctx: ShopSceneCtx = _ctx): void {
+  const tag = getStarterClassTag(ctx)
   const label = tag || '本职业'
-  showHintToast('no_gold_buy', `首次购买需为${label}物品`, 0xffd48f)
+  showHintToast('no_gold_buy', `首次购买需为${label}物品`, 0xffd48f, ctx)
 }
 
-function markShopPurchaseDone(): void {
-  _ctx.hasBoughtOnce = true
+function markShopPurchaseDone(ctx: ShopSceneCtx = _ctx): void {
+  ctx.hasBoughtOnce = true
 }
 
 
-function getPlacedItemCenterOnStage(instanceId: string, zone: 'battle' | 'backpack'): { x: number; y: number } | null {
-  if (!_ctx.battleSystem || !_ctx.backpackSystem || !_ctx.battleView || !_ctx.backpackView) return null
-  const system = zone === 'battle' ? _ctx.battleSystem : _ctx.backpackSystem
-  const view = zone === 'battle' ? _ctx.battleView : _ctx.backpackView
+function getPlacedItemCenterOnStage(instanceId: string, zone: 'battle' | 'backpack', ctx: ShopSceneCtx = _ctx): { x: number; y: number } | null {
+  if (!ctx.battleSystem || !ctx.backpackSystem || !ctx.battleView || !ctx.backpackView) return null
+  const system = zone === 'battle' ? ctx.battleSystem : ctx.backpackSystem
+  const view = zone === 'battle' ? ctx.battleView : ctx.backpackView
   const item = system.getItem(instanceId)
   if (!item) return null
   const w = item.size === '1x1' ? CELL_SIZE : item.size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
@@ -1216,91 +1216,92 @@ function flyRewardToBackpack(
   targetSlotCol: number,
   targetSlotRow: number,
   onLand: () => void,
+  ctx: ShopSceneCtx = _ctx,
 ): void {
-  if (!_ctx.backpackView) { onLand(); return }
-  flyRewardToGridSlot(defId, _ctx.backpackView, targetSlotCol, targetSlotRow, onLand)
+  if (!ctx.backpackView) { onLand(); return }
+  flyRewardToGridSlot(defId, ctx.backpackView, targetSlotCol, targetSlotRow, onLand)
 }
 
 /** 检查背包是否有空位可放1x1物品并执行待领取奖励发放 */
-function checkAndPopPendingRewards(): void {
-  if (_ctx.pendingLevelRewards.length === 0) {
-    checkAndPopPendingHeroPeriodicRewards()
+function checkAndPopPendingRewards(ctx: ShopSceneCtx = _ctx): void {
+  if (ctx.pendingLevelRewards.length === 0) {
+    checkAndPopPendingHeroPeriodicRewards(ctx)
     return
   }
-  if (!_ctx.backpackSystem || !_ctx.backpackView) return
+  if (!ctx.backpackSystem || !ctx.backpackView) return
 
-  while (_ctx.pendingLevelRewards.length > 0) {
+  while (ctx.pendingLevelRewards.length > 0) {
     const slot = findFirstBackpackPlace('1x1')
     if (!slot) break  // 背包满，等待空格
-    lockBackpackRewardCell(slot.col, slot.row)
+    lockBackpackRewardCell(slot.col, slot.row, ctx)
 
-    const defId = _ctx.pendingLevelRewards[0]!
+    const defId = ctx.pendingLevelRewards[0]!
     const def = getItemDefById(defId)
-    if (!def) { _ctx.pendingLevelRewards.shift(); continue }
+    if (!def) { ctx.pendingLevelRewards.shift(); continue }
 
     // 逻辑先占位（alpha=0，防止拖拽占用）
     const id = nextId()
-    _ctx.backpackSystem.place(slot.col, slot.row, '1x1', defId, id)
+    ctx.backpackSystem.place(slot.col, slot.row, '1x1', defId, id)
     instanceToDefId.set(id, defId)
     setInstanceQualityLevel(id, defId, 'Bronze', 1)
     instanceToPermanentDamageBonus.set(id, 0)
     const kind = getNeutralSpecialKind(def)
     if (kind) recordLevelRewardObtained(kind)
     recordNeutralItemObtained(defId)
-    unlockItemToPool(defId)
-    _ctx.pendingLevelRewards.shift()
+    unlockItemToPool(defId, ctx)
+    ctx.pendingLevelRewards.shift()
 
     // 飞行动画结束后再显示物品（addItem触发acquireFx），然后继续派发下一个待领取
     const capturedId = id
     const capturedDef = def
     const capturedSlot = { ...slot }
     flyRewardToBackpack(defId, slot.col, slot.row, () => {
-      if (!_ctx.backpackView || !_ctx.backpackSystem) {
-        unlockBackpackRewardCell(capturedSlot.col, capturedSlot.row)
+      if (!ctx.backpackView || !ctx.backpackSystem) {
+        unlockBackpackRewardCell(capturedSlot.col, capturedSlot.row, ctx)
         return
       }
       // 检查物品还在（没被移除）
-      if (!_ctx.backpackSystem.getItem(capturedId)) {
-        unlockBackpackRewardCell(capturedSlot.col, capturedSlot.row)
-        checkAndPopPendingRewards()
+      if (!ctx.backpackSystem.getItem(capturedId)) {
+        unlockBackpackRewardCell(capturedSlot.col, capturedSlot.row, ctx)
+        checkAndPopPendingRewards(ctx)
         return
       }
-      void _ctx.backpackView.addItem(capturedId, capturedDef.id, '1x1', capturedSlot.col, capturedSlot.row, 'Bronze#1').then(() => {
-        _ctx.backpackView!.setItemTier(capturedId, 'Bronze#1')
-        _ctx.drag?.refreshZone(_ctx.backpackView!)
+      void ctx.backpackView.addItem(capturedId, capturedDef.id, '1x1', capturedSlot.col, capturedSlot.row, 'Bronze#1').then(() => {
+        ctx.backpackView!.setItemTier(capturedId, 'Bronze#1')
+        ctx.drag?.refreshZone(ctx.backpackView!)
         // 动画落地后检查是否还有更多待领取
-        checkAndPopPendingRewards()
+        checkAndPopPendingRewards(ctx)
       }).finally(() => {
-        unlockBackpackRewardCell(capturedSlot.col, capturedSlot.row)
+        unlockBackpackRewardCell(capturedSlot.col, capturedSlot.row, ctx)
       })
-    })
+    }, ctx)
 
-    saveShopStateToStorage(captureShopState(_ctx))
+    saveShopStateToStorage(captureShopState(ctx))
     break  // 每次只发一个，等动画结束后再检查下一个
   }
 
-  if (_ctx.pendingLevelRewards.length === 0) {
-    checkAndPopPendingHeroPeriodicRewards()
+  if (ctx.pendingLevelRewards.length === 0) {
+    checkAndPopPendingHeroPeriodicRewards(ctx)
   }
 }
 
 /** 处理升级奖励：抽取物品加入待领取队列 */
-function handleLevelReward(level: number): void {
+function handleLevelReward(level: number, ctx: ShopSceneCtx = _ctx): void {
   const rewards = rollLevelRewardDefIds(level)
   if (rewards.length <= 0) {
-    if (_ctx.shopManager) {
+    if (ctx.shopManager) {
       const goldFallback = 3
-      _ctx.shopManager.gold += goldFallback
-      showHintToast('no_gold_buy', `升级奖励：中立物品已满，获得${goldFallback}G`, 0xffd700)
+      ctx.shopManager.gold += goldFallback
+      showHintToast('no_gold_buy', `升级奖励：中立物品已满，获得${goldFallback}G`, 0xffd700, ctx)
     }
-    saveShopStateToStorage(captureShopState(_ctx))
+    saveShopStateToStorage(captureShopState(ctx))
     return
   }
-  _ctx.pendingLevelRewards.push(...rewards)
-  checkAndPopPendingRewards()
+  ctx.pendingLevelRewards.push(...rewards)
+  checkAndPopPendingRewards(ctx)
 }
 
-function grantSynthesisExp(amount = 1, from?: { instanceId: string; zone: 'battle' | 'backpack' }): void {
+function grantSynthesisExp(amount = 1, from?: { instanceId: string; zone: 'battle' | 'backpack' }, ctx: ShopSceneCtx = _ctx): void {
   const add = Math.max(0, Math.round(amount))
   if (add <= 0) return
   const cap = getPlayerLevelCap()
@@ -1318,11 +1319,11 @@ function grantSynthesisExp(amount = 1, from?: { instanceId: string; zone: 'battl
   }
   if (level >= cap) exp = 0
   setPlayerProgressState(level, exp)
-  playSynthesisExpFlyEffect(_ctx, from ? getPlacedItemCenterOnStage(from.instanceId, from.zone) : null)
+  playSynthesisExpFlyEffect(ctx, from ? getPlacedItemCenterOnStage(from.instanceId, from.zone, ctx) : null)
   if (leveled) {
-    showHintToast('no_gold_buy', `升级到 Lv${level}`, 0x8ff0b0)
-    playPlayerLevelUpFx(_ctx)
-    handleLevelReward(levelBeforeUpgrade)
+    showHintToast('no_gold_buy', `升级到 Lv${level}`, 0x8ff0b0, ctx)
+    playPlayerLevelUpFx(ctx)
+    handleLevelReward(levelBeforeUpgrade, ctx)
   }
 }
 
@@ -2900,13 +2901,13 @@ function applyLayoutFromDebug(ctx: ShopSceneCtx = _ctx): void {
   applyPhaseUiVisibility(ctx)
 }
 
-function ensureBottomHudVisibleAndOnTop(stage: Container): void {
-  if (_ctx.btnRow) {
-    _ctx.btnRow.visible = true
-    stage.addChild(_ctx.btnRow)
+function ensureBottomHudVisibleAndOnTop(stage: Container, ctx: ShopSceneCtx = _ctx): void {
+  if (ctx.btnRow) {
+    ctx.btnRow.visible = true
+    stage.addChild(ctx.btnRow)
   }
-  if (_ctx.goldText) _ctx.goldText.visible = true
-  applySellButtonState()
+  if (ctx.goldText) ctx.goldText.visible = true
+  applySellButtonState(ctx)
 }
 
 function applySellButtonState(ctx: ShopSceneCtx = _ctx): void {
