@@ -35,11 +35,12 @@ export interface BattleSnapshotBundle {
   ownerSkillIds?: string[]
   /** PVP 专用：对手的 entities，替代 CombatEngine 内部的 makeEnemyRunners */
   pvpEnemyEntities?: BattleSnapshotEntity[]
-  /** PVP 专用：对手的技能 ID、背包数、金币、奖杯胜场 */
+  /** PVP 专用：对手的技能 ID、背包数、金币、奖杯胜场、战斗生命值 */
   pvpEnemySkillIds?: string[]
   pvpEnemyBackpackItemCount?: number
   pvpEnemyGold?: number
   pvpEnemyTrophyWins?: number
+  pvpEnemyBattleHp?: number
   /** 快照提交方的英雄 ID（starterClass） */
   ownerHeroId?: string
   /** PVP 专用：对手的英雄 ID，由 ownerHeroId 传递而来 */
@@ -66,6 +67,7 @@ export function setBattleSnapshot(snapshot: BattleSnapshotBundle): void {
     pvpEnemyBackpackItemCount: snapshot.pvpEnemyBackpackItemCount,
     pvpEnemyGold: snapshot.pvpEnemyGold,
     pvpEnemyTrophyWins: snapshot.pvpEnemyTrophyWins,
+    pvpEnemyBattleHp: typeof snapshot.pvpEnemyBattleHp === 'number' ? Math.max(1, Math.round(snapshot.pvpEnemyBattleHp)) : undefined,
     ownerHeroId: snapshot.ownerHeroId,
     pvpEnemyHeroId: snapshot.pvpEnemyHeroId,
   }
@@ -91,6 +93,7 @@ export function getBattleSnapshot(): BattleSnapshotBundle | null {
     pvpEnemyBackpackItemCount: currentSnapshot.pvpEnemyBackpackItemCount,
     pvpEnemyGold: currentSnapshot.pvpEnemyGold,
     pvpEnemyTrophyWins: currentSnapshot.pvpEnemyTrophyWins,
+    pvpEnemyBattleHp: currentSnapshot.pvpEnemyBattleHp,
     ownerHeroId: currentSnapshot.ownerHeroId,
     pvpEnemyHeroId: currentSnapshot.pvpEnemyHeroId,
   }

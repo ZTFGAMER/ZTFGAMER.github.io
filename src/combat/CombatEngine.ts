@@ -56,9 +56,13 @@ export class CombatEngine {
     const enemyHpRow = cfg.dailyEnemyHealth ?? cfg.dailyHealth
     const playerHpRow = cfg.dailyPlayerHealth ?? enemyHpRow
     const hpIdx = Math.max(0, Math.min(enemyHpRow.length - 1, snapshot.day - 1))
-    const enemyHp = enemyHpRow[hpIdx] ?? enemyHpRow[0] ?? 300
-    const playerHpByDay = playerHpRow[Math.max(0, Math.min(playerHpRow.length - 1, snapshot.day - 1))] ?? playerHpRow[0] ?? enemyHp
+    const enemyHpBase = enemyHpRow[hpIdx] ?? enemyHpRow[0] ?? 300
+    const playerHpByDay = playerHpRow[Math.max(0, Math.min(playerHpRow.length - 1, snapshot.day - 1))] ?? playerHpRow[0] ?? enemyHpBase
     const playerHp = Math.max(1, Math.round(Number(snapshot.playerBattleHp ?? playerHpByDay) || playerHpByDay))
+    // PVP 时使用对手快照中已含英雄加成的 pvpEnemyBattleHp，确保双端 HP 一致
+    const enemyHp = snapshot.pvpEnemyEntities
+      ? Math.max(1, Math.round(Number(snapshot.pvpEnemyBattleHp ?? enemyHpBase) || enemyHpBase))
+      : enemyHpBase
 
     this.state.playerHero = { id: 'hero_player', side: 'player', maxHp: playerHp, hp: playerHp, shield: 0, burn: 0, poison: 0, regen: 0 }
     this.state.enemyHero = { id: 'hero_enemy', side: 'enemy', maxHp: enemyHp, hp: enemyHp, shield: 0, burn: 0, poison: 0, regen: 0 }

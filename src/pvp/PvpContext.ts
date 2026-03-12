@@ -557,6 +557,7 @@ function applyOpponentSnapshot(day: number, opponentSnap: BattleSnapshotBundle):
     pvpEnemyBackpackItemCount: opponentSnap.playerBackpackItemCount,
     pvpEnemyGold: opponentSnap.playerGold,
     pvpEnemyTrophyWins: opponentSnap.playerTrophyWins,
+    pvpEnemyBattleHp: opponentSnap.playerBattleHp,
     pvpEnemyHeroId: opponentSnap.ownerHeroId,
   }
   setBattleSnapshot(pvpSnap)
