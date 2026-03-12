@@ -10,7 +10,9 @@ import { getOpponentFromAlive } from '@/pvp/PvpTypes'
 import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 import { getConfig } from '@/core/DataLoader'
 
-const DEFAULT_COUNTDOWN_MS = 120_000
+function getDefaultCountdownMs(): number {
+  return getConfig().pvpRules?.createRoomCountdownMs ?? 120_000
+}
 
 export type RoomRole = 'host' | 'client'
 
@@ -343,7 +345,7 @@ export class PvpRoom {
         type: 'game_start',
         myIndex: player.index,
         totalPlayers: this._totalPlayers,
-        countdownMs: DEFAULT_COUNTDOWN_MS,
+        countdownMs: getDefaultCountdownMs(),
         initialHp: this._initialHp,
       })
     })
@@ -386,7 +388,7 @@ export class PvpRoom {
       }
     }
 
-    const countdownMs = DEFAULT_COUNTDOWN_MS
+    const countdownMs = getDefaultCountdownMs()
     this.broadcastToClients({ type: 'day_ready', day, countdownMs, byeOpponentMap })
     this.onDayReady?.(day, countdownMs, byeOpponentMap)
 

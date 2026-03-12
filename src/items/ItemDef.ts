@@ -318,6 +318,9 @@ export interface GameConfig {
     maxRounds: number
     baseDamage: number
     tierDamageWeights: { Bronze: number; Silver: number; Gold: number; Diamond: number }
+    maxPlayers: number
+    createRoomCountdownMs: number
+    wildWinBonusRatio: number
   }
   combatRuntime: {
     tickMs: number

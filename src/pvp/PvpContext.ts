@@ -7,20 +7,20 @@ import { SceneManager } from '@/scenes/SceneManager'
 import { getConfig } from '@/core/DataLoader'
 import { getBattleSnapshot, setBattleSnapshot } from '@/combat/BattleSnapshotStore'
 import { consumeBattleOutcome } from '@/combat/BattleOutcomeStore'
-import { SHOP_STATE_STORAGE_KEY } from '@/core/RunState'
-import { clearPvpShopState } from '@/scenes/ShopScene'
+
 import { getDailyGoldForDay } from '@/shop/ShopManager'
 import type { PvpSession, PvpDayPhase } from '@/pvp/PvpTypes'
 import type { PvpRoom } from '@/pvp/PvpRoom'
 import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 
-// 野怪轮胜利奖励系数（相对日收入）：两次野怪各 0.5，满奖励=1× 日收入
-const WILD_WIN_BONUS_RATIO = 0.5
-
-const PVE_BACKUP_KEY = 'bigbazzar_pve_backup_v1'
+// 野怪轮胜利奖励系数（相对日收入）：两次野怪各 0.5，满奖励=1× 日收入，从 pvp_rules 读取
+function getWildWinBonusRatio(): number {
+  return getConfig().pvpRules?.wildWinBonusRatio ?? 0.5
+}
 
 // ShopScene 注册：倒计时结束时自动构建并提交快照
 let autoSubmitCallback: (() => void) | null = null
+let clearShopStateCallback: (() => void) | null = null
 
 // ---------- 倒计时状态（ShopScene 通过 getCountdownRemainMs() 轮询显示） ----------
 let countdownTotalMs = 0
@@ -94,9 +94,6 @@ export const PvpContext = {
     session = pvpSession
     currentDayPhase = 'shop1'
     pendingWildGoldBonus = 0
-
-    // 备份并清空 PVE 存档，让 ShopScene 全新开始
-    backupAndClearPveSave()
 
     // 注册房间回调
     pvpRoom.onDayReady = (day, countdownMs, byeOpponentMap) => {
@@ -228,6 +225,18 @@ export const PvpContext = {
         if (SceneManager.currentName() !== 'pvp-result') {
           SceneManager.goto('pvp-result')
         }
+      } else if (session.predictedElimination && !newlyEliminated.includes(session.myIndex)) {
+        // 本地预判错误：预判被淘汰但实际未被淘汰（HP 扣血后仍 > 0）
+        // 清除预判标记，继续正常流程（进入下一天商店）
+        console.log('[PvpContext] 本地预判淘汰有误，实际存活，继续游戏 day=' + day)
+        session.predictedElimination = false
+        const nextDay = day + 1
+        currentDayPhase = 'shop1'
+        session.currentDay = nextDay
+        if (room?.isHost) {
+          room.advanceToDay(nextDay)
+        }
+        SceneManager.goto('shop')
       }
     }
 
@@ -252,6 +261,11 @@ export const PvpContext = {
   registerAutoSubmit(cb: () => void): void {
     if (isAsyncMode()) return
     autoSubmitCallback = cb
+  },
+
+  /** ShopScene onEnter 时注册清理回调，endSession 时调用 */
+  registerClearShopState(cb: () => void): void {
+    clearShopStateCallback = cb
   },
 
   /** ShopScene phaseBtn 点击时调用（替代 beginBattleStartTransition） */
@@ -455,9 +469,8 @@ export const PvpContext = {
 
   /** PvpResultScene 离开时调用 */
   endSession(): void {
-    restorePveSave()
     // 清理 ShopScene 的 in-memory 状态，防止 PVP 残留存档污染 PVE 商店
-    clearPvpShopState()
+    clearShopStateCallback?.()
     room?.destroy()
     room = null
     session = null
@@ -478,32 +491,6 @@ export const PvpContext = {
     stopCountdown()
     lastPlayerSnapshots = {}
   },
-}
-
-// ----------------------------------------------------------------
-// 存档隔离
-// ----------------------------------------------------------------
-
-function backupAndClearPveSave(): void {
-  try {
-    const pve = localStorage.getItem(SHOP_STATE_STORAGE_KEY)
-    if (pve) localStorage.setItem(PVE_BACKUP_KEY, pve)
-    localStorage.removeItem(SHOP_STATE_STORAGE_KEY)
-  } catch {
-    // ignore
-  }
-}
-
-function restorePveSave(): void {
-  try {
-    const backup = localStorage.getItem(PVE_BACKUP_KEY)
-    if (backup) {
-      localStorage.setItem(SHOP_STATE_STORAGE_KEY, backup)
-      localStorage.removeItem(PVE_BACKUP_KEY)
-    }
-  } catch {
-    // ignore
-  }
 }
 
 // ----------------------------------------------------------------
@@ -536,7 +523,7 @@ function grantWildBonus(won: boolean): void {
   if (!session) return
   if (won) {
     const dailyGold = getDailyGoldForDay(getConfig(), session.currentDay)
-    const bonus = Math.floor(dailyGold * WILD_WIN_BONUS_RATIO)
+    const bonus = Math.floor(dailyGold * getWildWinBonusRatio())
     pendingWildGoldBonus += bonus
     console.log('[PvpContext] 野怪胜利奖励 +' + bonus + 'G (pendingTotal=' + pendingWildGoldBonus + ')')
   }

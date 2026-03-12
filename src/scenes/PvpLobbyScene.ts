@@ -15,9 +15,9 @@ import type { PvpSession, PvpMode } from '@/pvp/PvpTypes'
 import { calcTotalDays } from '@/pvp/PvpTypes'
 import { registerRoom, unregisterRoom, updateRoomPlayers, fetchRooms } from '@/pvp/RoomRegistry'
 import type { RoomInfo } from '@/pvp/RoomRegistry'
+import { CANVAS_W, CANVAS_H } from '@/config/layoutConstants'
+import { getConfig } from '@/core/DataLoader'
 
-const CANVAS_W = 640
-const CANVAS_H = 1384
 const PANEL_W = 560
 
 // ----------------------------------------------------------------
@@ -28,13 +28,15 @@ let pvpRoom: PvpRoom | null = null
 let roomCode = ''
 let myNickname = ''
 let roomName = ''
-const maxPlayers = 8
 let statusText: Text | null = null
 let activeInput: PixiInputHandle | null = null
 let selectedMode: PvpMode = 'async'
 let modePreSelected = false  // 从主菜单直接带入模式时为 true，跳过模式选择页
 let searchPollTimer: ReturnType<typeof setInterval> | null = null
-let createRoomInitialHp = 30
+
+function getPvpRules() { return getConfig().pvpRules }
+const maxPlayers = () => getPvpRules()?.maxPlayers ?? 8
+let createRoomInitialHp = getPvpRules()?.initialHp ?? 30
 
 // ----------------------------------------------------------------
 // PixiJS 原生输入控件
@@ -646,7 +648,7 @@ function drawMainView(): void {
 function drawHostWaitingView(): void {
   clearRoot()
   drawPageBg()
-  drawPageTitle('等待玩家加入', `已创建 · 最多 ${maxPlayers} 人`)
+  drawPageTitle('等待玩家加入', `已创建 · 最多 ${maxPlayers()} 人`)
 
   if (!root) return
 
@@ -782,9 +784,9 @@ async function handleCreateRoom(): Promise<void> {
     SceneManager.goto('shop')
   }
   try {
-    await pvpRoom.createRoom(roomCode, myNickname, maxPlayers, createRoomInitialHp)
+    await pvpRoom.createRoom(roomCode, myNickname, maxPlayers(), createRoomInitialHp)
     console.log('[PvpLobby] 房间已创建 code=' + roomCode)
-    registerRoom({ roomId: roomCode, nickname: myNickname, roomName: roomName || myNickname, maxPlayers, currentPlayers: 1, mode: selectedMode }).catch(() => {})
+    registerRoom({ roomId: roomCode, nickname: myNickname, roomName: roomName || myNickname, maxPlayers: maxPlayers(), currentPlayers: 1, mode: selectedMode }).catch(() => {})
     drawHostWaitingView()
   } catch (e) {
     setStatus(`创建房间失败：${e instanceof Error ? e.message : String(e)}`)

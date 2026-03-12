@@ -201,6 +201,12 @@ const ENEMY_DATA_PARAM_KEYS: string[] = [
 const ENEMY_DATA_CHECKBOX_KEYS = [
   'enemyDraftEnabled',
 ]
+const ANIM_TIMING_KEYS = [
+  'rewardFlyDurationMs',
+  'synthFlashDurationMs',
+  'guideHandDurationMs',
+  'gridItemAnimDurationMs',
+]
 const COLOR_KEYS = [
   'tierColorBronze',
   'tierColorSilver',
@@ -228,8 +234,17 @@ const COLOR_KEYS = [
   'battleTextColorPoison',
   'battleTextColorRegen',
   'battleEnemyPortraitFlashColor',
+  'shopToastBg',
+  'shopToastBorder',
+  'shopGoldColor',
+  'shopDangerColor',
+  'shopHighlightColor',
+  'classColorWarrior',
+  'classColorArcher',
+  'classColorAssassin',
+  'classColorNeutral',
 ]
-const DRAG_KEYS = Object.keys(CONFIG_DEFS).filter((key) => !LAYOUT_KEYS.includes(key) && !PERSPECTIVE_KEYS.includes(key) && !TOAST_KEYS.includes(key) && !BATTLE_VFX_KEYS.includes(key) && !GAMEPLAY_KEYS.includes(key) && !GAMEPLAY_CHECKBOX_KEYS.includes(key) && !ENEMY_DATA_PARAM_KEYS.includes(key) && !ENEMY_DATA_CHECKBOX_KEYS.includes(key) && !COLOR_KEYS.includes(key))
+const DRAG_KEYS = Object.keys(CONFIG_DEFS).filter((key) => !LAYOUT_KEYS.includes(key) && !PERSPECTIVE_KEYS.includes(key) && !TOAST_KEYS.includes(key) && !BATTLE_VFX_KEYS.includes(key) && !GAMEPLAY_KEYS.includes(key) && !GAMEPLAY_CHECKBOX_KEYS.includes(key) && !ENEMY_DATA_PARAM_KEYS.includes(key) && !ENEMY_DATA_CHECKBOX_KEYS.includes(key) && !COLOR_KEYS.includes(key) && !ANIM_TIMING_KEYS.includes(key))
 
 function buildSearchText(key: string): string {
   const def = CONFIG_DEFS[key]
@@ -601,6 +616,11 @@ document.addEventListener('DOMContentLoaded', () => {
   for (const key of ENEMY_DATA_PARAM_KEYS) {
     if (!CONFIG_DEFS[key]) continue
     buildParamRow(key, 'params-enemy-data')
+  }
+
+  for (const key of ANIM_TIMING_KEYS) {
+    if (!CONFIG_DEFS[key]) continue
+    buildParamRow(key, 'params-anim-timing')
   }
 
   for (const key of COLOR_KEYS) {

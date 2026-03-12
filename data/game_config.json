@@ -1751,7 +1751,10 @@
       "initialHp": 30,
       "maxRounds": 30,
       "baseDamage": 1,
-      "tierDamageWeights": { "Bronze": 1, "Silver": 2, "Gold": 3, "Diamond": 4 }
+      "tierDamageWeights": { "Bronze": 1, "Silver": 2, "Gold": 3, "Diamond": 4 },
+      "maxPlayers": 8,
+      "createRoomCountdownMs": 120000,
+      "wildWinBonusRatio": 0.5
     }
   }
 ]

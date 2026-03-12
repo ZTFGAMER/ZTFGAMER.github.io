@@ -18,10 +18,7 @@ import { Rectangle } from 'pixi.js'
 import { getSceneImageUrl } from '@/core/assetPath'
 import { setBattleSnapshot, type BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 import { normalizeSize } from '@/items/ItemDef'
-
-// 基准分辨率（单格 128px × 5列 = 640，等比对应 390×844 物理屏）
-const BASE_W = 640
-const BASE_H = 1384
+import { CANVAS_W as BASE_W, CANVAS_H as BASE_H } from '@/config/layoutConstants'
 
 type SoakTestOptions = {
   rounds: number

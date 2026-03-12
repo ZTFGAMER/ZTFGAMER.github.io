@@ -10,7 +10,7 @@ import {
   Assets, Texture, Rectangle, Ticker,
   type FederatedPointerEvent, type DestroyOptions,
 } from 'pixi.js'
-import type { ShopSlot } from './ShopManager'
+import type { ShopSlot } from '@/shop/ShopManager'
 import { normalizeSize } from '@/items/ItemDef'
 import { CELL_SIZE, CELL_HEIGHT } from '@/grid/GridZone'
 import { getConfig as getGameConfig } from '@/core/DataLoader'

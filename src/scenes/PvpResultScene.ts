@@ -7,9 +7,7 @@ import { SceneManager } from './SceneManager'
 import { getApp } from '@/core/AppContext'
 import { Container, Graphics, Text } from 'pixi.js'
 import { PvpContext } from '@/pvp/PvpContext'
-
-const CANVAS_W = 640
-const CANVAS_H = 1384
+import { CANVAS_W, CANVAS_H } from '@/config/layoutConstants'
 
 let root: Container | null = null
 let fadeAlpha = 0

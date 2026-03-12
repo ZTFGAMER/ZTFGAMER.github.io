@@ -43,3 +43,23 @@ export function getBattleFloatTextColor(effect: 'damage' | 'crit' | 'shield' | '
   if (effect === 'poison') return clampColor(getConfig('battleTextColorPoison'))
   return clampColor(getConfig('battleTextColorRegen'))
 }
+
+export function getShopToastColors(): { bg: number; border: number } {
+  return {
+    bg:     clampColor(getConfig('shopToastBg')),
+    border: clampColor(getConfig('shopToastBorder')),
+  }
+}
+
+export function getShopUiColor(key: 'gold' | 'danger' | 'highlight'): number {
+  if (key === 'gold')      return clampColor(getConfig('shopGoldColor'))
+  if (key === 'danger')    return clampColor(getConfig('shopDangerColor'))
+  return clampColor(getConfig('shopHighlightColor'))
+}
+
+export function getClassColor(className: string): number {
+  if (className === 'Warrior' || className === '战士') return clampColor(getConfig('classColorWarrior'))
+  if (className === 'Archer'  || className === '弓手') return clampColor(getConfig('classColorArcher'))
+  if (className === 'Assassin'|| className === '刺客') return clampColor(getConfig('classColorAssassin'))
+  return clampColor(getConfig('classColorNeutral'))
+}

@@ -8,9 +8,7 @@ import { getApp } from '@/core/AppContext'
 import { Container, Graphics, Text } from 'pixi.js'
 import type { PvpMode } from '@/pvp/PvpTypes'
 import { setPvpLobbyMode } from '@/scenes/PvpLobbyScene'
-
-const CANVAS_W = 640
-const CANVAS_H = 1384
+import { CANVAS_W, CANVAS_H } from '@/config/layoutConstants'
 
 let root: Container | null = null
 let fadeAlpha = 0

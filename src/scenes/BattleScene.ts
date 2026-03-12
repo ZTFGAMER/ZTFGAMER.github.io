@@ -23,15 +23,13 @@ import { getAllItems, getConfig as getGameCfg } from '@/core/DataLoader'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import type { ItemDef, ItemSizeNorm } from '@/items/ItemDef'
 import { EventBus } from '@/core/EventBus'
-import { SellPopup, type ItemInfoMode, type ItemInfoRuntimeOverride } from '@/shop/SellPopup'
+import { SellPopup, type ItemInfoMode, type ItemInfoRuntimeOverride } from '@/ui/SellPopup'
 import { getBattleEffectColor, getBattleFloatTextColor, getBattleOrbColor, getTierColor } from '@/config/colorPalette'
 import { getItemIconUrl, getItemIconUrlByName, getSkillIconUrl } from '@/core/assetPath'
 import { getBronzeSkillById, getBronzeSkillByName } from '@/skills/bronzeSkillConfig'
 import { getSilverSkillById } from '@/skills/silverSkillConfig'
 import { getGoldSkillById } from '@/skills/goldSkillConfig'
-
-const CANVAS_W = 640
-const CANVAS_H = 1384
+import { CANVAS_W, CANVAS_H } from '@/config/layoutConstants'
 
 const HERO_VISUAL_IDS = ['hero1', 'hero2', 'hero3', 'hero4', 'hero5', 'hero6', 'hero7', 'hero8', 'hero9', 'hero10'] as const
 type HeroVisualId = typeof HERO_VISUAL_IDS[number]

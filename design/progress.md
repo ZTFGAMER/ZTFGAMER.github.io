@@ -1,5 +1,88 @@
 # 大巴扎 — 开发进度记录
 
+## CombatEngine.ts P1 拆分重构（2026-03-12，已完成）
+
+### 完成内容
+
+**主程确认方案** — 向 NotebookLM 主程（大巴扎 Notebook）问询，获得以下关键建议：
+- 引入 CombatState 上下文对象（非参数传递）
+- skill* 状态下沉到实体（System 保持无状态）
+- 可提取共享 EffectSystem 基础层
+
+**P1 拆分完成** — 本次按安全边界提取，为后续深层重构打基础：
+
+| 文件 | 行数 | 说明 |
+|------|------|------|
+| `src/combat/CombatTypes.ts` | 179 行 | 所有类型/接口定义（纯类型，零依赖逻辑） |
+| `src/combat/CombatHelpers.ts` | 297 行 | 工具函数、常量、运行时覆盖、6个纯函数（findItemDef、skillLines 等） |
+| `src/combat/EnemyBuilder.ts` | 286 行 | 敌方 Runner 构建逻辑（toRunner、makeEnemyRunners 等） |
+| `src/combat/CombatEngine.ts` | 3141 行 | 主战斗引擎（原 3845 行，缩减 18%） |
+
+- TypeScript 编译 0 错误 ✓
+- `npm run build` 通过 ✓
+- 外部 API 向后兼容（BattleScene.ts 无需修改）
+
+### 遗留与后续
+
+- **P2（待做）**：引入 `CombatState` 上下文对象，将 skill* 状态字段下沉到实体
+- **P2（待做）**：将 `SkillTriggerSystem`、`ItemTriggerSystem` 等作为无状态 System 提取
+- `ShopScene.ts` 备份文件 `ShopScene.ts.bak` 待清理
+
+---
+
+## ShopScene.ts 完整模块化拆分（2026-03-11，进行中）
+
+### 已完成
+
+**Step 1 — ShopSceneContext.ts（共享状态上下文）**
+- 新建 `src/scenes/shop/ShopSceneContext.ts`（~380行）
+  - `TypedEventBus<Events>` 简易类型化事件总线
+  - 所有共享类型（15+ 个：CircleBtnHandle、SelectionState、SkillPick、SavedShopState 等）
+  - `ShopSceneCtx` 接口（100 个属性）
+  - `createShopSceneCtx()` 工厂函数
+- 修改 `ShopScene.ts`：
+  - 删除 ~180 行模块级变量声明
+  - 所有 100 个全局变量迁移为 `ctx.xxx` 访问
+  - TypeScript 检查 0 错误 ✓
+
+**Step 2 — 纯逻辑模块提取**
+- 新建 `src/scenes/shop/SynthesisLogic.ts`（~170行）
+  - 合成配对校验：`canSynthesizePair`、`canUseLv7MorphSynthesis`
+  - 品质/等级工具：`TIER_ORDER`、`maxStarForTier`、`normalizeTierStar`、`nextTierLevel`、`tierStarLevelIndex`
+  - 物品工具：`getItemDefById`、`getPrimaryArchetype`、`isNeutralItemDef`、`parseTierName`、`toSkillArchetype`
+  - 合成选取：`pickSynthesisResultWithGuarantee`、`getMinTierDropWeight`
+- 新建 `src/scenes/shop/ShopStateStorage.ts`（~60行）
+  - `saveShopStateToStorage`、`loadShopStateFromStorage`（纯 I/O）
+- ShopScene.ts 删减约 210 行，全部 import 替换 ✓
+- TypeScript 检查 0 错误 ✓
+
+**Step 3 — EventBus 注册（2026-03-11）**
+- onEnter() 注册 ctx.events.on()：REFRESH_SHOP_UI、REFRESH_PLAYER_STATUS_UI、SHOW_TOAST、SELECTION_CLEARED ✓
+
+**Step 4 — UI 面板全部提取完成（2026-03-11）**
+| 面板 | 行数 | ShopScene.ts 缩减 |
+|-----|------|-----------------|
+| PvpPanel.ts | 964 | -911 |
+| SettingsDebugPanel.ts | 1,062 | -915 |
+| SkillDraftPanel.ts | 802 | ↘ |
+| EventDraftPanel.ts | 512 | -1,061（两者合计）|
+| SpecialShopPanel.ts | 1,314 | -902 |
+- 总计：15,409 → 11,241 行（-4,168 行），全程 TypeScript 0 错误 ✓
+
+**Step 5 — 精简主干（2026-03-12，完成）**
+- Phase 1：NeutralItemPanel.ts(2124行)、SynthesisPanel.ts(662行) → -2,077 行
+- Phase 2：HeroSystem.ts(1595行)、EventSystem.ts(568行)、QuickBuySystem.ts(662行) → -1,861 行
+- Phase 3：PlayerStatusUI.ts(286行)、SkillSystem.ts(554行)、AnimationEffects.ts(597行) → -1,041 行
+- **最终 ShopScene.ts：6,262 行（原 15,409 行，缩减 59%），TypeScript 0 错误 ✓**
+
+### 模块化完成 — 最终文件结构（src/scenes/shop/）
+ShopSceneContext.ts、ShopStateStorage.ts、SynthesisLogic.ts、NeutralItemPanel.ts、SynthesisPanel.ts、PvpPanel.ts、SettingsDebugPanel.ts、SkillDraftPanel.ts、EventDraftPanel.ts、SpecialShopPanel.ts、HeroSystem.ts、EventSystem.ts、QuickBuySystem.ts、PlayerStatusUI.ts、SkillSystem.ts、AnimationEffects.ts（共 16 个模块）
+
+### 备注
+- 备份文件：`ShopScene.ts.bak`（原始 15,348 行）
+- captureShopState / applySavedShopState 因依赖未迁移的 instCounter/instance* Maps，暂留 ShopScene.ts
+- BackpackPackLogic / ShopDraftLogic 因依赖复杂，Step 2 暂未提取，留到 Step 4
+
 #### 验收优化追加（2026-03-11，转化石随机桶改为“目标等级品质桶”）
 
 - 用户纠正：非金/钻转化石不应走“当天桶”，应走“目标等级对应的品质概率桶”。
