@@ -357,6 +357,7 @@ function syncRemovedZoneItems(zone: GridZone, side: 'player' | 'enemy', items: C
     const due = fxPool.pendingDestroyedItemDueMs.get(id)
     if (typeof due === 'number' && battlePresentationMs < due) continue
     zone.removeItem(id)
+    fxPool.cancelPulse(id)
     mounted.delete(id)
     fxPool.pendingDestroyedItemDueMs.delete(id)
   }

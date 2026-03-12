@@ -23,8 +23,6 @@ const SIDE_CARD_W = 84
 const SIDE_CARD_H = 148
 const SIDE_CARD_GAP = 8
 const SIDE_PORTRAIT_H = 110
-const SIDE_CARDS_TOP = 54
-const SIDE_CARDS_BOTTOM = 520
 
 export class PvpPanel extends Container {
   private ctx: ShopSceneCtx

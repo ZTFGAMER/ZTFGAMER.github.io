@@ -564,9 +564,19 @@ export class BattleFXPool {
     this.animateItemFirePulse(sourceItemId, side)
   }
 
+  cancelPulse(itemId: string): void {
+    const st = this.pulseStates.get(itemId)
+    if (!st) return
+    if (st.flash.parent) st.flash.parent.removeChild(st.flash)
+    st.flash.clear()
+    if (this.pulseFlashPool.length < FX_POOL_MAX_PULSE_FLASHES) this.pulseFlashPool.push(st.flash)
+    else st.flash.destroy()
+    this.pulseStates.delete(itemId)
+  }
+
   private tickPulseStates(dtMs: number): void {
     for (const [id, st] of this.pulseStates) {
-      if (!st.node) {
+      if (!st.node || !st.node.visual) {
         this.pulseStates.delete(id)
         continue
       }
@@ -701,7 +711,8 @@ export class BattleFXPool {
       const h = gh * CELL_HEIGHT
       const x = node.container.x
       const y = node.container.y
-      const scale = this.pulseStates.get(it.id)?.node?.visual.scale.x ?? 1
+      const pulseVisual = this.pulseStates.get(it.id)?.node?.visual
+      const scale = (pulseVisual && !pulseVisual.destroyed) ? pulseVisual.scale.x : 1
       const cx = x + w / 2
       const cy = y + h / 2
 
