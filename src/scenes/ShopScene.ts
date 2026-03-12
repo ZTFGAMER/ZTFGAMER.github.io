@@ -25,7 +25,6 @@ import { DragController }    from '@/grid/DragController'
 import { planAutoPack, type PackItem, type PackPlacement } from '@/grid/AutoPack'
 import { planUnifiedSqueeze } from '@/grid/SqueezeLogic'
 import { normalizeSize, type ItemDef } from '@/items/ItemDef'
-import { resolveItemTierBaseStats } from '@/items/itemTierStats'
 import { ShopManager, getDailyGoldForDay, type ShopSlot, type TierKey } from '@/shop/ShopManager'
 import { ShopPanelView }     from '@/ui/ShopPanelView'
 import { SellPopup, type ItemInfoCustomDisplay } from '@/ui/SellPopup'
@@ -90,7 +89,6 @@ import {
 } from './shop/SynthesisPanel'
 import {
   getStarterClassTag,
-  isSelectedHero,
   getHeroIconByStarterClass,
   isStarterClassItem,
   isFirstPurchaseLockedToStarterClass,
@@ -130,7 +128,6 @@ import {
   clampPlayerLevel,
   getPlayerLevelCap,
   getPlayerExpNeedByLevel,
-  getPlayerMaxLifeByLevel,
   getQualityLevelRange,
   layoutPlayerStatusPanel,
   playPlayerLevelUpFx,
@@ -192,6 +189,7 @@ import {
   canBackpackAcceptByAutoPack, getOverlapBlockersInBattle,
   buildBackpackPlanForTransferred, applyBackpackPlanWithTransferred,
 } from './shop/ShopAutoPackManager'
+import { buildBattleSnapshot } from './shop/ShopBattleSnapshot'
 
 // ---- 場景共享狀態上下文 ----
 const _ctx: ShopSceneCtx = createShopSceneCtx()
@@ -714,65 +712,7 @@ function applyPhaseInputLock(ctx: ShopSceneCtx = _ctx): void {
   applyPhaseUiVisibility(ctx)
 }
 
-function buildBattleSnapshot(skillBarMoveStartAtMs?: number, ctx: ShopSceneCtx = _ctx): BattleSnapshotBundle | null {
-  if (!ctx.battleSystem || !ctx.battleView) return null
-  const activeColCount = ctx.battleView.activeColCount
-  const snap = ctx.battleSystem.exportCombatSnapshot(activeColCount)
-  const playerBackpackItemCount = ctx.backpackSystem?.getAllItems().length ?? 0
-  const trophyTarget = getConfig().runRules?.trophyWinsToFinalVictory ?? 10
-  const trophy = getWinTrophyState(trophyTarget)
-  const progress = getPlayerProgressState()
-  const playerLevel = clampPlayerLevel(progress.level)
-  let playerBattleHp = getPlayerMaxLifeByLevel(playerLevel)
-  if (isSelectedHero(ctx, 'hero10')) {
-    playerBattleHp = Math.max(1, Math.round(playerBattleHp * 1.3))
-  }
-  return {
-    day: ctx.currentDay,
-    activeColCount: snap.activeColCount,
-    createdAtMs: snap.createdAtMs,
-    skillBarMoveStartAtMs: typeof skillBarMoveStartAtMs === 'number' ? skillBarMoveStartAtMs : undefined,
-    playerBackpackItemCount,
-    playerGold: Math.max(0, Math.round(ctx.shopManager?.gold ?? 0)),
-    playerTrophyWins: Math.max(0, Math.round(trophy.wins)),
-    playerBattleHp,
-    ownerSkillIds: ctx.pickedSkills.map((s) => s.id),
-    ownerHeroId: ctx.starterClass ?? undefined,
-    entities: snap.entities.map((it) => ({
-      ...it,
-      tier: getInstanceTier(it.instanceId) ?? 'Bronze',
-      tierStar: getInstanceTierStar(it.instanceId),
-      quality: getInstanceQuality(it.instanceId),
-      level: getInstanceLevel(it.instanceId),
-      permanentDamageBonus: Math.max(0, Math.round(instanceToPermanentDamageBonus.get(it.instanceId) ?? 0)),
-      baseStats: resolveInstanceBaseStats(it.instanceId),
-    })),
-  }
-}
-
-function resolveInstanceBaseStats(instanceId: string): BattleSnapshotBundle['entities'][number]['baseStats'] {
-  const defId = instanceToDefId.get(instanceId)
-  if (!defId) return undefined
-  const def = getAllItems().find((it) => it.id === defId)
-  if (!def) return undefined
-  const level = getInstanceLevel(instanceId)
-  const legacy = levelToTierStar(level)
-  const tier = legacy?.tier ?? 'Bronze'
-  const star = legacy?.star ?? 1
-  const stats = resolveItemTierBaseStats(def, `${tier}#${star}`)
-  const permanentBonus = Math.max(0, Math.round(instanceToPermanentDamageBonus.get(instanceId) ?? 0))
-  return {
-    cooldownMs: Math.max(0, Math.round(stats.cooldownMs)),
-    damage: Math.max(0, Math.round(stats.damage + permanentBonus)),
-    heal: Math.max(0, Math.round(stats.heal)),
-    shield: Math.max(0, Math.round(stats.shield)),
-    burn: Math.max(0, Math.round(stats.burn)),
-    poison: Math.max(0, Math.round(stats.poison)),
-    regen: Math.max(0, Math.round(stats.regen)),
-    crit: Math.max(0, stats.crit),
-    multicast: Math.max(1, Math.round(stats.multicast)),
-  }
-}
+// buildBattleSnapshot / resolveInstanceBaseStats → 已移至 ./shop/ShopBattleSnapshot.ts
 
 
 function makeApplyCallbacks(ctx: ShopSceneCtx = _ctx): ApplySavedShopStateCallbacks {
@@ -3721,7 +3661,7 @@ function setupEventBusAndPvpCallbacks(stage: Container, ctx: ShopSceneCtx = _ctx
       PvpContext.registerAutoSubmit(() => {
         clearBattleOutcome()
         ctx.pendingSkillBarMoveStartAtMs = Date.now()
-        const snapshot = buildBattleSnapshot(ctx.pendingSkillBarMoveStartAtMs)
+        const snapshot = buildBattleSnapshot(ctx, ctx.pendingSkillBarMoveStartAtMs)
         if (snapshot) {
           setBattleSnapshot(snapshot)
           ctx.pendingBattleTransition = true
@@ -4594,7 +4534,7 @@ function buildButtonRowUI(stage: Container, cfg: ReturnType<typeof getConfig>, c
       }
       clearBattleOutcome()
       ctx.pendingSkillBarMoveStartAtMs = Date.now()
-      const snapshot = buildBattleSnapshot(ctx.pendingSkillBarMoveStartAtMs)
+      const snapshot = buildBattleSnapshot(ctx, ctx.pendingSkillBarMoveStartAtMs)
       if (snapshot) {
         setBattleSnapshot(snapshot)
         console.log(`[ShopScene] 战斗快照已生成 day=${snapshot.day} entities=${snapshot.entities.length} cols=${snapshot.activeColCount}`)
@@ -4848,7 +4788,7 @@ export const ShopScene: Scene = {
 
     _ctx.offPhaseChange = PhaseManager.onChange((next, prev) => {
       if (next === 'COMBAT') {
-        const snapshot = buildBattleSnapshot(_ctx.pendingSkillBarMoveStartAtMs ?? undefined)
+        const snapshot = buildBattleSnapshot(_ctx, _ctx.pendingSkillBarMoveStartAtMs ?? undefined)
         if (snapshot) {
           setBattleSnapshot(snapshot)
           console.log(`[ShopScene] 战斗快照已生成 day=${snapshot.day} entities=${snapshot.entities.length} cols=${snapshot.activeColCount}`)
