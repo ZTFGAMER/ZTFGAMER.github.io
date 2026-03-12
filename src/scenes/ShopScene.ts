@@ -60,7 +60,6 @@ import {
   levelFromLegacyTierStar,
 } from './shop/InstanceRegistry'
 import { PvpPanel } from './shop/PvpPanel'
-import * as PvpPanelModule from './shop/PvpPanel'
 import { SettingsDebugPanel } from './shop/SettingsDebugPanel'
 import { SkillDraftPanel } from './shop/SkillDraftPanel'
 import { EventDraftPanel } from './shop/EventDraftPanel'
@@ -151,7 +150,7 @@ import {
 } from './shop/ShopMathHelpers'
 import {
   type ToastReason,
-  createHintToast, showHintToast,
+  showHintToast,
 } from './shop/ShopToastSystem'
 import {
   shouldShowSimpleDescriptions, isSkillDraftRerollEnabled, isEventDraftRerollEnabled,
@@ -185,6 +184,8 @@ import type { ShopDragDeps } from './shop/ShopDragSystem'
 import { refreshUpgradeHints } from './shop/ShopUpgradeHints'
 import * as UIBuilders from './shop/ShopUIBuilders'
 import type { TopAreaUICallbacks, ButtonRowUICallbacks } from './shop/ShopUIBuilders'
+import * as EventBusSetup from './shop/ShopEventBusSetup'
+import type { EventBusSetupCallbacks } from './shop/ShopEventBusSetup'
 
 // ---- 場景共享狀態上下文 ----
 const _ctx: ShopSceneCtx = createShopSceneCtx()
@@ -927,6 +928,18 @@ function makeButtonRowUICallbacks(): ButtonRowUICallbacks {
     handleSpecialShopBackpackItemTap: (id, kind) => handleSpecialShopBackpackItemTap(id, kind),
     dragDeps: makeShopDragDeps(),
     debugLayoutCallbacks: makeDebugLayoutCallbacks(),
+  }
+}
+
+
+function makeEventBusSetupCallbacks(): EventBusSetupCallbacks {
+  return {
+    refreshShopUI: () => refreshShopUI(),
+    refreshPlayerStatusUI: () => refreshPlayerStatusUI(),
+    dragDeps: makeShopDragDeps(),
+    pvpShowWaitingPanel: (stage) => pvpPanel?.showPvpWaitingPanel(stage),
+    pvpShowEggSplatOverlay: (name) => pvpPanel?.showEggSplatOverlay(name),
+    pvpRefreshWaitingPanel: () => pvpPanel?.refreshPvpWaitingPanel(),
   }
 }
 
@@ -1798,72 +1811,7 @@ function initPanelInstances(stage: Container, ctx: ShopSceneCtx = _ctx): void {
 }
 
 function setupEventBusAndPvpCallbacks(stage: Container, ctx: ShopSceneCtx = _ctx): void {
-    // ---- EventBus 主场景事件处理注册 ----
-    // 面板模块通过 ctx.events.emit(...) 触发，主场景在此统一处理
-    ctx.events.removeAll()
-    ctx.events.on('REFRESH_SHOP_UI',          ()       => refreshShopUI())
-    ctx.events.on('REFRESH_PLAYER_STATUS_UI', ()       => refreshPlayerStatusUI())
-    ctx.events.on('SHOW_TOAST',               (reason) => showHintToast(reason, '', undefined, _ctx))
-    ctx.events.on('SELECTION_CLEARED',        ()       => clearSelection())
-    // PVP：注册 endSession 时的清理回调（避免 PvpContext ↔ ShopScene 循环 import）
-    PvpContext.registerClearShopState(() => PvpPanelModule.clearPvpShopState(ctx))
-    // PVP 模式：注册自动提交回调（倒计时结束时若未手动提交则自动触发）
-    if (PvpContext.isActive()) {
-      PvpContext.registerAutoSubmit(() => {
-        clearBattleOutcome()
-        ctx.pendingSkillBarMoveStartAtMs = Date.now()
-        const snapshot = buildBattleSnapshot(ctx, ctx.pendingSkillBarMoveStartAtMs)
-        if (snapshot) {
-          setBattleSnapshot(snapshot)
-          ctx.pendingBattleTransition = true
-          ctx.pendingAdvanceToNextDay = true
-          ctx.pvpReadyLocked = true
-          if (PvpContext.getPvpMode() === 'sync-a') pvpPanel?.showPvpWaitingPanel(stage)
-          PvpContext.onPlayerReady()
-        }
-      })
-      // sync-a：通知 host 本玩家已进入商店（所有人到齐后才开始倒计时）
-      PvpContext.notifyShopEntered()
-      // sync-a：注册回调
-      if (PvpContext.getPvpMode() === 'sync-a') {
-        ctx.pvpUrgeCooldownSet.clear()
-        PvpContext.onUrgeReceived = (fromPlayerIndex, fromNickname) => {
-          const session = PvpContext.getSession()
-          const fromPlayer = session?.players.find(p => p.index === fromPlayerIndex)
-          const name = fromPlayer?.nickname ?? fromNickname
-          pvpPanel?.showEggSplatOverlay(name)
-        }
-        // 跳转战斗前主动清理等待面板（防止面板残留到战斗场景）
-        PvpContext.onBeforeBattleTransition = () => {
-          if (ctx.pvpWaitingPanel) {
-            ctx.pvpWaitingPanel.parent?.removeChild(ctx.pvpWaitingPanel)
-            ctx.pvpWaitingPanel.destroy({ children: true })
-            ctx.pvpWaitingPanel = null
-          }
-          if (ctx.pvpBackpackReturnBtn) {
-            ctx.pvpBackpackReturnBtn.parent?.removeChild(ctx.pvpBackpackReturnBtn)
-            ctx.pvpBackpackReturnBtn.destroy({ children: true })
-            ctx.pvpBackpackReturnBtn = null
-          }
-        }
-        // eliminatedPlayers 变化时立即刷新等待面板（round_summary 延迟到达时的兜底）
-        PvpContext.onEliminatedPlayersUpdate = () => {
-          pvpPanel?.refreshPvpWaitingPanel()
-        }
-        // 对手 index 确认后刷新等待面板对手卡（轮空/镜像场景：host 下发 opponent_snapshot 后触发）
-        PvpContext.onOpponentKnown = () => {
-          pvpPanel?.refreshPvpWaitingPanel()
-        }
-      }
-    }
-
-    ctx.battlePassivePrevStats.clear()
-    ctx.battlePassiveResolvedStats.clear()
-    ctx.passiveJumpLayer = new Container()
-    ctx.passiveJumpLayer.eventMode = 'none'
-
-    createHintToast(stage, _ctx)
-    ctx.showingBackpack = true
+  EventBusSetup.setupEventBusAndPvpCallbacks(stage, ctx, makeEventBusSetupCallbacks())
 }
 
 function buildTopAreaUI(stage: Container, cfg: ReturnType<typeof getConfig>, ctx: ShopSceneCtx = _ctx): void {
