@@ -573,7 +573,7 @@ function beginBattleStartTransition(ctx: ShopSceneCtx = _ctx): void {
   clearSelection(ctx)
   skillDraftPanel?.hideSkillDetailPopup()
   if (ctx.skillIconBarCon) ctx.skillIconBarCon.visible = false
-  stopGridDragButtonFlash()
+  stopGridDragButtonFlash(ctx)
   stopFlashEffect(ctx)
   ctx.battleView?.clearHighlight()
   ctx.backpackView?.clearHighlight()
@@ -782,7 +782,7 @@ function applyPhaseUiVisibility(ctx: ShopSceneCtx = _ctx): void {
   if (ctx.unlockRevealLayer) ctx.unlockRevealLayer.visible = inShop && ctx.unlockRevealActive
 
   if (!inShop) {
-    stopGridDragButtonFlash()
+    stopGridDragButtonFlash(ctx)
     stopFlashEffect(ctx)
     ctx.battleView?.clearHighlight()
     ctx.backpackView?.clearHighlight()
@@ -801,7 +801,7 @@ function applyPhaseInputLock(ctx: ShopSceneCtx = _ctx): void {
     ctx.shopDragFloater.destroy({ children: true })
     ctx.shopDragFloater = null
   }
-  resetDrag()
+  resetDrag(ctx)
   applyPhaseUiVisibility(ctx)
 }
 
@@ -3329,37 +3329,37 @@ function isOverGridDragSellArea(gx: number, gy: number): boolean {
   return gy >= top.y && gx >= x0 && gx <= x1
 }
 
-function isOverAnyGridDropTarget(gx: number, gy: number, size: ItemSizeNorm): boolean {
+function isOverAnyGridDropTarget(gx: number, gy: number, size: ItemSizeNorm, ctx: ShopSceneCtx = _ctx): boolean {
   const dragOffsetY = getDebugCfg('dragYOffset')
-  const overBattle = _ctx.battleView?.pixelToCellForItem(gx, gy, size, dragOffsetY)
+  const overBattle = ctx.battleView?.pixelToCellForItem(gx, gy, size, dragOffsetY)
   if (overBattle) return true
-  const overBackpack = _ctx.backpackView?.pixelToCellForItem(gx, gy, size, dragOffsetY)
+  const overBackpack = ctx.backpackView?.pixelToCellForItem(gx, gy, size, dragOffsetY)
   return !!overBackpack
 }
 
-function updateGridDragSellAreaHover(gx: number, gy: number, size: ItemSizeNorm): void {
-  if (!_ctx.gridDragCanSell) {
-    _ctx.gridDragSellHot = false
+function updateGridDragSellAreaHover(gx: number, gy: number, size: ItemSizeNorm, ctx: ShopSceneCtx = _ctx): void {
+  if (!ctx.gridDragCanSell) {
+    ctx.gridDragSellHot = false
     return
   }
-  const hot = isOverGridDragSellArea(gx, gy) && !isOverAnyGridDropTarget(gx, gy, size)
-  _ctx.gridDragSellHot = hot
+  const hot = isOverGridDragSellArea(gx, gy) && !isOverAnyGridDropTarget(gx, gy, size, ctx)
+  ctx.gridDragSellHot = hot
 }
 
-function makeGridDragDeps() {
+function makeGridDragDeps(ctx: ShopSceneCtx = _ctx) {
   return {
-    isShopInputEnabled: () => isShopInputEnabled(),
-    applySellButtonState: () => applySellButtonState(),
+    isShopInputEnabled: () => isShopInputEnabled(ctx),
+    applySellButtonState: () => applySellButtonState(ctx),
     getGridDragSellAreaTopLocalY: () => getGridDragSellAreaTopLocalY(),
   }
 }
 
-function startGridDragButtonFlash(stage: Container, canSell: boolean, canToBackpack: boolean, sellPrice = 0): void {
-  AnimationEffects.startGridDragButtonFlash(_ctx, stage, canSell, canToBackpack, sellPrice, makeGridDragDeps())
+function startGridDragButtonFlash(stage: Container, canSell: boolean, canToBackpack: boolean, sellPrice = 0, ctx: ShopSceneCtx = _ctx): void {
+  AnimationEffects.startGridDragButtonFlash(ctx, stage, canSell, canToBackpack, sellPrice, makeGridDragDeps(ctx))
 }
 
-function stopGridDragButtonFlash(): void {
-  AnimationEffects.stopGridDragButtonFlash(_ctx, makeGridDragDeps())
+function stopGridDragButtonFlash(ctx: ShopSceneCtx = _ctx): void {
+  AnimationEffects.stopGridDragButtonFlash(ctx, makeGridDragDeps(ctx))
 }
 
 
@@ -3370,12 +3370,13 @@ function startShopDrag(
   slotIndex: number,
   e: FederatedPointerEvent,
   stage: Container,
+  ctx: ShopSceneCtx = _ctx,
 ): void {
-  if (!isShopInputEnabled()) return
-  if (!_ctx.shopManager) return
-  clearSelection()
-  const slot = _ctx.shopManager.pool[slotIndex]
-  if (!slot || slot.purchased || !canAffordShopSlot(slot)) return
+  if (!isShopInputEnabled(ctx)) return
+  if (!ctx.shopManager) return
+  clearSelection(ctx)
+  const slot = ctx.shopManager.pool[slotIndex]
+  if (!slot || slot.purchased || !canAffordShopSlot(slot, ctx)) return
 
   const size  = normalizeSize(slot.item.size)
   const iconW = size === '1x1' ? CELL_SIZE : size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
@@ -3403,18 +3404,18 @@ function startShopDrag(
   floater.y = p.y + offsetY - (iconH * s) / 2
   stage.addChild(floater)
 
-  _ctx.shopDragFloater   = floater
-  _ctx.shopDragSlotIdx   = slotIndex
-  _ctx.shopDragHiddenSlot = slotIndex
-  _ctx.shopDragSize      = size
-  _ctx.shopDragPointerId = e.pointerId
-  _ctx.shopPanel?.setSlotDragging(slotIndex, true)
+  ctx.shopDragFloater   = floater
+  ctx.shopDragSlotIdx   = slotIndex
+  ctx.shopDragHiddenSlot = slotIndex
+  ctx.shopDragSize      = size
+  ctx.shopDragPointerId = e.pointerId
+  ctx.shopPanel?.setSlotDragging(slotIndex, true)
 
   // 拖拽中视为选中：显示物品详情
-  _ctx.currentSelection = { kind: 'shop', slotIndex }
-  _ctx.selectedSellAction = null
-  _ctx.sellPopup?.show(slot.item, getShopSlotPreviewPrice(slot), 'buy', slot.tier)
-  applySellButtonState()
+  ctx.currentSelection = { kind: 'shop', slotIndex }
+  ctx.selectedSellAction = null
+  ctx.sellPopup?.show(slot.item, getShopSlotPreviewPrice(slot, ctx), 'buy', slot.tier)
+  applySellButtonState(ctx)
 
   startFlashEffect(stage, size)
 }
@@ -3422,29 +3423,29 @@ function startShopDrag(
 // ============================================================
 // 商店拖拽：移动
 // ============================================================
-function onShopDragMove(e: FederatedPointerEvent): void {
-  if (!isShopInputEnabled()) return
-  if (!_ctx.shopDragFloater || !_ctx.shopDragSize) return
-  if (e.pointerId !== _ctx.shopDragPointerId) return
+function onShopDragMove(e: FederatedPointerEvent, ctx: ShopSceneCtx = _ctx): void {
+  if (!isShopInputEnabled(ctx)) return
+  if (!ctx.shopDragFloater || !ctx.shopDragSize) return
+  if (e.pointerId !== ctx.shopDragPointerId) return
 
-  const dragSlot = _ctx.shopManager?.pool[_ctx.shopDragSlotIdx]
+  const dragSlot = ctx.shopManager?.pool[ctx.shopDragSlotIdx]
   refreshBackpackSynthesisGuideArrows(dragSlot?.item.id ?? null, dragSlot?.tier ?? null, 1)
 
   const s = 1
 
-  const iconW   = _ctx.shopDragSize === '1x1' ? CELL_SIZE : _ctx.shopDragSize === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
+  const iconW   = ctx.shopDragSize === '1x1' ? CELL_SIZE : ctx.shopDragSize === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
   const iconH   = iconW
   const offsetY = getDebugCfg('dragYOffset')
   const stage = getApp().stage
   const p = stage.toLocal(e.global)
-  _ctx.shopDragFloater.scale.set(s)
-  _ctx.shopDragFloater.x = p.x - (iconW * s) / 2
-  _ctx.shopDragFloater.y = p.y + offsetY - (iconH * s) / 2
+  ctx.shopDragFloater.scale.set(s)
+  ctx.shopDragFloater.x = p.x - (iconW * s) / 2
+  ctx.shopDragFloater.y = p.y + offsetY - (iconH * s) / 2
 
   const gx = e.globalX, gy = e.globalY
-  const battleCell = _ctx.battleView?.pixelToCellForItem(gx, gy, _ctx.shopDragSize, 0)
+  const battleCell = ctx.battleView?.pixelToCellForItem(gx, gy, ctx.shopDragSize, 0)
   let synthTarget = dragSlot
-    ? findSynthesisTargetWithDragProbe(dragSlot.item.id, dragSlot.tier, 1, gx, gy, _ctx.shopDragSize)
+    ? findSynthesisTargetWithDragProbe(dragSlot.item.id, dragSlot.tier, 1, gx, gy, ctx.shopDragSize)
     : null
 
   if (synthTarget) {
@@ -3454,65 +3455,65 @@ function onShopDragMove(e: FederatedPointerEvent): void {
   }
   synthesisPanel?.hideSynthesisHoverInfo()
 
-  if (dragSlot && _ctx.sellPopup) {
-    _ctx.sellPopup.show(dragSlot.item, getShopSlotPreviewPrice(dragSlot), 'buy', toVisualTier(dragSlot.tier, 1), undefined, getDefaultItemInfoMode())
+  if (dragSlot && ctx.sellPopup) {
+    ctx.sellPopup.show(dragSlot.item, getShopSlotPreviewPrice(dragSlot, ctx), 'buy', toVisualTier(dragSlot.tier, 1), undefined, getDefaultItemInfoMode())
   }
 
-  if (battleCell && _ctx.battleSystem) {
+  if (battleCell && ctx.battleSystem) {
     const finalRow = battleCell.row
-    let canDirect = canPlaceInVisibleCols(_ctx.battleSystem, _ctx.battleView!, battleCell.col, finalRow, _ctx.shopDragSize)
+    let canDirect = canPlaceInVisibleCols(ctx.battleSystem, ctx.battleView!, battleCell.col, finalRow, ctx.shopDragSize)
 
     if (!canDirect) {
       const unified = planUnifiedSqueeze(
-        { system: _ctx.battleSystem, activeColCount: _ctx.battleView!.activeColCount },
+        { system: ctx.battleSystem, activeColCount: ctx.battleView!.activeColCount },
         battleCell.col,
         finalRow,
-        _ctx.shopDragSize,
+        ctx.shopDragSize,
         '__shop_drag__',
-        _ctx.backpackSystem && _ctx.backpackView
-          ? { system: _ctx.backpackSystem, activeColCount: _ctx.backpackView.activeColCount }
+        ctx.backpackSystem && ctx.backpackView
+          ? { system: ctx.backpackSystem, activeColCount: ctx.backpackView.activeColCount }
           : undefined,
       )
       if (unified?.mode === 'local' && unified.moves.length > 0) {
         const squeezeMs = getDebugCfg('squeezeMs')
         for (const move of unified.moves) {
-          const movedItem = _ctx.battleSystem.getItem(move.instanceId)
+          const movedItem = ctx.battleSystem.getItem(move.instanceId)
           if (!movedItem) continue
-          _ctx.battleSystem.remove(move.instanceId)
-          _ctx.battleSystem.place(move.newCol, move.newRow, movedItem.size, movedItem.defId, move.instanceId)
-          _ctx.battleView!.animateToCell(move.instanceId, move.newCol, move.newRow, squeezeMs)
+          ctx.battleSystem.remove(move.instanceId)
+          ctx.battleSystem.place(move.newCol, move.newRow, movedItem.size, movedItem.defId, move.instanceId)
+          ctx.battleView!.animateToCell(move.instanceId, move.newCol, move.newRow, squeezeMs)
         }
-        canDirect = canPlaceInVisibleCols(_ctx.battleSystem, _ctx.battleView!, battleCell.col, finalRow, _ctx.shopDragSize)
+        canDirect = canPlaceInVisibleCols(ctx.battleSystem, ctx.battleView!, battleCell.col, finalRow, ctx.shopDragSize)
       }
     }
 
     let canReplaceToBackpack = false
     if (!canDirect) {
-      const blockers = getOverlapBlockersInBattle(battleCell.col, finalRow, _ctx.shopDragSize)
+      const blockers = getOverlapBlockersInBattle(battleCell.col, finalRow, ctx.shopDragSize, ctx)
       if (blockers.length > 0) {
-        const transferPlan = buildBackpackPlanForTransferred(blockers)
+        const transferPlan = buildBackpackPlanForTransferred(blockers, ctx)
         canReplaceToBackpack = transferPlan !== null
       }
     }
 
-    _ctx.battleView!.highlightCells(
+    ctx.battleView!.highlightCells(
       battleCell.col,
       battleCell.row,
-      _ctx.shopDragSize,
+      ctx.shopDragSize,
       canDirect || canReplaceToBackpack,
       undefined,
     )
   } else {
-    _ctx.battleView?.clearHighlight()
+    ctx.battleView?.clearHighlight()
   }
 
-  if (_ctx.backpackView?.visible) {
-    const bpCell = _ctx.backpackView.pixelToCellForItem(gx, gy, _ctx.shopDragSize, 0)
-    if (bpCell && _ctx.backpackSystem) {
-      _ctx.backpackView.highlightCells(bpCell.col, bpCell.row, _ctx.shopDragSize,
-        canPlaceInVisibleCols(_ctx.backpackSystem, _ctx.backpackView, bpCell.col, bpCell.row, _ctx.shopDragSize))
+  if (ctx.backpackView?.visible) {
+    const bpCell = ctx.backpackView.pixelToCellForItem(gx, gy, ctx.shopDragSize, 0)
+    if (bpCell && ctx.backpackSystem) {
+      ctx.backpackView.highlightCells(bpCell.col, bpCell.row, ctx.shopDragSize,
+        canPlaceInVisibleCols(ctx.backpackSystem, ctx.backpackView, bpCell.col, bpCell.row, ctx.shopDragSize))
     } else {
-      _ctx.backpackView.clearHighlight()
+      ctx.backpackView.clearHighlight()
     }
   }
 }
@@ -3520,34 +3521,34 @@ function onShopDragMove(e: FederatedPointerEvent): void {
 // ============================================================
 // 商店拖拽：结束
 // ============================================================
-async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promise<void> {
-  if (!isShopInputEnabled()) {
-    applyPhaseInputLock()
+async function onShopDragEnd(e: FederatedPointerEvent, stage: Container, ctx: ShopSceneCtx = _ctx): Promise<void> {
+  if (!isShopInputEnabled(ctx)) {
+    applyPhaseInputLock(ctx)
     return
   }
-  if (!_ctx.shopDragFloater || _ctx.shopDragSlotIdx < 0 || !_ctx.shopDragSize) return
-  if (e.pointerId !== _ctx.shopDragPointerId) return
+  if (!ctx.shopDragFloater || ctx.shopDragSlotIdx < 0 || !ctx.shopDragSize) return
+  if (e.pointerId !== ctx.shopDragPointerId) return
 
-  const slot = _ctx.shopManager?.pool[_ctx.shopDragSlotIdx]
+  const slot = ctx.shopManager?.pool[ctx.shopDragSlotIdx]
 
-  stopFlashEffect(_ctx)
-  _ctx.battleView?.clearHighlight()
-  _ctx.backpackView?.clearHighlight()
+  stopFlashEffect(ctx)
+  ctx.battleView?.clearHighlight()
+  ctx.backpackView?.clearHighlight()
   synthesisPanel?.hideSynthesisHoverInfo()
   clearBackpackSynthesisGuideArrows()
 
-  if (!slot || !_ctx.shopManager || !_ctx.shopDragSize) { resetDrag(); return }
-  if (!canBuyItemUnderFirstPurchaseRule(_ctx, slot.item)) {
+  if (!slot || !ctx.shopManager || !ctx.shopDragSize) { resetDrag(ctx); return }
+  if (!canBuyItemUnderFirstPurchaseRule(ctx, slot.item)) {
     showFirstPurchaseRuleHint()
-    resetDrag(); return
+    resetDrag(ctx); return
   }
 
   const gx = e.globalX, gy = e.globalY
-  const size = _ctx.shopDragSize
+  const size = ctx.shopDragSize
   let synthTarget = findSynthesisTargetWithDragProbe(slot.item.id, slot.tier, 1, gx, gy, size)
-  const battleCell = _ctx.battleView?.pixelToCellForItem(gx, gy, size, 0)
-  const bpCell = _ctx.backpackView?.visible ? _ctx.backpackView.pixelToCellForItem(gx, gy, size, 0) : null
-  const overBattleArea = isPointInZoneArea(_ctx.battleView, gx, gy)
+  const battleCell = ctx.battleView?.pixelToCellForItem(gx, gy, size, 0)
+  const bpCell = ctx.backpackView?.visible ? ctx.backpackView.pixelToCellForItem(gx, gy, size, 0) : null
+  const overBattleArea = isPointInZoneArea(ctx.battleView, gx, gy)
   const onBpBtn = isOverBpBtn(gx, gy)
 
   if (synthTarget) {
@@ -3559,64 +3560,64 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
       showLv7MorphSynthesisConfirmOverlay(stage, () => {
         const choices = buildStoneTransformChoices(synthTarget, 'same')
         if (choices.length <= 0) {
-          showHintToast('backpack_full_buy', 'Lv7转化：当前无可用候选', 0xffb27a)
+          showHintToast('backpack_full_buy', 'Lv7转化：当前无可用候选', 0xffb27a, ctx)
           refreshShopUI()
           return
         }
         const opened = showNeutralChoiceOverlay(stage, '选择变化方向', choices, (picked) => {
           const buyRet = tryBuyShopSlotWithSkill(slot)
           if (!buyRet.ok) {
-            showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
+            showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f, ctx)
             refreshShopUI()
             return false
           }
           markShopPurchaseDone()
           const ok = transformPlacedItemKeepLevelTo(synthTarget.instanceId, synthTarget.zone, picked.item, true)
           if (!ok) {
-            showHintToast('backpack_full_buy', 'Lv7转化失败', 0xff8f8f)
+            showHintToast('backpack_full_buy', 'Lv7转化失败', 0xff8f8f, ctx)
             refreshShopUI()
             return false
           }
           grantSynthesisExp(1, { instanceId: synthTarget.instanceId, zone: synthTarget.zone })
-          showHintToast('no_gold_buy', 'Lv7合成：已触发变化石效果', 0x9be5ff)
+          showHintToast('no_gold_buy', 'Lv7合成：已触发变化石效果', 0x9be5ff, ctx)
           refreshShopUI()
           return true
         }, 'special_shop_like')
         if (!opened) {
-          showHintToast('backpack_full_buy', 'Lv7转化：当前无可用候选', 0xffb27a)
+          showHintToast('backpack_full_buy', 'Lv7转化：当前无可用候选', 0xffb27a, ctx)
           refreshShopUI()
         }
       })
-      resetDrag()
+      resetDrag(ctx)
       return
     }
     const isCrossId = !!targetItem && targetItem.defId !== slot.item.id
     if (isCrossId) {
       const targetDef = targetItem ? getItemDefById(targetItem.defId) : null
       if (!targetItem || !targetDef) {
-        resetDrag()
+        resetDrag(ctx)
         return
       }
       const upgradeTo = nextTierLevel(slot.tier, 1)
       if (!upgradeTo) {
-        resetDrag()
+        resetDrag(ctx)
         return
       }
       const runCrossSynthesis = () => {
         const buyRet = tryBuyShopSlotWithSkill(slot)
         if (!buyRet.ok) {
-          showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
+          showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f, ctx)
           refreshShopUI()
           return
         }
         markShopPurchaseDone()
         const synth = synthesizeTarget(slot.item.id, slot.tier, 1, synthTarget.instanceId, synthTarget.zone)
         if (!synth) {
-          showHintToast('backpack_full_buy', '合成目标无效', 0xff8f8f)
+          showHintToast('backpack_full_buy', '合成目标无效', 0xff8f8f, ctx)
           refreshShopUI()
           return
         }
-        playSynthesisFlashEffect(_ctx, stage, synth)
+        playSynthesisFlashEffect(ctx, stage, synth)
         if (!tryRunHeroCrossSynthesisReroll(stage, synth)) {
           refreshShopUI()
         }
@@ -3632,7 +3633,7 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
       } else {
         runCrossSynthesis()
       }
-      resetDrag()
+      resetDrag(ctx)
       return
     }
 
@@ -3645,52 +3646,52 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
       () => {
         const ret = tryBuyShopSlotWithSkill(slot)
         if (!ret.ok) {
-          showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
+          showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f, ctx)
           return false
         }
         markShopPurchaseDone()
         return true
       },
     )) {
-      resetDrag(); return
+      resetDrag(ctx); return
     }
 
     if (!tryBuyShopSlotWithSkill(slot).ok) {
-      showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
-      resetDrag(); return
+      showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f, ctx)
+      resetDrag(ctx); return
     }
     markShopPurchaseDone()
     const synth = synthesizeTarget(slot.item.id, slot.tier, 1, synthTarget.instanceId, synthTarget.zone)
     if (!synth) {
-      showHintToast('backpack_full_buy', '合成目标无效', 0xff8f8f)
+      showHintToast('backpack_full_buy', '合成目标无效', 0xff8f8f, ctx)
       refreshShopUI()
-      resetDrag(); return
+      resetDrag(ctx); return
     }
-    playSynthesisFlashEffect(_ctx, stage, synth)
+    playSynthesisFlashEffect(ctx, stage, synth)
     refreshShopUI()
-    resetDrag(); return
+    resetDrag(ctx); return
   }
 
   // 仅当落点在战斗区（含合成范围）/背包格子/背包按钮时才允许购买
   if (!overBattleArea && !bpCell && !onBpBtn) {
-    resetDrag()
+    resetDrag(ctx)
     return
   }
 
   // 战斗区放置
   const battleFinalRow = battleCell ? battleCell.row : 0
-  const battleCanDirect = !!(battleCell && _ctx.battleSystem && _ctx.battleView
-    && canPlaceInVisibleCols(_ctx.battleSystem, _ctx.battleView, battleCell.col, battleFinalRow, size))
+  const battleCanDirect = !!(battleCell && ctx.battleSystem && ctx.battleView
+    && canPlaceInVisibleCols(ctx.battleSystem, ctx.battleView, battleCell.col, battleFinalRow, size))
   let battleSqueezeMoves: { instanceId: string; newCol: number; newRow: number }[] = []
-  const battleUnified = (!battleCanDirect && battleCell && _ctx.battleSystem && _ctx.battleView)
+  const battleUnified = (!battleCanDirect && battleCell && ctx.battleSystem && ctx.battleView)
     ? planUnifiedSqueeze(
-      { system: _ctx.battleSystem, activeColCount: _ctx.battleView.activeColCount },
+      { system: ctx.battleSystem, activeColCount: ctx.battleView.activeColCount },
       battleCell.col,
       battleFinalRow,
       size,
       '__shop_drag__',
-      _ctx.backpackSystem && _ctx.backpackView
-        ? { system: _ctx.backpackSystem, activeColCount: _ctx.backpackView.activeColCount }
+      ctx.backpackSystem && ctx.backpackView
+        ? { system: ctx.backpackSystem, activeColCount: ctx.backpackView.activeColCount }
         : undefined,
     )
     : null
@@ -3698,21 +3699,21 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
 
   let battleTransferPlan: PackPlacement[] | null = null
   let battleTransferredIds = new Set<string>()
-  if (!battleCanDirect && battleSqueezeMoves.length === 0 && battleCell && _ctx.battleSystem && _ctx.battleView) {
+  if (!battleCanDirect && battleSqueezeMoves.length === 0 && battleCell && ctx.battleSystem && ctx.battleView) {
     if (battleUnified?.mode === 'cross') {
-      const blockersById = new Map(getOverlapBlockersInBattle(battleCell.col, battleFinalRow, size).map(b => [b.instanceId, b] as const))
+      const blockersById = new Map(getOverlapBlockersInBattle(battleCell.col, battleFinalRow, size, ctx).map(b => [b.instanceId, b] as const))
       const transfers = battleUnified.transfers.map(t => blockersById.get(t.instanceId)).filter((v): v is { instanceId: string; defId: string; size: ItemSizeNorm } => !!v)
-      const plan = buildBackpackPlanForTransferred(transfers)
+      const plan = buildBackpackPlanForTransferred(transfers, ctx)
       if (plan) {
         battleTransferPlan = plan
         battleTransferredIds = new Set(transfers.map((b) => b.instanceId))
       }
     }
   }
-  if (!battleCanDirect && battleSqueezeMoves.length === 0 && battleCell && _ctx.battleSystem && _ctx.battleView && battleTransferPlan === null) {
-    const blockers = getOverlapBlockersInBattle(battleCell.col, battleFinalRow, size)
+  if (!battleCanDirect && battleSqueezeMoves.length === 0 && battleCell && ctx.battleSystem && ctx.battleView && battleTransferPlan === null) {
+    const blockers = getOverlapBlockersInBattle(battleCell.col, battleFinalRow, size, ctx)
     if (blockers.length > 0) {
-      const plan = buildBackpackPlanForTransferred(blockers)
+      const plan = buildBackpackPlanForTransferred(blockers, ctx)
       if (plan) {
         battleTransferPlan = plan
         battleTransferredIds = new Set(blockers.map((b) => b.instanceId))
@@ -3720,7 +3721,7 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
     }
   }
   if (
-    _ctx.battleSystem && _ctx.battleView
+    ctx.battleSystem && ctx.battleView
     && (
       (battleCell && (battleCanDirect || battleSqueezeMoves.length > 0))
       || (battleCell && battleTransferPlan !== null)
@@ -3728,26 +3729,26 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
   ) {
     if (tryBuyShopSlotWithSkill(slot).ok) {
       markShopPurchaseDone()
-      if (!battleCell) { resetDrag(); return }
+      if (!battleCell) { resetDrag(ctx); return }
       if (battleSqueezeMoves.length > 0) {
         const squeezeMs = getDebugCfg('squeezeMs')
         for (const move of battleSqueezeMoves) {
-          const movedItem = _ctx.battleSystem.getItem(move.instanceId)
+          const movedItem = ctx.battleSystem.getItem(move.instanceId)
           if (!movedItem) continue
-          _ctx.battleSystem.remove(move.instanceId)
-          _ctx.battleSystem.place(move.newCol, move.newRow, movedItem.size, movedItem.defId, move.instanceId)
-          _ctx.battleView.animateToCell(move.instanceId, move.newCol, move.newRow, squeezeMs)
+          ctx.battleSystem.remove(move.instanceId)
+          ctx.battleSystem.place(move.newCol, move.newRow, movedItem.size, movedItem.defId, move.instanceId)
+          ctx.battleView.animateToCell(move.instanceId, move.newCol, move.newRow, squeezeMs)
         }
       }
       if (battleTransferPlan && battleTransferredIds.size > 0) {
-        applyBackpackPlanWithTransferred(battleTransferPlan, battleTransferredIds)
+        applyBackpackPlanWithTransferred(battleTransferPlan, battleTransferredIds, ctx)
       }
       const id = nextId()
-      _ctx.battleSystem.place(battleCell.col, battleFinalRow, size, slot.item.id, id)
-      _ctx.battleView!.addItem(id, slot.item.id, size, battleCell.col, battleFinalRow, toVisualTier(slot.tier, 1))
+      ctx.battleSystem.place(battleCell.col, battleFinalRow, size, slot.item.id, id)
+      ctx.battleView!.addItem(id, slot.item.id, size, battleCell.col, battleFinalRow, toVisualTier(slot.tier, 1))
         .then(() => {
-          _ctx.battleView!.setItemTier(id, toVisualTier(slot.tier, 1))
-          _ctx.drag?.refreshZone(_ctx.battleView!)
+          ctx.battleView!.setItemTier(id, toVisualTier(slot.tier, 1))
+          ctx.drag?.refreshZone(ctx.battleView!)
         })
       instanceToDefId.set(id, slot.item.id)
       setInstanceQualityLevel(id, slot.item.id, parseTierName(slot.item.starting_tier) ?? 'Bronze', 1)
@@ -3756,17 +3757,17 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
       unlockItemToPool(slot.item.id)
       refreshShopUI()
     } else {
-      showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
+      showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f, ctx)
     }
-    resetDrag(); return
+    resetDrag(ctx); return
   }
 
   // 背包区放置
   if (bpCell || onBpBtn) {
-    const directCell = bpCell && _ctx.backpackSystem && _ctx.backpackView
+    const directCell = bpCell && ctx.backpackSystem && ctx.backpackView
       ? (() => {
         const finalRow = bpCell.row
-        return canPlaceInVisibleCols(_ctx.backpackSystem, _ctx.backpackView, bpCell.col, finalRow, size)
+        return canPlaceInVisibleCols(ctx.backpackSystem, ctx.backpackView, bpCell.col, finalRow, size)
           ? { col: bpCell.col, row: finalRow }
           : null
       })()
@@ -3774,22 +3775,22 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
     const buttonCell = onBpBtn ? findFirstBackpackPlace(size) : null
     const targetCell = directCell ?? buttonCell
     if (!targetCell) {
-      showHintToast('backpack_full_buy', '背包已满，无法购买', 0xff8f8f)
-      resetDrag(); return
+      showHintToast('backpack_full_buy', '背包已满，无法购买', 0xff8f8f, ctx)
+      resetDrag(ctx); return
     }
 
     if (!tryBuyShopSlotWithSkill(slot).ok) {
-      showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f)
-      resetDrag(); return
+      showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f, ctx)
+      resetDrag(ctx); return
     }
     markShopPurchaseDone()
 
     const id = nextId()
-    _ctx.backpackSystem!.place(targetCell.col, targetCell.row, size, slot.item.id, id)
-    _ctx.backpackView!.addItem(id, slot.item.id, size, targetCell.col, targetCell.row, toVisualTier(slot.tier, 1))
+    ctx.backpackSystem!.place(targetCell.col, targetCell.row, size, slot.item.id, id)
+    ctx.backpackView!.addItem(id, slot.item.id, size, targetCell.col, targetCell.row, toVisualTier(slot.tier, 1))
       .then(() => {
-        _ctx.backpackView!.setItemTier(id, toVisualTier(slot.tier, 1))
-        _ctx.drag?.refreshZone(_ctx.backpackView!)
+        ctx.backpackView!.setItemTier(id, toVisualTier(slot.tier, 1))
+        ctx.drag?.refreshZone(ctx.backpackView!)
       })
     instanceToDefId.set(id, slot.item.id)
     setInstanceQualityLevel(id, slot.item.id, parseTierName(slot.item.starting_tier) ?? 'Bronze', 1)
@@ -3799,24 +3800,24 @@ async function onShopDragEnd(e: FederatedPointerEvent, stage: Container): Promis
     refreshShopUI()
   }
 
-  resetDrag()
+  resetDrag(ctx)
 }
 
-function resetDrag(): void {
-  if (_ctx.shopDragFloater) {
-    const p = _ctx.shopDragFloater.parent
-    if (p) p.removeChild(_ctx.shopDragFloater)
-    _ctx.shopDragFloater.destroy({ children: true })
-    _ctx.shopDragFloater = null
+function resetDrag(ctx: ShopSceneCtx = _ctx): void {
+  if (ctx.shopDragFloater) {
+    const p = ctx.shopDragFloater.parent
+    if (p) p.removeChild(ctx.shopDragFloater)
+    ctx.shopDragFloater.destroy({ children: true })
+    ctx.shopDragFloater = null
   }
-  if (_ctx.shopDragHiddenSlot >= 0) {
-    _ctx.shopPanel?.setSlotDragging(_ctx.shopDragHiddenSlot, false)
+  if (ctx.shopDragHiddenSlot >= 0) {
+    ctx.shopPanel?.setSlotDragging(ctx.shopDragHiddenSlot, false)
   }
-  _ctx.shopDragHiddenSlot = -1
-  _ctx.shopDragSlotIdx = -1; _ctx.shopDragSize = null; _ctx.shopDragPointerId = -1
+  ctx.shopDragHiddenSlot = -1
+  ctx.shopDragSlotIdx = -1; ctx.shopDragSize = null; ctx.shopDragPointerId = -1
   synthesisPanel?.hideSynthesisHoverInfo()
   clearBackpackSynthesisGuideArrows()
-  clearSelection()
+  clearSelection(ctx)
 }
 
 function isOverBpBtn(gx: number, gy: number): boolean {
@@ -4694,7 +4695,7 @@ function buildBattleZoneUI(stage: Container, cfg: ReturnType<typeof getConfig>):
       _ctx.drag?.setSqueezeSuppressed(false)
       synthesisPanel?.hideSynthesisHoverInfo()
       clearBackpackSynthesisGuideArrows()
-      stopGridDragButtonFlash()
+      stopGridDragButtonFlash(_ctx)
       applyInstanceTierVisuals()
       updateMiniMap()
       refreshBattlePassiveStatBadges(true)
@@ -5292,7 +5293,7 @@ export const ShopScene: Scene = {
     synthesisPanel = null
 
     stopFlashEffect(_ctx)
-    stopGridDragButtonFlash()
+    stopGridDragButtonFlash(_ctx)
     stopBattleGuideHandAnim(_ctx)
     stopUnlockRevealPlayback(_ctx)
 
