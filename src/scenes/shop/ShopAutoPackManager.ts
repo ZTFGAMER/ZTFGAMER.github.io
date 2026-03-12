@@ -12,6 +12,7 @@ import {
   playBackpackTransferMiniAnim,
   type BackpackTransferAnimSeed,
 } from './AnimationEffects'
+import { getItemDefById, getPrimaryArchetype, toSkillArchetype } from './SynthesisLogic'
 import type { ShopSceneCtx } from './ShopSceneContext'
 
 // ── 模块级缓存（不属于 ctx，生命周期跟随模块）──────────────────
@@ -245,4 +246,18 @@ export function applyBackpackPlanWithTransferred(
   ctx.drag?.refreshZone(ctx.backpackView)
   ctx.drag?.refreshZone(ctx.battleView)
   playBackpackTransferMiniAnim(ctx, transferAnimSeeds)
+}
+
+// ── 背包排序辅助 ──────────────────────────────────────────────
+// getArchetypeSortOrder 从 ShopScene.ts 移入
+
+
+export function getArchetypeSortOrder(defId: string): number {
+  const def = getItemDefById(defId)
+  const arch = toSkillArchetype(getPrimaryArchetype(def?.tags ?? ''))
+  if (arch === 'warrior') return 0
+  if (arch === 'archer') return 1
+  if (arch === 'assassin') return 2
+  if (arch === 'utility') return 3
+  return 4
 }

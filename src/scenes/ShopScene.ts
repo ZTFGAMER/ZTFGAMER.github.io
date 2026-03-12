@@ -172,6 +172,7 @@ import {
   compareTier, toVisualTier,
   getDayActiveCols, getShopItemScale,
   getBattleItemScale, getBattleZoneX, getBackpackZoneX, getBackpackZoneYByBattle,
+  canPlaceInVisibleCols, hasAnyPlaceInVisibleCols,
 } from './shop/ShopMathHelpers'
 import {
   type ToastReason,
@@ -188,6 +189,7 @@ import {
   buildBackpackAutoPackPlan, applyBackpackAutoPackExisting,
   canBackpackAcceptByAutoPack, getOverlapBlockersInBattle,
   buildBackpackPlanForTransferred, applyBackpackPlanWithTransferred,
+  getArchetypeSortOrder,
 } from './shop/ShopAutoPackManager'
 import { buildBattleSnapshot } from './shop/ShopBattleSnapshot'
 
@@ -2770,30 +2772,26 @@ function applySellButtonState(ctx: ShopSceneCtx = _ctx): void {
   if (ctx.refreshCostText) ctx.refreshCostText.visible = true
 }
 
-function canPlaceInVisibleCols(
-  system: GridSystem,
-  view: GridZone,
-  col: number,
-  row: number,
-  size: ItemSizeNorm,
-): boolean {
-  const { w, h } = system.getSizeDim(size)
-  if (col < 0 || row < 0) return false
-  if (col + w > view.activeColCount) return false
-  if (row + h > system.rows) return false
-  return system.canPlace(col, row, size)
+// canPlaceInVisibleCols / hasAnyPlaceInVisibleCols -> moved to ./shop/ShopMathHelpers.ts
+
+
+function clearSelection(ctx: ShopSceneCtx = _ctx): void {
+  ctx.currentSelection = { kind: 'none' }
+  ctx.selectedSellAction = null
+  resetInfoModeSelection(ctx)
+  skillDraftPanel?.hideSkillDetailPopup()
+  synthesisPanel?.hideSynthesisHoverInfo()
+  ctx.shopPanel?.setSelectedSlot(-1)
+  ctx.battleView?.setSelected(null)
+  ctx.backpackView?.setSelected(null)
+  ctx.sellPopup?.hide()
+  applySellButtonState(ctx)
 }
 
-function hasAnyPlaceInVisibleCols(system: GridSystem, view: GridZone, size: ItemSizeNorm): boolean {
-  const { w, h } = system.getSizeDim(size)
-  const maxCol = view.activeColCount - w
-  if (maxCol < 0) return false
-  const maxRow = system.rows - h
-  if (maxRow < 0) return false
-  for (let r = 0; r <= maxRow; r++)
-    for (let c = 0; c <= maxCol; c++)
-      if (system.canPlace(c, r, size)) return true
-  return false
+function setSellButtonPrice(price: number, ctx: ShopSceneCtx = _ctx): void {
+  if (!ctx.sellBtnHandle) return
+  void price
+  ctx.sellBtnHandle.setSubLabel('')
 }
 
 function canBattleAcceptShopItem(size: ItemSizeNorm, ctx: ShopSceneCtx = _ctx): boolean {
@@ -2824,25 +2822,6 @@ function canBattleAcceptShopItem(size: ItemSizeNorm, ctx: ShopSceneCtx = _ctx): 
   return false
 }
 
-function clearSelection(ctx: ShopSceneCtx = _ctx): void {
-  ctx.currentSelection = { kind: 'none' }
-  ctx.selectedSellAction = null
-  resetInfoModeSelection(ctx)
-  skillDraftPanel?.hideSkillDetailPopup()
-  synthesisPanel?.hideSynthesisHoverInfo()
-  ctx.shopPanel?.setSelectedSlot(-1)
-  ctx.battleView?.setSelected(null)
-  ctx.backpackView?.setSelected(null)
-  ctx.sellPopup?.hide()
-  applySellButtonState(ctx)
-}
-
-function setSellButtonPrice(price: number, ctx: ShopSceneCtx = _ctx): void {
-  if (!ctx.sellBtnHandle) return
-  void price
-  ctx.sellBtnHandle.setSubLabel('')
-}
-
 // ============================================================
 // 区域闪光特效
 // ============================================================
@@ -2860,15 +2839,8 @@ function startFlashEffect(stage: Container, size: ItemSizeNorm, forceBothZones =
 // getOverlapBlockersInBattle / buildBackpackPlanForTransferred / applyBackpackPlanWithTransferred
 // → 已移至 ./shop/ShopAutoPackManager.ts
 
-function getArchetypeSortOrder(defId: string): number {
-  const def = getItemDefById(defId)
-  const arch = toSkillArchetype(getPrimaryArchetype(def?.tags ?? ''))
-  if (arch === 'warrior') return 0
-  if (arch === 'archer') return 1
-  if (arch === 'assassin') return 2
-  if (arch === 'utility') return 3
-  return 4
-}
+// getArchetypeSortOrder -> moved to ./shop/ShopAutoPackManager.ts
+
 
 function sortBackpackItemsByRule(ctx: ShopSceneCtx = _ctx): void {
   if (!ctx.backpackSystem || !ctx.backpackView) return

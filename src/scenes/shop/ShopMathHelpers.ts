@@ -2,12 +2,12 @@
 // ShopMathHelpers — 商店场景纯工具函数（无 ctx 依赖）
 // ============================================================
 
-import type { ItemSizeNorm } from '@/grid/GridSystem'
+import type { ItemSizeNorm, GridSystem } from '@/grid/GridSystem'
 import type { TierKey } from '@/shop/ShopManager'
 import { TIER_ORDER, normalizeTierStar } from './SynthesisLogic'
 import { getConfig } from '@/core/DataLoader'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
-import { CELL_SIZE, CELL_HEIGHT } from '@/grid/GridZone'
+import { CELL_SIZE, CELL_HEIGHT, type GridZone } from '@/grid/GridZone'
 import { CANVAS_W, BACKPACK_GAP_FROM_BATTLE } from '@/config/layoutConstants'
 import type { ShopSceneCtx } from './ShopSceneContext'
 
@@ -87,4 +87,32 @@ export function getBackpackZoneX(activeCols: number, ctx: ShopSceneCtx): number 
 export function getBackpackZoneYByBattle(ctx: ShopSceneCtx): number {
   const s = getBattleItemScale(ctx)
   return getDebugCfg('battleZoneY') + CELL_HEIGHT * s + BACKPACK_GAP_FROM_BATTLE + (CELL_HEIGHT * (1 - s)) / 2
+}
+
+// ── 格子放置检测（纯函数，不依赖 ctx）────────────────────────────
+
+export function canPlaceInVisibleCols(
+  system: GridSystem,
+  view: GridZone,
+  col: number,
+  row: number,
+  size: ItemSizeNorm,
+): boolean {
+  const { w, h } = system.getSizeDim(size)
+  if (col < 0 || row < 0) return false
+  if (col + w > view.activeColCount) return false
+  if (row + h > system.rows) return false
+  return system.canPlace(col, row, size)
+}
+
+export function hasAnyPlaceInVisibleCols(system: GridSystem, view: GridZone, size: ItemSizeNorm): boolean {
+  const { w, h } = system.getSizeDim(size)
+  const maxCol = view.activeColCount - w
+  if (maxCol < 0) return false
+  const maxRow = system.rows - h
+  if (maxRow < 0) return false
+  for (let r = 0; r <= maxRow; r++)
+    for (let c = 0; c <= maxCol; c++)
+      if (system.canPlace(c, r, size)) return true
+  return false
 }
