@@ -18,16 +18,13 @@ import {
 } from '@/core/RunState'
 import { GridSystem }        from '@/grid/GridSystem'
 import type { ItemSizeNorm, PlacedItem } from '@/grid/GridSystem'
-import { GridZone, CELL_SIZE, CELL_HEIGHT } from '@/grid/GridZone'
+import { GridZone, CELL_HEIGHT } from '@/grid/GridZone'
 import { DragController }    from '@/grid/DragController'
-import { planAutoPack, type PackItem, type PackPlacement } from '@/grid/AutoPack'
-import { planUnifiedSqueeze } from '@/grid/SqueezeLogic'
 import { normalizeSize, type ItemDef } from '@/items/ItemDef'
 import { ShopManager, getDailyGoldForDay, type ShopSlot, type TierKey } from '@/shop/ShopManager'
 import { ShopPanelView }     from '@/ui/ShopPanelView'
 import { SellPopup, type ItemInfoCustomDisplay } from '@/ui/SellPopup'
 import { getConfig as getDebugCfg, onConfigChange as onDebugCfgChange } from '@/config/debugConfig'
-import { getItemIconUrl } from '@/core/assetPath'
 import { PhaseManager } from '@/core/PhaseManager'
 import { clearBattleSnapshot, getBattleSnapshot, setBattleSnapshot, type BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 import { PvpContext } from '@/pvp/PvpContext'
@@ -37,12 +34,12 @@ import { clearBattleOutcome, consumeBattleOutcome } from '@/combat/BattleOutcome
 // shouldTriggerSkill48ExtraUpgrade → moved to ShopSynthesisController.ts
 import {
   Container, Graphics, Text, Sprite,
-  Assets, Texture, Rectangle, Ticker,
+  Texture, Rectangle, Ticker,
   type FederatedPointerEvent,
 } from 'pixi.js'
 import {
   nextTierLevel, tierStarLevelIndex,
-  parseTierName, getPrimaryArchetype, toSkillArchetype,
+  getPrimaryArchetype, toSkillArchetype,
   isNeutralArchetypeKey, isNeutralItemDef, getItemDefById,
   canUseLv7MorphSynthesis,
 } from './shop/SynthesisLogic'
@@ -140,7 +137,6 @@ import {
   showBuyGuideHand,
   stopUnlockRevealPlayback
 } from './shop/AnimationEffects'
-import * as AnimationEffects from './shop/AnimationEffects'
 import { CANVAS_W, CANVAS_H, BTN_RADIUS } from '@/config/layoutConstants'
 import { getShopUiColor, getClassColor } from '@/config/colorPalette'
 import {
@@ -155,7 +151,6 @@ import {
   compareTier, toVisualTier,
   getDayActiveCols,
   getBattleItemScale, getBattleZoneX, getBackpackZoneX, getBackpackZoneYByBattle,
-  canPlaceInVisibleCols, hasAnyPlaceInVisibleCols,
 } from './shop/ShopMathHelpers'
 import {
   type ToastReason,
@@ -170,9 +165,7 @@ import {
 import {
   clearAutoPackCache,
   buildBackpackAutoPackPlan, applyBackpackAutoPackExisting,
-  canBackpackAcceptByAutoPack, getOverlapBlockersInBattle,
-  buildBackpackPlanForTransferred, applyBackpackPlanWithTransferred,
-  getArchetypeSortOrder,
+  canBackpackAcceptByAutoPack,
 } from './shop/ShopAutoPackManager'
 import { buildBattleSnapshot } from './shop/ShopBattleSnapshot'
 import * as GridInventory from './shop/ShopGridInventory'
@@ -190,6 +183,8 @@ import * as PurchaseLogic from './shop/ShopPurchaseLogic'
 import type { PurchaseCallbacks } from './shop/ShopPurchaseLogic'
 import * as ItemGrant from './shop/ShopItemGrant'
 import type { ItemGrantCallbacks } from './shop/ShopItemGrant'
+import * as DragSystem from './shop/ShopDragSystem'
+import type { ShopDragDeps } from './shop/ShopDragSystem'
 import { refreshUpgradeHints } from './shop/ShopUpgradeHints'
 
 // ---- 場景共享狀態上下文 ----
@@ -808,20 +803,12 @@ function getShopSlotPreviewPrice(slot: ShopSlot, ctx: ShopSceneCtx = _ctx): numb
   return PurchaseLogic.getShopSlotPreviewPrice(slot, ctx)
 }
 
-function canAffordShopSlot(slot: ShopSlot, ctx: ShopSceneCtx = _ctx): boolean {
-  return PurchaseLogic.canAffordShopSlot(slot, ctx)
-}
-
 function upsertPickedSkill(skillId: string, ctx: ShopSceneCtx = _ctx): void {
   SkillSystem.upsertPickedSkill(ctx, skillId, { grantSkill20DailyBronzeItemIfNeeded: () => grantSkill20DailyBronzeItemIfNeeded() })
 }
 
 function removePickedSkill(skillId: string, ctx: ShopSceneCtx = _ctx): void {
   SkillSystem.removePickedSkill(ctx, skillId, { getDefaultSkillDetailMode: () => getDefaultSkillDetailMode() })
-}
-
-function tryBuyShopSlotWithSkill(slot: ShopSlot, ctx: ShopSceneCtx = _ctx): { ok: boolean; finalPrice: number; discount: number } {
-  return PurchaseLogic.tryBuyShopSlotWithSkill(slot, ctx, makePurchaseCallbacks())
 }
 
 function closeSpecialShopOverlay(): void {
@@ -896,6 +883,30 @@ function getSpecialShopShownDesc(item: ItemDef, tier: TierKey, star: 1 | 2, deta
 
 
 
+
+function makeShopDragDeps(): ShopDragDeps {
+  return {
+    hideSynthesisHoverInfo: () => synthesisPanel?.hideSynthesisHoverInfo(),
+    showSynthesisHoverInfo: (defId, tier, star, target) => synthesisPanel?.showSynthesisHoverInfo(defId, tier, star, target),
+    showCrossSynthesisConfirmOverlay: (source, target, toTier, toStar, onConfirm) =>
+      synthesisPanel?.showCrossSynthesisConfirmOverlay(source, target, toTier, toStar, onConfirm),
+    hideSkillDetailPopup: () => skillDraftPanel?.hideSkillDetailPopup(),
+    refreshShopUI: () => refreshShopUI(),
+    applyPhaseInputLock: () => applyPhaseInputLock(),
+    recordNeutralItemObtained: (defId) => recordNeutralItemObtained(defId),
+    showLv7MorphSynthesisConfirmOverlay: (stage, onConfirm) => showLv7MorphSynthesisConfirmOverlay(stage, onConfirm),
+    buildStoneTransformChoices: (target, rule) => buildStoneTransformChoices(target, rule),
+    showNeutralChoiceOverlay: (stage, title, candidates, onConfirm, mode) => showNeutralChoiceOverlay(stage, title, candidates, onConfirm, mode),
+    transformPlacedItemKeepLevelTo: (id, zone, def, fx) => transformPlacedItemKeepLevelTo(id, zone, def, fx),
+    synthesizeTarget: (defId, tier, star, targetId, zone) => synthesizeTarget(defId, tier, star, targetId, zone),
+    grantSynthesisExp: (amount, from) => grantSynthesisExp(amount, from),
+    tryRunHeroCrossSynthesisReroll: (stage, synth) => tryRunHeroCrossSynthesisReroll(stage, synth),
+    tryRunHeroSameItemSynthesisChoice: (defId, tier, star, target, consumeSource) =>
+      tryRunHeroSameItemSynthesisChoice(getApp().stage, defId, tier, star, target, consumeSource),
+    purchaseCallbacks: makePurchaseCallbacks(),
+    isBackpackDropLocked: (col, row, size) => isBackpackDropLocked(col, row, size),
+  }
+}
 
 function makeItemGrantCallbacks(): ItemGrantCallbacks {
   return {
@@ -1521,95 +1532,18 @@ function ensureBottomHudVisibleAndOnTop(stage: Container, ctx: ShopSceneCtx = _c
 }
 
 function applySellButtonState(ctx: ShopSceneCtx = _ctx): void {
-  if (ctx.specialShopBackpackViewActive) {
-    if (ctx.sellBtnHandle) {
-      ctx.sellBtnHandle.container.visible = false
-      ctx.sellBtnHandle.setSubLabel('')
-    }
-    if (ctx.refreshBtnHandle) ctx.refreshBtnHandle.container.visible = false
-    if (ctx.refreshCostText) ctx.refreshCostText.visible = false
-    return
-  }
-
-  if (!isShopInputEnabled(ctx)) {
-    if (ctx.sellBtnHandle) {
-      ctx.sellBtnHandle.container.visible = false
-      ctx.sellBtnHandle.setSubLabel('')
-    }
-    if (ctx.refreshBtnHandle) ctx.refreshBtnHandle.container.visible = false
-    if (ctx.refreshCostText) ctx.refreshCostText.visible = false
-    return
-  }
-
-  if (ctx.sellBtnHandle) {
-    ctx.sellBtnHandle.container.visible = true
-    ctx.sellBtnHandle.redraw(true)
-    ctx.sellBtnHandle.setSubLabel('')
-  }
-
-  if (ctx.refreshBtnHandle) ctx.refreshBtnHandle.container.visible = true
-  if (ctx.refreshCostText) ctx.refreshCostText.visible = true
+  DragSystem.applySellButtonState(ctx)
 }
 
 // canPlaceInVisibleCols / hasAnyPlaceInVisibleCols -> moved to ./shop/ShopMathHelpers.ts
 
 
 function clearSelection(ctx: ShopSceneCtx = _ctx): void {
-  ctx.currentSelection = { kind: 'none' }
-  ctx.selectedSellAction = null
-  resetInfoModeSelection(ctx)
-  skillDraftPanel?.hideSkillDetailPopup()
-  synthesisPanel?.hideSynthesisHoverInfo()
-  ctx.shopPanel?.setSelectedSlot(-1)
-  ctx.battleView?.setSelected(null)
-  ctx.backpackView?.setSelected(null)
-  ctx.sellPopup?.hide()
-  applySellButtonState(ctx)
+  DragSystem.clearSelection(ctx, makeShopDragDeps())
 }
 
 function setSellButtonPrice(price: number, ctx: ShopSceneCtx = _ctx): void {
-  if (!ctx.sellBtnHandle) return
-  void price
-  ctx.sellBtnHandle.setSubLabel('')
-}
-
-function canBattleAcceptShopItem(size: ItemSizeNorm, ctx: ShopSceneCtx = _ctx): boolean {
-  if (!ctx.battleSystem || !ctx.battleView) return false
-  const w = size === '1x1' ? 1 : size === '2x1' ? 2 : 3
-  const h = 1
-  const maxCol = ctx.battleView.activeColCount - w
-  const maxRow = 1 - h
-  if (maxCol < 0 || maxRow < 0) return false
-
-  for (let row = 0; row <= maxRow; row++) {
-    for (let col = 0; col <= maxCol; col++) {
-      const finalRow = row
-      if (canPlaceInVisibleCols(ctx.battleSystem, ctx.battleView, col, finalRow, size)) return true
-      const unified = planUnifiedSqueeze(
-        { system: ctx.battleSystem, activeColCount: ctx.battleView.activeColCount },
-        col,
-        finalRow,
-        size,
-        '__shop_drag__',
-        ctx.backpackSystem && ctx.backpackView
-          ? { system: ctx.backpackSystem, activeColCount: ctx.backpackView.activeColCount }
-          : undefined,
-      )
-      if (unified) return true
-    }
-  }
-  return false
-}
-
-// ============================================================
-// 区域闪光特效
-// ============================================================
-function startFlashEffect(stage: Container, size: ItemSizeNorm, forceBothZones = false, ctx: ShopSceneCtx = _ctx): void {
-  AnimationEffects.startFlashEffect(ctx, stage, size, forceBothZones, {
-    canBattleAcceptShopItem: (sz) => canBattleAcceptShopItem(sz),
-    hasAnyPlaceInVisibleCols: (sz) => ctx.backpackSystem && ctx.backpackView
-      ? hasAnyPlaceInVisibleCols(ctx.backpackSystem, ctx.backpackView, sz) : false,
-  })
+  DragSystem.setSellButtonPrice(price, ctx)
 }
 
 
@@ -1622,586 +1556,56 @@ function startFlashEffect(stage: Container, size: ItemSizeNorm, forceBothZones =
 
 
 function sortBackpackItemsByRule(ctx: ShopSceneCtx = _ctx): void {
-  if (!ctx.backpackSystem || !ctx.backpackView) return
-  const items = ctx.backpackSystem.getAllItems()
-  if (items.length <= 1) {
-    showHintToast('backpack_full_buy', '背包已整理', 0x9be5ff, ctx)
-    return
-  }
-
-  const sorted = [...items].sort((a, b) => {
-    const archCmp = getArchetypeSortOrder(a.defId) - getArchetypeSortOrder(b.defId)
-    if (archCmp !== 0) return archCmp
-    const aTier = instanceToTier.get(a.instanceId) ?? 'Bronze'
-    const bTier = instanceToTier.get(b.instanceId) ?? 'Bronze'
-    const aStar = getInstanceTierStar(a.instanceId)
-    const bStar = getInstanceTierStar(b.instanceId)
-    const aLevel = tierStarLevelIndex(aTier, aStar) + 1
-    const bLevel = tierStarLevelIndex(bTier, bStar) + 1
-    if (aLevel !== bLevel) return bLevel - aLevel
-    const idCmp = a.defId.localeCompare(b.defId)
-    if (idCmp !== 0) return idCmp
-    return a.instanceId.localeCompare(b.instanceId)
-  })
-
-  const slots: Array<{ col: number; row: number }> = []
-  for (let row = 0; row < ctx.backpackSystem.rows; row++) {
-    for (let col = 0; col < ctx.backpackView.activeColCount; col++) {
-      slots.push({ col, row })
-    }
-  }
-
-  const packItems: PackItem[] = sorted.map((it, idx) => {
-    const preferred = slots[Math.min(idx, Math.max(0, slots.length - 1))] ?? { col: 0, row: 0 }
-    return {
-      instanceId: it.instanceId,
-      defId: it.defId,
-      size: it.size,
-      preferredCol: preferred.col,
-      preferredRow: preferred.row,
-    }
-  })
-
-  const plan = planAutoPack(packItems, ctx.backpackView.activeColCount, ctx.backpackSystem.rows)
-  if (!plan) {
-    showHintToast('backpack_full_buy', '整理失败：背包空间异常', 0xff8f8f, ctx)
-    return
-  }
-
-  applyBackpackAutoPackExisting(plan, ctx)
-  refreshShopUI()
-  showHintToast('backpack_full_buy', '背包已按规则整理', 0x9be5ff, ctx)
+  DragSystem.sortBackpackItemsByRule(ctx, makeShopDragDeps())
 }
 
-function getGridDragSellAreaTopLocalY(): number {
-  const yTop = Math.min(
-    getDebugCfg('sellBtnY'),
-    getDebugCfg('refreshBtnY'),
-    getDebugCfg('phaseBtnY'),
-  )
-  return yTop - Math.round(BTN_RADIUS * 0.72)
-}
 
 function isOverGridDragSellArea(gx: number, gy: number): boolean {
-  const stage = getApp().stage
-  const top = stage.toGlobal({ x: 0, y: getGridDragSellAreaTopLocalY() })
-  const left = stage.toGlobal({ x: 0, y: 0 })
-  const right = stage.toGlobal({ x: CANVAS_W, y: 0 })
-  const x0 = Math.min(left.x, right.x)
-  const x1 = Math.max(left.x, right.x)
-  return gy >= top.y && gx >= x0 && gx <= x1
+  return DragSystem.isOverGridDragSellArea(gx, gy)
 }
 
 function isOverAnyGridDropTarget(gx: number, gy: number, size: ItemSizeNorm, ctx: ShopSceneCtx = _ctx): boolean {
-  const dragOffsetY = getDebugCfg('dragYOffset')
-  const overBattle = ctx.battleView?.pixelToCellForItem(gx, gy, size, dragOffsetY)
-  if (overBattle) return true
-  const overBackpack = ctx.backpackView?.pixelToCellForItem(gx, gy, size, dragOffsetY)
-  return !!overBackpack
+  return DragSystem.isOverAnyGridDropTarget(gx, gy, size, ctx)
 }
 
 function updateGridDragSellAreaHover(gx: number, gy: number, size: ItemSizeNorm, ctx: ShopSceneCtx = _ctx): void {
-  if (!ctx.gridDragCanSell) {
-    ctx.gridDragSellHot = false
-    return
-  }
-  const hot = isOverGridDragSellArea(gx, gy) && !isOverAnyGridDropTarget(gx, gy, size, ctx)
-  ctx.gridDragSellHot = hot
-}
-
-function makeGridDragDeps(ctx: ShopSceneCtx = _ctx) {
-  return {
-    isShopInputEnabled: () => isShopInputEnabled(ctx),
-    applySellButtonState: () => applySellButtonState(ctx),
-    getGridDragSellAreaTopLocalY: () => getGridDragSellAreaTopLocalY(),
-  }
+  DragSystem.updateGridDragSellAreaHover(gx, gy, size, ctx)
 }
 
 function startGridDragButtonFlash(stage: Container, canSell: boolean, canToBackpack: boolean, sellPrice = 0, ctx: ShopSceneCtx = _ctx): void {
-  AnimationEffects.startGridDragButtonFlash(ctx, stage, canSell, canToBackpack, sellPrice, makeGridDragDeps(ctx))
+  DragSystem.startGridDragButtonFlash(stage, canSell, canToBackpack, sellPrice, ctx)
 }
 
 function stopGridDragButtonFlash(ctx: ShopSceneCtx = _ctx): void {
-  AnimationEffects.stopGridDragButtonFlash(ctx, makeGridDragDeps(ctx))
+  DragSystem.stopGridDragButtonFlash(ctx)
 }
 
 
 // ============================================================
 // 商店拖拽：开始
 // ============================================================
-function startShopDrag(
-  slotIndex: number,
-  e: FederatedPointerEvent,
-  stage: Container,
-  ctx: ShopSceneCtx = _ctx,
-): void {
-  if (!isShopInputEnabled(ctx)) return
-  if (!ctx.shopManager) return
-  clearSelection(ctx)
-  const slot = ctx.shopManager.pool[slotIndex]
-  if (!slot || slot.purchased || !canAffordShopSlot(slot, ctx)) return
-
-  const size  = normalizeSize(slot.item.size)
-  const iconW = size === '1x1' ? CELL_SIZE : size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
-  const iconH = iconW
-
-  const floater   = new Container()
-
-  // 拖拽浮层：仅显示图片本体（不显示边框与背景）
-  floater.eventMode = 'none'
-  floater.interactiveChildren = false
-
-  const sp = new Sprite(Texture.WHITE)
-  sp.width = iconW - 10; sp.height = iconH - 10
-  sp.x = 5; sp.y = 5; sp.alpha = 0
-  floater.addChild(sp)
-  Assets.load<Texture>(getItemIconUrl(slot.item.id))
-    .then(tex => { sp.texture = tex; sp.alpha = 0.9 })
-    .catch((err) => { console.warn('[ShopScene] 拖拽浮层图标加载失败', slot.item.id, err) })
-
-  const offsetY = getDebugCfg('dragYOffset')
-  const s = 1
-  floater.scale.set(s)
-  const p = stage.toLocal(e.global)
-  floater.x = p.x - (iconW * s) / 2
-  floater.y = p.y + offsetY - (iconH * s) / 2
-  stage.addChild(floater)
-
-  ctx.shopDragFloater   = floater
-  ctx.shopDragSlotIdx   = slotIndex
-  ctx.shopDragHiddenSlot = slotIndex
-  ctx.shopDragSize      = size
-  ctx.shopDragPointerId = e.pointerId
-  ctx.shopPanel?.setSlotDragging(slotIndex, true)
-
-  // 拖拽中视为选中：显示物品详情
-  ctx.currentSelection = { kind: 'shop', slotIndex }
-  ctx.selectedSellAction = null
-  ctx.sellPopup?.show(slot.item, getShopSlotPreviewPrice(slot, ctx), 'buy', slot.tier)
-  applySellButtonState(ctx)
-
-  startFlashEffect(stage, size)
+function startShopDrag(slotIndex: number, e: FederatedPointerEvent, stage: Container, ctx: ShopSceneCtx = _ctx): void {
+  DragSystem.startShopDrag(slotIndex, e, stage, ctx, makeShopDragDeps())
 }
 
-// ============================================================
-// 商店拖拽：移动
-// ============================================================
 function onShopDragMove(e: FederatedPointerEvent, ctx: ShopSceneCtx = _ctx): void {
-  if (!isShopInputEnabled(ctx)) return
-  if (!ctx.shopDragFloater || !ctx.shopDragSize) return
-  if (e.pointerId !== ctx.shopDragPointerId) return
-
-  const dragSlot = ctx.shopManager?.pool[ctx.shopDragSlotIdx]
-  refreshBackpackSynthesisGuideArrows(dragSlot?.item.id ?? null, dragSlot?.tier ?? null, 1)
-
-  const s = 1
-
-  const iconW   = ctx.shopDragSize === '1x1' ? CELL_SIZE : ctx.shopDragSize === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3
-  const iconH   = iconW
-  const offsetY = getDebugCfg('dragYOffset')
-  const stage = getApp().stage
-  const p = stage.toLocal(e.global)
-  ctx.shopDragFloater.scale.set(s)
-  ctx.shopDragFloater.x = p.x - (iconW * s) / 2
-  ctx.shopDragFloater.y = p.y + offsetY - (iconH * s) / 2
-
-  const gx = e.globalX, gy = e.globalY
-  const battleCell = ctx.battleView?.pixelToCellForItem(gx, gy, ctx.shopDragSize, 0)
-  let synthTarget = dragSlot
-    ? findSynthesisTargetWithDragProbe(dragSlot.item.id, dragSlot.tier, 1, gx, gy, ctx.shopDragSize)
-    : null
-
-  if (synthTarget) {
-    highlightSynthesisTarget(synthTarget)
-    if (dragSlot) synthesisPanel?.showSynthesisHoverInfo(dragSlot.item.id, dragSlot.tier, 1, synthTarget)
-    return
-  }
-  synthesisPanel?.hideSynthesisHoverInfo()
-
-  if (dragSlot && ctx.sellPopup) {
-    ctx.sellPopup.show(dragSlot.item, getShopSlotPreviewPrice(dragSlot, ctx), 'buy', toVisualTier(dragSlot.tier, 1), undefined, getDefaultItemInfoMode())
-  }
-
-  if (battleCell && ctx.battleSystem) {
-    const finalRow = battleCell.row
-    let canDirect = canPlaceInVisibleCols(ctx.battleSystem, ctx.battleView!, battleCell.col, finalRow, ctx.shopDragSize)
-
-    if (!canDirect) {
-      const unified = planUnifiedSqueeze(
-        { system: ctx.battleSystem, activeColCount: ctx.battleView!.activeColCount },
-        battleCell.col,
-        finalRow,
-        ctx.shopDragSize,
-        '__shop_drag__',
-        ctx.backpackSystem && ctx.backpackView
-          ? { system: ctx.backpackSystem, activeColCount: ctx.backpackView.activeColCount }
-          : undefined,
-      )
-      if (unified?.mode === 'local' && unified.moves.length > 0) {
-        const squeezeMs = getDebugCfg('squeezeMs')
-        for (const move of unified.moves) {
-          const movedItem = ctx.battleSystem.getItem(move.instanceId)
-          if (!movedItem) continue
-          ctx.battleSystem.remove(move.instanceId)
-          ctx.battleSystem.place(move.newCol, move.newRow, movedItem.size, movedItem.defId, move.instanceId)
-          ctx.battleView!.animateToCell(move.instanceId, move.newCol, move.newRow, squeezeMs)
-        }
-        canDirect = canPlaceInVisibleCols(ctx.battleSystem, ctx.battleView!, battleCell.col, finalRow, ctx.shopDragSize)
-      }
-    }
-
-    let canReplaceToBackpack = false
-    if (!canDirect) {
-      const blockers = getOverlapBlockersInBattle(battleCell.col, finalRow, ctx.shopDragSize, ctx)
-      if (blockers.length > 0) {
-        const transferPlan = buildBackpackPlanForTransferred(blockers, ctx)
-        canReplaceToBackpack = transferPlan !== null
-      }
-    }
-
-    ctx.battleView!.highlightCells(
-      battleCell.col,
-      battleCell.row,
-      ctx.shopDragSize,
-      canDirect || canReplaceToBackpack,
-      undefined,
-    )
-  } else {
-    ctx.battleView?.clearHighlight()
-  }
-
-  if (ctx.backpackView?.visible) {
-    const bpCell = ctx.backpackView.pixelToCellForItem(gx, gy, ctx.shopDragSize, 0)
-    if (bpCell && ctx.backpackSystem) {
-      ctx.backpackView.highlightCells(bpCell.col, bpCell.row, ctx.shopDragSize,
-        canPlaceInVisibleCols(ctx.backpackSystem, ctx.backpackView, bpCell.col, bpCell.row, ctx.shopDragSize))
-    } else {
-      ctx.backpackView.clearHighlight()
-    }
-  }
+  DragSystem.onShopDragMove(e, ctx, makeShopDragDeps())
 }
 
-// ============================================================
-// 商店拖拽：结束
-// ============================================================
 async function onShopDragEnd(e: FederatedPointerEvent, stage: Container, ctx: ShopSceneCtx = _ctx): Promise<void> {
-  if (!isShopInputEnabled(ctx)) {
-    applyPhaseInputLock(ctx)
-    return
-  }
-  if (!ctx.shopDragFloater || ctx.shopDragSlotIdx < 0 || !ctx.shopDragSize) return
-  if (e.pointerId !== ctx.shopDragPointerId) return
-
-  const slot = ctx.shopManager?.pool[ctx.shopDragSlotIdx]
-
-  stopFlashEffect(ctx)
-  ctx.battleView?.clearHighlight()
-  ctx.backpackView?.clearHighlight()
-  synthesisPanel?.hideSynthesisHoverInfo()
-  clearBackpackSynthesisGuideArrows()
-
-  if (!slot || !ctx.shopManager || !ctx.shopDragSize) { resetDrag(ctx); return }
-  if (!canBuyItemUnderFirstPurchaseRule(ctx, slot.item)) {
-    showFirstPurchaseRuleHint()
-    resetDrag(ctx); return
-  }
-
-  const gx = e.globalX, gy = e.globalY
-  const size = ctx.shopDragSize
-  let synthTarget = findSynthesisTargetWithDragProbe(slot.item.id, slot.tier, 1, gx, gy, size)
-  const battleCell = ctx.battleView?.pixelToCellForItem(gx, gy, size, 0)
-  const bpCell = ctx.backpackView?.visible ? ctx.backpackView.pixelToCellForItem(gx, gy, size, 0) : null
-  const overBattleArea = isPointInZoneArea(ctx.battleView, gx, gy)
-  const onBpBtn = isOverBpBtn(gx, gy)
-
-  if (synthTarget) {
-    const targetItem = getSynthesisTargetItem(synthTarget)
-    const targetTier = getInstanceTier(synthTarget.instanceId) ?? slot.tier
-    const targetStar = getInstanceTierStar(synthTarget.instanceId)
-    const lv7MorphMode = !!targetItem && canUseLv7MorphSynthesis(slot.item.id, targetItem.defId, slot.tier, 1, targetTier, targetStar)
-    if (lv7MorphMode) {
-      showLv7MorphSynthesisConfirmOverlay(stage, () => {
-        const choices = buildStoneTransformChoices(synthTarget, 'same')
-        if (choices.length <= 0) {
-          showHintToast('backpack_full_buy', 'Lv7转化：当前无可用候选', 0xffb27a, ctx)
-          refreshShopUI()
-          return
-        }
-        const opened = showNeutralChoiceOverlay(stage, '选择变化方向', choices, (picked) => {
-          const buyRet = tryBuyShopSlotWithSkill(slot)
-          if (!buyRet.ok) {
-            showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f, ctx)
-            refreshShopUI()
-            return false
-          }
-          markShopPurchaseDone()
-          const ok = transformPlacedItemKeepLevelTo(synthTarget.instanceId, synthTarget.zone, picked.item, true)
-          if (!ok) {
-            showHintToast('backpack_full_buy', 'Lv7转化失败', 0xff8f8f, ctx)
-            refreshShopUI()
-            return false
-          }
-          grantSynthesisExp(1, { instanceId: synthTarget.instanceId, zone: synthTarget.zone })
-          showHintToast('no_gold_buy', 'Lv7合成：已触发变化石效果', 0x9be5ff, ctx)
-          refreshShopUI()
-          return true
-        }, 'special_shop_like')
-        if (!opened) {
-          showHintToast('backpack_full_buy', 'Lv7转化：当前无可用候选', 0xffb27a, ctx)
-          refreshShopUI()
-        }
-      })
-      resetDrag(ctx)
-      return
-    }
-    const isCrossId = !!targetItem && targetItem.defId !== slot.item.id
-    if (isCrossId) {
-      const targetDef = targetItem ? getItemDefById(targetItem.defId) : null
-      if (!targetItem || !targetDef) {
-        resetDrag(ctx)
-        return
-      }
-      const upgradeTo = nextTierLevel(slot.tier, 1)
-      if (!upgradeTo) {
-        resetDrag(ctx)
-        return
-      }
-      const runCrossSynthesis = () => {
-        const buyRet = tryBuyShopSlotWithSkill(slot)
-        if (!buyRet.ok) {
-          showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f, ctx)
-          refreshShopUI()
-          return
-        }
-        markShopPurchaseDone()
-        const synth = synthesizeTarget(slot.item.id, slot.tier, 1, synthTarget.instanceId, synthTarget.zone)
-        if (!synth) {
-          showHintToast('backpack_full_buy', '合成目标无效', 0xff8f8f, ctx)
-          refreshShopUI()
-          return
-        }
-        playSynthesisFlashEffect(ctx, stage, synth)
-        if (!tryRunHeroCrossSynthesisReroll(stage, synth)) {
-          refreshShopUI()
-        }
-      }
-      if (isCrossIdSynthesisConfirmEnabled()) {
-        synthesisPanel?.showCrossSynthesisConfirmOverlay(
-          { def: slot.item, tier: slot.tier, star: 1 },
-          { def: targetDef, tier: targetTier, star: targetStar },
-          upgradeTo.tier,
-          upgradeTo.star,
-          runCrossSynthesis,
-        )
-      } else {
-        runCrossSynthesis()
-      }
-      resetDrag(ctx)
-      return
-    }
-
-    if (tryRunHeroSameItemSynthesisChoice(
-      stage,
-      slot.item.id,
-      slot.tier,
-      1,
-      synthTarget,
-      () => {
-        const ret = tryBuyShopSlotWithSkill(slot)
-        if (!ret.ok) {
-          showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f, ctx)
-          return false
-        }
-        markShopPurchaseDone()
-        return true
-      },
-    )) {
-      resetDrag(ctx); return
-    }
-
-    if (!tryBuyShopSlotWithSkill(slot).ok) {
-      showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f, ctx)
-      resetDrag(ctx); return
-    }
-    markShopPurchaseDone()
-    const synth = synthesizeTarget(slot.item.id, slot.tier, 1, synthTarget.instanceId, synthTarget.zone)
-    if (!synth) {
-      showHintToast('backpack_full_buy', '合成目标无效', 0xff8f8f, ctx)
-      refreshShopUI()
-      resetDrag(ctx); return
-    }
-    playSynthesisFlashEffect(ctx, stage, synth)
-    refreshShopUI()
-    resetDrag(ctx); return
-  }
-
-  // 仅当落点在战斗区（含合成范围）/背包格子/背包按钮时才允许购买
-  if (!overBattleArea && !bpCell && !onBpBtn) {
-    resetDrag(ctx)
-    return
-  }
-
-  // 战斗区放置
-  const battleFinalRow = battleCell ? battleCell.row : 0
-  const battleCanDirect = !!(battleCell && ctx.battleSystem && ctx.battleView
-    && canPlaceInVisibleCols(ctx.battleSystem, ctx.battleView, battleCell.col, battleFinalRow, size))
-  let battleSqueezeMoves: { instanceId: string; newCol: number; newRow: number }[] = []
-  const battleUnified = (!battleCanDirect && battleCell && ctx.battleSystem && ctx.battleView)
-    ? planUnifiedSqueeze(
-      { system: ctx.battleSystem, activeColCount: ctx.battleView.activeColCount },
-      battleCell.col,
-      battleFinalRow,
-      size,
-      '__shop_drag__',
-      ctx.backpackSystem && ctx.backpackView
-        ? { system: ctx.backpackSystem, activeColCount: ctx.backpackView.activeColCount }
-        : undefined,
-    )
-    : null
-  if (battleUnified?.mode === 'local') battleSqueezeMoves = battleUnified.moves
-
-  let battleTransferPlan: PackPlacement[] | null = null
-  let battleTransferredIds = new Set<string>()
-  if (!battleCanDirect && battleSqueezeMoves.length === 0 && battleCell && ctx.battleSystem && ctx.battleView) {
-    if (battleUnified?.mode === 'cross') {
-      const blockersById = new Map(getOverlapBlockersInBattle(battleCell.col, battleFinalRow, size, ctx).map(b => [b.instanceId, b] as const))
-      const transfers = battleUnified.transfers.map(t => blockersById.get(t.instanceId)).filter((v): v is { instanceId: string; defId: string; size: ItemSizeNorm } => !!v)
-      const plan = buildBackpackPlanForTransferred(transfers, ctx)
-      if (plan) {
-        battleTransferPlan = plan
-        battleTransferredIds = new Set(transfers.map((b) => b.instanceId))
-      }
-    }
-  }
-  if (!battleCanDirect && battleSqueezeMoves.length === 0 && battleCell && ctx.battleSystem && ctx.battleView && battleTransferPlan === null) {
-    const blockers = getOverlapBlockersInBattle(battleCell.col, battleFinalRow, size, ctx)
-    if (blockers.length > 0) {
-      const plan = buildBackpackPlanForTransferred(blockers, ctx)
-      if (plan) {
-        battleTransferPlan = plan
-        battleTransferredIds = new Set(blockers.map((b) => b.instanceId))
-      }
-    }
-  }
-  if (
-    ctx.battleSystem && ctx.battleView
-    && (
-      (battleCell && (battleCanDirect || battleSqueezeMoves.length > 0))
-      || (battleCell && battleTransferPlan !== null)
-    )
-  ) {
-    if (tryBuyShopSlotWithSkill(slot).ok) {
-      markShopPurchaseDone()
-      if (!battleCell) { resetDrag(ctx); return }
-      if (battleSqueezeMoves.length > 0) {
-        const squeezeMs = getDebugCfg('squeezeMs')
-        for (const move of battleSqueezeMoves) {
-          const movedItem = ctx.battleSystem.getItem(move.instanceId)
-          if (!movedItem) continue
-          ctx.battleSystem.remove(move.instanceId)
-          ctx.battleSystem.place(move.newCol, move.newRow, movedItem.size, movedItem.defId, move.instanceId)
-          ctx.battleView.animateToCell(move.instanceId, move.newCol, move.newRow, squeezeMs)
-        }
-      }
-      if (battleTransferPlan && battleTransferredIds.size > 0) {
-        applyBackpackPlanWithTransferred(battleTransferPlan, battleTransferredIds, ctx)
-      }
-      const id = nextId()
-      ctx.battleSystem.place(battleCell.col, battleFinalRow, size, slot.item.id, id)
-      ctx.battleView!.addItem(id, slot.item.id, size, battleCell.col, battleFinalRow, toVisualTier(slot.tier, 1))
-        .then(() => {
-          ctx.battleView!.setItemTier(id, toVisualTier(slot.tier, 1))
-          ctx.drag?.refreshZone(ctx.battleView!)
-        })
-      instanceToDefId.set(id, slot.item.id)
-      setInstanceQualityLevel(id, slot.item.id, parseTierName(slot.item.starting_tier) ?? 'Bronze', 1)
-      instanceToPermanentDamageBonus.set(id, 0)
-      recordNeutralItemObtained(slot.item.id)
-      unlockItemToPool(slot.item.id)
-      refreshShopUI()
-    } else {
-      showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f, ctx)
-    }
-    resetDrag(ctx); return
-  }
-
-  // 背包区放置
-  if (bpCell || onBpBtn) {
-    const directCell = bpCell && ctx.backpackSystem && ctx.backpackView
-      ? (() => {
-        const finalRow = bpCell.row
-        return canPlaceInVisibleCols(ctx.backpackSystem, ctx.backpackView, bpCell.col, finalRow, size)
-          ? { col: bpCell.col, row: finalRow }
-          : null
-      })()
-      : null
-    const buttonCell = onBpBtn ? findFirstBackpackPlace(size) : null
-    const targetCell = directCell ?? buttonCell
-    if (!targetCell) {
-      showHintToast('backpack_full_buy', '背包已满，无法购买', 0xff8f8f, ctx)
-      resetDrag(ctx); return
-    }
-
-    if (!tryBuyShopSlotWithSkill(slot).ok) {
-      showHintToast('no_gold_buy', '金币不足，无法购买', 0xff8f8f, ctx)
-      resetDrag(ctx); return
-    }
-    markShopPurchaseDone()
-
-    const id = nextId()
-    ctx.backpackSystem!.place(targetCell.col, targetCell.row, size, slot.item.id, id)
-    ctx.backpackView!.addItem(id, slot.item.id, size, targetCell.col, targetCell.row, toVisualTier(slot.tier, 1))
-      .then(() => {
-        ctx.backpackView!.setItemTier(id, toVisualTier(slot.tier, 1))
-        ctx.drag?.refreshZone(ctx.backpackView!)
-      })
-    instanceToDefId.set(id, slot.item.id)
-    setInstanceQualityLevel(id, slot.item.id, parseTierName(slot.item.starting_tier) ?? 'Bronze', 1)
-    instanceToPermanentDamageBonus.set(id, 0)
-    recordNeutralItemObtained(slot.item.id)
-    unlockItemToPool(slot.item.id)
-    refreshShopUI()
-  }
-
-  resetDrag(ctx)
+  await DragSystem.onShopDragEnd(e, stage, ctx, makeShopDragDeps())
 }
 
 function resetDrag(ctx: ShopSceneCtx = _ctx): void {
-  if (ctx.shopDragFloater) {
-    const p = ctx.shopDragFloater.parent
-    if (p) p.removeChild(ctx.shopDragFloater)
-    ctx.shopDragFloater.destroy({ children: true })
-    ctx.shopDragFloater = null
-  }
-  if (ctx.shopDragHiddenSlot >= 0) {
-    ctx.shopPanel?.setSlotDragging(ctx.shopDragHiddenSlot, false)
-  }
-  ctx.shopDragHiddenSlot = -1
-  ctx.shopDragSlotIdx = -1; ctx.shopDragSize = null; ctx.shopDragPointerId = -1
-  synthesisPanel?.hideSynthesisHoverInfo()
-  clearBackpackSynthesisGuideArrows()
-  clearSelection(ctx)
+  DragSystem.resetDrag(ctx, makeShopDragDeps())
 }
 
 function isOverBpBtn(gx: number, gy: number): boolean {
-  const cx = getDebugCfg('backpackBtnX')
-  const cy = getDebugCfg('backpackBtnY')
-  const r  = BTN_RADIUS + 24
-  const c = getApp().stage.toGlobal({ x: cx, y: cy })
-  return (gx - c.x) ** 2 + (gy - c.y) ** 2 <= r * r
+  return DragSystem.isOverBpBtn(gx, gy)
 }
 
 function isPointInZoneArea(view: GridZone | null, gx: number, gy: number): boolean {
-  if (!view || !view.visible) return false
-  const w = view.activeColCount * CELL_SIZE
-  const h = CELL_HEIGHT
-  const a = view.toGlobal({ x: 0, y: 0 })
-  const b = view.toGlobal({ x: w, y: h })
-  const x0 = Math.min(a.x, b.x)
-  const x1 = Math.max(a.x, b.x)
-  const y0 = Math.min(a.y, b.y)
-  const y1 = Math.max(a.y, b.y)
-  return gx >= x0 && gx <= x1 && gy >= y0 && gy <= y1
+  return DragSystem.isPointInZoneArea(view, gx, gy)
 }
 
 
