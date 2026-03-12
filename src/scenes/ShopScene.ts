@@ -2539,8 +2539,8 @@ function getBackpackZoneYByBattle(ctx: ShopSceneCtx = _ctx): number {
   return getDebugCfg('battleZoneY') + CELL_HEIGHT * s + BACKPACK_GAP_FROM_BATTLE + (CELL_HEIGHT * (1 - s)) / 2
 }
 
-function grantSkill20DailyBronzeItemIfNeeded(): void {
-  SkillSystem.grantSkill20DailyBronzeItemIfNeeded(_ctx, {
+function grantSkill20DailyBronzeItemIfNeeded(ctx: ShopSceneCtx = _ctx): void {
+  SkillSystem.grantSkill20DailyBronzeItemIfNeeded(ctx, {
     findFirstBackpackPlace: (size) => findFirstBackpackPlace(size),
     nextId: () => nextId(),
     toVisualTier: (tier, star) => toVisualTier(tier, star),
@@ -2548,8 +2548,8 @@ function grantSkill20DailyBronzeItemIfNeeded(): void {
     instanceToDefId,
     instanceToPermanentDamageBonus,
     recordNeutralItemObtained: (itemId) => recordNeutralItemObtained(itemId),
-    unlockItemToPool: (itemId) => unlockItemToPool(itemId),
-    showHintToast: (reason, message, color) => showHintToast(reason as ToastReason, message, color),
+    unlockItemToPool: (itemId) => unlockItemToPool(itemId, ctx),
+    showHintToast: (reason, message, color) => showHintToast(reason as ToastReason, message, color, ctx),
   })
 }
 
@@ -2557,50 +2557,51 @@ function grantPoolCandidateToBoardOrBackpack(
   candidate: PoolCandidate,
   toastPrefix: string,
   opts?: { flyFromHeroAvatar?: boolean; silentNoSpaceToast?: boolean; onSettled?: () => void },
+  ctx: ShopSceneCtx = _ctx,
 ): boolean {
-  if (!_ctx.battleSystem || !_ctx.battleView || !_ctx.backpackSystem || !_ctx.backpackView) return false
+  if (!ctx.battleSystem || !ctx.battleView || !ctx.backpackSystem || !ctx.backpackView) return false
   const size = normalizeSize(candidate.item.size)
   const battleSlot = findFirstBattlePlace(size)
   const backpackSlot = battleSlot ? null : findFirstBackpackPlace(size)
   if (!battleSlot && !backpackSlot) {
     if (!opts?.silentNoSpaceToast) {
-      showHintToast('backpack_full_buy', `${toastPrefix}：空间不足，发放失败`, 0xffb27a)
+      showHintToast('backpack_full_buy', `${toastPrefix}：空间不足，发放失败`, 0xffb27a, ctx)
     }
     return false
   }
   const id = nextId()
   const visualTier = toVisualTier(candidate.tier, candidate.star)
   if (battleSlot) {
-    _ctx.battleSystem.place(battleSlot.col, battleSlot.row, size, candidate.item.id, id)
+    ctx.battleSystem.place(battleSlot.col, battleSlot.row, size, candidate.item.id, id)
     const onLand = () => {
-      if (!_ctx.battleSystem?.getItem(id) || !_ctx.battleView) { opts?.onSettled?.(); return }
-      void _ctx.battleView.addItem(id, candidate.item.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
-        _ctx.battleView!.setItemTier(id, visualTier)
-        _ctx.drag?.refreshZone(_ctx.battleView!)
+      if (!ctx.battleSystem?.getItem(id) || !ctx.battleView) { opts?.onSettled?.(); return }
+      void ctx.battleView.addItem(id, candidate.item.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
+        ctx.battleView!.setItemTier(id, visualTier)
+        ctx.drag?.refreshZone(ctx.battleView!)
         opts?.onSettled?.()
       })
     }
-    if (opts?.flyFromHeroAvatar) flyRewardToGridSlot(candidate.item.id, _ctx.battleView, battleSlot.col, battleSlot.row, onLand)
+    if (opts?.flyFromHeroAvatar) flyRewardToGridSlot(candidate.item.id, ctx.battleView, battleSlot.col, battleSlot.row, onLand)
     else onLand()
   } else if (backpackSlot) {
-    _ctx.backpackSystem.place(backpackSlot.col, backpackSlot.row, size, candidate.item.id, id)
+    ctx.backpackSystem.place(backpackSlot.col, backpackSlot.row, size, candidate.item.id, id)
     const onLand = () => {
-      if (!_ctx.backpackSystem?.getItem(id) || !_ctx.backpackView) { opts?.onSettled?.(); return }
-      void _ctx.backpackView.addItem(id, candidate.item.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
-        _ctx.backpackView!.setItemTier(id, visualTier)
-        _ctx.drag?.refreshZone(_ctx.backpackView!)
+      if (!ctx.backpackSystem?.getItem(id) || !ctx.backpackView) { opts?.onSettled?.(); return }
+      void ctx.backpackView.addItem(id, candidate.item.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
+        ctx.backpackView!.setItemTier(id, visualTier)
+        ctx.drag?.refreshZone(ctx.backpackView!)
         opts?.onSettled?.()
       })
     }
-    if (opts?.flyFromHeroAvatar) flyRewardToGridSlot(candidate.item.id, _ctx.backpackView, backpackSlot.col, backpackSlot.row, onLand)
+    if (opts?.flyFromHeroAvatar) flyRewardToGridSlot(candidate.item.id, ctx.backpackView, backpackSlot.col, backpackSlot.row, onLand)
     else onLand()
   }
   instanceToDefId.set(id, candidate.item.id)
   setInstanceQualityLevel(id, candidate.item.id, parseTierName(candidate.item.starting_tier) ?? 'Bronze', candidate.level)
   instanceToPermanentDamageBonus.set(id, 0)
   recordNeutralItemObtained(candidate.item.id)
-  unlockItemToPool(candidate.item.id)
-  showHintToast('backpack_full_buy', `${toastPrefix}：获得 ${candidate.item.name_cn}`, 0x86e1ff)
+  unlockItemToPool(candidate.item.id, ctx)
+  showHintToast('backpack_full_buy', `${toastPrefix}：获得 ${candidate.item.name_cn}`, 0x86e1ff, ctx)
   return true
 }
 
@@ -2613,73 +2614,73 @@ function buildNamedPoolCandidate(nameCn: string): PoolCandidate | null {
 }
 
 
-function setDay(day: number): void {
-  const prevDay = _ctx.currentDay
-  _ctx.currentDay = Math.max(1, Math.min(20, day))
-  if (_ctx.currentDay !== prevDay) {
-    resetDayEventState(_ctx)
-    _ctx.pendingEventDraft = null
+function setDay(day: number, ctx: ShopSceneCtx = _ctx): void {
+  const prevDay = ctx.currentDay
+  ctx.currentDay = Math.max(1, Math.min(20, day))
+  if (ctx.currentDay !== prevDay) {
+    resetDayEventState(ctx)
+    ctx.pendingEventDraft = null
     eventDraftPanel?.closeEventDraftOverlay()
     closeSpecialShopOverlay()
-    _ctx.specialShopRefreshCount = 0
-    _ctx.specialShopOffers = []
+    ctx.specialShopRefreshCount = 0
+    ctx.specialShopOffers = []
     QUALITY_PSEUDO_RANDOM_STATE.clear()
     QUICK_BUY_LEVEL_PSEUDO_RANDOM_STATE.clear()
-    _ctx.nextQuickBuyOffer = null
+    ctx.nextQuickBuyOffer = null
   }
-  const newCols = getDayActiveCols(_ctx.currentDay)
+  const newCols = getDayActiveCols(ctx.currentDay)
 
   // 1. 更新 GridZone 格子背景（立即重绘）
-  if (_ctx.battleView) _ctx.battleView.setActiveColCount(newCols)
+  if (ctx.battleView) ctx.battleView.setActiveColCount(newCols)
 
-  // 2. 动画：_ctx.battleView.x 从当前值平滑移至新居中位置
-  if (_ctx.battleView) {
-    const fromX = _ctx.battleView.x
-    const toX   = getBattleZoneX(newCols)
-    if (_ctx.expandTickFn) { Ticker.shared.remove(_ctx.expandTickFn); _ctx.expandTickFn = null }
+  // 2. 动画：ctx.battleView.x 从当前值平滑移至新居中位置
+  if (ctx.battleView) {
+    const fromX = ctx.battleView.x
+    const toX   = getBattleZoneX(newCols, ctx)
+    if (ctx.expandTickFn) { Ticker.shared.remove(ctx.expandTickFn); ctx.expandTickFn = null }
     if (Math.abs(toX - fromX) > 1) {
       const durationMs = getDebugCfg('battleZoneExpandMs')
       const startMs    = Date.now()
-      _ctx.expandTickFn = () => {
+      ctx.expandTickFn = () => {
         const t    = Math.min((Date.now() - startMs) / durationMs, 1)
         const ease = 1 - Math.pow(1 - t, 3)
-        _ctx.battleView!.x = fromX + (toX - fromX) * ease
-        applyAreaLabelLeftAlign()
+        ctx.battleView!.x = fromX + (toX - fromX) * ease
+        applyAreaLabelLeftAlign(ctx)
         skillDraftPanel?.layoutSkillIconBar()
-        if (t >= 1) { Ticker.shared.remove(_ctx.expandTickFn!); _ctx.expandTickFn = null }
+        if (t >= 1) { Ticker.shared.remove(ctx.expandTickFn!); ctx.expandTickFn = null }
       }
-      Ticker.shared.add(_ctx.expandTickFn)
+      Ticker.shared.add(ctx.expandTickFn)
     } else {
-      _ctx.battleView.x = toX
-      applyAreaLabelLeftAlign()
+      ctx.battleView.x = toX
+      applyAreaLabelLeftAlign(ctx)
       skillDraftPanel?.layoutSkillIconBar()
     }
   }
 
   // 3. 同步 ShopManager 天数并刷新商店卡池
-  if (_ctx.shopManager) {
-    syncShopOwnedTierRules()
-    _ctx.shopManager.setDay(_ctx.currentDay)
+  if (ctx.shopManager) {
+    syncShopOwnedTierRules(ctx)
+    ctx.shopManager.setDay(ctx.currentDay)
     // Debug 改天数：每次实际变更天数都发放一次当日金币
-    if (_ctx.currentDay !== prevDay) {
-      if (!_ctx.blockedBaseIncomeDays.has(_ctx.currentDay)) {
-        _ctx.shopManager.gold += getDailyGoldForDay(getConfig(), _ctx.currentDay)
+    if (ctx.currentDay !== prevDay) {
+      if (!ctx.blockedBaseIncomeDays.has(ctx.currentDay)) {
+        ctx.shopManager.gold += getDailyGoldForDay(getConfig(), ctx.currentDay)
       } else {
-        _ctx.blockedBaseIncomeDays.delete(_ctx.currentDay)
-        showHintToast('no_gold_buy', '事件效果：今日基础收入已被透支', 0xffd48f)
+        ctx.blockedBaseIncomeDays.delete(ctx.currentDay)
+        showHintToast('no_gold_buy', '事件效果：今日基础收入已被透支', 0xffd48f, ctx)
       }
-      grantSilverDailyGoldBonusesOnNewDay()
-      applyFutureEventEffectsOnNewDay(_ctx.currentDay)
-      grantHeroPeriodicEffectsOnNewDay(_ctx.currentDay)
+      grantSilverDailyGoldBonusesOnNewDay(ctx)
+      applyFutureEventEffectsOnNewDay(ctx.currentDay, ctx)
+      grantHeroPeriodicEffectsOnNewDay(ctx.currentDay, ctx)
     }
   }
-  if (_ctx.currentDay !== prevDay) grantSkill20DailyBronzeItemIfNeeded()
+  if (ctx.currentDay !== prevDay) grantSkill20DailyBronzeItemIfNeeded(ctx)
   refreshShopUI()
 
   // 4. 更新 Debug 天数文字
-  if (_ctx.dayDebugText) {
-    _ctx.dayDebugText.text = `Day ${_ctx.currentDay}`
-    layoutDayDebugControls()
+  if (ctx.dayDebugText) {
+    ctx.dayDebugText.text = `Day ${ctx.currentDay}`
+    layoutDayDebugControls(ctx)
   }
   ensureDailyChoiceSelection(getApp().stage)
 }

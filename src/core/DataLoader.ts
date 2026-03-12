@@ -18,6 +18,45 @@ interface ConfigEntry {
   note?: string
 }
 
+// ── 运行时类型校验（防止 JSON 配置错误静默转为 NaN）────────────
+
+function validateCombatRuntime(v: unknown): void {
+  const loc = '[DataLoader] combat_runtime'
+  if (!v || typeof v !== 'object') throw new Error(`${loc}: 不是对象`)
+  const r = v as Record<string, unknown>
+  const required = [
+    'tickMs', 'fatigueStartMs', 'fatigueTickMs', 'fatigueBaseValue',
+    'fatigueDoubleEveryMs', 'critMultiplier',
+    'burnTickMs', 'poisonTickMs', 'regenTickMs',
+    'burnShieldFactor', 'burnDecayPct', 'healCleansePct',
+  ]
+  const bad = required.filter(k => typeof r[k] !== 'number' || !Number.isFinite(r[k] as number))
+  if (bad.length > 0) throw new Error(`${loc}: 缺少或非法字段 [${bad.join(', ')}]`)
+}
+
+function validateSkillSystem(v: unknown): void {
+  if (v == null) return  // optional 字段，未配置时跳过
+  const loc = '[DataLoader] skill_system'
+  if (typeof v !== 'object') throw new Error(`${loc}: 不是对象`)
+  const r = v as Record<string, unknown>
+  const pools = r.pools as Record<string, unknown> | undefined
+  if (!pools || typeof pools !== 'object') throw new Error(`${loc}: 缺少 pools 字段`)
+  for (const tier of ['bronze', 'silver', 'gold'] as const) {
+    const pool = (pools as Record<string, unknown>)[tier]
+    if (!Array.isArray(pool) || pool.length === 0) {
+      throw new Error(`${loc}: pools.${tier} 为空或不是数组`)
+    }
+    for (let i = 0; i < pool.length; i++) {
+      const item = pool[i] as Record<string, unknown> | null
+      if (!item?.id || !item?.archetype) {
+        throw new Error(`${loc}: pools.${tier}[${i}] 缺少 id 或 archetype`)
+      }
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+
 function extractConfig(entries: ConfigEntry[]): GameConfig {
   const get = <T>(name: string): T => {
     const entry = entries.find(e => e.name === name)
@@ -29,7 +68,7 @@ function extractConfig(entries: ConfigEntry[]): GameConfig {
     return entry ? (entry.value as T) : undefined
   }
 
-  return {
+  const cfg = {
     dailyGold:          get<number>('daily_gold'),
     dailyGoldByDay:     getOptional<number[]>('daily_gold_by_day'),
     shopRefreshPrices:  get<number[]>('shop_refresh_prices'),
@@ -54,6 +93,11 @@ function extractConfig(entries: ConfigEntry[]): GameConfig {
     combatRuntime:      get<GameConfig['combatRuntime']>('combat_runtime'),
     pvpRules:           getOptional<GameConfig['pvpRules']>('pvp_rules'),
   }
+
+  validateCombatRuntime(cfg.combatRuntime)
+  validateSkillSystem(cfg.skillSystem)
+
+  return cfg
 }
 
 // ---- 导出 ---- //

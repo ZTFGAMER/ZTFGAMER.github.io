@@ -161,6 +161,122 @@ export interface CombatBoardItem {
 export type EnemyTier = 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
 export type EnemyStar = 1 | 2
 
+// ── CombatState — 战斗引擎完整可变状态（主程建议：集中化便于快照/replay）──
+
+export interface CombatState {
+  // 计时器 / 流程
+  phase: CombatPhase
+  day: number
+  elapsedMs: number
+  tickAccumulatorMs: number
+  fatigueAccumulatorMs: number
+  fatigueTickCount: number
+  tickIndex: number
+  inFatigue: boolean
+  finished: boolean
+  result: CombatResult | null
+
+  // 英雄 / 物品实体
+  playerHero: HeroState
+  enemyHero: HeroState
+  items: CombatItemRunner[]
+  pendingHits: PendingHit[]
+  pendingItemFires: PendingItemFire[]
+  pendingChargePulses: PendingChargePulse[]
+  pendingAmmoRefills: PendingAmmoRefill[]
+  lastQueuedFireTickByItem: Map<string, number>
+
+  // 技能 ID 集合
+  playerSkillIds: Set<string>
+  enemySkillIds: Set<string>
+
+  // 技能一次性触发标志
+  skillEnemyHalfTriggered: boolean
+  skillPlayerHalfTriggered: boolean
+  skillEnemySelfHalfTriggered: boolean
+  skillEnemyHalfTriggeredFromEnemy: boolean
+  skillPlayerHalfShieldTriggered: boolean
+  skillEnemyHalfShieldTriggered: boolean
+  skillPlayerHalfShieldCdTriggered: boolean
+  skillEnemyHalfShieldCdTriggered: boolean
+  skillFirstAmmoEmptyTriggeredBySide: Record<'player' | 'enemy', boolean>
+  skill47ReviveTriggeredBySide: Record<'player' | 'enemy', boolean>
+  deathMarkCheckUsedBySide: Record<'player' | 'enemy', boolean>
+  unyieldingTriggeredBySide: Record<'player' | 'enemy', boolean>
+  heroInvincibleMsBySide: Record<'player' | 'enemy', number>
+  skill86UseCountBySide: Record<'player' | 'enemy', number>
+
+  // 技能累积数值
+  skillExecuteDamageBonus: number
+  skillEnemyExecuteDamageBonus: number
+  skill33RegenPerTick: number
+  skillEnemy33RegenPerTick: number
+
+  // 战斗开始时的上下文快照
+  playerBackpackItemCount: number
+  playerActiveColCount: number
+  playerGoldAtBattleStart: number
+  playerTrophyWinsAtBattleStart: number
+  enemyBackpackItemCount: number
+  enemyGoldAtBattleStart: number
+  enemyTrophyWinsAtBattleStart: number
+}
+
+export function createCombatState(): CombatState {
+  return {
+    phase: 'IDLE',
+    day: 1,
+    elapsedMs: 0,
+    tickAccumulatorMs: 0,
+    fatigueAccumulatorMs: 0,
+    fatigueTickCount: 0,
+    tickIndex: 0,
+    inFatigue: false,
+    finished: false,
+    result: null,
+
+    playerHero: { id: 'hero_player', side: 'player', maxHp: 1, hp: 1, shield: 0, burn: 0, poison: 0, regen: 0 },
+    enemyHero: { id: 'hero_enemy', side: 'enemy', maxHp: 1, hp: 1, shield: 0, burn: 0, poison: 0, regen: 0 },
+    items: [],
+    pendingHits: [],
+    pendingItemFires: [],
+    pendingChargePulses: [],
+    pendingAmmoRefills: [],
+    lastQueuedFireTickByItem: new Map(),
+
+    playerSkillIds: new Set(),
+    enemySkillIds: new Set(),
+
+    skillEnemyHalfTriggered: false,
+    skillPlayerHalfTriggered: false,
+    skillEnemySelfHalfTriggered: false,
+    skillEnemyHalfTriggeredFromEnemy: false,
+    skillPlayerHalfShieldTriggered: false,
+    skillEnemyHalfShieldTriggered: false,
+    skillPlayerHalfShieldCdTriggered: false,
+    skillEnemyHalfShieldCdTriggered: false,
+    skillFirstAmmoEmptyTriggeredBySide: { player: false, enemy: false },
+    skill47ReviveTriggeredBySide: { player: false, enemy: false },
+    deathMarkCheckUsedBySide: { player: false, enemy: false },
+    unyieldingTriggeredBySide: { player: false, enemy: false },
+    heroInvincibleMsBySide: { player: 0, enemy: 0 },
+    skill86UseCountBySide: { player: 0, enemy: 0 },
+
+    skillExecuteDamageBonus: 0,
+    skillEnemyExecuteDamageBonus: 0,
+    skill33RegenPerTick: 0,
+    skillEnemy33RegenPerTick: 0,
+
+    playerBackpackItemCount: 0,
+    playerActiveColCount: 0,
+    playerGoldAtBattleStart: 0,
+    playerTrophyWinsAtBattleStart: 0,
+    enemyBackpackItemCount: 0,
+    enemyGoldAtBattleStart: 0,
+    enemyTrophyWinsAtBattleStart: 0,
+  }
+}
+
 export type CombatRuntimeOverride = {
   burnTickMs?: number
   poisonTickMs?: number

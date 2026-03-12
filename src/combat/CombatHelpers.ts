@@ -295,3 +295,75 @@ export function tierValueFromLine(line: string | undefined, tierIndex: number): 
   if (!m?.[1]) return 0
   return pickTierSeriesValue(m[1], tierIndex)
 }
+
+// ── CombatItemRunner 纯判断工具（无状态，可被多个 System 共用）────
+
+import type { CombatItemRunner } from './CombatTypes'
+import type { ItemSizeNorm } from '@/items/ItemDef'
+
+export function itemWidth(size: ItemSizeNorm): number {
+  if (size === '3x1') return 3
+  if (size === '2x1') return 2
+  return 1
+}
+
+export function isAdjacentByFootprint(a: CombatItemRunner, b: CombatItemRunner): boolean {
+  const aEnd = a.col + itemWidth(a.size) - 1
+  const bEnd = b.col + itemWidth(b.size) - 1
+  return a.col === bEnd + 1 || b.col === aEnd + 1
+}
+
+export function isShieldItem(item: CombatItemRunner): boolean {
+  return item.baseStats.shield > 0
+}
+
+export function isAmmoItem(item: CombatItemRunner): boolean {
+  return item.runtime.ammoMax > 0
+}
+
+export function isDamageBonusEligible(item: CombatItemRunner): boolean {
+  return item.baseStats.damage > 0 && !isShieldItem(item)
+}
+
+export function isWeaponItem(item: CombatItemRunner): boolean {
+  return isDamageBonusEligible(item)
+}
+
+export function itemArchetype(def: ItemDef | null): string {
+  return getPrimaryArchetypeTag(def?.tags ?? '')
+}
+
+export function hasLine(def: ItemDef | null, regex: RegExp): boolean {
+  return skillLines(def).some((s) => regex.test(s))
+}
+
+export function isItemDestroyImmune(item: CombatItemRunner): boolean {
+  return skillLines(findItemDef(item.defId)).some((s) => /无敌|不可摧毁/.test(s))
+}
+
+// ── 确定性随机工具（纯函数，CombatEngine / ItemTriggerSystem 共用）────
+
+export function seedFrom(key: string, salt: number): number {
+  let h = 2166136261 ^ salt
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h >>> 0
+}
+
+export function shuffleDeterministic<T>(arr: T[], seed: number): T[] {
+  const out = [...arr]
+  let s = seed || 1
+  const next = (): number => {
+    s = (Math.imul(1664525, s) + 1013904223) >>> 0
+    return s / 0x100000000
+  }
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(next() * (i + 1))
+    const t = out[i]
+    out[i] = out[j]!
+    out[j] = t!
+  }
+  return out
+}

@@ -1,71 +1,46 @@
 import { EventBus } from '@/core/EventBus'
 import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 import { getConfig } from '@/core/DataLoader'
-import type { ItemDef, ItemSizeNorm, SkillArchetype } from '@/items/ItemDef'
 export type { CombatPhase, CombatResult, CombatBoardItem, CombatItemRuntimeState } from './CombatTypes'
 import type {
   CombatPhase, CombatResult, HeroState, CombatItemRunner, CombatItemRuntimeState,
-  PendingHit, PendingItemFire, PendingChargePulse, PendingAmmoRefill,
-  CombatStartOptions, SkillTierLite, DraftSkillLite, ControlSpec,
-  CombatBoardItem,
+
+  CombatStartOptions,
+  CombatBoardItem, CombatState
 } from './CombatTypes'
+import { createCombatState } from './CombatTypes'
 import {
-  DEBUG_SHIELD_CHARGE, HERO_MAX_HP_CAP, HERO_SHIELD_CAP, ITEM_DAMAGE_CAP, MIN_REDUCED_CD_MS,
-  pickTierSeriesValue, makeSeededRng, tierIndexFromRaw,
-  getPrimaryArchetypeTag, normalizeSkillArchetype, parseControlSpecsFromDef,
-  ALL_DRAFT_SKILLS, rv,
-  findItemDef, skillLines, tierValueFromLine,
+  DEBUG_SHIELD_CHARGE, HERO_MAX_HP_CAP, HERO_SHIELD_CAP, ITEM_DAMAGE_CAP,
+  pickTierSeriesValue, makeSeededRng, tierIndexFromRaw, parseControlSpecsFromDef, rv,
+  findItemDef, skillLines, tierValueFromLine, isAdjacentByFootprint, isShieldItem, isAmmoItem,
+  isDamageBonusEligible, itemArchetype, hasLine, isItemDestroyImmune,
+  seedFrom,
 } from './CombatHelpers'
 export { setCombatRuntimeOverride } from './CombatHelpers'
 import { makeEnemyRunners, toRunner } from './EnemyBuilder'
+import { SkillTriggerSystem, type ICombatEngineBase } from './SkillTriggerSystem'
+import { ItemTriggerSystem, type IItemTriggerEngineBase } from './ItemTriggerSystem'
 
 export class CombatEngine {
-  private phase: CombatPhase = 'IDLE'
-  private day = 1
-  private elapsedMs = 0
-  private tickAccumulatorMs = 0
-  private fatigueAccumulatorMs = 0
-  private fatigueTickCount = 0
-  private tickIndex = 0
-  private inFatigue = false
-  private finished = false
-  private result: CombatResult | null = null
+  private state: CombatState = createCombatState()
+  private skillSystem: SkillTriggerSystem = new SkillTriggerSystem(this.state, this as unknown as ICombatEngineBase)
+  private itemSystem: ItemTriggerSystem = new ItemTriggerSystem(this.state, this as unknown as IItemTriggerEngineBase)
+  // ── 技能/英雄辅助（CombatEngine 内部使用，与 SkillTriggerSystem 共享逻辑）
+  private hasPlayerSkill(id: string): boolean { return this.state.playerSkillIds.has(id) }
+  private hasEnemySkill(id: string): boolean { return this.state.enemySkillIds.has(id) }
+  private hasSkill(side: 'player' | 'enemy', id: string): boolean {
+    return side === 'player' ? this.state.playerSkillIds.has(id) : this.state.enemySkillIds.has(id)
+  }
+  private heroOf(side: 'player' | 'enemy'): HeroState {
+    return side === 'player' ? this.state.playerHero : this.state.enemyHero
+  }
+  private(side: 'player' | 'enemy'): 'player' | 'enemy' {
+    return side === 'player' ? 'enemy' : 'player'
+  }
+  private isHeroInvincible(side: 'player' | 'enemy'): boolean {
+    return this.state.heroInvincibleMsBySide[side] > 0
+  }
 
-  private playerHero: HeroState = { id: 'hero_player', side: 'player', maxHp: 1, hp: 1, shield: 0, burn: 0, poison: 0, regen: 0 }
-  private enemyHero: HeroState = { id: 'hero_enemy', side: 'enemy', maxHp: 1, hp: 1, shield: 0, burn: 0, poison: 0, regen: 0 }
-  private items: CombatItemRunner[] = []
-  private pendingHits: PendingHit[] = []
-  private pendingItemFires: PendingItemFire[] = []
-  private pendingChargePulses: PendingChargePulse[] = []
-  private pendingAmmoRefills: PendingAmmoRefill[] = []
-  private lastQueuedFireTickByItem: Map<string, number> = new Map()
-  private playerSkillIds = new Set<string>()
-  private enemySkillIds = new Set<string>()
-  private skillEnemyHalfTriggered = false
-  private skillPlayerHalfTriggered = false
-  private skillEnemySelfHalfTriggered = false
-  private skillEnemyHalfTriggeredFromEnemy = false
-  private skillPlayerHalfShieldTriggered = false
-  private skillEnemyHalfShieldTriggered = false
-  private skillPlayerHalfShieldCdTriggered = false
-  private skillEnemyHalfShieldCdTriggered = false
-  private skillFirstAmmoEmptyTriggeredBySide: Record<'player' | 'enemy', boolean> = { player: false, enemy: false }
-  private skill47ReviveTriggeredBySide: Record<'player' | 'enemy', boolean> = { player: false, enemy: false }
-  private deathMarkCheckUsedBySide: Record<'player' | 'enemy', boolean> = { player: false, enemy: false }
-  private unyieldingTriggeredBySide: Record<'player' | 'enemy', boolean> = { player: false, enemy: false }
-  private heroInvincibleMsBySide: Record<'player' | 'enemy', number> = { player: 0, enemy: 0 }
-  private skill86UseCountBySide: Record<'player' | 'enemy', number> = { player: 0, enemy: 0 }
-  private skillExecuteDamageBonus = 0
-  private skillEnemyExecuteDamageBonus = 0
-  private skill33RegenPerTick = 0
-  private skillEnemy33RegenPerTick = 0
-  private playerBackpackItemCount = 0
-  private playerActiveColCount = 0
-  private playerGoldAtBattleStart = 0
-  private playerTrophyWinsAtBattleStart = 0
-  private enemyBackpackItemCount = 0
-  private enemyGoldAtBattleStart = 0
-  private enemyTrophyWinsAtBattleStart = 0
 
   private debugShieldChargeLog(msg: string, extra?: Record<string, unknown>): void {
     if (!DEBUG_SHIELD_CHARGE) return
@@ -77,7 +52,7 @@ export class CombatEngine {
   start(snapshot: BattleSnapshotBundle, options?: CombatStartOptions): void {
     this.reset()
     const cfg = getConfig()
-    this.day = snapshot.day
+    this.state.day = snapshot.day
     const enemyHpRow = cfg.dailyEnemyHealth ?? cfg.dailyHealth
     const playerHpRow = cfg.dailyPlayerHealth ?? enemyHpRow
     const hpIdx = Math.max(0, Math.min(enemyHpRow.length - 1, snapshot.day - 1))
@@ -85,154 +60,154 @@ export class CombatEngine {
     const playerHpByDay = playerHpRow[Math.max(0, Math.min(playerHpRow.length - 1, snapshot.day - 1))] ?? playerHpRow[0] ?? enemyHp
     const playerHp = Math.max(1, Math.round(Number(snapshot.playerBattleHp ?? playerHpByDay) || playerHpByDay))
 
-    this.playerHero = { id: 'hero_player', side: 'player', maxHp: playerHp, hp: playerHp, shield: 0, burn: 0, poison: 0, regen: 0 }
-    this.enemyHero = { id: 'hero_enemy', side: 'enemy', maxHp: enemyHp, hp: enemyHp, shield: 0, burn: 0, poison: 0, regen: 0 }
+    this.state.playerHero = { id: 'hero_player', side: 'player', maxHp: playerHp, hp: playerHp, shield: 0, burn: 0, poison: 0, regen: 0 }
+    this.state.enemyHero = { id: 'hero_enemy', side: 'enemy', maxHp: enemyHp, hp: enemyHp, shield: 0, burn: 0, poison: 0, regen: 0 }
 
     const enemyRunners = options?.enemyDisabled ? [] :
       (snapshot.pvpEnemyEntities
         ? snapshot.pvpEnemyEntities.map((it, idx) => ({ ...toRunner(it, `E-${idx}`), side: 'enemy' as const }))
-        : makeEnemyRunners(this.day, snapshot))
-    this.items = [
+        : makeEnemyRunners(this.state.day, snapshot))
+    this.state.items = [
       ...snapshot.entities.map((it, idx) => toRunner(it, `P-${idx}`)),
       ...enemyRunners,
     ]
 
-    this.playerSkillIds = new Set((options?.playerSkillIds ?? []).map((id) => `${id}`.trim()).filter(Boolean))
-    this.enemySkillIds = new Set((options?.enemySkillIds ?? []).map((id) => `${id}`.trim()).filter(Boolean))
+    this.state.playerSkillIds = new Set((options?.playerSkillIds ?? []).map((id) => `${id}`.trim()).filter(Boolean))
+    this.state.enemySkillIds = new Set((options?.enemySkillIds ?? []).map((id) => `${id}`.trim()).filter(Boolean))
     // PVP 模式（pvpEnemyEntities 存在）时不随机生成敌方技能，使用对手传来的 pvpEnemySkillIds（可能为空）
     const isPvpBattle = !!snapshot.pvpEnemyEntities
-    if (!options?.enemyDisabled && this.enemySkillIds.size <= 0 && !isPvpBattle) {
-      this.enemySkillIds = this.rollEnemySkillIds(snapshot)
+    if (!options?.enemyDisabled && this.state.enemySkillIds.size <= 0 && !isPvpBattle) {
+      this.state.enemySkillIds = this.skillSystem.rollEnemySkillIds(snapshot)
     }
-    this.skillEnemyHalfTriggered = false
-    this.skillPlayerHalfTriggered = false
-    this.skillEnemySelfHalfTriggered = false
-    this.skillEnemyHalfTriggeredFromEnemy = false
-    this.skillPlayerHalfShieldTriggered = false
-    this.skillEnemyHalfShieldTriggered = false
-    this.skillPlayerHalfShieldCdTriggered = false
-    this.skillEnemyHalfShieldCdTriggered = false
-    this.skillFirstAmmoEmptyTriggeredBySide = { player: false, enemy: false }
-    this.skill47ReviveTriggeredBySide = { player: false, enemy: false }
-    this.deathMarkCheckUsedBySide = { player: false, enemy: false }
-    this.unyieldingTriggeredBySide = { player: false, enemy: false }
-    this.heroInvincibleMsBySide = { player: 0, enemy: 0 }
-    this.skill86UseCountBySide = { player: 0, enemy: 0 }
-    this.skillExecuteDamageBonus = 0
-    this.skillEnemyExecuteDamageBonus = 0
-    this.skill33RegenPerTick = 0
-    this.skillEnemy33RegenPerTick = 0
-    this.playerBackpackItemCount = Math.max(
+    this.state.skillEnemyHalfTriggered = false
+    this.state.skillPlayerHalfTriggered = false
+    this.state.skillEnemySelfHalfTriggered = false
+    this.state.skillEnemyHalfTriggeredFromEnemy = false
+    this.state.skillPlayerHalfShieldTriggered = false
+    this.state.skillEnemyHalfShieldTriggered = false
+    this.state.skillPlayerHalfShieldCdTriggered = false
+    this.state.skillEnemyHalfShieldCdTriggered = false
+    this.state.skillFirstAmmoEmptyTriggeredBySide = { player: false, enemy: false }
+    this.state.skill47ReviveTriggeredBySide = { player: false, enemy: false }
+    this.state.deathMarkCheckUsedBySide = { player: false, enemy: false }
+    this.state.unyieldingTriggeredBySide = { player: false, enemy: false }
+    this.state.heroInvincibleMsBySide = { player: 0, enemy: 0 }
+    this.state.skill86UseCountBySide = { player: 0, enemy: 0 }
+    this.state.skillExecuteDamageBonus = 0
+    this.state.skillEnemyExecuteDamageBonus = 0
+    this.state.skill33RegenPerTick = 0
+    this.state.skillEnemy33RegenPerTick = 0
+    this.state.playerBackpackItemCount = Math.max(
       0,
       Math.round(options?.playerBackpackItemCount ?? snapshot.playerBackpackItemCount ?? 0),
     )
-    this.playerActiveColCount = Math.max(1, Math.round(snapshot.activeColCount || 1))
-    this.playerGoldAtBattleStart = Math.max(0, Math.round(options?.playerGold ?? snapshot.playerGold ?? 0))
-    this.playerTrophyWinsAtBattleStart = Math.max(0, Math.round(options?.playerTrophyWins ?? snapshot.playerTrophyWins ?? 0))
-    this.enemyBackpackItemCount = Math.max(0, Math.round(options?.enemyBackpackItemCount ?? snapshot.pvpEnemyBackpackItemCount ?? 0))
-    this.enemyGoldAtBattleStart = Math.max(0, Math.round(options?.enemyGold ?? snapshot.pvpEnemyGold ?? 0))
-    this.enemyTrophyWinsAtBattleStart = Math.max(0, Math.round(options?.enemyTrophyWins ?? snapshot.pvpEnemyTrophyWins ?? 0))
+    this.state.playerActiveColCount = Math.max(1, Math.round(snapshot.activeColCount || 1))
+    this.state.playerGoldAtBattleStart = Math.max(0, Math.round(options?.playerGold ?? snapshot.playerGold ?? 0))
+    this.state.playerTrophyWinsAtBattleStart = Math.max(0, Math.round(options?.playerTrophyWins ?? snapshot.playerTrophyWins ?? 0))
+    this.state.enemyBackpackItemCount = Math.max(0, Math.round(options?.enemyBackpackItemCount ?? snapshot.pvpEnemyBackpackItemCount ?? 0))
+    this.state.enemyGoldAtBattleStart = Math.max(0, Math.round(options?.enemyGold ?? snapshot.pvpEnemyGold ?? 0))
+    this.state.enemyTrophyWinsAtBattleStart = Math.max(0, Math.round(options?.enemyTrophyWins ?? snapshot.pvpEnemyTrophyWins ?? 0))
 
-    this.applyPickedSkillBattleStartEffects()
+    this.skillSystem.applyPickedSkillBattleStartEffects()
     this.applyBattleStartEffects()
     this.clampCombatCaps()
 
-    this.phase = 'INIT'
+    this.state.phase = 'INIT'
   }
 
   update(dt: number): void {
-    if (this.phase === 'IDLE' || this.phase === 'END') return
+    if (this.state.phase === 'IDLE' || this.state.phase === 'END') return
     const cfg = getConfig().combatRuntime
     const deltaMs = dt * 1000
-    this.elapsedMs += deltaMs
+    this.state.elapsedMs += deltaMs
 
-    if (this.phase === 'INIT') {
-      this.phase = 'SETUP'
+    if (this.state.phase === 'INIT') {
+      this.state.phase = 'SETUP'
       return
     }
-    if (this.phase === 'SETUP') {
-      this.phase = 'TICK'
+    if (this.state.phase === 'SETUP') {
+      this.state.phase = 'TICK'
       return
     }
 
-    if (this.phase === 'TICK') {
+    if (this.state.phase === 'TICK') {
       const fatigueStartMs = Math.max(0, rv('fatigueStartMs', cfg.fatigueStartMs ?? cfg.timeoutMs ?? 40000))
       const fatigueIntervalMs = Math.max(1, rv('fatigueTickMs', cfg.fatigueTickMs ?? cfg.fatigueIntervalMs ?? 1000))
 
-      if (!this.inFatigue && this.elapsedMs >= fatigueStartMs) {
-        this.inFatigue = true
-        EventBus.emit('battle:fatigue_start', { elapsedMs: this.elapsedMs })
+      if (!this.state.inFatigue && this.state.elapsedMs >= fatigueStartMs) {
+        this.state.inFatigue = true
+        EventBus.emit('battle:fatigue_start', { elapsedMs: this.state.elapsedMs })
       }
 
       if (this.shouldResolve()) {
-        this.phase = 'RESOLVE'
+        this.state.phase = 'RESOLVE'
       }
-      if (this.phase === 'RESOLVE') {
+      if (this.state.phase === 'RESOLVE') {
         this.finishCombat()
         return
       }
 
-      this.tickAccumulatorMs += deltaMs
-      while (this.tickAccumulatorMs >= cfg.tickMs) {
-        this.tickAccumulatorMs -= cfg.tickMs
+      this.state.tickAccumulatorMs += deltaMs
+      while (this.state.tickAccumulatorMs >= cfg.tickMs) {
+        this.state.tickAccumulatorMs -= cfg.tickMs
         this.stepOneTick(cfg.tickMs)
         if (this.shouldResolve()) {
-          this.phase = 'RESOLVE'
+          this.state.phase = 'RESOLVE'
           break
         }
-        if (this.inFatigue) {
-          this.fatigueAccumulatorMs += cfg.tickMs
-          while (this.fatigueAccumulatorMs >= fatigueIntervalMs) {
-            this.fatigueAccumulatorMs -= fatigueIntervalMs
+        if (this.state.inFatigue) {
+          this.state.fatigueAccumulatorMs += cfg.tickMs
+          while (this.state.fatigueAccumulatorMs >= fatigueIntervalMs) {
+            this.state.fatigueAccumulatorMs -= fatigueIntervalMs
             this.stepFatigue()
             if (this.shouldResolve()) {
-              this.phase = 'RESOLVE'
+              this.state.phase = 'RESOLVE'
               break
             }
           }
-          if (this.phase === 'RESOLVE') break
+          if (this.state.phase === 'RESOLVE') break
         }
       }
     }
 
-    if (this.phase === 'RESOLVE') this.finishCombat()
+    if (this.state.phase === 'RESOLVE') this.finishCombat()
   }
 
   getPhase(): CombatPhase {
-    return this.phase
+    return this.state.phase
   }
 
   isFinished(): boolean {
-    return this.finished
+    return this.state.finished
   }
 
   getResult(): CombatResult | null {
-    return this.result ? { ...this.result } : null
+    return this.state.result ? { ...this.state.result } : null
   }
 
   getEnemySkillIds(): string[] {
-    return Array.from(this.enemySkillIds)
+    return Array.from(this.state.enemySkillIds)
   }
 
   getDebugState(): { tickIndex: number; playerAlive: number; enemyAlive: number; playerHp: number; enemyHp: number; inFatigue: boolean; enemySkillCount: number } {
     return {
-      tickIndex: this.tickIndex,
-      playerAlive: this.playerHero.hp > 0 ? 1 : 0,
-      enemyAlive: this.enemyHero.hp > 0 ? 1 : 0,
-      playerHp: this.playerHero.hp,
-      enemyHp: this.enemyHero.hp,
-      inFatigue: this.inFatigue,
-      enemySkillCount: this.enemySkillIds.size,
+      tickIndex: this.state.tickIndex,
+      playerAlive: this.state.playerHero.hp > 0 ? 1 : 0,
+      enemyAlive: this.state.enemyHero.hp > 0 ? 1 : 0,
+      playerHp: this.state.playerHero.hp,
+      enemyHp: this.state.enemyHero.hp,
+      inFatigue: this.state.inFatigue,
+      enemySkillCount: this.state.enemySkillIds.size,
     }
   }
 
   getBoardState(): { player: HeroState; enemy: HeroState; items: CombatBoardItem[] } {
-    const playerRegenDisplay = this.playerHero.regen + (this.hasPlayerSkill('skill33') ? Math.max(0, this.skill33RegenPerTick) : 0)
-    const enemyRegenDisplay = this.enemyHero.regen + (this.hasEnemySkill('skill33') ? Math.max(0, this.skillEnemy33RegenPerTick) : 0)
+    const playerRegenDisplay = this.state.playerHero.regen + (this.hasPlayerSkill('skill33') ? Math.max(0, this.state.skill33RegenPerTick) : 0)
+    const enemyRegenDisplay = this.state.enemyHero.regen + (this.hasEnemySkill('skill33') ? Math.max(0, this.state.skillEnemy33RegenPerTick) : 0)
     return {
-      player: { ...this.playerHero, regen: playerRegenDisplay },
-      enemy: { ...this.enemyHero, regen: enemyRegenDisplay },
-      items: this.items.map((it) => ({
+      player: { ...this.state.playerHero, regen: playerRegenDisplay },
+      enemy: { ...this.state.enemyHero, regen: enemyRegenDisplay },
+      items: this.state.items.map((it) => ({
         id: it.id,
         side: it.side,
         defId: it.defId,
@@ -247,7 +222,7 @@ export class CombatEngine {
   }
 
   getRuntimeState(): CombatItemRuntimeState[] {
-    return this.items.map((it) => ({
+    return this.state.items.map((it) => ({
       ...(() => {
         const skillMul = this.skillDamageMultiplier(it)
         const baseDamageRaw = Math.max(0, it.baseStats.damage + this.runtimeGlobalDamageBonus(it))
@@ -255,19 +230,19 @@ export class CombatEngine {
         let runtimeDamage = this.scaledDamage(it, baseDamageUnscaled + it.runtime.tempDamageBonus)
         const def = findItemDef(it.defId)
         if (def && skillLines(def).some((s) => /相邻回旋镖时伤害翻倍/.test(s))) {
-          const hasAdjacentSame = this.items.some((other) =>
+          const hasAdjacentSame = this.state.items.some((other) =>
             other.id !== it.id
             && other.side === it.side
             && other.defId === it.defId
-            && this.isAdjacentByFootprint(other, it),
+            && isAdjacentByFootprint(other, it),
           )
           if (hasAdjacentSame) runtimeDamage *= 2
         }
         if (def) {
           const tIdx = tierIndexFromRaw(def, it.tier)
           const lines = skillLines(def)
-          const sourceHero = it.side === 'player' ? this.playerHero : this.enemyHero
-          const targetHero = it.side === 'player' ? this.enemyHero : this.playerHero
+          const sourceHero = it.side === 'player' ? this.state.playerHero : this.state.enemyHero
+          const targetHero = it.side === 'player' ? this.state.enemyHero : this.state.playerHero
           if (lines.some((s) => /等同于当前自身护盾值|根据当前护盾值对对方造成伤害/.test(s))) {
             runtimeDamage += Math.max(0, sourceHero.shield)
           }
@@ -297,13 +272,13 @@ export class CombatEngine {
             if (pct > 0) runtimeDamage += Math.round(sourceHero.maxHp * (pct / 100))
           }
           if (lines.some((s) => /如果这是唯一的伤害物品[，,]?造成3倍伤害/.test(s))) {
-            const attackers = this.items.filter((other) => other.side === it.side && this.isDamageItemForUniqueCheck(other))
+            const attackers = this.state.items.filter((other) => other.side === it.side && this.isDamageItemForUniqueCheck(other))
             if (attackers.length === 1) runtimeDamage = Math.max(0, runtimeDamage * 3)
           }
           const emptyAmmoBurstLine = lines.find((s) => /弹药耗尽时造成\d+(?:[\/|]\d+)*倍伤害/.test(s))
           if (emptyAmmoBurstLine && it.runtime.ammoMax > 0 && it.runtime.ammoCurrent > 0) {
             const emptyAmmoBurstMul = Math.max(1, tierValueFromLine(emptyAmmoBurstLine, tIdx))
-            const phantomCount = this.items.filter((other) => {
+            const phantomCount = this.state.items.filter((other) => {
               if (other.side !== it.side) return false
               if (other.id === it.id) return false
               const otherDef = findItemDef(other.defId)
@@ -330,7 +305,7 @@ export class CombatEngine {
         if (def) {
           const tIdx = tierIndexFromRaw(def, it.tier)
           const lines = skillLines(def)
-          const sourceHero = it.side === 'player' ? this.playerHero : this.enemyHero
+          const sourceHero = it.side === 'player' ? this.state.playerHero : this.state.enemyHero
           const maxHpHealLine = lines.find((s) => /恢复最大生命值\s*[+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*\s*的生命值/.test(s))
           if (maxHpHealLine) {
             const pct = Math.max(0, tierValueFromLine(maxHpHealLine, tIdx)) / 100
@@ -342,7 +317,7 @@ export class CombatEngine {
             const pct = pctRaw > 0 ? pctRaw : 100
             runtimeShield = Math.max(0, Math.round(sourceHero.hp * (pct / 100)))
           } else {
-            runtimeShield = Math.max(0, this.scaleShieldGain(it.side, runtimeShield))
+            runtimeShield = Math.max(0, this.skillSystem.scaleShieldGain(it.side, runtimeShield))
           }
           const unyieldingLine = lines.find((s) => /濒死时获得\d+秒无敌.*最大生命值.*%.*护盾/.test(s))
           if (unyieldingLine) {
@@ -350,7 +325,7 @@ export class CombatEngine {
             if (m?.[1]) {
               const pct = /[\/|]/.test(m[1]) ? pickTierSeriesValue(m[1], tIdx) : Number(m[1].replace(/%$/u, ''))
               if (Number.isFinite(pct) && pct > 0) {
-                const shield = this.scaleShieldGain(it.side, Math.round(sourceHero.maxHp * (pct / 100)))
+                const shield = this.skillSystem.scaleShieldGain(it.side, Math.round(sourceHero.maxHp * (pct / 100)))
                 runtimeShield = Math.max(runtimeShield, Math.max(0, shield))
               }
             }
@@ -376,7 +351,7 @@ export class CombatEngine {
           poison: Math.max(0, it.baseStats.poison),
           multicast: (() => {
             const base = Math.max(1, Math.round(it.baseStats.multicast))
-            const goldMulticast = this.hasSkill(it.side, 'skill88') && this.elapsedMs <= 5000 ? 1 : 0
+            const goldMulticast = this.hasSkill(it.side, 'skill88') && this.state.elapsedMs <= 5000 ? 1 : 0
             const boosted = Math.max(1, base + Math.max(0, Math.round(it.runtime.bonusMulticast)) + goldMulticast)
             const localDef = findItemDef(it.defId)
             if (!localDef) return boosted
@@ -390,197 +365,51 @@ export class CombatEngine {
   }
 
   private reset(): void {
-    this.phase = 'IDLE'
-    this.elapsedMs = 0
-    this.tickAccumulatorMs = 0
-    this.fatigueAccumulatorMs = 0
-    this.fatigueTickCount = 0
-    this.tickIndex = 0
-    this.inFatigue = false
-    this.finished = false
-    this.result = null
-    this.items = []
-    this.pendingHits = []
-    this.pendingItemFires = []
-    this.pendingChargePulses = []
-    this.pendingAmmoRefills = []
-    this.lastQueuedFireTickByItem.clear()
-    this.playerSkillIds.clear()
-    this.enemySkillIds.clear()
-    this.skillEnemyHalfTriggered = false
-    this.skillPlayerHalfTriggered = false
-    this.skillEnemySelfHalfTriggered = false
-    this.skillEnemyHalfTriggeredFromEnemy = false
-    this.skillPlayerHalfShieldTriggered = false
-    this.skillEnemyHalfShieldTriggered = false
-    this.skillPlayerHalfShieldCdTriggered = false
-    this.skillEnemyHalfShieldCdTriggered = false
-    this.skillFirstAmmoEmptyTriggeredBySide = { player: false, enemy: false }
-    this.skill47ReviveTriggeredBySide = { player: false, enemy: false }
-    this.deathMarkCheckUsedBySide = { player: false, enemy: false }
-    this.unyieldingTriggeredBySide = { player: false, enemy: false }
-    this.heroInvincibleMsBySide = { player: 0, enemy: 0 }
-    this.skill86UseCountBySide = { player: 0, enemy: 0 }
-    this.skillExecuteDamageBonus = 0
-    this.skillEnemyExecuteDamageBonus = 0
-    this.skill33RegenPerTick = 0
-    this.skillEnemy33RegenPerTick = 0
-    this.playerBackpackItemCount = 0
-    this.playerActiveColCount = 0
-    this.playerGoldAtBattleStart = 0
-    this.playerTrophyWinsAtBattleStart = 0
-    this.enemyBackpackItemCount = 0
-    this.enemyGoldAtBattleStart = 0
-    this.enemyTrophyWinsAtBattleStart = 0
+    this.state.phase = 'IDLE'
+    this.state.elapsedMs = 0
+    this.state.tickAccumulatorMs = 0
+    this.state.fatigueAccumulatorMs = 0
+    this.state.fatigueTickCount = 0
+    this.state.tickIndex = 0
+    this.state.inFatigue = false
+    this.state.finished = false
+    this.state.result = null
+    this.state.items = []
+    this.state.pendingHits = []
+    this.state.pendingItemFires = []
+    this.state.pendingChargePulses = []
+    this.state.pendingAmmoRefills = []
+    this.state.lastQueuedFireTickByItem.clear()
+    this.state.playerSkillIds.clear()
+    this.state.enemySkillIds.clear()
+    this.state.skillEnemyHalfTriggered = false
+    this.state.skillPlayerHalfTriggered = false
+    this.state.skillEnemySelfHalfTriggered = false
+    this.state.skillEnemyHalfTriggeredFromEnemy = false
+    this.state.skillPlayerHalfShieldTriggered = false
+    this.state.skillEnemyHalfShieldTriggered = false
+    this.state.skillPlayerHalfShieldCdTriggered = false
+    this.state.skillEnemyHalfShieldCdTriggered = false
+    this.state.skillFirstAmmoEmptyTriggeredBySide = { player: false, enemy: false }
+    this.state.skill47ReviveTriggeredBySide = { player: false, enemy: false }
+    this.state.deathMarkCheckUsedBySide = { player: false, enemy: false }
+    this.state.unyieldingTriggeredBySide = { player: false, enemy: false }
+    this.state.heroInvincibleMsBySide = { player: 0, enemy: 0 }
+    this.state.skill86UseCountBySide = { player: 0, enemy: 0 }
+    this.state.skillExecuteDamageBonus = 0
+    this.state.skillEnemyExecuteDamageBonus = 0
+    this.state.skill33RegenPerTick = 0
+    this.state.skillEnemy33RegenPerTick = 0
+    this.state.playerBackpackItemCount = 0
+    this.state.playerActiveColCount = 0
+    this.state.playerGoldAtBattleStart = 0
+    this.state.playerTrophyWinsAtBattleStart = 0
+    this.state.enemyBackpackItemCount = 0
+    this.state.enemyGoldAtBattleStart = 0
+    this.state.enemyTrophyWinsAtBattleStart = 0
   }
-
-  private hasPlayerSkill(id: string): boolean {
-    return this.playerSkillIds.has(id)
-  }
-
-  private hasEnemySkill(id: string): boolean {
-    return this.enemySkillIds.has(id)
-  }
-
-  private hasSkill(side: 'player' | 'enemy', id: string): boolean {
-    return side === 'player' ? this.hasPlayerSkill(id) : this.hasEnemySkill(id)
-  }
-
-  private heroOf(side: 'player' | 'enemy'): HeroState {
-    return side === 'player' ? this.playerHero : this.enemyHero
-  }
-
-  private oppositeSide(side: 'player' | 'enemy'): 'player' | 'enemy' {
-    return side === 'player' ? 'enemy' : 'player'
-  }
-
-  private isHeroInvincible(side: 'player' | 'enemy'): boolean {
-    return (this.heroInvincibleMsBySide[side] ?? 0) > 0
-  }
-
-  private itemArchetype(def: ItemDef | null): string {
-    return getPrimaryArchetypeTag(def?.tags ?? '')
-  }
-
-  private hasLine(def: ItemDef | null, regex: RegExp): boolean {
-    return skillLines(def).some((s) => regex.test(s))
-  }
-
-  private isItemDestroyImmune(item: CombatItemRunner): boolean {
-    const def = findItemDef(item.defId)
-    const lines = skillLines(def)
-    return lines.some((s) => /无敌|不可摧毁/.test(s))
-  }
-
-  private rollEnemySkillIds(snapshot: BattleSnapshotBundle): Set<string> {
-    const out = new Set<string>()
-    const skillCfg = getConfig().skillSystem
-    if (!skillCfg?.enemyMirrorDraft?.enabled) return out
-
-    const planRows = Array.isArray(skillCfg.dailyDraftPlan) ? skillCfg.dailyDraftPlan : []
-    const draftedPlans = planRows
-      .filter((it) => Math.round(Number(it.day) || 0) <= this.day && (Number(it.shouldDraft) || 0) >= 0.5)
-      .sort((a, b) => (Math.round(Number(a.day) || 0) - Math.round(Number(b.day) || 0)))
-    if (draftedPlans.length <= 0) return out
-
-    const pickByDay = skillCfg.enemyMirrorDraft.pickCountByDay ?? []
-    const configuredPick = Math.max(0, Math.round(Number(pickByDay[Math.max(0, this.day - 1)] ?? 0) || 0))
-    const pickCount = Math.max(configuredPick, draftedPlans.length)
-    if (pickCount <= 0) return out
-
-    const rngSeed = this.day * 1619 + Math.max(1, Math.round(snapshot.createdAtMs % 1000000)) * 13 + this.items.length * 97
-    const rng = makeSeededRng(rngSeed)
-
-    const enemyItems = this.items.filter((it) => it.side === 'enemy')
-    const archCount = new Map<SkillArchetype, number>()
-    for (const one of enemyItems) {
-      const def = findItemDef(one.defId)
-      const tag = normalizeSkillArchetype(getPrimaryArchetypeTag(def?.tags ?? ''))
-      if (!tag) continue
-      archCount.set(tag, (archCount.get(tag) ?? 0) + 1)
-    }
-
-    const archetypes: SkillArchetype[] = ['warrior', 'archer', 'assassin', 'utility']
-    const maxCount = Math.max(...archetypes.map((k) => archCount.get(k) ?? 0), 0)
-    const preferredPool = archetypes.filter((k) => (archCount.get(k) ?? 0) === maxCount)
-    const preferredArchetype = preferredPool.length > 0
-      ? preferredPool[Math.floor(rng() * preferredPool.length)]!
-      : 'utility'
-
-    const minRatioRaw = Number(skillCfg.enemyMirrorDraft.mainArchetypeRatioMin ?? 0.4)
-    const maxRatioRaw = Number(skillCfg.enemyMirrorDraft.mainArchetypeRatioMax ?? 0.8)
-    const minRatio = Math.max(0, Math.min(1, Math.min(minRatioRaw, maxRatioRaw)))
-    const maxRatio = Math.max(0, Math.min(1, Math.max(minRatioRaw, maxRatioRaw)))
-    const minMain = Math.max(0, Math.min(pickCount, Math.ceil(pickCount * minRatio)))
-    const maxMain = Math.max(minMain, Math.min(pickCount, Math.floor(pickCount * maxRatio)))
-    const targetMain = minMain + Math.floor(rng() * (maxMain - minMain + 1))
-
-    const used = new Set<string>()
-    const pickTierByPlan = (plan: Record<string, unknown>): SkillTierLite => {
-      const bronzeProb = Math.max(0, Number(plan.bronzeProb) || 0)
-      const silverProb = Math.max(0, Number(plan.silverProb) || 0)
-      const goldProb = Math.max(0, Number(plan.goldProb) || 0)
-      const tierSum = bronzeProb + silverProb + goldProb
-      if (tierSum <= 0) return 'bronze'
-      let roll = rng() * tierSum
-      if (roll < bronzeProb) return 'bronze'
-      roll -= bronzeProb
-      if (roll < silverProb) return 'silver'
-      return 'gold'
-    }
-
-    const pickOne = (tier: SkillTierLite, forcedArch: SkillArchetype | null): DraftSkillLite | null => {
-      const tierPool = ALL_DRAFT_SKILLS.filter((s) => s.tier === tier && !used.has(s.id))
-      const forcePool = forcedArch ? tierPool.filter((s) => s.archetype === forcedArch) : tierPool
-      const primary = forcePool.length > 0 ? forcePool : tierPool
-      if (primary.length <= 0) return null
-      return primary[Math.floor(rng() * primary.length)] ?? null
-    }
-
-    const slotPlans: Array<Record<string, unknown>> = [...draftedPlans]
-    while (slotPlans.length < pickCount) {
-      const idx = Math.max(0, draftedPlans.length - 1 - ((slotPlans.length - draftedPlans.length) % draftedPlans.length))
-      slotPlans.push(draftedPlans[idx]!)
-    }
-
-    const slotMustMain = Array.from({ length: slotPlans.length }, (_, i) => i < targetMain)
-    for (let i = slotMustMain.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1))
-      const t = slotMustMain[i]
-      slotMustMain[i] = slotMustMain[j]!
-      slotMustMain[j] = t!
-    }
-
-    for (let i = 0; i < slotPlans.length; i++) {
-      const tier = pickTierByPlan(slotPlans[i]!)
-      const mustMain = slotMustMain[i] === true
-      const picked = pickOne(tier, mustMain ? preferredArchetype : null)
-      if (!picked) continue
-      used.add(picked.id)
-      out.add(picked.id)
-    }
-
-    return out
-  }
-
-  private isWeaponItem(item: CombatItemRunner): boolean {
-    return this.isDamageBonusEligible(item)
-  }
-
-  private isShieldItem(item: CombatItemRunner): boolean {
-    return item.baseStats.shield > 0
-  }
-
-  private isAmmoItem(item: CombatItemRunner): boolean {
-    return item.runtime.ammoMax > 0
-  }
-
-  private isDamageBonusEligible(item: CombatItemRunner): boolean {
-    return item.baseStats.damage > 0 && !this.isShieldItem(item)
-  }
-
   private isDamageItemForUniqueCheck(item: CombatItemRunner): boolean {
-    if (this.isDamageBonusEligible(item)) return true
+    if (isDamageBonusEligible(item)) return true
     const def = findItemDef(item.defId)
     return skillLines(def).some((s) => /弹药耗尽时摧毁自身.*最大生命值.*%.*伤害/.test(s))
   }
@@ -589,16 +418,16 @@ export class CombatEngine {
     const side = item.side
     let pct = 0
     if (this.hasSkill(side, 'skill6')) pct += 0.05
-    if (this.hasSkill(side, 'skill12') && this.isAmmoItem(item)) pct += 0.1
-    if (this.hasSkill(side, 'skill14') && this.elapsedMs <= 5000) pct += 0.1
+    if (this.hasSkill(side, 'skill12') && isAmmoItem(item)) pct += 0.1
+    if (this.hasSkill(side, 'skill14') && this.state.elapsedMs <= 5000) pct += 0.1
     if (this.hasSkill(side, 'skill38') && this.heroOf(side).shield > 0) pct += 0.2
     if (this.hasSkill(side, 'skill40')) pct += 0.1
-    if (this.hasSkill(side, 'skill26') && ((side === 'player' ? this.skillPlayerHalfShieldCdTriggered : this.skillEnemyHalfShieldCdTriggered)) && this.isShieldItem(item)) pct += 0.15
+    if (this.hasSkill(side, 'skill26') && ((side === 'player' ? this.state.skillPlayerHalfShieldCdTriggered : this.state.skillEnemyHalfShieldCdTriggered)) && isShieldItem(item)) pct += 0.15
     if (this.hasSkill(side, 'skill60') && !this.hasAnyShieldItems(side)) pct += 0.1
 
     const selfDef = findItemDef(item.defId)
-    const selfArch = this.itemArchetype(selfDef)
-    for (const owner of this.items) {
+    const selfArch = itemArchetype(selfDef)
+    for (const owner of this.state.items) {
       if (owner.side !== side) continue
       const def = findItemDef(owner.defId)
       const lines = skillLines(def)
@@ -616,22 +445,17 @@ export class CombatEngine {
     return Math.max(0, Math.min(0.95, pct))
   }
 
-  private effectiveCooldownMs(item: CombatItemRunner): number {
+  effectiveCooldownMs(item: CombatItemRunner): number {
     if (item.baseStats.cooldownMs <= 0) return 0
     const pct = this.cooldownReductionPct(item)
     const reduced = Math.round(item.baseStats.cooldownMs * (1 - pct))
-    return Math.max(this.minReducedCdMsFor(item), reduced)
+    return Math.max(this.skillSystem.minReducedCdMsFor(item), reduced)
   }
-
-  private minReducedCdMsFor(item: CombatItemRunner): number {
-    return this.hasSkill(item.side, 'skill40') ? 100 : MIN_REDUCED_CD_MS
-  }
-
   private runtimeGlobalDamageBonus(item: CombatItemRunner): number {
-    if (!this.isDamageBonusEligible(item)) return 0
+    if (!isDamageBonusEligible(item)) return 0
     const side = item.side
-    let bonus = side === 'player' ? this.skillExecuteDamageBonus : this.skillEnemyExecuteDamageBonus
-    if (this.hasSkill(side, 'skill13') && this.elapsedMs <= 5000) bonus += 12
+    let bonus = side === 'player' ? this.state.skillExecuteDamageBonus : this.state.skillEnemyExecuteDamageBonus
+    if (this.hasSkill(side, 'skill13') && this.state.elapsedMs <= 5000) bonus += 12
     if (this.hasSkill(side, 'skill53')) bonus += this.totalAmmoCurrent(side) * 4
     if (this.hasSkill(side, 'skill27') && this.effectiveCooldownMs(item) < 2500) bonus += 20
     if (this.hasSkill(side, 'skill37')) bonus += Math.floor(Math.max(0, this.heroOf(side).shield) / 10)
@@ -654,27 +478,27 @@ export class CombatEngine {
   }
 
   private clampCombatCaps(): void {
-    this.clampHeroState(this.playerHero)
-    this.clampHeroState(this.enemyHero)
-    for (const item of this.items) {
+    this.clampHeroState(this.state.playerHero)
+    this.clampHeroState(this.state.enemyHero)
+    for (const item of this.state.items) {
       item.baseStats.damage = Math.max(0, Math.min(ITEM_DAMAGE_CAP, Math.round(item.baseStats.damage)))
     }
   }
 
   private uniqueDamageItem(side: 'player' | 'enemy'): CombatItemRunner | null {
-    const items = this.items.filter((it) => it.side === side && this.isDamageBonusEligible(it))
+    const items = this.state.items.filter((it) => it.side === side && isDamageBonusEligible(it))
     return items.length === 1 ? items[0]! : null
   }
 
   private uniqueAmmoItem(side: 'player' | 'enemy'): CombatItemRunner | null {
-    const items = this.items.filter((it) => it.side === side && this.isAmmoItem(it))
+    const items = this.state.items.filter((it) => it.side === side && isAmmoItem(it))
     return items.length === 1 ? items[0]! : null
   }
 
   private allItemsAreAmmo(side: 'player' | 'enemy'): boolean {
-    const items = this.items.filter((it) => it.side === side)
+    const items = this.state.items.filter((it) => it.side === side)
     if (items.length <= 0) return false
-    return items.every((it) => this.isAmmoItem(it))
+    return items.every((it) => isAmmoItem(it))
   }
 
   private skillDamageMultiplier(item: CombatItemRunner): number {
@@ -710,799 +534,26 @@ export class CombatEngine {
   }
 
   private hasAnyShieldItems(side: 'player' | 'enemy'): boolean {
-    return this.items.some((it) => it.side === side && this.isShieldItem(it))
+    return this.state.items.some((it) => it.side === side && isShieldItem(it))
   }
-
-  private occupiedColsBySide(side: 'player' | 'enemy'): number {
-    const occupied = new Set<number>()
-    for (const one of this.items) {
-      if (one.side !== side) continue
-      const width = this.itemWidth(one.size)
-      for (let c = 0; c < width; c++) occupied.add(one.col + c)
-    }
-    return occupied.size
-  }
-
   private totalAmmoCurrent(side: 'player' | 'enemy'): number {
     let total = 0
-    for (const it of this.items) {
+    for (const it of this.state.items) {
       if (it.side !== side) continue
       total += Math.max(0, it.runtime.ammoCurrent)
     }
     return total
-  }
-
-  private sortedItemsBySide(side: 'player' | 'enemy', filterFn: (item: CombatItemRunner) => boolean): CombatItemRunner[] {
-    return this.items
-      .filter((it) => it.side === side && filterFn(it))
-      .sort((a, b) => (a.col - b.col) || a.id.localeCompare(b.id))
-  }
-
-  private applyPickedSkillBattleStartEffects(): void {
-    const isZoneNotFull = (side: 'player' | 'enemy'): boolean => {
-      const cap = Math.max(1, this.playerActiveColCount)
-      return this.occupiedColsBySide(side) < cap
-    }
-
-    const applySide = (side: 'player' | 'enemy'): void => {
-      const hasAnySkill = side === 'player' ? this.playerSkillIds.size > 0 : this.enemySkillIds.size > 0
-      if (!hasAnySkill) return
-      const hero = this.heroOf(side)
-      const shieldItems = this.sortedItemsBySide(side, (it) => this.isShieldItem(it))
-      const ammoItems = this.sortedItemsBySide(side, (it) => this.isAmmoItem(it))
-      const weaponItems = this.sortedItemsBySide(side, (it) => this.isWeaponItem(it))
-
-      if (this.hasSkill(side, 'skill1') && shieldItems.length > 0) shieldItems[0]!.baseStats.shield += 25
-      if (this.hasSkill(side, 'skill2') && shieldItems.length > 0) shieldItems[shieldItems.length - 1]!.baseStats.shield += 25
-      if (this.hasSkill(side, 'skill3')) {
-        for (const one of shieldItems) one.baseStats.shield += 10
-      }
-
-      if (this.hasSkill(side, 'skill7')) {
-        hero.maxHp = Math.max(1, Math.round(hero.maxHp * 1.1))
-        hero.hp = Math.min(hero.maxHp, Math.round(hero.hp * 1.1))
-      }
-
-      if (this.hasSkill(side, 'skill49') && isZoneNotFull(side)) {
-        hero.maxHp = Math.max(1, Math.round(hero.maxHp * 2))
-        hero.hp = Math.min(hero.maxHp, Math.round(hero.hp * 2))
-      }
-
-      if (this.hasSkill(side, 'skill36')) {
-        const gainShield = this.scaleShieldGain(side, Math.round(hero.maxHp * 0.3))
-        if (gainShield > 0) {
-          hero.shield += gainShield
-          EventBus.emit('battle:gain_shield', {
-            targetId: hero.id,
-            sourceItemId: 'skill36',
-            amount: gainShield,
-            targetType: 'hero',
-            targetSide: hero.side,
-            sourceType: 'system',
-            sourceSide: side,
-          })
-          this.applyOnShieldGainCharge(side)
-          this.applyShieldGainSkillTriggers(side, 'skill36', gainShield, false)
-        }
-      }
-
-      if (this.hasSkill(side, 'skill8') && ammoItems.length > 0) {
-        const one = ammoItems[0]!
-        one.runtime.ammoMax += 2
-        one.runtime.ammoCurrent = Math.min(one.runtime.ammoMax, one.runtime.ammoCurrent + 2)
-      }
-      if (this.hasSkill(side, 'skill51')) {
-        for (const one of ammoItems) {
-          one.runtime.ammoMax += 2
-          one.runtime.ammoCurrent = Math.min(one.runtime.ammoMax, one.runtime.ammoCurrent + 2)
-        }
-      }
-      if (this.hasSkill(side, 'skill44') && ammoItems.length === 1) {
-        const one = ammoItems[0]!
-        one.runtime.ammoMax += 10
-        one.runtime.ammoCurrent = Math.min(one.runtime.ammoMax, one.runtime.ammoCurrent + 10)
-      }
-
-      if (this.hasSkill(side, 'skill10')) {
-        for (const one of ammoItems) {
-          if (this.isDamageBonusEligible(one)) one.baseStats.damage += 10
-        }
-      }
-
-      if (this.hasSkill(side, 'skill16')) {
-        for (const one of weaponItems) one.baseStats.damage += 8
-      }
-
-      if (this.hasSkill(side, 'skill19') && weaponItems.length > 0) {
-        const first = weaponItems[0]!
-        const last = weaponItems[weaponItems.length - 1]!
-        first.baseStats.damage += 12
-        if (last.id !== first.id) last.baseStats.damage += 12
-      }
-
-      if (this.hasSkill(side, 'skill59')) {
-        const countByDef = new Map<string, number>()
-        for (const one of this.items) {
-          if (one.side !== side) continue
-          countByDef.set(one.defId, (countByDef.get(one.defId) ?? 0) + 1)
-        }
-        for (const one of this.items) {
-          if (one.side !== side) continue
-          if (one.baseStats.damage <= 0) continue
-          if ((countByDef.get(one.defId) ?? 0) < 2) continue
-          one.baseStats.damage += 20
-        }
-      }
-
-      const backpackCount = side === 'player' ? this.playerBackpackItemCount : this.enemyBackpackItemCount
-      if (this.hasSkill(side, 'skill35') && backpackCount > 0) {
-        const mul = 1 + backpackCount * 0.02
-        hero.maxHp = Math.max(1, Math.round(hero.maxHp * mul))
-        hero.hp = Math.min(hero.maxHp, Math.round(hero.hp * mul))
-      }
-
-      const trophyWins = side === 'player' ? this.playerTrophyWinsAtBattleStart : this.enemyTrophyWinsAtBattleStart
-      const goldAtStart = side === 'player' ? this.playerGoldAtBattleStart : this.enemyGoldAtBattleStart
-      const execBonus = side === 'player' ? 'skillExecuteDamageBonus' : 'skillEnemyExecuteDamageBonus'
-      if (this.hasSkill(side, 'skill46') && trophyWins > 0) {
-        this[execBonus] += trophyWins * 15
-      }
-      if (this.hasSkill(side, 'skill95') && goldAtStart > 0) {
-        this[execBonus] += Math.floor(goldAtStart / 3)
-      }
-
-      if (this.hasSkill(side, 'skill33')) {
-        const regenPerTick = Math.max(1, Math.round(hero.maxHp * 0.03))
-        if (side === 'player') this.skill33RegenPerTick = regenPerTick
-        else this.skillEnemy33RegenPerTick = regenPerTick
-      }
-    }
-
-    applySide('player')
-    applySide('enemy')
-  }
-
-  private handleHeroHpThresholdTriggers(side: 'player' | 'enemy', hpBefore: number, hpAfter: number): void {
-    const hero = side === 'player' ? this.playerHero : this.enemyHero
-    if (hpBefore > 0 && hpAfter <= 0 && !this.unyieldingTriggeredBySide[side]) {
-      const guard = this.items.find((it) => {
-        if (it.side !== side) return false
-        const def = findItemDef(it.defId)
-        return skillLines(def).some((s) => /濒死时获得\d+秒无敌.*最大生命值.*%.*护盾/.test(s))
-      })
-      if (guard) {
-        const def = findItemDef(guard.defId)
-        const line = skillLines(def).find((s) => /濒死时获得\d+秒无敌.*最大生命值.*%.*护盾/.test(s))
-        let pct = 0
-        let invincibleMs = 3000
-        if (line) {
-          const tIdx = tierIndexFromRaw(def, guard.tier)
-          const secMatch = line.match(/濒死时获得\s*(\d+)\s*秒无敌/)
-          if (secMatch?.[1]) {
-            const sec = Number(secMatch[1])
-            if (Number.isFinite(sec) && sec > 0) invincibleMs = Math.round(sec * 1000)
-          }
-          const m = line.match(/最大生命值\s*([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*)\s*的护盾/)
-          if (m?.[1]) {
-            pct = /[\/|]/.test(m[1]) ? pickTierSeriesValue(m[1], tIdx) : Number(m[1].replace(/%$/u, ''))
-            pct = Math.max(0, pct)
-          }
-        }
-        this.unyieldingTriggeredBySide[side] = true
-        hero.hp = 1
-        this.heroInvincibleMsBySide[side] = Math.max(this.heroInvincibleMsBySide[side], invincibleMs)
-        if (pct > 0) {
-          const gainShield = this.scaleShieldGain(side, Math.round(hero.maxHp * (pct / 100)))
-          if (gainShield > 0) {
-            hero.shield += gainShield
-            EventBus.emit('battle:gain_shield', {
-              targetId: hero.id,
-              sourceItemId: guard.id,
-              amount: gainShield,
-              targetType: 'hero',
-              targetSide: hero.side,
-              sourceType: 'item',
-              sourceSide: side,
-            })
-          }
-        }
-        hpAfter = hero.hp
-      }
-    }
-
-    const threshold = hero.maxHp * 0.5
-    if (!(hpBefore > threshold && hpAfter <= threshold)) return
-
-    const owner = this.oppositeSide(side)
-    if (owner === 'player') {
-      if (!this.skillEnemyHalfTriggered && (this.hasPlayerSkill('skill18') || this.hasPlayerSkill('skill45'))) {
-        this.skillEnemyHalfTriggered = true
-        if (this.hasPlayerSkill('skill18')) this.skillExecuteDamageBonus += 15
-        if (this.hasPlayerSkill('skill45')) {
-          for (const it of this.items) {
-            if (it.side !== 'player') continue
-            this.chargeItemByMs(it, 2000)
-          }
-        }
-      }
-    } else {
-      if (!this.skillEnemyHalfTriggeredFromEnemy && (this.hasEnemySkill('skill18') || this.hasEnemySkill('skill45'))) {
-        this.skillEnemyHalfTriggeredFromEnemy = true
-        if (this.hasEnemySkill('skill18')) this.skillEnemyExecuteDamageBonus += 15
-        if (this.hasEnemySkill('skill45')) {
-          for (const it of this.items) {
-            if (it.side !== 'enemy') continue
-            this.chargeItemByMs(it, 2000)
-          }
-        }
-      }
-    }
-
-    if (side === 'player') {
-      if (!this.skillPlayerHalfTriggered && this.hasPlayerSkill('skill21')) {
-        this.skillPlayerHalfTriggered = true
-        const heal = Math.max(0, Math.round(hero.maxHp * 0.15))
-        const real = Math.max(0, Math.min(hero.maxHp - hero.hp, heal))
-        if (real > 0) {
-          hero.hp += real
-          EventBus.emit('battle:heal', {
-            targetId: hero.id,
-            sourceItemId: 'skill21',
-            amount: real,
-            isRegen: false,
-            targetType: 'hero',
-            targetSide: hero.side,
-            sourceType: 'system',
-            sourceSide: 'player',
-          })
-        }
-      }
-
-      if (!this.skillPlayerHalfShieldTriggered && this.hasPlayerSkill('skill25')) {
-        this.skillPlayerHalfShieldTriggered = true
-        const gainShield = this.scaleShieldGain('player', Math.round(hero.maxHp * 0.2))
-        if (gainShield > 0) {
-          hero.shield += gainShield
-          EventBus.emit('battle:gain_shield', {
-            targetId: hero.id,
-            sourceItemId: 'skill25',
-            amount: gainShield,
-            targetType: 'hero',
-            targetSide: hero.side,
-            sourceType: 'system',
-            sourceSide: 'player',
-          })
-          this.applyOnShieldGainCharge('player')
-          this.applyShieldGainSkillTriggers('player', 'skill25', gainShield, false)
-        }
-      }
-
-      if (!this.skillPlayerHalfShieldCdTriggered && this.hasPlayerSkill('skill26')) {
-        this.skillPlayerHalfShieldCdTriggered = true
-      }
-      return
-    }
-
-    if (!this.skillEnemySelfHalfTriggered && this.hasEnemySkill('skill21')) {
-      this.skillEnemySelfHalfTriggered = true
-      const heal = Math.max(0, Math.round(hero.maxHp * 0.15))
-      const real = Math.max(0, Math.min(hero.maxHp - hero.hp, heal))
-      if (real > 0) {
-        hero.hp += real
-        EventBus.emit('battle:heal', {
-          targetId: hero.id,
-          sourceItemId: 'skill21',
-          amount: real,
-          isRegen: false,
-          targetType: 'hero',
-          targetSide: hero.side,
-          sourceType: 'system',
-          sourceSide: 'enemy',
-        })
-      }
-    }
-
-    if (!this.skillEnemyHalfShieldTriggered && this.hasEnemySkill('skill25')) {
-      this.skillEnemyHalfShieldTriggered = true
-      const gainShield = this.scaleShieldGain('enemy', Math.round(hero.maxHp * 0.2))
-      if (gainShield > 0) {
-        hero.shield += gainShield
-        EventBus.emit('battle:gain_shield', {
-          targetId: hero.id,
-          sourceItemId: 'skill25',
-          amount: gainShield,
-          targetType: 'hero',
-          targetSide: hero.side,
-          sourceType: 'system',
-          sourceSide: 'enemy',
-        })
-        this.applyOnShieldGainCharge('enemy')
-        this.applyShieldGainSkillTriggers('enemy', 'skill25', gainShield, false)
-      }
-    }
-
-    if (!this.skillEnemyHalfShieldCdTriggered && this.hasEnemySkill('skill26')) {
-      this.skillEnemyHalfShieldCdTriggered = true
-    }
-  }
-
-  private leftmostDamageItem(side: 'player' | 'enemy'): CombatItemRunner | null {
-    const all = this.sortedItemsBySide(side, (it) => this.isDamageBonusEligible(it))
-    return all[0] ?? null
-  }
-
-  private applyDirectSkillDamage(
-    sourceSide: 'player' | 'enemy',
-    panel: number,
-    sourceSkillId: string,
-    sourceType: 'system' | 'item' = 'system',
-  ): void {
-    const targetHero = sourceSide === 'player' ? this.enemyHero : this.playerHero
-    if (panel <= 0 || targetHero.hp <= 0) return
-    if (this.isHeroInvincible(targetHero.side)) {
-      EventBus.emit('battle:take_damage', {
-        targetId: targetHero.id,
-        sourceItemId: sourceSkillId,
-        amount: panel,
-        isCrit: false,
-        type: 'normal',
-        targetType: 'hero',
-        targetSide: targetHero.side,
-        sourceType,
-        sourceSide,
-        baseDamage: panel,
-        finalDamage: 0,
-      })
-      return
-    }
-    let remaining = panel
-    const hpBefore = targetHero.hp
-    if (targetHero.shield > 0) {
-      const blocked = Math.min(targetHero.shield, remaining)
-      targetHero.shield -= blocked
-      remaining -= blocked
-    }
-    if (remaining > 0) {
-      targetHero.hp = Math.max(0, targetHero.hp - remaining)
-      this.handleHeroHpThresholdTriggers(targetHero.side, hpBefore, targetHero.hp)
-    }
-    EventBus.emit('battle:take_damage', {
-      targetId: targetHero.id,
-      sourceItemId: sourceSkillId,
-      amount: panel,
-      isCrit: false,
-      type: 'normal',
-      targetType: 'hero',
-      targetSide: targetHero.side,
-      sourceType,
-      sourceSide,
-      baseDamage: panel,
-      finalDamage: remaining,
-    })
-    if (panel > 0) {
-      this.applyWanJianGrowthOnAnyDamage(sourceSide)
-    }
-    if (targetHero.hp === 0) {
-      EventBus.emit('battle:unit_die', {
-        unitId: targetHero.id,
-        side: targetHero.side,
-      })
-    }
-  }
-
-  private applyShieldGainSkillTriggers(side: 'player' | 'enemy', sourceItemId: string, gainedShield = 0, fromShieldItem = false): void {
-    if (!this.hasSkill(side, 'skill22') && !this.hasSkill(side, 'skill23') && !this.hasSkill(side, 'skill24') && !this.hasSkill(side, 'skill82')) return
-
-    if (this.hasSkill(side, 'skill22')) {
-      const leftmostDamage = this.leftmostDamageItem(side)
-      if (leftmostDamage) leftmostDamage.baseStats.damage += 15
-    }
-
-    if (this.hasSkill(side, 'skill23')) {
-      this.applyDirectSkillDamage(side, 30, 'skill23')
-    }
-
-    if (this.hasSkill(side, 'skill24')) {
-      const source = this.items.find((it) => it.id === sourceItemId && it.side === side)
-      if (source) {
-        for (const ally of this.items) {
-          if (ally.side !== side || ally.id === source.id) continue
-          if (!this.isAdjacentByFootprint(ally, source)) continue
-          if (!this.isShieldItem(ally)) continue
-          ally.baseStats.shield += 15
-        }
-      }
-    }
-
-    if (this.hasSkill(side, 'skill82') && fromShieldItem && gainedShield > 0) {
-      this.applyDirectSkillDamage(side, gainedShield, 'skill82')
-    }
-  }
-
-  private applySkill33RegenTick(): void {
-    const applyOne = (side: 'player' | 'enemy', perTick: number): void => {
-      if (!this.hasSkill(side, 'skill33')) return
-      if (perTick <= 0) return
-      const hero = this.heroOf(side)
-      if (hero.hp <= 0) return
-      const healed = Math.max(0, Math.min(hero.maxHp - hero.hp, perTick))
-      if (healed <= 0) return
-      hero.hp += healed
-      EventBus.emit('battle:heal', {
-        targetId: hero.id,
-        sourceItemId: 'skill33',
-        amount: healed,
-        isRegen: true,
-        targetType: 'hero',
-        targetSide: hero.side,
-        sourceType: 'system',
-        sourceSide: side,
-      })
-    }
-    applyOne('player', this.skill33RegenPerTick)
-    applyOne('enemy', this.skillEnemy33RegenPerTick)
-  }
-
-  private scaleShieldGain(side: 'player' | 'enemy', amount: number): number {
-    const base = Math.max(0, Math.round(amount))
-    if (base <= 0) return 0
-    if (this.hasSkill(side, 'skill39') && this.elapsedMs <= 10000) {
-      return Math.max(0, Math.round(base * 2))
-    }
-    return base
-  }
-
-  private applyOnDealDamageSkillTriggers(attacker: CombatItemRunner): void {
-    if (this.hasSkill(attacker.side, 'skill58') && this.isDamageBonusEligible(attacker)) {
-      attacker.baseStats.damage += 2
-    }
-    if (this.hasSkill(attacker.side, 'skill57')) {
-      attacker.baseStats.cooldownMs = Math.max(
-        this.minReducedCdMsFor(attacker),
-        Math.round(attacker.baseStats.cooldownMs * 0.98),
-      )
-    }
-  }
-
-  private applyWanJianGrowthOnAnyDamage(sourceSide: 'player' | 'enemy'): void {
-    for (const owner of this.items) {
-      if (owner.side !== sourceSide) continue
-      if (!this.isDamageBonusEligible(owner)) continue
-      const def = findItemDef(owner.defId)
-      const line = skillLines(def).find((s) => /造成任意伤害(?:时)?此物品伤害\+\d+(?:[\/|]\d+)*/.test(s))
-      if (!line) continue
-      const v = Math.max(0, Math.round(tierValueFromLine(line, tierIndexFromRaw(def, owner.tier))))
-      if (v > 0) owner.baseStats.damage += v
-    }
-  }
-
-  private tryDeathMarkExecution(sourceSide: 'player' | 'enemy', targetHero: HeroState): void {
-    if (this.deathMarkCheckUsedBySide[sourceSide]) return
-    const marker = this.items.find((it) => {
-      if (it.side !== sourceSide) return false
-      const def = findItemDef(it.defId)
-      return skillLines(def).some((s) => /生命值低于.*直接斩杀/.test(s))
-    })
-    if (!marker) return
-    const def = findItemDef(marker.defId)
-    const line = skillLines(def).find((s) => /生命值低于.*直接斩杀/.test(s))
-    if (!line) return
-    const pct = Math.max(0, tierValueFromLine(line, tierIndexFromRaw(def, marker.tier)))
-    if (pct <= 0) return
-    if (targetHero.maxHp <= 0 || targetHero.hp <= 0) return
-    if (targetHero.hp / targetHero.maxHp > pct / 100) return
-    this.deathMarkCheckUsedBySide[sourceSide] = true
-    this.enqueueExtraTriggeredUse(marker)
-  }
-
-  private isAdjacentById(aId: string, bId: string): boolean {
-    const a = this.items.find((it) => it.id === aId)
-    const b = this.items.find((it) => it.id === bId)
+  }  private isAdjacentById(aId: string, bId: string): boolean {
+    const a = this.state.items.find((it) => it.id === aId)
+    const b = this.state.items.find((it) => it.id === bId)
     if (!a || !b) return false
-    return this.isAdjacentByFootprint(a, b)
+    return isAdjacentByFootprint(a, b)
   }
-
-  private applyHasteToTargetItems(source: CombatItemRunner, targets: CombatItemRunner[], durationMs: number): void {
-    for (const target of targets) {
-      target.runtime.modifiers.hasteMs = Math.max(target.runtime.modifiers.hasteMs, durationMs)
-      EventBus.emit('battle:status_apply', {
-        targetId: target.id,
-        sourceItemId: source.id,
-        status: 'haste',
-        amount: durationMs,
-        targetType: 'item',
-        targetSide: target.side,
-        sourceType: 'item',
-        sourceSide: source.side,
-      })
-    }
-  }
-
-  private applyAdjacentUseHasteTriggers(fired: CombatItemRunner): void {
-    for (const owner of this.items) {
-      if (owner.side !== fired.side || owner.id === fired.id) continue
-      if (!this.isAdjacentByFootprint(owner, fired)) continue
-      const def = findItemDef(owner.defId)
-      if (!def) continue
-      const line = skillLines(def).find((s) => /相邻物品使用时.*加速另一侧的物品/.test(s))
-      if (!line) continue
-      const sec = tierValueFromLine(line, tierIndexFromRaw(def, owner.tier))
-      if (sec <= 0) continue
-
-      const ownerStart = owner.col
-      const ownerEnd = owner.col + this.itemWidth(owner.size) - 1
-      const firedCenter = fired.col + this.itemWidth(fired.size) / 2
-      const ownerCenter = owner.col + this.itemWidth(owner.size) / 2
-      const wantRight = firedCenter < ownerCenter
-
-      const target = this.items
-        .filter((it) => it.side === owner.side && it.id !== owner.id && it.id !== fired.id)
-        .find((it) => {
-          const s = it.col
-          const e = it.col + this.itemWidth(it.size) - 1
-          return wantRight ? s === ownerEnd + 1 : e === ownerStart - 1
-        })
-      if (target) this.applyHasteToTargetItems(owner, [target], Math.round(sec * 1000))
-    }
-  }
-
-  private applyAdjacentUseBurnTriggers(fired: CombatItemRunner): void {
-    const targetHero = fired.side === 'player' ? this.enemyHero : this.playerHero
-    if (targetHero.hp <= 0) return
-    for (const owner of this.items) {
-      if (owner.side !== fired.side || owner.id === fired.id) continue
-      if (!this.isAdjacentByFootprint(owner, fired)) continue
-      const def = findItemDef(owner.defId)
-      if (!def) continue
-      const line = skillLines(def).find((s) => /使用相邻物品时.*造成\d+(?:\/\d+)*灼烧/.test(s))
-      if (!line) continue
-      const burn = Math.round(tierValueFromLine(line, tierIndexFromRaw(def, owner.tier)))
-      if (burn <= 0) continue
-      targetHero.burn += burn
-      EventBus.emit('battle:status_apply', {
-        targetId: targetHero.id,
-        sourceItemId: owner.id,
-        status: 'burn',
-        amount: burn,
-        targetType: 'hero',
-        targetSide: targetHero.side,
-        sourceType: 'item',
-        sourceSide: owner.side,
-      })
-    }
-  }
-
-  private applyAdjacentUseExtraFireTriggers(fired: CombatItemRunner): void {
-    for (const owner of this.items) {
-      if (owner.side !== fired.side || owner.id === fired.id) continue
-      if (!this.isAdjacentByFootprint(owner, fired)) continue
-      const def = findItemDef(owner.defId)
-      if (!def) continue
-      if (!skillLines(def).some((s) => /使用相邻物品时(?:额外|立即)使用此物品/.test(s))) continue
-      this.enqueueExtraTriggeredUse(owner)
-    }
-  }
-
-  private applyBurnUseSlowTriggers(fired: CombatItemRunner): void {
-    if (fired.baseStats.burn <= 0) return
-    for (const owner of this.items) {
-      if (owner.side !== fired.side || owner.id === fired.id) continue
-      const def = findItemDef(owner.defId)
-      if (!def) continue
-      const line = skillLines(def).find((s) => /使用灼烧物品时.*减速敌方\d+件敌方物品\d+(?:\/\d+)*秒/.test(s))
-      if (!line) continue
-      const sec = tierValueFromLine(line, tierIndexFromRaw(def, owner.tier))
-      if (sec <= 0) continue
-      const targets = this.pickControlTargets({
-        side: fired.side === 'player' ? 'enemy' : 'player',
-        count: 1,
-        mode: 'leftmost',
-        source: owner,
-      })
-      for (const target of targets) {
-        const durationMs = Math.max(1, Math.round(sec * 1000))
-        target.runtime.modifiers.slowMs = Math.max(target.runtime.modifiers.slowMs, durationMs)
-        EventBus.emit('battle:status_apply', {
-          targetId: target.id,
-          sourceItemId: owner.id,
-          status: 'slow',
-          amount: durationMs,
-          targetType: 'item',
-          targetSide: target.side,
-          sourceType: 'item',
-          sourceSide: owner.side,
-        })
-      }
-    }
-  }
-
-  private applyBattleStartPassiveGrowths(): void {
-    for (const owner of this.items) {
-      const def = findItemDef(owner.defId)
-      if (!def) continue
-      const lines = skillLines(def)
-      const tIdx = tierIndexFromRaw(def, owner.tier)
-
-      const shieldLine = lines.find((s) => /护盾物品护盾值\+\d+(?:\/\d+)*/.test(s))
-      if (shieldLine) {
-        const v = Math.round(tierValueFromLine(shieldLine, tIdx))
-        if (v > 0) {
-          for (const ally of this.items) {
-            if (ally.side !== owner.side) continue
-            if (ally.baseStats.shield <= 0) continue
-            ally.baseStats.shield += v
-          }
-        }
-      }
-
-      const burnLine = lines.find((s) => /灼烧物品\+\d+(?:\/\d+)*灼烧/.test(s))
-      if (burnLine) {
-        const v = Math.round(tierValueFromLine(burnLine, tIdx))
-        if (v > 0) {
-          for (const ally of this.items) {
-            if (ally.side !== owner.side) continue
-            if (ally.baseStats.burn <= 0) continue
-            ally.baseStats.burn += v
-          }
-        }
-      }
-
-      const adjacentPoisonLine = lines.find((s) => /相邻剧毒物品\+\d+(?:\/\d+)*剧毒/.test(s))
-      if (adjacentPoisonLine) {
-        const v = Math.round(tierValueFromLine(adjacentPoisonLine, tIdx))
-        if (v > 0) {
-          for (const ally of this.items) {
-            if (ally.side !== owner.side || ally.id === owner.id) continue
-            if (ally.baseStats.poison <= 0) continue
-            if (!this.isAdjacentByFootprint(ally, owner)) continue
-            ally.baseStats.poison += v
-          }
-        }
-      }
-
-      const adjacentWeaponDamageLine = lines.find((s) => /相邻的?武器伤害\+\d+(?:\/\d+)*/.test(s))
-      if (adjacentWeaponDamageLine) {
-        const v = Math.round(tierValueFromLine(adjacentWeaponDamageLine, tIdx))
-        if (v > 0) {
-          for (const ally of this.items) {
-            if (ally.side !== owner.side || ally.id === owner.id) continue
-            if (!this.isDamageBonusEligible(ally)) continue
-            if (!this.isAdjacentByFootprint(ally, owner)) continue
-            ally.baseStats.damage += v
-          }
-        }
-      }
-
-      const allWeaponDamageLine = lines.find(
-        (s) => /(?:武器|物品)伤害\+\d+(?:[\/|]\d+)*/.test(s)
-          && !/相邻/.test(s)
-          && !/所有刺客物品/.test(s)
-          && !/其他武器攻击时该(?:武器|物品)伤害\+/.test(s),
-      )
-      if (allWeaponDamageLine) {
-        const v = Math.round(tierValueFromLine(allWeaponDamageLine, tIdx))
-        if (v > 0) {
-          for (const ally of this.items) {
-            if (ally.side !== owner.side) continue
-            if (!this.isDamageBonusEligible(ally)) continue
-            ally.baseStats.damage += v
-          }
-        }
-      }
-
-      const allAssassinDamageLine = lines.find((s) => /所有刺客物品伤害\+\d+(?:[\/|]\d+)*/.test(s))
-      if (allAssassinDamageLine) {
-        const v = Math.round(tierValueFromLine(allAssassinDamageLine, tIdx))
-        if (v > 0) {
-          for (const ally of this.items) {
-            if (ally.side !== owner.side) continue
-            if (!this.isDamageBonusEligible(ally)) continue
-            const allyDef = findItemDef(ally.defId)
-            if (this.itemArchetype(allyDef) !== '刺客') continue
-            ally.baseStats.damage += v
-          }
-        }
-      }
-
-      const scoutLine = lines.find((s) => /上阵区每有1件其他刺客物品[，,]?连发次数\+1/.test(s))
-      if (scoutLine) {
-        const n = this.items.filter((ally) => {
-          if (ally.side !== owner.side || ally.id === owner.id) return false
-          const allyDef = findItemDef(ally.defId)
-          return this.itemArchetype(allyDef) === '刺客'
-        }).length
-        if (n > 0) owner.baseStats.multicast += n
-      }
-
-      const adjacentAmmoCapLine = lines.find((s) => /相邻物品\+\d+(?:[\/|]\+?\d+)*最大弹药量/.test(s))
-      if (adjacentAmmoCapLine) {
-        const v = Math.round(tierValueFromLine(adjacentAmmoCapLine, tIdx))
-        if (v > 0) {
-          for (const ally of this.items) {
-            if (ally.side !== owner.side || ally.id === owner.id) continue
-            if (!this.isAdjacentByFootprint(ally, owner)) continue
-            if (ally.runtime.ammoMax <= 0) continue
-            const beforeCurrent = ally.runtime.ammoCurrent
-            const beforeMax = ally.runtime.ammoMax
-            ally.runtime.ammoMax += v
-            if (beforeCurrent < beforeMax) {
-              ally.runtime.ammoCurrent = Math.min(ally.runtime.ammoMax, beforeCurrent + v)
-              const gained = Math.max(0, ally.runtime.ammoCurrent - beforeCurrent)
-              if (gained > 0) this.applyOnAmmoRefilledDamageGrowth(ally, gained)
-            }
-          }
-        }
-      }
-
-      const adjacentAmmoCapLine2 = lines.find((s) => /相邻弹药物品最大弹药量\+\d+(?:[\/|]\d+)*/.test(s))
-      if (adjacentAmmoCapLine2) {
-        const v = Math.round(tierValueFromLine(adjacentAmmoCapLine2, tIdx))
-        if (v > 0) {
-          for (const ally of this.items) {
-            if (ally.side !== owner.side || ally.id === owner.id) continue
-            if (!this.isAdjacentByFootprint(ally, owner)) continue
-            if (ally.runtime.ammoMax <= 0) continue
-            ally.runtime.ammoMax += v
-            ally.runtime.ammoCurrent = Math.min(ally.runtime.ammoMax, ally.runtime.ammoCurrent + v)
-          }
-        }
-      }
-
-      const scopeLine = lines.find((s) => /相邻伤害物品伤害\+\d+(?:[\/|]\d+)*%/.test(s))
-      if (scopeLine) {
-        const pct = Math.max(0, tierValueFromLine(scopeLine, tIdx)) / 100
-        if (pct > 0) {
-          for (const ally of this.items) {
-            if (ally.side !== owner.side || ally.id === owner.id) continue
-            if (!this.isAdjacentByFootprint(ally, owner)) continue
-            if (!this.isDamageBonusEligible(ally)) continue
-            ally.runtime.damageScale *= (1 + pct)
-          }
-        }
-      }
-
-      const phantomLine = lines.find((s) => /弹药物品伤害\+\d+(?:[\/|]\d+)*/.test(s) && /弹药消耗翻倍/.test(s))
-      if (phantomLine) {
-        const v = Math.round(tierValueFromLine(phantomLine, tIdx))
-        if (v > 0) {
-          for (const ally of this.items) {
-            if (ally.side !== owner.side) continue
-            if (!this.isAmmoItem(ally)) continue
-            if (!this.isDamageBonusEligible(ally)) continue
-            ally.baseStats.damage += v
-          }
-        }
-      }
-
-      const hpBoostLine = lines.find((s) => /最大生命值\+\d+(?:[\/|]\d+)*%/.test(s))
-      if (hpBoostLine) {
-        const pct = Math.max(0, tierValueFromLine(hpBoostLine, tIdx)) / 100
-        if (pct > 0) {
-          const hero = this.heroOf(owner.side)
-          hero.maxHp = Math.max(1, Math.round(hero.maxHp * (1 + pct)))
-          hero.hp = Math.max(1, Math.round(hero.hp * (1 + pct)))
-        }
-      }
-
-      const rightMulticastLine = lines.find((s) => /右侧的(?:攻击|伤害)物品连发次数\+\d+(?:[\/|]\d+)*/.test(s))
-      if (rightMulticastLine) {
-        const v = Math.max(0, Math.round(tierValueFromLine(rightMulticastLine, tIdx)))
-        if (v > 0) {
-          const ownerRightEdge = owner.col + this.itemWidth(owner.size) - 1
-          const rightTarget = this.items
-            .filter((ally) => ally.side === owner.side && ally.id !== owner.id)
-            .find((ally) => ally.col === ownerRightEdge + 1 && this.isDamageBonusEligible(ally))
-          if (rightTarget) rightTarget.baseStats.multicast += v
-        }
-      }
-    }
-  }
-
-  private chargeItemByMs(owner: CombatItemRunner, gainMs: number): void {
+  chargeItemByMs(owner: CombatItemRunner, gainMs: number): void {
     const gain = Math.max(0, Math.round(gainMs))
     if (gain <= 0) return
-    const lastDue = this.lastQueuedFireTickByItem.get(owner.id)
-    const hasQueuedFire = Number.isFinite(lastDue) && (lastDue as number) >= this.tickIndex
+    const lastDue = this.state.lastQueuedFireTickByItem.get(owner.id)
+    const hasQueuedFire = Number.isFinite(lastDue) && (lastDue as number) >= this.state.tickIndex
     if (hasQueuedFire) {
       owner.runtime.pendingChargeMs += gain
       return
@@ -1518,11 +569,11 @@ export class CombatEngine {
     const needsAmmo = owner.runtime.ammoMax > 0
     const hasAmmo = owner.runtime.ammoCurrent > 0
     if (owner.runtime.currentChargeMs >= ownerCooldown && (!needsAmmo || hasAmmo)) {
-      const baseDue = this.tickIndex + 1
-      const prevDue = this.lastQueuedFireTickByItem.get(owner.id) ?? (this.tickIndex - 1)
+      const baseDue = this.state.tickIndex + 1
+      const prevDue = this.state.lastQueuedFireTickByItem.get(owner.id) ?? (this.state.tickIndex - 1)
       const dueTick = Math.max(baseDue, prevDue + 1)
-      this.pendingItemFires.push({ dueTick, sourceItemId: owner.id })
-      this.lastQueuedFireTickByItem.set(owner.id, dueTick)
+      this.state.pendingItemFires.push({ dueTick, sourceItemId: owner.id })
+      this.state.lastQueuedFireTickByItem.set(owner.id, dueTick)
     }
   }
 
@@ -1537,8 +588,8 @@ export class CombatEngine {
     const step = Math.max(1, Math.round(intervalTick))
     const gain = Math.max(1, Math.round(gainMs))
     for (let i = 0; i < count; i++) {
-      this.pendingChargePulses.push({
-        dueTick: this.tickIndex + i * step,
+      this.state.pendingChargePulses.push({
+        dueTick: this.state.tickIndex + i * step,
         sourceItemId: source.id,
         targetItemId: target.id,
         gainMs: gain,
@@ -1546,9 +597,9 @@ export class CombatEngine {
     }
   }
 
-  private enqueueExtraTriggeredUse(source: CombatItemRunner): void {
-    const nextTick = this.tickIndex + 1
-    this.pendingItemFires.push({
+  enqueueExtraTriggeredUse(source: CombatItemRunner): void {
+    const nextTick = this.state.tickIndex + 1
+    this.state.pendingItemFires.push({
       dueTick: nextTick,
       sourceItemId: source.id,
       extraTriggered: true,
@@ -1556,13 +607,13 @@ export class CombatEngine {
   }
 
   private removeItemFromBattle(itemId: string): void {
-    const removed = this.items.find((it) => it.id === itemId)
-    this.items = this.items.filter((it) => it.id !== itemId)
-    this.pendingItemFires = this.pendingItemFires.filter((f) => f.sourceItemId !== itemId)
-    this.pendingChargePulses = this.pendingChargePulses.filter((p) => p.sourceItemId !== itemId && p.targetItemId !== itemId)
-    this.pendingAmmoRefills = this.pendingAmmoRefills.filter((p) => p.sourceItemId !== itemId && p.targetItemId !== itemId)
-    this.pendingHits = this.pendingHits.filter((h) => h.sourceItemId !== itemId)
-    this.lastQueuedFireTickByItem.delete(itemId)
+    const removed = this.state.items.find((it) => it.id === itemId)
+    this.state.items = this.state.items.filter((it) => it.id !== itemId)
+    this.state.pendingItemFires = this.state.pendingItemFires.filter((f) => f.sourceItemId !== itemId)
+    this.state.pendingChargePulses = this.state.pendingChargePulses.filter((p) => p.sourceItemId !== itemId && p.targetItemId !== itemId)
+    this.state.pendingAmmoRefills = this.state.pendingAmmoRefills.filter((p) => p.sourceItemId !== itemId && p.targetItemId !== itemId)
+    this.state.pendingHits = this.state.pendingHits.filter((h) => h.sourceItemId !== itemId)
+    this.state.lastQueuedFireTickByItem.delete(itemId)
     if (removed) {
       EventBus.emit('battle:unit_die', {
         unitId: itemId,
@@ -1570,20 +621,6 @@ export class CombatEngine {
       })
     }
   }
-
-  private applyOnAmmoRefilledDamageGrowth(target: CombatItemRunner, gainedAmmo: number): void {
-    const gained = Math.max(0, Math.round(gainedAmmo))
-    if (gained <= 0) return
-    const def = findItemDef(target.defId)
-    if (!def) return
-    if (!this.isDamageBonusEligible(target)) return
-    const line = skillLines(def).find((s) => /补充弹药时伤害\+\d+(?:[\/|]\d+)*/.test(s))
-    if (!line) return
-    const perAmmo = Math.max(0, Math.round(tierValueFromLine(line, tierIndexFromRaw(def, target.tier))))
-    if (perAmmo <= 0) return
-    target.baseStats.damage += perAmmo * gained
-  }
-
   private refillAmmoAndTriggerGrowth(target: CombatItemRunner, gainAmmo: number): number {
     const gain = Math.max(0, Math.round(gainAmmo))
     if (gain <= 0) return 0
@@ -1593,35 +630,9 @@ export class CombatEngine {
     if (beforeCurrent >= beforeMax) return 0
     target.runtime.ammoCurrent = Math.min(beforeMax, beforeCurrent + gain)
     const actualGained = Math.max(0, target.runtime.ammoCurrent - beforeCurrent)
-    if (actualGained > 0) this.applyOnAmmoRefilledDamageGrowth(target, actualGained)
+    if (actualGained > 0) this.skillSystem.applyOnAmmoRefilledDamageGrowth(target, actualGained)
     return actualGained
   }
-
-  private applyOnShieldGainCharge(side: 'player' | 'enemy'): void {
-    for (const owner of this.items) {
-      if (owner.side !== side) continue
-      const def = findItemDef(owner.defId)
-      if (!def) continue
-      const line = skillLines(def).find((s) => /获得护盾时.*充能\d+(?:\/\d+)*秒/.test(s))
-      if (!line) continue
-      const gainMs = Math.max(0, Math.round(tierValueFromLine(line, tierIndexFromRaw(def, owner.tier)) * 1000))
-      if (gainMs <= 0) continue
-
-      this.debugShieldChargeLog('on_shield_gain_detected', {
-        tick: this.tickIndex,
-        itemId: owner.id,
-        defId: owner.defId,
-        side: owner.side,
-        gainMs,
-        currentChargeMs: owner.runtime.currentChargeMs,
-        pendingChargeMs: owner.runtime.pendingChargeMs,
-        cooldownMs: this.effectiveCooldownMs(owner),
-      })
-
-      this.chargeItemByMs(owner, gainMs)
-    }
-  }
-
   private applyPendingChargeToFreshCycle(owner: CombatItemRunner): void {
     if (owner.runtime.pendingChargeMs <= 0) return
     const gain = owner.runtime.pendingChargeMs
@@ -1629,7 +640,7 @@ export class CombatEngine {
     const ownerCooldown = this.effectiveCooldownMs(owner)
     owner.runtime.currentChargeMs = Math.min(ownerCooldown, owner.runtime.currentChargeMs + gain)
     this.debugShieldChargeLog('apply_pending_to_fresh_cycle', {
-      tick: this.tickIndex,
+      tick: this.state.tickIndex,
       itemId: owner.id,
       gain,
       currentChargeMs: owner.runtime.currentChargeMs,
@@ -1639,25 +650,25 @@ export class CombatEngine {
     const needsAmmo = owner.runtime.ammoMax > 0
     const hasAmmo = owner.runtime.ammoCurrent > 0
     if (owner.runtime.currentChargeMs >= ownerCooldown && (!needsAmmo || hasAmmo)) {
-      const baseDue = this.tickIndex + 1
-      const lastDue = this.lastQueuedFireTickByItem.get(owner.id) ?? (this.tickIndex - 1)
+      const baseDue = this.state.tickIndex + 1
+      const lastDue = this.state.lastQueuedFireTickByItem.get(owner.id) ?? (this.state.tickIndex - 1)
       const dueTick = Math.max(baseDue, lastDue + 1)
-      this.pendingItemFires.push({ dueTick, sourceItemId: owner.id })
-      this.lastQueuedFireTickByItem.set(owner.id, dueTick)
+      this.state.pendingItemFires.push({ dueTick, sourceItemId: owner.id })
+      this.state.lastQueuedFireTickByItem.set(owner.id, dueTick)
       this.debugShieldChargeLog('queue_from_pending_charge', {
-        tick: this.tickIndex,
+        tick: this.state.tickIndex,
         itemId: owner.id,
         dueTick,
       })
     }
   }
 
-  private enqueueOneAttackFrom(source: CombatItemRunner): void {
+  enqueueOneAttackFrom(source: CombatItemRunner): void {
     const baseDamage = this.scaledDamage(source, source.baseStats.damage + this.runtimeGlobalDamageBonus(source))
     const damage = this.scaledDamage(source, source.baseStats.damage + source.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(source))
     if (damage <= 0) return
-    this.pendingHits.push({
-      dueTick: this.tickIndex,
+    this.state.pendingHits.push({
+      dueTick: this.state.tickIndex,
       side: source.side,
       sourceItemId: source.id,
       defId: source.defId,
@@ -1668,80 +679,12 @@ export class CombatEngine {
     })
   }
 
-  private applyOnWeaponAttackTriggers(attacker: CombatItemRunner): void {
-    if (attacker.baseStats.damage <= 0) return
-    for (const owner of this.items) {
-      if (owner.side !== attacker.side || owner.id === attacker.id) continue
-      const def = findItemDef(owner.defId)
-      if (!def) continue
-      const lines = skillLines(def)
-      const tIdx = tierIndexFromRaw(def, owner.tier)
-
-      const allWeaponBuffLine = lines.find((s) => /相邻的?武器攻击时.*所有武器伤害\+\d+(?:\/\d+)*/.test(s))
-      if (allWeaponBuffLine && this.isAdjacentByFootprint(owner, attacker)) {
-        const v = Math.round(tierValueFromLine(allWeaponBuffLine, tIdx))
-        if (v > 0) {
-          for (const ally of this.items) {
-            if (ally.side !== owner.side || !this.isDamageBonusEligible(ally)) continue
-            ally.baseStats.damage += v
-          }
-        }
-      }
-
-      const selfGrowLine = lines.find((s) => /其他武器攻击时该武器伤害\+\d+(?:\/\d+)*/.test(s))
-      if (selfGrowLine) {
-        const v = Math.round(tierValueFromLine(selfGrowLine, tIdx))
-        if (v > 0 && this.isDamageBonusEligible(owner)) owner.runtime.tempDamageBonus += v
-      }
-
-      const extraFireLine = lines.find((s) => /相邻武器攻击时额外触发此武器攻击/.test(s))
-      if (extraFireLine && this.isAdjacentByFootprint(owner, attacker)) {
-        this.enqueueOneAttackFrom(owner)
-      }
-
-      const ammoTriggerLine = lines.find((s) => /使用(?:其他)?弹药物品时.*(?:攻击|连发)次数(?:\+[\d|/]+|增加)/.test(s))
-      if (ammoTriggerLine && attacker.runtime.ammoMax > 0) {
-        const parsed = Math.round(tierValueFromLine(ammoTriggerLine, tIdx))
-        const v = Math.max(1, Math.abs(parsed || 1))
-        owner.runtime.bonusMulticast += v
-      }
-    }
-  }
-
-  private applyFreezeTriggeredAdjacentAttackBuff(source: CombatItemRunner): void {
-    const def = findItemDef(source.defId)
-    if (!def) return
-    const line = skillLines(def).find((s) => /冻结敌方时.*相邻攻击物品\+\d+(?:\/\d+)*伤害/.test(s))
-    if (!line) return
-    const v = Math.round(tierValueFromLine(line, tierIndexFromRaw(def, source.tier)))
-    if (v <= 0) return
-    for (const ally of this.items) {
-      if (ally.side !== source.side || ally.id === source.id) continue
-      if (!this.isDamageBonusEligible(ally)) continue
-      if (!this.isAdjacentByFootprint(ally, source)) continue
-      ally.runtime.tempDamageBonus += v
-    }
-  }
-
-  private applyAdjacentAttackDamageGrowth(attacker: CombatItemRunner): void {
-    for (const owner of this.items) {
-      if (owner.side !== attacker.side || owner.id === attacker.id) continue
-      if (!this.isAdjacentByFootprint(owner, attacker)) continue
-      const def = findItemDef(owner.defId)
-      if (!def) continue
-      const line = skillLines(def).find((s) => /相邻物品攻击造成伤害时.*该物品\+\d+(?:\/\d+)*伤害/.test(s))
-      if (!line) continue
-      const v = Math.round(tierValueFromLine(line, tierIndexFromRaw(def, owner.tier)))
-      if (v > 0 && this.isDamageBonusEligible(owner)) owner.runtime.tempDamageBonus += v
-    }
-  }
-
   private shieldGainBonusForItem(source: CombatItemRunner): number {
     if (source.baseStats.shield <= 0) return 0
     let bonus = 0
-    for (const owner of this.items) {
+    for (const owner of this.state.items) {
       if (owner.side !== source.side || owner.id === source.id) continue
-      if (!this.isAdjacentByFootprint(owner, source)) continue
+      if (!isAdjacentByFootprint(owner, source)) continue
       const def = findItemDef(owner.defId)
       if (!def) continue
       const line = skillLines(def).find((s) =>
@@ -1753,59 +696,15 @@ export class CombatEngine {
     }
     return Math.max(0, bonus)
   }
-
-  private applyReviveIfPossible(side: 'player' | 'enemy'): boolean {
-    const hero = side === 'player' ? this.playerHero : this.enemyHero
-    if (hero.hp > 0) return false
-    if (this.hasSkill(side, 'skill47') && !this.skill47ReviveTriggeredBySide[side]) {
-      this.skill47ReviveTriggeredBySide[side] = true
-      hero.hp = Math.max(1, Math.round(hero.maxHp * 0.5))
-      EventBus.emit('battle:heal', {
-        targetId: hero.id,
-        sourceItemId: 'skill47',
-        amount: hero.hp,
-        isRegen: false,
-        targetType: 'hero',
-        targetSide: hero.side,
-        sourceType: 'system',
-        sourceSide: side,
-      })
-      return true
-    }
-    const candidates = this.items.filter((it) => it.side === side && !it.reviveUsed)
-    for (const item of candidates) {
-      const def = findItemDef(item.defId)
-      if (!def) continue
-      const line = skillLines(def).find((s) => /首次被击败时复活并恢复\d+(?:\/\d+)*生命值/.test(s))
-      if (!line) continue
-      const heal = Math.round(tierValueFromLine(line, tierIndexFromRaw(def, item.tier)))
-      if (heal <= 0) continue
-      item.reviveUsed = true
-      hero.hp = Math.min(hero.maxHp, heal)
-      EventBus.emit('battle:heal', {
-        targetId: hero.id,
-        sourceItemId: item.id,
-        amount: hero.hp,
-        isRegen: false,
-        targetType: 'hero',
-        targetSide: hero.side,
-        sourceType: 'item',
-        sourceSide: side,
-      })
-      return true
-    }
-    return false
-  }
-
   private stepOneTick(tickMs: number): void {
-    this.tickIndex += 1
-    this.heroInvincibleMsBySide.player = Math.max(0, this.heroInvincibleMsBySide.player - tickMs)
-    this.heroInvincibleMsBySide.enemy = Math.max(0, this.heroInvincibleMsBySide.enemy - tickMs)
+    this.state.tickIndex += 1
+    this.state.heroInvincibleMsBySide.player = Math.max(0, this.state.heroInvincibleMsBySide.player - tickMs)
+    this.state.heroInvincibleMsBySide.enemy = Math.max(0, this.state.heroInvincibleMsBySide.enemy - tickMs)
     this.resolveQueuedItemFiresForCurrentTick()
     this.resolveQueuedChargePulsesForCurrentTick()
     this.resolveQueuedAmmoRefillsForCurrentTick()
     const queue: CombatItemRunner[] = []
-    for (const item of this.items) {
+    for (const item of this.state.items) {
       if (item.baseStats.cooldownMs <= 0) continue
       const freezeBefore = item.runtime.modifiers.freezeMs
       const slowBefore = item.runtime.modifiers.slowMs
@@ -1877,28 +776,28 @@ export class CombatEngine {
 
     this.processStatusPeriodicByTick()
     this.resolvePendingHitsForCurrentTick()
-    this.tryDeathMarkExecution('player', this.enemyHero)
-    this.tryDeathMarkExecution('enemy', this.playerHero)
+    this.skillSystem.tryDeathMarkExecution('player', this.state.enemyHero)
+    this.skillSystem.tryDeathMarkExecution('enemy', this.state.playerHero)
     this.clampCombatCaps()
   }
 
   private resolveQueuedChargePulsesForCurrentTick(): void {
-    if (!this.pendingChargePulses.length) return
-    const due = this.pendingChargePulses.filter((p) => p.dueTick <= this.tickIndex)
-    this.pendingChargePulses = this.pendingChargePulses.filter((p) => p.dueTick > this.tickIndex)
+    if (!this.state.pendingChargePulses.length) return
+    const due = this.state.pendingChargePulses.filter((p) => p.dueTick <= this.state.tickIndex)
+    this.state.pendingChargePulses = this.state.pendingChargePulses.filter((p) => p.dueTick > this.state.tickIndex)
     for (const one of due) {
-      const target = this.items.find((it) => it.id === one.targetItemId)
+      const target = this.state.items.find((it) => it.id === one.targetItemId)
       if (!target) continue
       this.chargeItemByMs(target, one.gainMs)
     }
   }
 
   private resolveQueuedAmmoRefillsForCurrentTick(): void {
-    if (!this.pendingAmmoRefills.length) return
-    const due = this.pendingAmmoRefills.filter((p) => p.dueTick <= this.tickIndex)
-    this.pendingAmmoRefills = this.pendingAmmoRefills.filter((p) => p.dueTick > this.tickIndex)
+    if (!this.state.pendingAmmoRefills.length) return
+    const due = this.state.pendingAmmoRefills.filter((p) => p.dueTick <= this.state.tickIndex)
+    this.state.pendingAmmoRefills = this.state.pendingAmmoRefills.filter((p) => p.dueTick > this.state.tickIndex)
     for (const one of due) {
-      const target = this.items.find((it) => it.id === one.targetItemId)
+      const target = this.state.items.find((it) => it.id === one.targetItemId)
       if (!target) continue
       this.refillAmmoAndTriggerGrowth(target, one.gainAmmo)
       if (one.chargeMs > 0) this.chargeItemByMs(target, one.chargeMs)
@@ -1906,23 +805,23 @@ export class CombatEngine {
   }
 
   private resolveQueuedItemFiresForCurrentTick(): void {
-    if (!this.pendingItemFires.length) return
-    const due = this.pendingItemFires.filter((f) => f.dueTick <= this.tickIndex)
-    this.pendingItemFires = this.pendingItemFires.filter((f) => f.dueTick > this.tickIndex)
+    if (!this.state.pendingItemFires.length) return
+    const due = this.state.pendingItemFires.filter((f) => f.dueTick <= this.state.tickIndex)
+    this.state.pendingItemFires = this.state.pendingItemFires.filter((f) => f.dueTick > this.state.tickIndex)
     for (const one of due) {
-      const owner = this.items.find((it) => it.id === one.sourceItemId)
+      const owner = this.state.items.find((it) => it.id === one.sourceItemId)
       if (!owner) continue
       this.debugShieldChargeLog('dequeue_fire', {
-        tick: this.tickIndex,
+        tick: this.state.tickIndex,
         itemId: one.sourceItemId,
         dueTick: one.dueTick,
       })
       if (owner.runtime.modifiers.freezeMs > 0) {
-        const nextTick = this.tickIndex + 1
-        this.pendingItemFires.push({ dueTick: nextTick, sourceItemId: owner.id })
-        this.lastQueuedFireTickByItem.set(owner.id, nextTick)
+        const nextTick = this.state.tickIndex + 1
+        this.state.pendingItemFires.push({ dueTick: nextTick, sourceItemId: owner.id })
+        this.state.lastQueuedFireTickByItem.set(owner.id, nextTick)
         this.debugShieldChargeLog('dequeue_frozen_requeue', {
-          tick: this.tickIndex,
+          tick: this.state.tickIndex,
           itemId: owner.id,
           nextTick,
         })
@@ -1935,7 +834,7 @@ export class CombatEngine {
       owner.runtime.executeCount += 1
       this.applyPendingChargeToFreshCycle(owner)
       this.debugShieldChargeLog('dequeue_fire_resolve', {
-        tick: this.tickIndex,
+        tick: this.state.tickIndex,
         itemId: owner.id,
         executeCount: owner.runtime.executeCount,
       })
@@ -1944,12 +843,12 @@ export class CombatEngine {
   }
 
   private resolveFire(item: CombatItemRunner, fromExtraTrigger = false): void {
-    const sourceHero = item.side === 'player' ? this.playerHero : this.enemyHero
-    const targetHero = item.side === 'player' ? this.enemyHero : this.playerHero
+    const sourceHero = item.side === 'player' ? this.state.playerHero : this.state.enemyHero
+    const targetHero = item.side === 'player' ? this.state.enemyHero : this.state.playerHero
     const def = findItemDef(item.defId)
     const lines = skillLines(def)
     const tIdx = tierIndexFromRaw(def, item.tier)
-    const sourceArch = this.itemArchetype(def)
+    const sourceArch = itemArchetype(def)
     const isAllAmmoShot = lines.some((s) => /(?:一次)?打出所有弹药/.test(s))
     const emptyAmmoBurstLine = lines.find((s) => /弹药耗尽时造成\d+(?:[\/|]\d+)*倍伤害/.test(s))
     const emptyAmmoBurstMul = emptyAmmoBurstLine
@@ -1957,8 +856,8 @@ export class CombatEngine {
       : 1
     const useDamageLine = lines.find((s) => /使用时伤害\+\d+(?:[\/|]\d+)*/.test(s))
     const useDamageBonus = useDamageLine ? Math.round(tierValueFromLine(useDamageLine, tIdx)) : 0
-    const canGrowDamageOnUse = useDamageBonus > 0 && this.isDamageBonusEligible(item)
-    const skill88Multicast = this.hasSkill(item.side, 'skill88') && this.elapsedMs <= 5000 ? 1 : 0
+    const canGrowDamageOnUse = useDamageBonus > 0 && isDamageBonusEligible(item)
+    const skill88Multicast = this.hasSkill(item.side, 'skill88') && this.state.elapsedMs <= 5000 ? 1 : 0
     let fireCount = Math.max(1, item.baseStats.multicast + item.runtime.bonusMulticast + skill88Multicast)
     const ammoBeforeUse = item.runtime.ammoCurrent
     if (item.runtime.ammoMax > 0) {
@@ -1976,12 +875,12 @@ export class CombatEngine {
       : Math.max(tickMsCfg, this.effectiveCooldownMs(item) / Math.max(1, useRepeatCount))
     const shotIntervalTick = Math.max(1, Math.round(shotIntervalMs / tickMsCfg))
 
-    const sourceIsAssassinBoot = this.hasLine(def, /使用刺客物品时立即使用此物品/)
+    const sourceIsAssassinBoot = hasLine(def, /使用刺客物品时立即使用此物品/)
     if (sourceArch === '刺客' && !sourceIsAssassinBoot) {
-      for (const ally of this.items) {
+      for (const ally of this.state.items) {
         if (ally.side !== item.side || ally.id === item.id) continue
         const allyDef = findItemDef(ally.defId)
-        if (!this.hasLine(allyDef, /使用刺客物品时立即使用此物品/)) continue
+        if (!hasLine(allyDef, /使用刺客物品时立即使用此物品/)) continue
         for (let n = 0; n < useRepeatCount; n++) this.enqueueExtraTriggeredUse(ally)
       }
     }
@@ -1996,24 +895,24 @@ export class CombatEngine {
     })
 
     for (let i = 0; i < useRepeatCount; i++) {
-      this.applyAdjacentUseHasteTriggers(item)
-      if (!fromExtraTrigger) this.applyAdjacentUseExtraFireTriggers(item)
-      this.applyAdjacentUseBurnTriggers(item)
-      this.applyBurnUseSlowTriggers(item)
+      this.itemSystem.applyAdjacentUseHasteTriggers(item)
+      if (!fromExtraTrigger) this.itemSystem.applyAdjacentUseExtraFireTriggers(item)
+      this.itemSystem.applyAdjacentUseBurnTriggers(item)
+      this.itemSystem.applyBurnUseSlowTriggers(item)
     }
 
-    if (this.hasSkill(item.side, 'skill86') && this.skill86UseCountBySide[item.side] < 8) {
-      const triggerCount = Math.min(useRepeatCount, 8 - this.skill86UseCountBySide[item.side])
-      this.skill86UseCountBySide[item.side] += triggerCount
-      const ammoCandidates = this.items
-        .filter((it) => it.side === item.side && this.isAmmoItem(it))
+    if (this.hasSkill(item.side, 'skill86') && this.state.skill86UseCountBySide[item.side] < 8) {
+      const triggerCount = Math.min(useRepeatCount, 8 - this.state.skill86UseCountBySide[item.side])
+      this.state.skill86UseCountBySide[item.side] += triggerCount
+      const ammoCandidates = this.state.items
+        .filter((it) => it.side === item.side && isAmmoItem(it))
         .sort((a, b) => (a.col - b.col) || a.id.localeCompare(b.id))
       const target = ammoCandidates.find((it) => it.runtime.currentChargeMs < this.effectiveCooldownMs(it)) ?? ammoCandidates[0]
       if (target) this.scheduleRepeatedChargePulses(item, target, triggerCount, 1000, shotIntervalTick)
     }
 
     if (this.hasSkill(item.side, 'skill87')) {
-      const ordered = this.items
+      const ordered = this.state.items
         .filter((it) => it.side === item.side)
         .sort((a, b) => (a.col - b.col) || a.id.localeCompare(b.id))
       const leftmost = ordered[0]
@@ -2023,35 +922,35 @@ export class CombatEngine {
         }
       }
 
-    if (this.hasSkill(item.side, 'skill4') && this.isShieldItem(item)) {
-      for (const ally of this.items) {
+    if (this.hasSkill(item.side, 'skill4') && isShieldItem(item)) {
+      for (const ally of this.state.items) {
         if (ally.side !== item.side || ally.id === item.id) continue
-        if (!this.isAdjacentByFootprint(ally, item)) continue
-        if (!this.isDamageBonusEligible(ally)) continue
+        if (!isAdjacentByFootprint(ally, item)) continue
+        if (!isDamageBonusEligible(ally)) continue
         ally.baseStats.damage += 4 * useRepeatCount
       }
     }
-    if (this.hasSkill(item.side, 'skill5') && this.isShieldItem(item)) {
+    if (this.hasSkill(item.side, 'skill5') && isShieldItem(item)) {
       item.baseStats.shield += 7 * useRepeatCount
     }
-    if (this.hasSkill(item.side, 'skill11') && this.isAmmoItem(item)) {
-      for (const ally of this.items) {
+    if (this.hasSkill(item.side, 'skill11') && isAmmoItem(item)) {
+      for (const ally of this.state.items) {
         if (ally.side !== item.side || ally.id === item.id) continue
-        if (!this.isAdjacentByFootprint(ally, item)) continue
-        if (!this.isDamageBonusEligible(ally)) continue
+        if (!isAdjacentByFootprint(ally, item)) continue
+        if (!isDamageBonusEligible(ally)) continue
         ally.baseStats.damage += 5 * useRepeatCount
       }
     }
 
-    const ctrl = this.applyCardEffects(item, def)
+    const ctrl = this.itemSystem.applyCardEffects(item, def)
 
     // 控制触发增益（本场战斗内）
     if (ctrl.freeze > 0) {
-      this.applyFreezeTriggeredAdjacentAttackBuff(item)
+      this.itemSystem.applyFreezeTriggeredAdjacentAttackBuff(item)
       for (const line of lines) {
         const v = Math.round(tierValueFromLine(line, tIdx))
         if (v <= 0) continue
-        if (/冻结.*\+\d+(?:[\/|]\d+)*伤害/.test(line) && this.isDamageBonusEligible(item)) item.runtime.tempDamageBonus += v
+        if (/冻结.*\+\d+(?:[\/|]\d+)*伤害/.test(line) && isDamageBonusEligible(item)) item.runtime.tempDamageBonus += v
         if (/冻结.*\+\d+(?:[\/|]\d+)*灼烧/.test(line)) item.baseStats.burn += v
         if (/冻结.*\+\d+(?:[\/|]\d+)*剧毒/.test(line)) item.baseStats.poison += v
       }
@@ -2060,7 +959,7 @@ export class CombatEngine {
       for (const line of lines) {
         const v = Math.round(tierValueFromLine(line, tIdx))
         if (v <= 0) continue
-        if (/减速.*\+\d+(?:[\/|]\d+)*伤害/.test(line) && this.isDamageBonusEligible(item)) item.runtime.tempDamageBonus += v
+        if (/减速.*\+\d+(?:[\/|]\d+)*伤害/.test(line) && isDamageBonusEligible(item)) item.runtime.tempDamageBonus += v
         if (/减速.*\+\d+(?:[\/|]\d+)*灼烧/.test(line)) item.baseStats.burn += v
       }
     }
@@ -2069,8 +968,8 @@ export class CombatEngine {
       if (line) {
         const v = Math.round(tierValueFromLine(line, tIdx))
         if (v > 0) {
-          this.pendingHits.push({
-            dueTick: this.tickIndex,
+          this.state.pendingHits.push({
+            dueTick: this.state.tickIndex,
             side: item.side,
             sourceItemId: item.id,
             defId: item.defId,
@@ -2084,7 +983,7 @@ export class CombatEngine {
 
     if (item.baseStats.shield > 0 && sourceHero.hp > 0) {
       const rawShieldPanel = item.baseStats.shield + this.shieldGainBonusForItem(item)
-      let shieldPanel = this.scaleShieldGain(item.side, rawShieldPanel)
+      let shieldPanel = this.skillSystem.scaleShieldGain(item.side, rawShieldPanel)
       const currentHpShieldLine = lines.find((s) => /获得护盾[，,]?等于当前生命值/.test(s))
       if (currentHpShieldLine) {
         const pctRaw = tierValueFromLine(currentHpShieldLine, tIdx)
@@ -2093,7 +992,7 @@ export class CombatEngine {
       }
       sourceHero.shield += shieldPanel
       this.debugShieldChargeLog('shield_gain_happened', {
-        tick: this.tickIndex,
+        tick: this.state.tickIndex,
         sourceItemId: item.id,
         side: item.side,
         amount: shieldPanel,
@@ -2107,22 +1006,22 @@ export class CombatEngine {
         sourceType: 'item',
         sourceSide: item.side,
       })
-      this.applyOnShieldGainCharge(item.side)
-      this.applyShieldGainSkillTriggers(item.side, item.id, shieldPanel, this.isShieldItem(item))
+      this.skillSystem.applyOnShieldGainCharge(item.side)
+      this.skillSystem.applyShieldGainSkillTriggers(item.side, item.id, shieldPanel, isShieldItem(item))
 
       // 获得护盾时加速 1 件物品
       const shieldHasteLine = lines.find((s) => /获得护盾时.*加速.*件物品/.test(s))
       if (shieldHasteLine) {
         const sec = tierValueFromLine(shieldHasteLine, tIdx)
         if (sec > 0) {
-          const targets = this.pickControlTargets({
+          const targets = this.itemSystem.pickControlTargets({
             side: item.side,
             count: 1,
             mode: 'leftmost',
             source: item,
             excludeId: item.id,
           })
-          this.applyHasteToTargetItems(item, targets, Math.round(sec * 1000))
+          this.itemSystem.applyHasteToTargetItems(item, targets, Math.round(sec * 1000))
         }
       }
     }
@@ -2131,9 +1030,9 @@ export class CombatEngine {
     if (adjacentShieldUseLine) {
       const v = Math.round(tierValueFromLine(adjacentShieldUseLine, tIdx)) * useRepeatCount
       if (v > 0) {
-        for (const ally of this.items) {
+        for (const ally of this.state.items) {
           if (ally.side !== item.side || ally.id === item.id) continue
-          if (!this.isAdjacentByFootprint(ally, item)) continue
+          if (!isAdjacentByFootprint(ally, item)) continue
           if (ally.baseStats.shield <= 0) continue
           ally.baseStats.shield += v
         }
@@ -2144,10 +1043,10 @@ export class CombatEngine {
     if (adjacentDamageUseLine) {
       const v = Math.round(tierValueFromLine(adjacentDamageUseLine, tIdx)) * useRepeatCount
       if (v > 0) {
-        for (const ally of this.items) {
+        for (const ally of this.state.items) {
           if (ally.side !== item.side || ally.id === item.id) continue
-          if (!this.isAdjacentByFootprint(ally, item)) continue
-          if (!this.isDamageBonusEligible(ally)) continue
+          if (!isAdjacentByFootprint(ally, item)) continue
+          if (!isDamageBonusEligible(ally)) continue
           ally.baseStats.damage += v
         }
       }
@@ -2157,7 +1056,7 @@ export class CombatEngine {
     if (allShieldUseLine) {
       const v = Math.round(tierValueFromLine(allShieldUseLine, tIdx)) * useRepeatCount
       if (v > 0) {
-        for (const ally of this.items) {
+        for (const ally of this.state.items) {
           if (ally.side !== item.side) continue
           if (ally.baseStats.shield <= 0) continue
           ally.baseStats.shield += v
@@ -2232,7 +1131,7 @@ export class CombatEngine {
       if (line) {
         const v = Math.round(tierValueFromLine(line, tIdx))
         if (v > 0) {
-          for (const ally of this.items) {
+          for (const ally of this.state.items) {
             if (ally.side !== item.side) continue
             if (ally.baseStats.poison <= 0) continue
             ally.baseStats.poison += v
@@ -2297,7 +1196,7 @@ export class CombatEngine {
       if (poisonToBurnLine) {
         const v = Math.round(tierValueFromLine(poisonToBurnLine, tIdx))
         if (v > 0) {
-          for (const ally of this.items) {
+          for (const ally of this.state.items) {
             if (ally.side !== item.side) continue
             if (ally.baseStats.burn <= 0) continue
             ally.baseStats.burn += v
@@ -2327,11 +1226,11 @@ export class CombatEngine {
 
     const adjacentBoomerangDouble = lines.some((s) => /相邻回旋镖时伤害翻倍/.test(s))
     if (adjacentBoomerangDouble) {
-      const hasAdjacentSame = this.items.some((ally) =>
+      const hasAdjacentSame = this.state.items.some((ally) =>
         ally.side === item.side
         && ally.id !== item.id
         && ally.defId === item.defId
-        && this.isAdjacentByFootprint(ally, item),
+        && isAdjacentByFootprint(ally, item),
       )
       if (hasAdjacentSame) damageAfterBonus *= 2
     }
@@ -2373,7 +1272,7 @@ export class CombatEngine {
     }
 
     // 邻接被动：相邻物品攻击时，攻击造成 X 伤害
-    for (const ally of this.items) {
+    for (const ally of this.state.items) {
       if (ally.side !== item.side || ally.id === item.id) continue
       if (!this.isAdjacentById(ally.id, item.id)) continue
       const allyDef = findItemDef(ally.defId)
@@ -2388,7 +1287,7 @@ export class CombatEngine {
         && item.runtime.ammoMax > 0
         && ((isAllAmmoShot && ammoBeforeUse > 0) || (!isAllAmmoShot && ammoBeforeUse === 1))
       if (lines.some((s) => /唯一的攻击物品.*触发2次/.test(s))) {
-        const attackers = this.items.filter((it) => it.side === item.side && it.baseStats.damage > 0)
+        const attackers = this.state.items.filter((it) => it.side === item.side && it.baseStats.damage > 0)
         if (attackers.length === 1) fireCount = Math.max(fireCount, 2)
       }
       let progressiveUseBonus = 0
@@ -2401,14 +1300,14 @@ export class CombatEngine {
           shotDamage = Math.max(0, shotDamage * 2)
         }
         if (lines.some((s) => /如果这是唯一的伤害物品[，,]?造成3倍伤害/.test(s))) {
-          const attackers = this.items.filter((it) => it.side === item.side && this.isDamageItemForUniqueCheck(it))
+          const attackers = this.state.items.filter((it) => it.side === item.side && this.isDamageItemForUniqueCheck(it))
           if (attackers.length === 1) shotDamage = Math.max(0, shotDamage * 3)
         }
         if (willEmptyAmmoThisUse && emptyAmmoBurstMul > 1) {
           shotDamage = Math.max(0, Math.round(shotDamage * emptyAmmoBurstMul))
         }
-          this.pendingHits.push({
-          dueTick: this.tickIndex + i * shotIntervalTick,
+          this.state.pendingHits.push({
+          dueTick: this.state.tickIndex + i * shotIntervalTick,
           side: item.side,
           sourceItemId: item.id,
           defId: item.defId,
@@ -2426,11 +1325,11 @@ export class CombatEngine {
     }
 
     if (lines.some((s) => /摧毁敌人的1件物品/.test(s))) {
-      const enemies = this.items
+      const enemies = this.state.items
         .filter((it) => it.side !== item.side)
-        .filter((it) => !this.isItemDestroyImmune(it))
+        .filter((it) => !isItemDestroyImmune(it))
       if (enemies.length > 0) {
-        const rng = makeSeededRng(this.seedFrom(item.id, this.tickIndex))
+        const rng = makeSeededRng(seedFrom(item.id, this.state.tickIndex))
         const picked = enemies[Math.floor(rng() * enemies.length)]
         if (picked) {
           EventBus.emit('battle:item_destroy', {
@@ -2446,51 +1345,51 @@ export class CombatEngine {
 
     if (item.runtime.ammoMax > 0) {
       const ammoBefore = item.runtime.ammoCurrent
-      const phantomCount = this.items.filter((it) => {
+      const phantomCount = this.state.items.filter((it) => {
         if (it.side !== item.side) return false
         const def2 = findItemDef(it.defId)
-        return this.hasLine(def2, /弹药物品伤害\+\d+(?:[\/|]\d+)*[，,]?弹药消耗翻倍/)
+        return hasLine(def2, /弹药物品伤害\+\d+(?:[\/|]\d+)*[，,]?弹药消耗翻倍/)
       }).length
       const singleUseCost = Math.max(1, 1 + phantomCount)
       if (isAllAmmoShot) item.runtime.ammoCurrent = Math.max(0, item.runtime.ammoCurrent - fireCount)
       else item.runtime.ammoCurrent = Math.max(0, item.runtime.ammoCurrent - singleUseCost)
       const ammoSpent = Math.max(0, ammoBefore - item.runtime.ammoCurrent)
       const becameEmpty = ammoBefore > 0 && item.runtime.ammoCurrent <= 0
-      if (this.hasSkill(item.side, 'skill9') && !this.skillFirstAmmoEmptyTriggeredBySide[item.side] && becameEmpty) {
-        this.skillFirstAmmoEmptyTriggeredBySide[item.side] = true
+      if (this.hasSkill(item.side, 'skill9') && !this.state.skillFirstAmmoEmptyTriggeredBySide[item.side] && becameEmpty) {
+        this.state.skillFirstAmmoEmptyTriggeredBySide[item.side] = true
         this.refillAmmoAndTriggerGrowth(item, 3)
       }
       if (this.hasSkill(item.side, 'skill52') && becameEmpty) {
-        if (makeSeededRng(this.seedFrom(item.defId, this.tickIndex))() < 0.5) {
+        if (makeSeededRng(seedFrom(item.defId, this.state.tickIndex))() < 0.5) {
           this.refillAmmoAndTriggerGrowth(item, item.runtime.ammoMax)
         }
       }
       if (this.hasSkill(item.side, 'skill54') && ammoSpent > 0) {
-        for (const ally of this.items) {
+        for (const ally of this.state.items) {
           if (ally.side !== item.side) continue
-          if (!this.isDamageBonusEligible(ally)) continue
+          if (!isDamageBonusEligible(ally)) continue
           ally.baseStats.damage += 5
         }
       }
       if (this.hasSkill(item.side, 'skill85') && becameEmpty) {
-        for (const ally of this.items) {
+        for (const ally of this.state.items) {
           if (ally.side !== item.side || ally.id === item.id) continue
-          if (!this.isAdjacentByFootprint(ally, item)) continue
-          if (!this.isDamageBonusEligible(ally)) continue
+          if (!isAdjacentByFootprint(ally, item)) continue
+          if (!isDamageBonusEligible(ally)) continue
           ally.baseStats.damage += 50
         }
       }
 
       if (becameEmpty) {
-        for (const owner of this.items) {
+        for (const owner of this.state.items) {
           if (owner.side !== item.side) continue
           const ownerDef = findItemDef(owner.defId)
           const line = skillLines(ownerDef).find((s) => /任意物品弹药耗尽时为其补充\d+(?:[\/|]\d+)*发弹药并充能\d+(?:[\/|]\d+)*秒/.test(s))
           if (!line) continue
           const gain = Math.max(0, Math.round(tierValueFromLine(line, tierIndexFromRaw(ownerDef, owner.tier))))
           if (gain <= 0) continue
-          this.pendingAmmoRefills.push({
-            dueTick: this.tickIndex + 1,
+          this.state.pendingAmmoRefills.push({
+            dueTick: this.state.tickIndex + 1,
             sourceItemId: owner.id,
             targetItemId: item.id,
             gainAmmo: gain,
@@ -2513,9 +1412,9 @@ export class CombatEngine {
       })()
       if (gain > 0) {
         const allTeamRefill = /为其他物品补充\d+(?:[\/|]\d+)*发弹药/.test(refillAmmoLine)
-        for (const ally of this.items) {
+        for (const ally of this.state.items) {
           if (ally.side !== item.side || ally.id === item.id) continue
-          if (!allTeamRefill && !this.isAdjacentByFootprint(ally, item)) continue
+          if (!allTeamRefill && !isAdjacentByFootprint(ally, item)) continue
           if (ally.runtime.ammoMax <= 0) continue
           this.refillAmmoAndTriggerGrowth(ally, gain)
         }
@@ -2531,7 +1430,7 @@ export class CombatEngine {
       const fixedSeries = selfDestroyExplodeLine.match(/造成\s*(\d+(?:[\/|]\d+)*)\s*伤害/)
       const fixedDamage = fixedSeries?.[1] ? Math.max(0, Math.round(pickTierSeriesValue(fixedSeries[1], tIdx))) : 0
       const explodeDamage = pct > 0 ? Math.round(targetHero.maxHp * (pct / 100)) : fixedDamage
-      if (explodeDamage > 0) this.applyDirectSkillDamage(item.side, explodeDamage, item.id, 'item')
+      if (explodeDamage > 0) this.skillSystem.applyDirectSkillDamage(item.side, explodeDamage, item.id, 'item')
       this.removeItemFromBattle(item.id)
       return
     }
@@ -2539,11 +1438,11 @@ export class CombatEngine {
     const postAttackDamageLine = lines.find((s) => /每次攻击后伤害\+\d+(?:[\/|]\d+)*/.test(s))
     if (postAttackDamageLine) {
       const v = Math.round(tierValueFromLine(postAttackDamageLine, tIdx)) * useRepeatCount
-      if (v > 0 && this.isDamageBonusEligible(item)) item.baseStats.damage += v
+      if (v > 0 && isDamageBonusEligible(item)) item.baseStats.damage += v
     }
 
     // 文案型口径兼容：如「每次使用后伤害提升，弹药:1」未给出明确增量时，按该物品当前档位基础攻击值增长
-    if (!postAttackDamageLine && lines.some((s) => /每次使用后伤害提升/.test(s)) && this.isDamageBonusEligible(item)) {
+    if (!postAttackDamageLine && lines.some((s) => /每次使用后伤害提升/.test(s)) && isDamageBonusEligible(item)) {
       const attackLine = lines.find((s) => /攻击造成\d+(?:[\/|]\d+)*伤害/.test(s))
       if (attackLine) {
         const grow = Math.max(0, Math.round(tierValueFromLine(attackLine, tIdx))) * useRepeatCount
@@ -2561,22 +1460,22 @@ export class CombatEngine {
     if (adjacentShieldGrowLine) {
       const v = Math.round(tierValueFromLine(adjacentShieldGrowLine, tIdx)) * useRepeatCount
       if (v > 0) {
-        for (const ally of this.items) {
+        for (const ally of this.state.items) {
           if (ally.side !== item.side || ally.id === item.id) continue
           if (ally.baseStats.shield <= 0) continue
-          if (!this.isAdjacentByFootprint(ally, item)) continue
+          if (!isAdjacentByFootprint(ally, item)) continue
           ally.baseStats.shield += v
         }
       }
     }
 
-    if (lines.some((s) => /(?:每次)?使用后伤害翻倍/.test(s)) && this.isDamageBonusEligible(item)) {
+    if (lines.some((s) => /(?:每次)?使用后伤害翻倍/.test(s)) && isDamageBonusEligible(item)) {
       for (let i = 0; i < useRepeatCount; i++) item.baseStats.damage = Math.max(0, item.baseStats.damage * 2)
     }
 
     // 每次使用后自身 CD 减少 1 秒（本场战斗内）
     if (lines.some((s) => /每次使用后自身CD减少1秒/.test(s))) {
-      item.baseStats.cooldownMs = Math.max(this.minReducedCdMsFor(item), item.baseStats.cooldownMs - 1000 * useRepeatCount)
+      item.baseStats.cooldownMs = Math.max(this.skillSystem.minReducedCdMsFor(item), item.baseStats.cooldownMs - 1000 * useRepeatCount)
     }
     const postUseCooldownLine = lines.find((s) => /攻击后间隔/.test(s))
     if (postUseCooldownLine) {
@@ -2586,7 +1485,7 @@ export class CombatEngine {
         if (pct > 0) {
           const factor = Math.pow(1 - pct, useRepeatCount)
           item.baseStats.cooldownMs = Math.max(
-            this.minReducedCdMsFor(item),
+            this.skillSystem.minReducedCdMsFor(item),
             Math.round(item.baseStats.cooldownMs * factor),
           )
         }
@@ -2601,7 +1500,7 @@ export class CombatEngine {
           if (Number.isFinite(parsedMin) && parsedMin > 0) minMs = parsedMin
         }
         item.baseStats.cooldownMs = Math.max(
-          Math.max(minMs, this.minReducedCdMsFor(item)),
+          Math.max(minMs, this.skillSystem.minReducedCdMsFor(item)),
           item.baseStats.cooldownMs - reduceMs * useRepeatCount,
         )
       }
@@ -2618,15 +1517,15 @@ export class CombatEngine {
     if (flyHasteLine) {
       const sec = tierValueFromLine(flyHasteLine, tIdx)
       if (sec > 0) {
-        const targets = this.items.filter((it) => it.side === item.side && it.id !== item.id && this.isAdjacentByFootprint(it, item))
-        this.applyHasteToTargetItems(item, targets, Math.round(sec * 1000 * useRepeatCount))
+        const targets = this.state.items.filter((it) => it.side === item.side && it.id !== item.id && isAdjacentByFootprint(it, item))
+        this.itemSystem.applyHasteToTargetItems(item, targets, Math.round(sec * 1000 * useRepeatCount))
       }
     }
   }
 
   private applyBattleStartEffects(): void {
-    this.applyBattleStartPassiveGrowths()
-    for (const item of this.items) {
+    this.skillSystem.applyBattleStartPassiveGrowths()
+    for (const item of this.state.items) {
       const def = findItemDef(item.defId)
       if (!def) continue
       const lines = skillLines(def)
@@ -2644,7 +1543,7 @@ export class CombatEngine {
       }))
       for (const spec of startSpecs) {
         const side: 'player' | 'enemy' = spec.targetSide === 'ally' ? item.side : (item.side === 'player' ? 'enemy' : 'player')
-        const targets = this.pickControlTargets({
+        const targets = this.itemSystem.pickControlTargets({
           side,
           count: spec.targetAll ? 999 : spec.count,
           mode: spec.targetMode,
@@ -2670,136 +1569,10 @@ export class CombatEngine {
     }
   }
 
-  private applyCardEffects(source: CombatItemRunner, def: ItemDef | null): { freeze: number; slow: number; haste: number } {
-    if (!def) return { freeze: 0, slow: 0, haste: 0 }
-    const out = { freeze: 0, slow: 0, haste: 0 }
-    const specs = parseControlSpecsFromDef(def, getConfig().combatRuntime)
-    for (const spec of specs) {
-      const side: 'player' | 'enemy' =
-        spec.targetSide === 'ally'
-          ? source.side
-          : (source.side === 'player' ? 'enemy' : 'player')
-      const targets = this.pickControlTargets({
-        side,
-        count: spec.targetAll ? 999 : spec.count,
-        mode: spec.targetMode,
-        source,
-        excludeId: spec.targetSide === 'ally' ? source.id : undefined,
-      })
-      for (const target of targets) {
-        if (spec.status === 'freeze') target.runtime.modifiers.freezeMs = Math.max(target.runtime.modifiers.freezeMs, spec.durationMs)
-        if (spec.status === 'slow') target.runtime.modifiers.slowMs = Math.max(target.runtime.modifiers.slowMs, spec.durationMs)
-        if (spec.status === 'haste') target.runtime.modifiers.hasteMs = Math.max(target.runtime.modifiers.hasteMs, spec.durationMs)
-        if (spec.status === 'freeze') out.freeze += 1
-        if (spec.status === 'slow') out.slow += 1
-        if (spec.status === 'haste') out.haste += 1
-        EventBus.emit('battle:status_apply', {
-          targetId: target.id,
-          sourceItemId: source.id,
-          status: spec.status,
-          amount: spec.durationMs,
-          targetType: 'item',
-          targetSide: target.side,
-          sourceType: 'item',
-          sourceSide: source.side,
-        })
-      }
-    }
-    return out
-  }
-
-  private pickControlTargets(params: {
-    side: 'player' | 'enemy'
-    count: number
-    mode: ControlSpec['targetMode']
-    source: CombatItemRunner
-    excludeId?: string
-  }): CombatItemRunner[] {
-    const { side, count, mode, source, excludeId } = params
-    const base = this.items
-      .filter((it) => it.side === side && it.id !== excludeId)
-      .sort((a, b) => (a.col - b.col) || a.id.localeCompare(b.id))
-    if (base.length === 0) return []
-
-    const limitedCount = Math.max(0, Math.min(count, base.length))
-    if (limitedCount === 0) return []
-
-    if (mode === 'adjacent') {
-      const adjacent = base.filter((it) => this.isAdjacentByFootprint(it, source))
-      if (adjacent.length <= limitedCount) return adjacent
-      return adjacent.slice(0, limitedCount)
-    }
-
-    if (mode === 'left') {
-      const sourceLeft = source.col
-      const left = base
-        .filter((it) => it.col + this.itemWidth(it.size) - 1 === sourceLeft - 1)
-        .sort((a, b) => a.id.localeCompare(b.id))
-      return left.slice(0, limitedCount)
-    }
-
-    if (mode === 'fastest') {
-      const ordered = [...base].sort((a, b) => {
-        const ar = Math.max(0, a.baseStats.cooldownMs - a.runtime.currentChargeMs)
-        const br = Math.max(0, b.baseStats.cooldownMs - b.runtime.currentChargeMs)
-        return ar - br || a.id.localeCompare(b.id)
-      })
-      return ordered.slice(0, limitedCount)
-    }
-
-    if (mode === 'random') {
-      const seed = this.seedFrom(source.id, this.tickIndex)
-      const shuffled = this.shuffleDeterministic(base, seed)
-      return shuffled.slice(0, limitedCount)
-    }
-
-    if (limitedCount >= base.length) return base
-    return base.slice(0, limitedCount)
-  }
-
-  private itemWidth(size: ItemSizeNorm): number {
-    if (size === '3x1') return 3
-    if (size === '2x1') return 2
-    return 1
-  }
-
-  private isAdjacentByFootprint(a: CombatItemRunner, b: CombatItemRunner): boolean {
-    const aStart = a.col
-    const aEnd = a.col + this.itemWidth(a.size) - 1
-    const bStart = b.col
-    const bEnd = b.col + this.itemWidth(b.size) - 1
-    return aStart === bEnd + 1 || bStart === aEnd + 1
-  }
-
-  private seedFrom(key: string, salt: number): number {
-    let h = 2166136261 ^ salt
-    for (let i = 0; i < key.length; i++) {
-      h ^= key.charCodeAt(i)
-      h = Math.imul(h, 16777619)
-    }
-    return h >>> 0
-  }
-
-  private shuffleDeterministic<T>(arr: T[], seed: number): T[] {
-    const out = [...arr]
-    let s = seed || 1
-    const next = (): number => {
-      s = (Math.imul(1664525, s) + 1013904223) >>> 0
-      return s / 0x100000000
-    }
-    for (let i = out.length - 1; i > 0; i--) {
-      const j = Math.floor(next() * (i + 1))
-      const t = out[i]
-      out[i] = out[j]!
-      out[j] = t!
-    }
-    return out
-  }
-
   private resolvePendingHitsForCurrentTick(): void {
-    if (!this.pendingHits.length) return
-    const due = this.pendingHits.filter((h) => h.dueTick <= this.tickIndex)
-    this.pendingHits = this.pendingHits.filter((h) => h.dueTick > this.tickIndex)
+    if (!this.state.pendingHits.length) return
+    const due = this.state.pendingHits.filter((h) => h.dueTick <= this.state.tickIndex)
+    this.state.pendingHits = this.state.pendingHits.filter((h) => h.dueTick > this.state.tickIndex)
 
     for (let hitIdx = 0; hitIdx < due.length; hitIdx++) {
       const hit = due[hitIdx]!
@@ -2809,8 +1582,8 @@ export class CombatEngine {
         side: hit.side,
         multicast: 1,
       })
-      const attacker = this.items.find((it) => it.id === hit.sourceItemId)
-      if (attacker) this.applyOnWeaponAttackTriggers(attacker)
+      const attacker = this.state.items.find((it) => it.id === hit.sourceItemId)
+      if (attacker) this.itemSystem.applyOnWeaponAttackTriggers(attacker)
 
       let resolvedBaseDamage = hit.baseDamage
       let resolvedDamage = hit.damage
@@ -2824,9 +1597,9 @@ export class CombatEngine {
       }
       resolvedBaseDamage = Math.max(0, Math.min(ITEM_DAMAGE_CAP, Math.round(resolvedBaseDamage)))
       resolvedDamage = Math.max(0, Math.min(ITEM_DAMAGE_CAP, Math.round(resolvedDamage)))
-      const targetHero = hit.side === 'player' ? this.enemyHero : this.playerHero
+      const targetHero = hit.side === 'player' ? this.state.enemyHero : this.state.playerHero
       if (targetHero.hp <= 0) continue
-      const critRoll = makeSeededRng(this.seedFrom(hit.defId, this.tickIndex * 1000 + hitIdx))() * 100
+      const critRoll = makeSeededRng(seedFrom(hit.defId, this.state.tickIndex * 1000 + hitIdx))() * 100
       const isCrit = critRoll < hit.crit
       const critMult = getConfig().combatRuntime.critMultiplier
       const panel = Math.max(0, Math.min(ITEM_DAMAGE_CAP, isCrit ? Math.round(resolvedDamage * critMult) : resolvedDamage))
@@ -2841,7 +1614,7 @@ export class CombatEngine {
         }
         if (remaining > 0) {
           targetHero.hp = Math.max(0, targetHero.hp - remaining)
-          this.handleHeroHpThresholdTriggers(targetHero.side, hpBefore, targetHero.hp)
+          this.skillSystem.handleHeroHpThresholdTriggers(targetHero.side, hpBefore, targetHero.hp)
         }
       } else {
         remaining = 0
@@ -2862,17 +1635,17 @@ export class CombatEngine {
       })
 
       if (panel > 0) {
-        this.applyOnHeroDamagedReactions(targetHero.side)
+        this.skillSystem.applyOnHeroDamagedReactions(targetHero.side)
       }
 
       if (panel > 0) {
-        this.applyWanJianGrowthOnAnyDamage(hit.side)
+        this.skillSystem.applyWanJianGrowthOnAnyDamage(hit.side)
         if (attacker) {
           this.applyOnDealDamageLifesteal(attacker, remaining)
-          this.applyOnDealDamageSkillTriggers(attacker)
-          this.applyAdjacentAttackDamageGrowth(attacker)
+          this.skillSystem.applyOnDealDamageSkillTriggers(attacker)
+          this.itemSystem.applyAdjacentAttackDamageGrowth(attacker)
         }
-        this.tryDeathMarkExecution(hit.side, targetHero)
+        this.skillSystem.tryDeathMarkExecution(hit.side, targetHero)
       }
 
       if (targetHero.hp === 0) {
@@ -2883,55 +1656,12 @@ export class CombatEngine {
       }
     }
   }
-
-  private applyOnHeroDamagedReactions(side: 'player' | 'enemy'): void {
-    const hero = side === 'player' ? this.playerHero : this.enemyHero
-    if (hero.hp <= 0) return
-    for (const item of this.items) {
-      if (item.side !== side) continue
-      const def = findItemDef(item.defId)
-      if (!def) continue
-      const lines = skillLines(def)
-      const tIdx = tierIndexFromRaw(def, item.tier)
-
-      const gainShieldLine = lines.find((s) => /受到攻击伤害时获得\d+(?:\/\d+)*护盾/.test(s))
-      if (gainShieldLine) {
-        const rawAmount = Math.round(tierValueFromLine(gainShieldLine, tIdx))
-        const amount = this.scaleShieldGain(side, rawAmount)
-        if (amount > 0) {
-          hero.shield += amount
-          EventBus.emit('battle:gain_shield', {
-            targetId: hero.id,
-            sourceItemId: item.id,
-            amount,
-            targetType: 'hero',
-            targetSide: hero.side,
-            sourceType: 'item',
-            sourceSide: item.side,
-          })
-          this.applyOnShieldGainCharge(side)
-          this.applyShieldGainSkillTriggers(side, item.id, amount, false)
-        }
-      }
-
-      const selfChargeLine = lines.find((s) => /受到攻击时为此物品充能\d+(?:[\/|]\d+)*秒/.test(s))
-      if (selfChargeLine) {
-        const gainMs = Math.max(0, Math.round(tierValueFromLine(selfChargeLine, tIdx) * 1000))
-        if (gainMs > 0) this.chargeItemByMs(item, gainMs)
-      }
-
-      if (lines.some((s) => /受到攻击时(?:额外|立即)使用此物品/.test(s))) {
-        this.enqueueExtraTriggeredUse(item)
-      }
-    }
-  }
-
   private stepFatigue(): void {
     const cr = getConfig().combatRuntime
     const tickMs = Math.max(1, rv('fatigueTickMs', cr.fatigueTickMs ?? cr.fatigueIntervalMs ?? 1000))
     const fixedBase = Math.max(0, rv('fatigueBaseValue', cr.fatigueBaseValue ?? cr.fatigueDamageFixedPerInterval ?? 1))
     const doubleEveryMs = Math.max(1, rv('fatigueDoubleEveryMs', cr.fatigueDoubleEveryMs ?? 1000))
-    const elapsedFatigueMs = this.fatigueTickCount * tickMs
+    const elapsedFatigueMs = this.state.fatigueTickCount * tickMs
     const stack = Math.floor(elapsedFatigueMs / doubleEveryMs)
     const factor = Math.pow(2, Math.min(30, stack))
     const panelDamage = Math.max(1, Math.round(fixedBase * factor))
@@ -2950,25 +1680,25 @@ export class CombatEngine {
       }
       if (remaining > 0) {
         hero.hp = Math.max(0, hero.hp - remaining)
-        this.handleHeroHpThresholdTriggers(hero.side, hpBefore, hero.hp)
+        this.skillSystem.handleHeroHpThresholdTriggers(hero.side, hpBefore, hero.hp)
       }
       return { panel, hpDamage: remaining }
     }
 
-    const p = applyOne(this.playerHero, pPanel)
-    const e = applyOne(this.enemyHero, ePanel)
+    const p = applyOne(this.state.playerHero, pPanel)
+    const e = applyOne(this.state.enemyHero, ePanel)
 
-    this.fatigueTickCount += 1
+    this.state.fatigueTickCount += 1
 
     EventBus.emit('battle:fatigue_tick', {
-      elapsedMs: this.elapsedMs,
-      tick: this.fatigueTickCount,
+      elapsedMs: this.state.elapsedMs,
+      tick: this.state.fatigueTickCount,
       playerDamage: p.hpDamage,
       enemyDamage: e.hpDamage,
     })
 
     EventBus.emit('battle:take_damage', {
-      targetId: this.playerHero.id,
+      targetId: this.state.playerHero.id,
       sourceItemId: 'fatigue',
       amount: p.panel,
       isCrit: false,
@@ -2980,7 +1710,7 @@ export class CombatEngine {
       finalDamage: p.hpDamage,
     })
     EventBus.emit('battle:take_damage', {
-      targetId: this.enemyHero.id,
+      targetId: this.state.enemyHero.id,
       sourceItemId: 'fatigue',
       amount: e.panel,
       isCrit: false,
@@ -3002,23 +1732,23 @@ export class CombatEngine {
     const regenTickEvery = Math.max(1, Math.round(Math.max(1, rv('regenTickMs', cr.regenTickMs)) / tickMs))
     const skill33TickEvery = Math.max(1, Math.round(1000 / tickMs))
 
-    if (this.tickIndex % burnTickEvery === 0) {
-      this.applyBurnTick(this.playerHero)
-      this.applyBurnTick(this.enemyHero)
+    if (this.state.tickIndex % burnTickEvery === 0) {
+      this.applyBurnTick(this.state.playerHero)
+      this.applyBurnTick(this.state.enemyHero)
     }
 
-    if (this.tickIndex % poisonTickEvery === 0) {
-      this.applyPoisonTick(this.playerHero)
-      this.applyPoisonTick(this.enemyHero)
+    if (this.state.tickIndex % poisonTickEvery === 0) {
+      this.applyPoisonTick(this.state.playerHero)
+      this.applyPoisonTick(this.state.enemyHero)
     }
 
-    if (this.tickIndex % regenTickEvery === 0) {
-      this.applyRegenTick(this.playerHero)
-      this.applyRegenTick(this.enemyHero)
+    if (this.state.tickIndex % regenTickEvery === 0) {
+      this.applyRegenTick(this.state.playerHero)
+      this.applyRegenTick(this.state.enemyHero)
     }
 
-    if (this.tickIndex % skill33TickEvery === 0) {
-      this.applySkill33RegenTick()
+    if (this.state.tickIndex % skill33TickEvery === 0) {
+      this.skillSystem.applySkill33RegenTick()
     }
   }
 
@@ -3037,7 +1767,7 @@ export class CombatEngine {
     if (hpDamage > 0) {
       const hpBefore = hero.hp
       hero.hp = Math.max(0, hero.hp - hpDamage)
-      this.handleHeroHpThresholdTriggers(hero.side, hpBefore, hero.hp)
+      this.skillSystem.handleHeroHpThresholdTriggers(hero.side, hpBefore, hero.hp)
       EventBus.emit('battle:take_damage', {
         targetId: hero.id,
         sourceItemId: 'status_burn',
@@ -3073,7 +1803,7 @@ export class CombatEngine {
     if (this.isHeroInvincible(hero.side)) return
     const hpBefore = hero.hp
     hero.hp = Math.max(0, hero.hp - layer)
-    this.handleHeroHpThresholdTriggers(hero.side, hpBefore, hero.hp)
+    this.skillSystem.handleHeroHpThresholdTriggers(hero.side, hpBefore, hero.hp)
     EventBus.emit('battle:take_damage', {
       targetId: hero.id,
       sourceItemId: 'status_poison',
@@ -3106,9 +1836,9 @@ export class CombatEngine {
   }
 
   private shouldResolve(): boolean {
-    this.applyReviveIfPossible('player')
-    this.applyReviveIfPossible('enemy')
-    return this.playerHero.hp <= 0 || this.enemyHero.hp <= 0
+    this.skillSystem.applyReviveIfPossible('player')
+    this.skillSystem.applyReviveIfPossible('enemy')
+    return this.state.playerHero.hp <= 0 || this.state.enemyHero.hp <= 0
   }
 
   private computeSurvivingDamage(_winnerSide: 'player' | 'enemy'): number {
@@ -3117,24 +1847,24 @@ export class CombatEngine {
   }
 
   private finishCombat(): void {
-    if (this.finished) return
-    this.finished = true
-    this.phase = 'END'
+    if (this.state.finished) return
+    this.state.finished = true
+    this.state.phase = 'END'
     let winner: 'player' | 'enemy' | 'draw' = 'draw'
-    if (this.playerHero.hp > 0 && this.enemyHero.hp <= 0) winner = 'player'
-    if (this.enemyHero.hp > 0 && this.playerHero.hp <= 0) winner = 'enemy'
+    if (this.state.playerHero.hp > 0 && this.state.enemyHero.hp <= 0) winner = 'player'
+    if (this.state.enemyHero.hp > 0 && this.state.playerHero.hp <= 0) winner = 'enemy'
     const survivingDamage = winner === 'draw' ? 0
       : winner === 'player' ? this.computeSurvivingDamage('player')
       : this.computeSurvivingDamage('enemy')
-    this.result = { winner, ticks: this.tickIndex, survivingDamage }
+    this.state.result = { winner, ticks: this.state.tickIndex, survivingDamage }
     EventBus.emit('battle:end', {
       winner,
       blameLog: [
-        `day=${this.day}`,
-        `ticks=${this.tickIndex}`,
-        `playerHp=${this.playerHero.hp}`,
-        `enemyHp=${this.enemyHero.hp}`,
-        `fatigue=${this.inFatigue ? '1' : '0'}`,
+        `day=${this.state.day}`,
+        `ticks=${this.state.tickIndex}`,
+        `playerHp=${this.state.playerHero.hp}`,
+        `enemyHp=${this.state.enemyHero.hp}`,
+        `fatigue=${this.state.inFatigue ? '1' : '0'}`,
       ],
     })
   }
