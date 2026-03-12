@@ -28,7 +28,7 @@ import { normalizeSize, type ItemDef } from '@/items/ItemDef'
 import { resolveItemTierBaseStats } from '@/items/itemTierStats'
 import { ShopManager, getDailyGoldForDay, type ShopSlot, type TierKey } from '@/shop/ShopManager'
 import { ShopPanelView }     from '@/ui/ShopPanelView'
-import { SellPopup, type ItemInfoMode, type ItemInfoCustomDisplay } from '@/ui/SellPopup'
+import { SellPopup, type ItemInfoCustomDisplay } from '@/ui/SellPopup'
 import { getConfig as getDebugCfg, onConfigChange as onDebugCfgChange } from '@/config/debugConfig'
 import { getItemIconUrl } from '@/core/assetPath'
 import { PhaseManager } from '@/core/PhaseManager'
@@ -182,6 +182,12 @@ import {
   type ToastReason,
   createHintToast, showHintToast,
 } from './shop/ShopToastSystem'
+import {
+  shouldShowSimpleDescriptions, isSkillDraftRerollEnabled, isEventDraftRerollEnabled,
+  getDefaultItemInfoMode, getDefaultSkillDetailMode,
+  resetInfoModeSelection, resolveInfoMode,
+  isShopInputEnabled,
+} from './shop/ShopModeHelpers'
 
 // ---- 場景共享狀態上下文 ----
 const _ctx: ShopSceneCtx = createShopSceneCtx()
@@ -459,50 +465,9 @@ type CircleBtnHandle = {
   setSubLabel: (text: string) => void
 }
 
-function shouldShowSimpleDescriptions(): boolean {
-  return getDebugCfg('gameplayShowSimpleDescriptions') >= 0.5
-}
-
-function isSkillDraftRerollEnabled(): boolean {
-  return getDebugCfg('gameplaySkillDraftRerollEnabled') >= 0.5
-}
-
-function isEventDraftRerollEnabled(): boolean {
-  return getDebugCfg('gameplayEventDraftRerollEnabled') >= 0.5
-}
-
-function getDefaultItemInfoMode(): ItemInfoMode {
-  return shouldShowSimpleDescriptions() ? 'simple' : 'detailed'
-}
-
-function getDefaultSkillDetailMode(): 'simple' | 'detailed' {
-  return shouldShowSimpleDescriptions() ? 'simple' : 'detailed'
-}
-
-function resetInfoModeSelection(ctx: ShopSceneCtx = _ctx): void {
-  ctx.selectedInfoKey = null
-  ctx.selectedInfoMode = getDefaultItemInfoMode()
-}
-
-function resolveInfoMode(nextKey: string, ctx: ShopSceneCtx = _ctx): ItemInfoMode {
-  if (!shouldShowSimpleDescriptions()) {
-    ctx.selectedInfoKey = nextKey
-    ctx.selectedInfoMode = 'detailed'
-    return 'detailed'
-  }
-  if (!ctx.sellPopup?.visible) {
-    ctx.selectedInfoKey = nextKey
-    ctx.selectedInfoMode = 'simple'
-    return ctx.selectedInfoMode
-  }
-  if (ctx.selectedInfoKey === nextKey) {
-    ctx.selectedInfoMode = ctx.selectedInfoMode === 'simple' ? 'detailed' : 'simple'
-  } else {
-    ctx.selectedInfoKey = nextKey
-    ctx.selectedInfoMode = 'simple'
-  }
-  return ctx.selectedInfoMode
-}
+// shouldShowSimpleDescriptions / isSkillDraftRerollEnabled / isEventDraftRerollEnabled /
+// getDefaultItemInfoMode / getDefaultSkillDetailMode / resetInfoModeSelection / resolveInfoMode
+// → 已移至 ./shop/ShopModeHelpers.ts
 
 // sync-a 臭鸡蛋：无冷却，可无限扔
 
@@ -655,11 +620,7 @@ function restartRunFromBeginning(ctx: ShopSceneCtx = _ctx): void {
   window.location.reload()
 }
 
-function isShopInputEnabled(ctx: ShopSceneCtx = _ctx): boolean {
-  if (ctx.pvpReadyLocked) return false
-  return PhaseManager.isShopInputEnabled()
-}
-
+// isShopInputEnabled → 已移至 ./shop/ShopModeHelpers.ts
 // createHintToast / shouldShowToast / showHintToast → 已移至 ./shop/ShopToastSystem.ts
 
 function canAffordQuickBuyNow(ctx: ShopSceneCtx = _ctx): boolean {
@@ -3816,7 +3777,7 @@ function initPanelInstances(stage: Container, ctx: ShopSceneCtx = _ctx): void {
       isSkillDraftRerollEnabled: () => isSkillDraftRerollEnabled(),
       getDefaultSkillDetailMode: () => getDefaultSkillDetailMode(),
       showHintToast: (reason, msg, color) => showHintToast(reason, msg, color, _ctx),
-      resetInfoModeSelection: () => resetInfoModeSelection(),
+      resetInfoModeSelection: () => resetInfoModeSelection(_ctx),
       applySellButtonState: () => applySellButtonState(),
     })
     stage.addChild(skillDraftPanel)
@@ -4788,7 +4749,7 @@ function buildButtonRowUI(stage: Container, cfg: ReturnType<typeof getConfig>, c
       cfg.textSizes.phaseButtonLabel,
     )
     refreshBtn.container.on('pointerdown', () => {
-      if (!isShopInputEnabled()) return
+      if (!isShopInputEnabled(_ctx)) return
       clearSelection()
       buyRandomBronzeToBoardOrBackpack()
       refreshBtn.redraw(false)
@@ -4806,7 +4767,7 @@ function buildButtonRowUI(stage: Container, cfg: ReturnType<typeof getConfig>, c
     // 整理按钮（右）
     const sellBtn = makeCircleBtn(getDebugCfg('sellBtnX'), getDebugCfg('sellBtnY'), '整理', 0x3b74ff, 0x3b74ff)
     sellBtn.container.on('pointerdown', () => {
-      if (!isShopInputEnabled()) return
+      if (!isShopInputEnabled(_ctx)) return
       // 选中点击“整理”只执行整理，不再触发丢弃。
       if (ctx.selectedSellAction) ctx.selectedSellAction = null
       clearSelection()
@@ -4825,7 +4786,7 @@ function buildButtonRowUI(stage: Container, cfg: ReturnType<typeof getConfig>, c
       cfg.textSizes.shopButtonLabel,
     )
     phaseBtn.container.on('pointerdown', () => {
-      if (!isShopInputEnabled()) {
+      if (!isShopInputEnabled(_ctx)) {
         SceneManager.goto('shop')
         return
       }
@@ -4900,7 +4861,7 @@ function buildButtonRowUI(stage: Container, cfg: ReturnType<typeof getConfig>, c
       const tier = getInstanceTier(instanceId)
       const star = getInstanceTierStar(instanceId)
       const sellPrice = 0
-      const infoMode = resolveInfoMode(`${kind}:${instanceId}:${tier}:${star}`)
+      const infoMode = resolveInfoMode(`${kind}:${instanceId}:${tier}:${star}`, _ctx)
       ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, infoMode)
 
       ctx.selectedSellAction = () => {
@@ -4915,7 +4876,7 @@ function buildButtonRowUI(stage: Container, cfg: ReturnType<typeof getConfig>, c
     }
 
     const handleShopSlotTap = (slotIndex: number) => {
-      if (!isShopInputEnabled()) return
+      if (!isShopInputEnabled(_ctx)) return
       if (!ctx.shopManager || !ctx.sellPopup) return
       const slot = ctx.shopManager.pool[slotIndex]
       if (!slot) return
@@ -4926,14 +4887,14 @@ function buildButtonRowUI(stage: Container, cfg: ReturnType<typeof getConfig>, c
       ctx.currentSelection = { kind: 'shop', slotIndex }
       ctx.selectedSellAction = null
 
-      const infoMode = resolveInfoMode(`shop:${slotIndex}:${slot.item.id}:${slot.tier}`)
+      const infoMode = resolveInfoMode(`shop:${slotIndex}:${slot.item.id}:${slot.tier}`, _ctx)
       skillDraftPanel?.hideSkillDetailPopup()
       ctx.sellPopup.show(slot.item, getShopSlotPreviewPrice(slot), 'buy', toVisualTier(slot.tier, 1), undefined, infoMode)
       applySellButtonState()
     }
 
     ctx.backpackView!.onTap = (id) => {
-      if (!isShopInputEnabled()) return
+      if (!isShopInputEnabled(_ctx)) return
       if (ctx.specialShopBackpackViewActive) {
         handleSpecialShopBackpackItemTap(id, 'backpack')
         return
@@ -4941,7 +4902,7 @@ function buildButtonRowUI(stage: Container, cfg: ReturnType<typeof getConfig>, c
       selectGridItem(id, ctx.backpackSystem!, ctx.backpackView!, 'backpack')
     }
     ctx.battleView!.onTap   = (id) => {
-      if (!isShopInputEnabled()) return
+      if (!isShopInputEnabled(_ctx)) return
       if (ctx.specialShopBackpackViewActive) {
         handleSpecialShopBackpackItemTap(id, 'battle')
         return
@@ -5046,7 +5007,7 @@ function buildButtonRowUI(stage: Container, cfg: ReturnType<typeof getConfig>, c
     prevDayBtn.cursor    = 'pointer'
     prevDayBtn.on('pointerdown', (e: FederatedPointerEvent) => {
       e.stopPropagation()
-      if (!isShopInputEnabled()) return
+      if (!isShopInputEnabled(_ctx)) return
       setDay(ctx.currentDay - 1)
     })
 
@@ -5060,7 +5021,7 @@ function buildButtonRowUI(stage: Container, cfg: ReturnType<typeof getConfig>, c
     nextDayBtn.cursor    = 'pointer'
     nextDayBtn.on('pointerdown', (e: FederatedPointerEvent) => {
       e.stopPropagation()
-      if (!isShopInputEnabled()) return
+      if (!isShopInputEnabled(_ctx)) return
       setDay(ctx.currentDay + 1)
     })
 
