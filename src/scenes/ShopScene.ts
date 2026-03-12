@@ -163,7 +163,7 @@ import {
   type BackpackTransferAnimSeed,
 } from './shop/AnimationEffects'
 import * as AnimationEffects from './shop/AnimationEffects'
-import { CANVAS_W, CANVAS_H, BTN_RADIUS, BACKPACK_GAP_FROM_BATTLE } from '@/config/layoutConstants'
+import { CANVAS_W, CANVAS_H, BTN_RADIUS } from '@/config/layoutConstants'
 import { getShopToastColors, getShopUiColor, getClassColor } from '@/config/colorPalette'
 import {
   parseAvailableTiers, getSpecialShopSpeedTierText,
@@ -175,6 +175,8 @@ import {
   clamp01, easeOutCubic, lerp,
   getSizeCols, getSizeCellDim, makeGridCellKey,
   compareTier, toVisualTier,
+  getDayActiveCols, getShopItemScale,
+  getBattleItemScale, getBattleZoneX, getBackpackZoneX, getBackpackZoneYByBattle,
 } from './shop/ShopMathHelpers'
 
 // ---- 場景共享狀態上下文 ----
@@ -2514,37 +2516,9 @@ function buyRandomBronzeToBoardOrBackpack(ctx: ShopSceneCtx = _ctx): void {
 
 // ---- Day 辅助 ----
 
-function getDayActiveCols(day: number): number {
-  const slots = getConfig().dailyBattleSlots
-  if (day <= 2) return slots[0] ?? 4
-  if (day <= 4) return slots[1] ?? 5
-  return slots[2] ?? 6
-}
-
-function getShopItemScale(): number {
-  return getDebugCfg('shopItemScale')
-}
-
-function getBattleItemScale(ctx: ShopSceneCtx = _ctx): number {
-  return ctx.showingBackpack
-    ? getDebugCfg('battleItemScaleBackpackOpen')
-    : getDebugCfg('battleItemScale')
-}
-
-function getBattleZoneX(activeCols: number, ctx: ShopSceneCtx = _ctx): number {
-  const s = getBattleItemScale(ctx)
-  return getDebugCfg('battleZoneX') + (CANVAS_W - activeCols * CELL_SIZE * s) / 2
-}
-
-function getBackpackZoneX(activeCols: number, ctx: ShopSceneCtx = _ctx): number {
-  const s = getBattleItemScale(ctx)
-  return (CANVAS_W - activeCols * CELL_SIZE * s) / 2
-}
-
-function getBackpackZoneYByBattle(ctx: ShopSceneCtx = _ctx): number {
-  const s = getBattleItemScale(ctx)
-  return getDebugCfg('battleZoneY') + CELL_HEIGHT * s + BACKPACK_GAP_FROM_BATTLE + (CELL_HEIGHT * (1 - s)) / 2
-}
+// getDayActiveCols / getShopItemScale / getBattleItemScale /
+// getBattleZoneX / getBackpackZoneX / getBackpackZoneYByBattle
+// → 已移至 ./shop/ShopMathHelpers.ts
 
 function grantSkill20DailyBronzeItemIfNeeded(ctx: ShopSceneCtx = _ctx): void {
   SkillSystem.grantSkill20DailyBronzeItemIfNeeded(ctx, {
@@ -4319,10 +4293,10 @@ function buildBattleZoneUI(stage: Container, cfg: ReturnType<typeof getConfig>, 
     ctx.backpackView.setAutoPackEnabled(false)
     ctx.battleView.setStatBadgeMode('archetype')
     ctx.backpackView.setStatBadgeMode('archetype')
-    ctx.battleView.x   = getBattleZoneX(activeCols)
+    ctx.battleView.x   = getBattleZoneX(activeCols, ctx)
     ctx.battleView.y   = getDebugCfg('battleZoneY')
-    ctx.backpackView.x = getBackpackZoneX(ctx.backpackView.activeColCount)
-    ctx.backpackView.y = getBackpackZoneYByBattle()
+    ctx.backpackView.x = getBackpackZoneX(ctx.backpackView.activeColCount, ctx)
+    ctx.backpackView.y = getBackpackZoneYByBattle(ctx)
     ctx.backpackView.visible = true
 
     stage.addChild(ctx.battleView)

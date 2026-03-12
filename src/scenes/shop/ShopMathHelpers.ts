@@ -5,6 +5,11 @@
 import type { ItemSizeNorm } from '@/grid/GridSystem'
 import type { TierKey } from '@/shop/ShopManager'
 import { TIER_ORDER, normalizeTierStar } from './SynthesisLogic'
+import { getConfig } from '@/core/DataLoader'
+import { getConfig as getDebugCfg } from '@/config/debugConfig'
+import { CELL_SIZE, CELL_HEIGHT } from '@/grid/GridZone'
+import { CANVAS_W, BACKPACK_GAP_FROM_BATTLE } from '@/config/layoutConstants'
+import type { ShopSceneCtx } from './ShopSceneContext'
 
 // ── 动画数学 ──────────────────────────────────────────────────
 
@@ -48,4 +53,38 @@ export function compareTier(a: TierKey, b: TierKey): number {
 export function toVisualTier(tier?: TierKey, star?: 1 | 2): string | undefined {
   if (!tier) return undefined
   return `${tier}#${normalizeTierStar(tier, star)}`
+}
+
+// ── 坐标 / 布局计算 ───────────────────────────────────────────
+
+export function getDayActiveCols(day: number): number {
+  const slots = getConfig().dailyBattleSlots
+  if (day <= 2) return slots[0] ?? 4
+  if (day <= 4) return slots[1] ?? 5
+  return slots[2] ?? 6
+}
+
+export function getShopItemScale(): number {
+  return getDebugCfg('shopItemScale')
+}
+
+export function getBattleItemScale(ctx: ShopSceneCtx): number {
+  return ctx.showingBackpack
+    ? getDebugCfg('battleItemScaleBackpackOpen')
+    : getDebugCfg('battleItemScale')
+}
+
+export function getBattleZoneX(activeCols: number, ctx: ShopSceneCtx): number {
+  const s = getBattleItemScale(ctx)
+  return getDebugCfg('battleZoneX') + (CANVAS_W - activeCols * CELL_SIZE * s) / 2
+}
+
+export function getBackpackZoneX(activeCols: number, ctx: ShopSceneCtx): number {
+  const s = getBattleItemScale(ctx)
+  return (CANVAS_W - activeCols * CELL_SIZE * s) / 2
+}
+
+export function getBackpackZoneYByBattle(ctx: ShopSceneCtx): number {
+  const s = getBattleItemScale(ctx)
+  return getDebugCfg('battleZoneY') + CELL_HEIGHT * s + BACKPACK_GAP_FROM_BATTLE + (CELL_HEIGHT * (1 - s)) / 2
 }
