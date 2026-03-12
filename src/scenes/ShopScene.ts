@@ -21,10 +21,10 @@ import type { ItemSizeNorm, PlacedItem } from '@/grid/GridSystem'
 import { GridZone, CELL_HEIGHT } from '@/grid/GridZone'
 import { DragController }    from '@/grid/DragController'
 import { normalizeSize, type ItemDef } from '@/items/ItemDef'
-import { ShopManager, getDailyGoldForDay, type ShopSlot, type TierKey } from '@/shop/ShopManager'
+import { ShopManager, getDailyGoldForDay, type TierKey } from '@/shop/ShopManager'
 import { ShopPanelView }     from '@/ui/ShopPanelView'
-import { SellPopup, type ItemInfoCustomDisplay } from '@/ui/SellPopup'
-import { getConfig as getDebugCfg, onConfigChange as onDebugCfgChange } from '@/config/debugConfig'
+import type { ItemInfoCustomDisplay } from '@/ui/SellPopup'
+import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import { PhaseManager } from '@/core/PhaseManager'
 import { clearBattleSnapshot, getBattleSnapshot, setBattleSnapshot, type BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
 import { PvpContext } from '@/pvp/PvpContext'
@@ -33,8 +33,8 @@ import { clearBattleOutcome, consumeBattleOutcome } from '@/combat/BattleOutcome
 // bronzeSkillConfig, silverSkillConfig, goldSkillConfig imports moved to SkillSystem.ts
 // shouldTriggerSkill48ExtraUpgrade → moved to ShopSynthesisController.ts
 import {
-  Container, Graphics, Text, Sprite,
-  Texture, Rectangle, Ticker,
+  Container, Graphics, Text,
+  Ticker,
   type FederatedPointerEvent,
 } from 'pixi.js'
 import {
@@ -111,7 +111,6 @@ import {
 import * as QuickBuySystem from './shop/QuickBuySystem'
 import {
   getQualityLevelRange,
-  layoutPlayerStatusPanel,
 } from './shop/PlayerStatusUI'
 import * as PlayerStatusUI from './shop/PlayerStatusUI'
 import {
@@ -133,11 +132,9 @@ import {
   playTransformOrUpgradeFlashEffect,
   stopFlashEffect,
   stopBattleGuideHandAnim,
-  showMoveToBattleGuideHand,
-  showBuyGuideHand,
   stopUnlockRevealPlayback
 } from './shop/AnimationEffects'
-import { CANVAS_W, CANVAS_H, BTN_RADIUS } from '@/config/layoutConstants'
+import { CANVAS_W } from '@/config/layoutConstants'
 import { getShopUiColor, getClassColor } from '@/config/colorPalette'
 import {
   parseAvailableTiers, getSpecialShopSpeedTierText,
@@ -159,7 +156,7 @@ import {
 import {
   shouldShowSimpleDescriptions, isSkillDraftRerollEnabled, isEventDraftRerollEnabled,
   getDefaultItemInfoMode, getDefaultSkillDetailMode,
-  resetInfoModeSelection, resolveInfoMode,
+  resetInfoModeSelection,
   isShopInputEnabled,
 } from './shop/ShopModeHelpers'
 import {
@@ -186,6 +183,8 @@ import type { ItemGrantCallbacks } from './shop/ShopItemGrant'
 import * as DragSystem from './shop/ShopDragSystem'
 import type { ShopDragDeps } from './shop/ShopDragSystem'
 import { refreshUpgradeHints } from './shop/ShopUpgradeHints'
+import * as UIBuilders from './shop/ShopUIBuilders'
+import type { TopAreaUICallbacks, ButtonRowUICallbacks } from './shop/ShopUIBuilders'
 
 // ---- 場景共享狀態上下文 ----
 const _ctx: ShopSceneCtx = createShopSceneCtx()
@@ -443,8 +442,6 @@ let neutralItemPanel: NeutralItemPanel | null = null
 let synthesisPanel: SynthesisPanel | null = null
 
 // ---- 布局常量（640×1384 画布，CANVAS_W/H/BTN_RADIUS/BACKPACK_GAP_FROM_BATTLE 来自 layoutConstants）----
-const PHASE_BTN_W   = BTN_RADIUS * 4
-const PHASE_BTN_H   = BTN_RADIUS * 2
 
 // ---- 背包小地图 ----
 const MINI_CELL = 20
@@ -459,13 +456,7 @@ const SHOP_QUICK_BUY_PRICE = 3
 
 // Day 状态
 
-type CircleBtnHandle = {
-  container: Container
-  redraw: (active: boolean) => void
-  setCenter: (cx: number, cy: number) => void
-  setLabel: (label: string) => void
-  setSubLabel: (text: string) => void
-}
+// CircleBtnHandle → imported from ShopSceneContext
 
 // shouldShowSimpleDescriptions / isSkillDraftRerollEnabled / isEventDraftRerollEnabled /
 // getDefaultItemInfoMode / getDefaultSkillDetailMode / resetInfoModeSelection / resolveInfoMode
@@ -799,10 +790,6 @@ function canUseSameArchetypeDiffItemStoneSynthesis(
 }
 
 
-function getShopSlotPreviewPrice(slot: ShopSlot, ctx: ShopSceneCtx = _ctx): number {
-  return PurchaseLogic.getShopSlotPreviewPrice(slot, ctx)
-}
-
 function upsertPickedSkill(skillId: string, ctx: ShopSceneCtx = _ctx): void {
   SkillSystem.upsertPickedSkill(ctx, skillId, { grantSkill20DailyBronzeItemIfNeeded: () => grantSkill20DailyBronzeItemIfNeeded() })
 }
@@ -911,6 +898,35 @@ function makeShopDragDeps(): ShopDragDeps {
 function makeItemGrantCallbacks(): ItemGrantCallbacks {
   return {
     recordNeutralItemObtained: (defId) => recordNeutralItemObtained(defId),
+  }
+}
+
+
+function makeTopAreaUICallbacks(): TopAreaUICallbacks {
+  return {
+    restartRunFromBeginning: () => restartRunFromBeginning(),
+    toggleHeroPassiveDetailPopup: () => toggleHeroPassiveDetailPopup(),
+    pvpOpenPlayerList: () => pvpPanel?.openPvpPlayerListOverlay(),
+    pvpBuildOpponentBadge: () => pvpPanel?.buildPvpOpponentBadge(),
+    pvpBuildOpponentHeroLayer: () => pvpPanel?.buildPvpOpponentHeroLayer() ?? Promise.resolve(),
+  }
+}
+
+function makeButtonRowUICallbacks(): ButtonRowUICallbacks {
+  return {
+    buyRandomBronzeToBoardOrBackpack: () => buyRandomBronzeToBoardOrBackpack(),
+    canAffordQuickBuyNow: () => canAffordQuickBuyNow(),
+    beginBattleStartTransition: () => beginBattleStartTransition(),
+    setDay: (day) => setDay(day),
+    ensureBottomHudVisibleAndOnTop: (stage) => ensureBottomHudVisibleAndOnTop(stage),
+    pvpShowWaitingPanel: (stage) => pvpPanel?.showPvpWaitingPanel(stage),
+    createSettingsButton: () => settingsPanel?.createSettingsButton(),
+    getQuickBuyPricePreviewLabel: () => getQuickBuyPricePreviewLabel(),
+    hideSkillDetailPopup: () => skillDraftPanel?.hideSkillDetailPopup(),
+    refreshBattlePassiveStatBadges: (showJump) => refreshBattlePassiveStatBadges(showJump),
+    handleSpecialShopBackpackItemTap: (id, kind) => handleSpecialShopBackpackItemTap(id, kind),
+    dragDeps: makeShopDragDeps(),
+    debugLayoutCallbacks: makeDebugLayoutCallbacks(),
   }
 }
 
@@ -1510,16 +1526,8 @@ function layoutDayDebugControls(ctx: ShopSceneCtx = _ctx): void {
   DebugLayout.layoutDayDebugControls(ctx)
 }
 
-function applyTextSizesFromDebug(ctx: ShopSceneCtx = _ctx): void {
-  DebugLayout.applyTextSizesFromDebug(ctx)
-}
-
 function applyAreaLabelLeftAlign(ctx: ShopSceneCtx = _ctx): void {
   DebugLayout.applyAreaLabelLeftAlign(ctx)
-}
-
-function applyLayoutFromDebug(ctx: ShopSceneCtx = _ctx): void {
-  DebugLayout.applyLayoutFromDebug(ctx, makeDebugLayoutCallbacks())
 }
 
 function ensureBottomHudVisibleAndOnTop(stage: Container, ctx: ShopSceneCtx = _ctx): void {
@@ -1555,10 +1563,6 @@ function setSellButtonPrice(price: number, ctx: ShopSceneCtx = _ctx): void {
 // getArchetypeSortOrder -> moved to ./shop/ShopAutoPackManager.ts
 
 
-function sortBackpackItemsByRule(ctx: ShopSceneCtx = _ctx): void {
-  DragSystem.sortBackpackItemsByRule(ctx, makeShopDragDeps())
-}
-
 
 function isOverGridDragSellArea(gx: number, gy: number): boolean {
   return DragSystem.isOverGridDragSellArea(gx, gy)
@@ -1586,14 +1590,6 @@ function stopGridDragButtonFlash(ctx: ShopSceneCtx = _ctx): void {
 // ============================================================
 function startShopDrag(slotIndex: number, e: FederatedPointerEvent, stage: Container, ctx: ShopSceneCtx = _ctx): void {
   DragSystem.startShopDrag(slotIndex, e, stage, ctx, makeShopDragDeps())
-}
-
-function onShopDragMove(e: FederatedPointerEvent, ctx: ShopSceneCtx = _ctx): void {
-  DragSystem.onShopDragMove(e, ctx, makeShopDragDeps())
-}
-
-async function onShopDragEnd(e: FederatedPointerEvent, stage: Container, ctx: ShopSceneCtx = _ctx): Promise<void> {
-  await DragSystem.onShopDragEnd(e, stage, ctx, makeShopDragDeps())
 }
 
 function resetDrag(ctx: ShopSceneCtx = _ctx): void {
@@ -1871,186 +1867,8 @@ function setupEventBusAndPvpCallbacks(stage: Container, ctx: ShopSceneCtx = _ctx
 }
 
 function buildTopAreaUI(stage: Container, cfg: ReturnType<typeof getConfig>, ctx: ShopSceneCtx = _ctx): void {
-    // 顶部分区背景（商店 / 背包）
-    ctx.shopAreaBg = new Graphics()
-    stage.addChild(ctx.shopAreaBg)
-    ctx.backpackAreaBg = new Graphics()
-    stage.addChild(ctx.backpackAreaBg)
-    ctx.battleAreaBg = new Graphics()
-    stage.addChild(ctx.battleAreaBg)
-
-    const restartLabel = new Text({
-      text: '重新开始',
-      style: {
-        fontSize: cfg.textSizes.refreshCost,
-        fill: 0xffe8a3,
-        fontFamily: 'Arial',
-        fontWeight: 'bold',
-      },
-    })
-    const restartBg = new Graphics()
-    const restartPadX = 18
-    const restartPadY = 10
-    const restartW = restartLabel.width + restartPadX * 2
-    const restartH = restartLabel.height + restartPadY * 2
-    restartBg.roundRect(0, 0, restartW, restartH, 14)
-    restartBg.fill({ color: 0x1f2940, alpha: 0.88 })
-    restartBg.stroke({ color: 0xffd25a, width: 2, alpha: 0.95 })
-    restartLabel.x = restartPadX
-    restartLabel.y = restartPadY
-    const restartCon = new Container()
-    restartCon.x = 16
-    restartCon.y = 16
-    restartCon.eventMode = 'static'
-    restartCon.cursor = 'pointer'
-    restartCon.hitArea = new Rectangle(0, 0, restartW, restartH)
-    restartCon.addChild(restartBg)
-    restartCon.addChild(restartLabel)
-    restartCon.on('pointerdown', (e: FederatedPointerEvent) => {
-      e.stopPropagation()
-      restartRunFromBeginning(ctx)
-    })
-    ctx.restartBtn = restartCon
-    stage.addChild(restartCon)
-
-    ctx.playerStatusCon = new Container()
-    ctx.playerStatusCon.zIndex = 95
-    ctx.playerStatusCon.x = 0
-    ctx.playerStatusCon.y = getDebugCfg('shopPlayerStatusY')
-
-    ctx.playerStatusAvatar = new Sprite(Texture.WHITE)
-    ctx.playerStatusAvatar.x = 260
-    ctx.playerStatusAvatar.y = 10
-    ctx.playerStatusAvatar.width = 120
-    ctx.playerStatusAvatar.height = 120
-    ctx.playerStatusAvatar.alpha = 0
-    ctx.playerStatusAvatar.eventMode = 'static'
-    ctx.playerStatusAvatar.cursor = 'pointer'
-    ctx.playerStatusAvatar.on('pointerdown', (e: FederatedPointerEvent) => {
-      e.stopPropagation()
-      toggleHeroPassiveDetailPopup(ctx)
-    })
-    ctx.playerStatusCon.addChild(ctx.playerStatusAvatar)
-
-    ctx.playerStatusAvatarClickHit = new Graphics()
-    ctx.playerStatusAvatarClickHit.eventMode = 'static'
-    ctx.playerStatusAvatarClickHit.cursor = 'pointer'
-    ctx.playerStatusAvatarClickHit.on('pointerdown', (e: FederatedPointerEvent) => {
-      e.stopPropagation()
-      toggleHeroPassiveDetailPopup(ctx)
-    })
-    ctx.playerStatusCon.addChild(ctx.playerStatusAvatarClickHit)
-
-    ctx.playerStatusDailySkillStar = new Text({
-      text: '★',
-      style: {
-        fontSize: 28,
-        fill: 0xffd24a,
-        fontFamily: 'Arial',
-        fontWeight: 'bold',
-        stroke: { color: 0x4a2d00, width: 3 },
-      },
-    })
-    ctx.playerStatusDailySkillStar.anchor.set(0.5)
-    ctx.playerStatusDailySkillStar.visible = false
-    ctx.playerStatusCon.addChild(ctx.playerStatusDailySkillStar)
-
-    ctx.playerStatusExpBg = new Graphics()
-    ctx.playerStatusCon.addChild(ctx.playerStatusExpBg)
-
-    ctx.playerStatusExpBar = new Graphics()
-    ctx.playerStatusCon.addChild(ctx.playerStatusExpBar)
-
-    ctx.playerStatusLvText = new Text({
-      text: 'Lv1',
-      style: {
-        fontSize: getDebugCfg('shopPlayerStatusLvFontSize'),
-        fill: 0xf3f8ff,
-        fontFamily: 'Arial',
-        fontWeight: 'bold',
-        stroke: { color: 0x0f172b, width: 3 },
-      },
-    })
-    ctx.playerStatusLvText.anchor.set(0.5)
-    ctx.playerStatusCon.addChild(ctx.playerStatusLvText)
-
-    layoutPlayerStatusPanel(ctx)
-
-    stage.addChild(ctx.playerStatusCon)
-
-    ctx.livesText = new Text({
-      text: '❤️ 5/5',
-      style: {
-        fontSize: cfg.textSizes.refreshCost,
-        fill: 0xffd4d4,
-        fontFamily: 'Arial',
-        fontWeight: 'bold',
-        stroke: { color: 0x000000, width: 3 },
-      },
-    })
-    ctx.livesText.zIndex = 95
-    stage.addChild(ctx.livesText)
-
-    // PVP 模式：在血量文字下方添加专属「查看玩家」小按钮（PVE 模式不显示）
-    if (PvpContext.isActive()) {
-      const pvpPlayersBtn = new Container()
-      pvpPlayersBtn.zIndex = 96
-
-      const btnBg = new Graphics()
-      btnBg.roundRect(0, 0, 110, 36, 10).fill({ color: 0x162238, alpha: 0.92 })
-      btnBg.roundRect(0, 0, 110, 36, 10).stroke({ color: 0x3a5a8a, width: 1.2 })
-      pvpPlayersBtn.addChild(btnBg)
-
-      const btnT = new Text({
-        text: '👥 查看玩家',
-        style: { fill: 0x88bbee, fontSize: 17, fontWeight: 'bold' },
-      })
-      btnT.anchor.set(0.5)
-      btnT.x = 55
-      btnT.y = 18
-      pvpPlayersBtn.addChild(btnT)
-
-      // 定位到右上角血量文字下方（blood text y=18, height≈28, gap=4）
-      pvpPlayersBtn.x = CANVAS_W - 118
-      pvpPlayersBtn.y = 52
-
-      pvpPlayersBtn.eventMode = 'static'
-      pvpPlayersBtn.cursor = 'pointer'
-      pvpPlayersBtn.on('pointerdown', () => pvpPanel?.openPvpPlayerListOverlay())
-      pvpPlayersBtn.on('pointerover', () => { pvpPlayersBtn.alpha = 0.75 })
-      pvpPlayersBtn.on('pointerout', () => { pvpPlayersBtn.alpha = 1 })
-      stage.addChild(pvpPlayersBtn)
-
-      // ── 本轮对手徽章 + 英雄背景立绘（sync-a：商店阶段始终可见）──
-      if (PvpContext.getPvpMode() === 'sync-a') {
-        pvpPanel?.buildPvpOpponentBadge()
-        void pvpPanel?.buildPvpOpponentHeroLayer()
-        // day_ready 携带轮空预分配时（onEnter 之后 ~300ms 到达），补建徽章
-        PvpContext.onOpponentPreAssigned = () => {
-          pvpPanel?.buildPvpOpponentBadge()
-          void pvpPanel?.buildPvpOpponentHeroLayer()
-        }
-        // round_summary 比 onEnter 晚到时，补建英雄立绘
-        PvpContext.onRoundSummaryReceived = () => {
-          void pvpPanel?.buildPvpOpponentHeroLayer()
-        }
-      }
-    }
-
-    ctx.trophyText = new Text({
-      text: '🏆 0/10',
-      style: {
-        fontSize: cfg.textSizes.refreshCost,
-        fill: 0xffe8b4,
-        fontFamily: 'Arial',
-        fontWeight: 'bold',
-        stroke: { color: 0x000000, width: 3 },
-      },
-    })
-    ctx.trophyText.zIndex = 95
-    stage.addChild(ctx.trophyText)
+  UIBuilders.buildTopAreaUI(stage, cfg, ctx, makeTopAreaUICallbacks())
 }
-
 function buildBattleZoneUI(stage: Container, cfg: ReturnType<typeof getConfig>, ctx: ShopSceneCtx = _ctx): void {
     const canvas = getApp().canvas as HTMLCanvasElement
 
@@ -2471,450 +2289,9 @@ function buildBattleZoneUI(stage: Container, cfg: ReturnType<typeof getConfig>, 
 }
 
 function buildButtonRowUI(stage: Container, cfg: ReturnType<typeof getConfig>, ctx: ShopSceneCtx = _ctx): void {
-    // ---- 按钮行 ----
-    ctx.btnRow = new Container()
-    ctx.btnRow.x = 0
-    ctx.btnRow.y = 0
-
-    function makeCircleBtn(
-      cx: number,
-      cy: number,
-      label: string,
-      activeColor: number,
-      inactiveColor = 0xcc3333,
-      mainFontSize = cfg.textSizes.shopButtonLabel,
-    ): CircleBtnHandle {
-      const g   = new Graphics()
-      const txt = new Text({
-        text: label,
-        style: { fontSize: mainFontSize, fill: 0xeebbbb, fontFamily: 'Arial', fontWeight: 'bold' },
-      })
-      txt.name = 'btn-main'
-      const sub = new Text({
-        text: '',
-        style: { fontSize: cfg.textSizes.sellButtonSubPrice, fill: 0xffd700, fontFamily: 'Arial', fontWeight: 'bold' },
-      })
-      sub.name = 'sell-price'
-      sub.visible = false
-
-      let curCx = cx
-      let curCy = cy
-      let curActive = false
-
-      const container = new Container()
-      container.addChild(g); container.addChild(txt); container.addChild(sub)
-      container.eventMode = 'static'
-      container.cursor    = 'pointer'
-
-      const redraw = (active: boolean) => {
-        curActive = active
-        g.clear()
-        g.circle(curCx, curCy, BTN_RADIUS)
-        g.stroke({ color: active ? activeColor : inactiveColor, width: 3 })
-        if (active) g.fill({ color: activeColor, alpha: 0.15 })
-        txt.style.fill = active ? activeColor : inactiveColor
-        const gap = Math.max(2, Math.round(txt.height * 0.08))
-        const groupH = sub.visible ? (txt.height + gap + sub.height) : txt.height
-        const groupTop = curCy - groupH / 2
-        txt.x = curCx - txt.width / 2
-        txt.y = groupTop
-        sub.x = curCx - sub.width / 2
-        sub.y = txt.y + txt.height + gap
-        container.hitArea = new Rectangle(curCx - BTN_RADIUS, curCy - BTN_RADIUS, BTN_RADIUS * 2, BTN_RADIUS * 2)
-      }
-
-      const setCenter = (nextCx: number, nextCy: number) => {
-        curCx = nextCx
-        curCy = nextCy
-        redraw(curActive)
-      }
-
-      const setLabel = (nextLabel: string) => {
-        txt.text = nextLabel
-        redraw(curActive)
-      }
-
-      const setSubLabel = (text: string) => {
-        sub.text = text
-        sub.visible = text.length > 0
-        redraw(curActive)
-      }
-
-      redraw(false)
-      return { container, redraw, setCenter, setLabel, setSubLabel }
-    }
-
-    function makePhaseRectBtn(
-      cx: number,
-      cy: number,
-      label: string,
-      activeColor: number,
-      inactiveColor = 0xffcc44,
-      mainFontSize = cfg.textSizes.phaseButtonLabel,
-    ): CircleBtnHandle {
-      const g = new Graphics()
-      const txt = new Text({
-        text: label,
-        style: { fontSize: mainFontSize, fill: 0x1a1a2a, fontFamily: 'Arial', fontWeight: 'bold' },
-      })
-      txt.name = 'btn-main'
-      const sub = new Text({
-        text: '',
-        style: { fontSize: cfg.textSizes.sellButtonSubPrice, fill: 0xffd700, fontFamily: 'Arial', fontWeight: 'bold' },
-      })
-      sub.name = 'sell-price'
-      sub.visible = false
-
-      let curCx = cx
-      let curCy = cy
-      let curActive = true
-
-      const container = new Container()
-      container.addChild(g)
-      container.addChild(txt)
-      container.addChild(sub)
-      container.eventMode = 'static'
-      container.cursor = 'pointer'
-
-      const redraw = (active: boolean) => {
-        curActive = active
-        const drawColor = active ? activeColor : inactiveColor
-        const left = curCx - PHASE_BTN_W / 2
-        const top = curCy - PHASE_BTN_H / 2
-        const corner = Math.max(10, Math.round(getDebugCfg('gridItemCornerRadius') + 8))
-        g.clear()
-        g.roundRect(left, top, PHASE_BTN_W, PHASE_BTN_H, corner)
-        g.stroke({ color: drawColor, width: 3 })
-        g.fill({ color: drawColor, alpha: 0.18 })
-        txt.style.fill = drawColor
-        const gap = Math.max(2, Math.round(txt.height * 0.08))
-        const groupH = sub.visible ? (txt.height + gap + sub.height) : txt.height
-        const groupTop = curCy - groupH / 2
-        txt.x = curCx - txt.width / 2
-        txt.y = groupTop
-        sub.x = curCx - sub.width / 2
-        sub.y = txt.y + txt.height + gap
-        container.hitArea = new Rectangle(left, top, PHASE_BTN_W, PHASE_BTN_H)
-      }
-
-      const setCenter = (nextCx: number, nextCy: number) => {
-        curCx = nextCx
-        curCy = nextCy
-        redraw(curActive)
-      }
-
-      const setLabel = (nextLabel: string) => {
-        txt.text = nextLabel
-        redraw(curActive)
-      }
-
-      const setSubLabel = (text: string) => {
-        sub.text = text
-        sub.visible = text.length > 0
-        redraw(curActive)
-      }
-
-      redraw(true)
-      return { container, redraw, setCenter, setLabel, setSubLabel }
-    }
-
-    ctx.bpBtnHandle = null
-
-    // 购买按钮（中，矩形）
-    const refreshBtn = makePhaseRectBtn(
-      getDebugCfg('refreshBtnX'),
-      getDebugCfg('refreshBtnY'),
-      '购买',
-      0x44aaff,
-      0x44aaff,
-      cfg.textSizes.phaseButtonLabel,
-    )
-    refreshBtn.container.on('pointerdown', () => {
-      if (!isShopInputEnabled(_ctx)) return
-      clearSelection()
-      buyRandomBronzeToBoardOrBackpack()
-      refreshBtn.redraw(false)
-    })
-    ctx.refreshBtnHandle = refreshBtn
-    ctx.btnRow.addChild(refreshBtn.container)
-
-    refreshBtn.setSubLabel(`💰 ${ctx.shopManager!.gold}/${getQuickBuyPricePreviewLabel()}`)
-
-    // 保留占位引用，避免旧流程空指针
-    ctx.refreshCostText = null
-
-    ctx.goldText = null
-
-    // 整理按钮（右）
-    const sellBtn = makeCircleBtn(getDebugCfg('sellBtnX'), getDebugCfg('sellBtnY'), '整理', 0x3b74ff, 0x3b74ff)
-    sellBtn.container.on('pointerdown', () => {
-      if (!isShopInputEnabled(_ctx)) return
-      // 选中点击“整理”只执行整理，不再触发丢弃。
-      if (ctx.selectedSellAction) ctx.selectedSellAction = null
-      clearSelection()
-      sortBackpackItemsByRule()
-    })
-    ctx.sellBtnHandle = sellBtn
-    ctx.btnRow.addChild(sellBtn.container)
-
-    // 战斗切换按钮（圆形）
-    const phaseBtn = makeCircleBtn(
-      getDebugCfg('phaseBtnX'),
-      getDebugCfg('phaseBtnY'),
-      '战斗',
-      0xffcc44,
-      0xffcc44,
-      cfg.textSizes.shopButtonLabel,
-    )
-    phaseBtn.container.on('pointerdown', () => {
-      if (!isShopInputEnabled(_ctx)) {
-        SceneManager.goto('shop')
-        return
-      }
-      if (ctx.battleStartTransition) return
-      const boardItemCount = ctx.battleSystem?.getAllItems().length ?? 0
-      const backpackItemCount = ctx.backpackSystem?.getAllItems().length ?? 0
-      if (boardItemCount <= 0 && canAffordQuickBuyNow()) {
-        showHintToast('no_gold_buy', '请先购买物品作战', 0xffd48f, _ctx)
-        showBuyGuideHand(ctx)
-        return
-      }
-      if (boardItemCount <= 0 && backpackItemCount > 0) {
-        // PVP 模式：允许直接提交（背包物品不参与战斗，但快照交换正常工作）
-        if (!PvpContext.isActive()) {
-          showHintToast('no_gold_buy', '请将物品拖入上阵区', 0xffd48f, _ctx)
-          showMoveToBattleGuideHand(ctx)
-          return
-        }
-      }
-      clearBattleOutcome()
-      ctx.pendingSkillBarMoveStartAtMs = Date.now()
-      const snapshot = buildBattleSnapshot(ctx, ctx.pendingSkillBarMoveStartAtMs)
-      if (snapshot) {
-        setBattleSnapshot(snapshot)
-        console.log(`[ShopScene] 战斗快照已生成 day=${snapshot.day} entities=${snapshot.entities.length} cols=${snapshot.activeColCount}`)
-      }
-      ctx.pendingBattleTransition = true
-      ctx.pendingAdvanceToNextDay = true
-      // PVP 模式：提交快照给对手，等待对方快照，不走本地过渡动画
-      if (PvpContext.isActive()) {
-        ctx.pvpReadyLocked = true
-        ctx.phaseBtnHandle?.setLabel('等待...')
-        ctx.phaseBtnHandle?.redraw(true)
-        // sync-a：先建面板再调 onPlayerReady，防止 host 同步触发 goto('battle') 后面板才加入
-        if (PvpContext.getPvpMode() === 'sync-a') pvpPanel?.showPvpWaitingPanel(stage)
-        PvpContext.onPlayerReady()
-        return
-      }
-      beginBattleStartTransition()
-    })
-    ctx.phaseBtnHandle = phaseBtn
-    ctx.btnRow.addChild(phaseBtn.container)
-
-    ctx.miniMapGfx = null
-    ctx.miniMapCon = null
-
-    stage.addChild(ctx.btnRow)
-    ensureBottomHudVisibleAndOnTop(stage)
-
-    // 丢弃弹窗
-    const selectGridItem = (
-      instanceId: string,
-      system: GridSystem,
-      view: GridZone,
-      kind: 'battle' | 'backpack',
-    ) => {
-      const defId = instanceToDefId.get(instanceId)
-      if (!defId || !ctx.sellPopup || !ctx.shopManager) return
-      const item = getAllItems().find(i => i.id === defId)
-      if (!item) return
-
-      ctx.battleView?.setSelected(kind === 'battle' ? instanceId : null)
-      ctx.backpackView?.setSelected(kind === 'backpack' ? instanceId : null)
-      ctx.shopPanel?.setSelectedSlot(-1)
-
-      ctx.currentSelection = kind === 'battle'
-        ? { kind: 'battle', instanceId }
-        : { kind: 'backpack', instanceId }
-
-      skillDraftPanel?.hideSkillDetailPopup()
-      if (kind === 'battle') refreshBattlePassiveStatBadges(false)
-      const tier = getInstanceTier(instanceId)
-      const star = getInstanceTierStar(instanceId)
-      const sellPrice = 0
-      const infoMode = resolveInfoMode(`${kind}:${instanceId}:${tier}:${star}`, _ctx)
-      ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, infoMode)
-
-      ctx.selectedSellAction = () => {
-        system.remove(instanceId)
-        view.removeItem(instanceId)
-        removeInstanceMeta(instanceId)
-        ctx.drag?.refreshZone(view)
-      }
-
-      setSellButtonPrice(sellPrice)
-      applySellButtonState()
-    }
-
-    const handleShopSlotTap = (slotIndex: number) => {
-      if (!isShopInputEnabled(_ctx)) return
-      if (!ctx.shopManager || !ctx.sellPopup) return
-      const slot = ctx.shopManager.pool[slotIndex]
-      if (!slot) return
-
-      ctx.shopPanel?.setSelectedSlot(slotIndex)
-      ctx.battleView?.setSelected(null)
-      ctx.backpackView?.setSelected(null)
-      ctx.currentSelection = { kind: 'shop', slotIndex }
-      ctx.selectedSellAction = null
-
-      const infoMode = resolveInfoMode(`shop:${slotIndex}:${slot.item.id}:${slot.tier}`, _ctx)
-      skillDraftPanel?.hideSkillDetailPopup()
-      ctx.sellPopup.show(slot.item, getShopSlotPreviewPrice(slot), 'buy', toVisualTier(slot.tier, 1), undefined, infoMode)
-      applySellButtonState()
-    }
-
-    ctx.backpackView!.onTap = (id) => {
-      if (!isShopInputEnabled(_ctx)) return
-      if (ctx.specialShopBackpackViewActive) {
-        handleSpecialShopBackpackItemTap(id, 'backpack')
-        return
-      }
-      selectGridItem(id, ctx.backpackSystem!, ctx.backpackView!, 'backpack')
-    }
-    ctx.battleView!.onTap   = (id) => {
-      if (!isShopInputEnabled(_ctx)) return
-      if (ctx.specialShopBackpackViewActive) {
-        handleSpecialShopBackpackItemTap(id, 'battle')
-        return
-      }
-      selectGridItem(id, ctx.battleSystem!, ctx.battleView!, 'battle')
-    }
-    ctx.shopPanel!.onTap    = (slotIndex) => handleShopSlotTap(slotIndex)
-
-    ctx.sellPopup = new SellPopup(CANVAS_W, CANVAS_H)
-    ctx.sellPopup.zIndex = 20
-    stage.addChild(ctx.sellPopup)
-    applyLayoutFromDebug()
-
-    ctx.offDebugCfg = onDebugCfgChange((key) => {
-      if (
-        key === 'shopAreaX' || key === 'shopAreaY'
-        || key === 'shopItemScale'
-        || key === 'battleItemScale'
-        || key === 'battleItemScaleBackpackOpen'
-        || key === 'enemyAreaScale'
-        || key === 'battleZoneX' || key === 'battleZoneY'
-        || key === 'backpackZoneX' || key === 'backpackZoneY'
-        || key === 'backpackBtnX' || key === 'backpackBtnY'
-        || key === 'sellBtnX' || key === 'sellBtnY'
-        || key === 'refreshBtnX' || key === 'refreshBtnY'
-        || key === 'phaseBtnX' || key === 'phaseBtnY'
-        || key === 'goldTextCenterX' || key === 'goldTextY'
-        || key === 'shopPlayerStatusY'
-        || key === 'shopPlayerStatusLvY'
-        || key === 'shopPlayerStatusExpBarWidth' || key === 'shopPlayerStatusExpBarHeight'
-        || key === 'shopPlayerStatusExpBarOffsetX' || key === 'shopPlayerStatusExpBarOffsetY'
-        || key === 'dayDebugX' || key === 'dayDebugY'
-        || key === 'tierBorderWidth'
-        || key === 'gridItemCornerRadius'
-        || key === 'gridCellBorderWidth'
-        || key === 'shopAreaBgWidth' || key === 'shopAreaBgHeight'
-        || key === 'backpackAreaBgWidth' || key === 'backpackAreaBgHeight'
-        || key === 'itemInfoWidth' || key === 'itemInfoMinH' || key === 'itemInfoMinHSmall' || key === 'itemInfoBottomGapToShop'
-        || key === 'gridZoneLabelFontSize'
-        || key === 'shopButtonLabelFontSize'
-        || key === 'phaseButtonLabelFontSize'
-        || key === 'sellButtonSubPriceFontSize'
-        || key === 'refreshCostFontSize'
-        || key === 'goldFontSize'
-        || key === 'shopPlayerStatusLvFontSize'
-        || key === 'dayDebugArrowFontSize'
-        || key === 'dayDebugLabelFontSize'
-        || key === 'shopItemNameFontSize'
-        || key === 'shopItemPriceFontSize'
-        || key === 'shopItemBoughtFontSize'
-        || key === 'itemStatBadgeFontSize'
-        || key === 'itemTierStarFontSize'
-        || key === 'itemTierStarStrokeWidth'
-        || key === 'itemTierStarOffsetX'
-        || key === 'itemTierStarOffsetY'
-        || key === 'itemStatBadgeOffsetY'
-        || key === 'itemInfoNameFontSize'
-        || key === 'itemInfoTierFontSize'
-        || key === 'itemInfoPriceFontSize'
-        || key === 'itemInfoPriceCornerFontSize'
-        || key === 'itemInfoCooldownFontSize'
-        || key === 'itemInfoDescFontSize'
-        || key === 'itemInfoSimpleDescFontSize'
-        || key === 'battleOrbColorHp'
-        || key === 'battleColorShield'
-        || key === 'battleColorBurn'
-        || key === 'battleColorPoison'
-        || key === 'battleColorRegen'
-      ) {
-        applyLayoutFromDebug()
-      }
-    })
-
-    // 点击空白区域关闭信息面板（物品/按钮/面板内点击会自行 stopPropagation 或切换内容）
-    ctx.onStageTapHidePopup = () => {
-      if (ctx.shopDragFloater) return
-      clearSelection()
-    }
-    stage.on('pointerdown', ctx.onStageTapHidePopup)
-
-    // Stage 级指针事件（商店拖拽）
-    ctx.onStageShopPointerMove = (e: FederatedPointerEvent) => {
-      if (ctx.shopDragFloater) onShopDragMove(e)
-    }
-    ctx.onStageShopPointerUp = (e: FederatedPointerEvent) => {
-      if (ctx.shopDragFloater) void onShopDragEnd(e, stage)
-    }
-    ctx.onStageShopPointerUpOutside = (e: FederatedPointerEvent) => {
-      if (ctx.shopDragFloater) void onShopDragEnd(e, stage)
-    }
-    stage.on('pointermove', ctx.onStageShopPointerMove)
-    stage.on('pointerup', ctx.onStageShopPointerUp)
-    stage.on('pointerupoutside', ctx.onStageShopPointerUpOutside)
-
-    // Debug 天数控制
-    ctx.dayDebugCon = new Container()
-    ctx.dayDebugCon.x = CANVAS_W / 2
-    ctx.dayDebugCon.y = getDebugCfg('dayDebugY')
-
-    const prevDayBtn = new Text({ text: '◀', style: { fontSize: cfg.textSizes.dayDebugArrow, fill: 0x888888 } })
-    prevDayBtn.eventMode = 'static'
-    prevDayBtn.cursor    = 'pointer'
-    prevDayBtn.on('pointerdown', (e: FederatedPointerEvent) => {
-      e.stopPropagation()
-      if (!isShopInputEnabled(_ctx)) return
-      setDay(ctx.currentDay - 1)
-    })
-
-    ctx.dayDebugText = new Text({
-      text: `Day ${ctx.currentDay}`,
-      style: { fontSize: cfg.textSizes.dayDebugLabel, fill: 0xcccccc, fontFamily: 'Arial' },
-    })
-
-    const nextDayBtn = new Text({ text: '▶', style: { fontSize: cfg.textSizes.dayDebugArrow, fill: 0x888888 } })
-    nextDayBtn.eventMode = 'static'
-    nextDayBtn.cursor    = 'pointer'
-    nextDayBtn.on('pointerdown', (e: FederatedPointerEvent) => {
-      e.stopPropagation()
-      if (!isShopInputEnabled(_ctx)) return
-      setDay(ctx.currentDay + 1)
-    })
-
-    ctx.dayDebugCon.addChild(prevDayBtn, ctx.dayDebugText, nextDayBtn)
-    stage.addChild(ctx.dayDebugCon)
-    ctx.dayPrevBtn = prevDayBtn
-    ctx.dayNextBtn = nextDayBtn
-    layoutDayDebugControls()
-    settingsPanel?.createSettingsButton()
-    // Day 调试文字在此处才创建，需要再应用一次字号配置以覆盖 game_config 默认值
-    applyTextSizesFromDebug()
+  UIBuilders.buildButtonRowUI(stage, cfg, ctx, makeButtonRowUICallbacks())
 }
+
 
 // ============================================================
 // 主场景
