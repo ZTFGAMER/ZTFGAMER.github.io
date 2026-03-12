@@ -4,7 +4,7 @@
 // 防止"死亡螺旋"：单帧最大时间 250ms
 // ============================================================
 
-import { SceneManager } from '@/scenes/SceneManager'
+import { SceneManager } from '@/core/SceneManager'
 
 const FIXED_DT      = 1 / 60        // 逻辑步长 ≈16.67ms
 const MAX_FRAME_TIME = 0.25          // 防死亡螺旋

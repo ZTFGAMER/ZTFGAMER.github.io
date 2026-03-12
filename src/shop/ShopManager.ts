@@ -3,9 +3,9 @@
 // 负责：金币管理、三选一卡池、购买、出售、刷新
 // ============================================================
 
-import type { ItemDef }    from '@/items/ItemDef'
-import type { GameConfig } from '@/items/ItemDef'
-import { normalizeSize }   from '@/items/ItemDef'
+import type { ItemDef }    from '@/common/items/ItemDef'
+import type { GameConfig } from '@/common/items/ItemDef'
+import { normalizeSize }   from '@/common/items/ItemDef'
 
 const TIER_ORDER = ['Bronze', 'Silver', 'Gold', 'Diamond'] as const
 export type TierKey = typeof TIER_ORDER[number]

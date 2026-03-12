@@ -2,7 +2,7 @@
 // PvpTypes — PVP 模式共享类型定义
 // ============================================================
 
-import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
+import type { BattleSnapshotBundle } from '@/battle/BattleSnapshotStore'
 
 export type PvpMode = 'async' | 'sync-a'
 

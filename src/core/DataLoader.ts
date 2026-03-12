@@ -3,7 +3,7 @@
 // 所有数值从配置文件读取，无硬编码魔法数字
 // ============================================================
 
-import type { GameConfig, ItemDef } from '@/items/ItemDef'
+import type { GameConfig, ItemDef } from '@/common/items/ItemDef'
 
 // Vite 支持直接 import JSON（resolveJsonModule）
 import rawConfig   from '../../data/game_config.json'

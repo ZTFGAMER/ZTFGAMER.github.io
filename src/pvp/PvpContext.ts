@@ -3,15 +3,15 @@
 // 桥接 PvpRoom ↔ SceneManager ↔ ShopScene/BattleScene
 // ============================================================
 
-import { SceneManager } from '@/scenes/SceneManager'
+import { SceneManager } from '@/core/SceneManager'
 import { getConfig } from '@/core/DataLoader'
-import { getBattleSnapshot, setBattleSnapshot } from '@/combat/BattleSnapshotStore'
-import { consumeBattleOutcome } from '@/combat/BattleOutcomeStore'
+import { getBattleSnapshot, setBattleSnapshot } from '@/battle/BattleSnapshotStore'
+import { consumeBattleOutcome } from '@/battle/BattleOutcomeStore'
 
 import { getDailyGoldForDay } from '@/shop/ShopManager'
 import type { PvpSession, PvpDayPhase } from '@/pvp/PvpTypes'
 import type { PvpRoom } from '@/pvp/PvpRoom'
-import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
+import type { BattleSnapshotBundle } from '@/battle/BattleSnapshotStore'
 
 // 野怪轮胜利奖励系数（相对日收入）：两次野怪各 0.5，满奖励=1× 日收入，从 pvp_rules 读取
 function getWildWinBonusRatio(): number {
@@ -35,7 +35,7 @@ let room: PvpRoom | null = null
 // Mode A: sync-start pending
 let syncStartCallbacks = new Map<number, (() => void)>() // day → callback
 // sync-a: 收到对手快照后缓存，等 battle_sync_start 再跳转
-let pendingOpponentSnap: import('@/combat/BattleSnapshotStore').BattleSnapshotBundle | null = null
+let pendingOpponentSnap: import('@/battle/BattleSnapshotStore').BattleSnapshotBundle | null = null
 let pendingSyncStartDay = 0  // battle_sync_start 比 opponent_snapshot 先到时记录
 // sync-a: 当前轮各玩家就绪状态
 let syncReadyIndices: number[] = []
@@ -51,7 +51,7 @@ let pendingSurvivingDamage = 0
 let pendingRoundWinner: 'player' | 'enemy' | 'draw' = 'draw'
 
 // 上局所有玩家快照（round_summary 下发，用于商店阶段查看阵容）
-let lastPlayerSnapshots: Record<number, import('@/combat/BattleSnapshotStore').BattleSnapshotBundle> = {}
+let lastPlayerSnapshots: Record<number, import('@/battle/BattleSnapshotStore').BattleSnapshotBundle> = {}
 
 // sync-a 轮空预分配缓存：day_ready 可能早于 onBattleComplete 到达，需在 onBattleComplete 后补回
 let cachedByeOpponent: { day: number; opponentIdx: number } | undefined = undefined
@@ -318,7 +318,7 @@ export const PvpContext = {
   },
 
   /** 获取上局所有玩家快照（round_summary 下发后可用，首局前为空） */
-  getLastPlayerSnapshots(): Record<number, import('@/combat/BattleSnapshotStore').BattleSnapshotBundle> {
+  getLastPlayerSnapshots(): Record<number, import('@/battle/BattleSnapshotStore').BattleSnapshotBundle> {
     return lastPlayerSnapshots
   },
 

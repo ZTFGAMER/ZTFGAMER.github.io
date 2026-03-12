@@ -7,7 +7,7 @@
 import { WsConnection, type VirtualDataConnection } from '@/pvp/WsConnection'
 import type { PvpPlayer, PvpMsgToClient, PvpMsgToHost, PvpMode } from '@/pvp/PvpTypes'
 import { getOpponentFromAlive } from '@/pvp/PvpTypes'
-import type { BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
+import type { BattleSnapshotBundle } from '@/battle/BattleSnapshotStore'
 import { getConfig } from '@/core/DataLoader'
 
 function getDefaultCountdownMs(): number {
