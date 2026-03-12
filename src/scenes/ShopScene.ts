@@ -164,7 +164,7 @@ import {
 } from './shop/AnimationEffects'
 import * as AnimationEffects from './shop/AnimationEffects'
 import { CANVAS_W, CANVAS_H, BTN_RADIUS } from '@/config/layoutConstants'
-import { getShopToastColors, getShopUiColor, getClassColor } from '@/config/colorPalette'
+import { getShopUiColor, getClassColor } from '@/config/colorPalette'
 import {
   parseAvailableTiers, getSpecialShopSpeedTierText,
   tierValueFromSkillLine, ammoValueFromLineByStar,
@@ -178,6 +178,10 @@ import {
   getDayActiveCols, getShopItemScale,
   getBattleItemScale, getBattleZoneX, getBackpackZoneX, getBackpackZoneYByBattle,
 } from './shop/ShopMathHelpers'
+import {
+  type ToastReason,
+  createHintToast, showHintToast,
+} from './shop/ShopToastSystem'
 
 // ---- 場景共享狀態上下文 ----
 const _ctx: ShopSceneCtx = createShopSceneCtx()
@@ -316,7 +320,7 @@ function ensureStarterClassSelection(stage: Container, ctx: ShopSceneCtx = _ctx)
 
 function makeEventCallbacks() {
   return {
-    showHintToast: (reason: string, message: string, color?: number) => showHintToast(reason as ToastReason, message, color),
+    showHintToast: (reason: string, message: string, color?: number) => showHintToast(reason as ToastReason, message, color, _ctx),
     collectUpgradeableOwnedPlacedItems: (zone?: 'battle' | 'backpack') => collectUpgradeableOwnedPlacedItems(zone),
     upgradePlacedItem: (instanceId: string, zone: 'battle' | 'backpack', withFx?: boolean) => upgradePlacedItem(instanceId, zone, withFx),
     convertAndUpgradePlacedItem: (instanceId: string, zone: 'battle' | 'backpack', withFx?: boolean) => convertAndUpgradePlacedItem(instanceId, zone, withFx),
@@ -441,7 +445,7 @@ const SHOP_QUICK_BUY_PRICE = 3
 
 // 按钮/UI 引用（动画需要）
 
-type ToastReason = 'no_gold_buy' | 'no_gold_refresh' | 'backpack_full_buy' | 'backpack_full_transfer' | 'pvp_urge'
+// ToastReason → 已移至 ./shop/ShopToastSystem.ts
 
 // 商店拖拽状态
 
@@ -656,69 +660,7 @@ function isShopInputEnabled(ctx: ShopSceneCtx = _ctx): boolean {
   return PhaseManager.isShopInputEnabled()
 }
 
-function createHintToast(stage: Container, ctx: ShopSceneCtx = _ctx): void {
-  if (ctx.hintToastCon) return
-  const cfg = getConfig()
-  const con = new Container()
-  const bg = new Graphics()
-  const txt = new Text({
-    text: '',
-    style: {
-      fontSize: cfg.textSizes.refreshCost,
-      fill: 0xffe8a3,
-      fontFamily: 'Arial',
-      fontWeight: 'bold',
-    },
-  })
-  con.visible = false
-  con.addChild(bg)
-  con.addChild(txt)
-  con.zIndex = 9999
-  stage.addChild(con)
-  ctx.hintToastCon = con
-  ctx.hintToastBg = bg
-  ctx.hintToastText = txt
-}
-
-function shouldShowToast(reason: ToastReason): boolean {
-  if (getDebugCfg('toastEnabled') < 0.5) return false
-  if (reason === 'no_gold_buy') return getDebugCfg('toastShowNoGoldBuy') >= 0.5
-  if (reason === 'no_gold_refresh') return getDebugCfg('toastShowNoGoldRefresh') >= 0.5
-  if (reason === 'backpack_full_buy') return getDebugCfg('toastShowBackpackFullBuy') >= 0.5
-  return getDebugCfg('toastShowBackpackFullTransfer') >= 0.5
-}
-
-function showHintToast(reason: ToastReason, message: string, color = 0xffe8a3, ctx: ShopSceneCtx = _ctx): void {
-  if (!shouldShowToast(reason)) return
-  if (!ctx.hintToastCon || !ctx.hintToastBg || !ctx.hintToastText) return
-  if (ctx.hintToastCon.parent) ctx.hintToastCon.parent.addChild(ctx.hintToastCon)
-  if (ctx.hintToastHideTimer) {
-    clearTimeout(ctx.hintToastHideTimer)
-    ctx.hintToastHideTimer = null
-  }
-  ctx.hintToastText.text = message
-  ctx.hintToastText.style.fill = color
-  ctx.hintToastText.style.fontSize = Math.max(28, Math.round(getConfig().textSizes.refreshCost * 1.25))
-  const padX = 36
-  const padY = 18
-  const boxW = ctx.hintToastText.width + padX * 2
-  const boxH = ctx.hintToastText.height + padY * 2
-  const boxX = (CANVAS_W - boxW) / 2
-  const boxY = (CANVAS_H - boxH) / 2
-  const corner = Math.max(10, Math.round(getDebugCfg('gridItemCornerRadius')))
-  ctx.hintToastBg.clear()
-  ctx.hintToastBg.roundRect(boxX, boxY, boxW, boxH, corner)
-  const _toastColors = getShopToastColors()
-  ctx.hintToastBg.fill({ color: _toastColors.bg, alpha: 0.96 })
-  ctx.hintToastBg.stroke({ color: _toastColors.border, width: 4, alpha: 1 })
-  ctx.hintToastText.x = boxX + padX
-  ctx.hintToastText.y = boxY + padY
-  ctx.hintToastCon.visible = true
-  ctx.hintToastHideTimer = setTimeout(() => {
-    if (ctx.hintToastCon) ctx.hintToastCon.visible = false
-    ctx.hintToastHideTimer = null
-  }, 1700)
-}
+// createHintToast / shouldShowToast / showHintToast → 已移至 ./shop/ShopToastSystem.ts
 
 function canAffordQuickBuyNow(ctx: ShopSceneCtx = _ctx): boolean {
   if (!ctx.shopManager) return false
@@ -3845,7 +3787,7 @@ function initPanelInstances(stage: Container, ctx: ShopSceneCtx = _ctx): void {
       applyEventEffect: (event, fromTest) => applyEventEffect(event, fromTest),
       markEventSelected: (id) => markEventSelected(ctx, id),
       resetEventSelectionCounters: () => resetEventSelectionCounters(ctx),
-      showHintToast: (reason, msg, color) => showHintToast(reason, msg, color),
+      showHintToast: (reason, msg, color) => showHintToast(reason, msg, color, _ctx),
       placeItemToInventoryOrBattle: (def, tier, star) => placeItemToInventoryOrBattle(def, tier, star),
       getQualityLevelRange: (quality) => getQualityLevelRange(quality),
       levelToTierStar: (level) => levelToTierStar(level),
@@ -3873,7 +3815,7 @@ function initPanelInstances(stage: Container, ctx: ShopSceneCtx = _ctx): void {
       shouldShowSimpleDescriptions: () => shouldShowSimpleDescriptions(),
       isSkillDraftRerollEnabled: () => isSkillDraftRerollEnabled(),
       getDefaultSkillDetailMode: () => getDefaultSkillDetailMode(),
-      showHintToast: (reason, msg, color) => showHintToast(reason, msg, color),
+      showHintToast: (reason, msg, color) => showHintToast(reason, msg, color, _ctx),
       resetInfoModeSelection: () => resetInfoModeSelection(),
       applySellButtonState: () => applySellButtonState(),
     })
@@ -3894,7 +3836,7 @@ function initPanelInstances(stage: Container, ctx: ShopSceneCtx = _ctx): void {
       resolveEventDescText: (event, detailed) => resolveEventDescText(ctx, event, detailed),
       shouldShowSimpleDescriptions: () => shouldShowSimpleDescriptions(),
       isEventDraftRerollEnabled: () => isEventDraftRerollEnabled(),
-      showHintToast: (reason, msg, color) => showHintToast(reason, msg, color),
+      showHintToast: (reason, msg, color) => showHintToast(reason, msg, color, _ctx),
     })
     stage.addChild(eventDraftPanel)
 
@@ -3907,7 +3849,7 @@ function initPanelInstances(stage: Container, ctx: ShopSceneCtx = _ctx): void {
       applyPhaseInputLock: () => applyPhaseInputLock(),
       refreshShopUI: () => refreshShopUI(),
       refreshPlayerStatusUI: () => refreshPlayerStatusUI(),
-      showHintToast: (reason, msg, color) => showHintToast(reason, msg, color),
+      showHintToast: (reason, msg, color) => showHintToast(reason, msg, color, _ctx),
       checkAndPopPendingRewards: () => checkAndPopPendingRewards(),
       getDailyPlanRow: (day) => getDailyPlanRow(day),
       parseAvailableTiers: (raw) => parseAvailableTiers(raw),
@@ -3947,7 +3889,7 @@ function initPanelInstances(stage: Container, ctx: ShopSceneCtx = _ctx): void {
       setTransitionInputEnabled: (enabled) => setTransitionInputEnabled(enabled),
       setBaseShopPrimaryButtonsVisible: (visible) => setBaseShopPrimaryButtonsVisible(visible),
       applyPhaseInputLock: () => applyPhaseInputLock(),
-      showHintToast: (reason, msg, color) => showHintToast(reason, msg, color),
+      showHintToast: (reason, msg, color) => showHintToast(reason, msg, color, _ctx),
       clearBackpackSynthesisGuideArrows: () => clearBackpackSynthesisGuideArrows(),
       placeItemToInventoryOrBattle: (def, tier, star) => placeItemToInventoryOrBattle(def, tier, star),
       unlockItemToPool: (defId) => unlockItemToPool(defId),
@@ -4023,7 +3965,7 @@ function setupEventBusAndPvpCallbacks(stage: Container, ctx: ShopSceneCtx = _ctx
     ctx.events.removeAll()
     ctx.events.on('REFRESH_SHOP_UI',          ()       => refreshShopUI())
     ctx.events.on('REFRESH_PLAYER_STATUS_UI', ()       => refreshPlayerStatusUI())
-    ctx.events.on('SHOW_TOAST',               (reason) => showHintToast(reason, ''))
+    ctx.events.on('SHOW_TOAST',               (reason) => showHintToast(reason, '', undefined, _ctx))
     ctx.events.on('SELECTION_CLEARED',        ()       => clearSelection())
     // PVP：注册 endSession 时的清理回调（避免 PvpContext ↔ ShopScene 循环 import）
     PvpContext.registerClearShopState(() => PvpPanelModule.clearPvpShopState(ctx))
@@ -4082,7 +4024,7 @@ function setupEventBusAndPvpCallbacks(stage: Container, ctx: ShopSceneCtx = _ctx
     ctx.passiveJumpLayer = new Container()
     ctx.passiveJumpLayer.eventMode = 'none'
 
-    createHintToast(stage)
+    createHintToast(stage, _ctx)
     ctx.showingBackpack = true
 }
 
@@ -4383,7 +4325,7 @@ function buildBattleZoneUI(stage: Container, cfg: ReturnType<typeof getConfig>, 
         }
         homeSystem.remove(instanceId)
         removeInstanceMeta(instanceId)
-        showHintToast('no_gold_buy', `已丢弃：${sourceDef?.name_cn ?? item.name_cn}`, 0x9be5ff)
+        showHintToast('no_gold_buy', `已丢弃：${sourceDef?.name_cn ?? item.name_cn}`, 0x9be5ff, _ctx)
         if (sourceDef && sourceLevel) {
           grantHeroDiscardSameLevelReward(sourceDef.id, sourceLevel)
         }
@@ -4414,7 +4356,7 @@ function buildBattleZoneUI(stage: Container, cfg: ReturnType<typeof getConfig>, 
       ) {
         const blockedBattleSynth = findBattleSynthesisTargetWithDragProbeIgnoringNoSynthesis(defId, fromTier, fromStar, anchorGx, anchorGy, size)
         if (blockedBattleSynth) {
-          showHintToast('backpack_full_buy', '上阵区内无法合成', 0xffd48f)
+          showHintToast('backpack_full_buy', '上阵区内无法合成', 0xffd48f, _ctx)
         }
       }
 
@@ -4431,7 +4373,7 @@ function buildBattleZoneUI(stage: Container, cfg: ReturnType<typeof getConfig>, 
             showLv7MorphSynthesisConfirmOverlay(stage, () => {
               const choices = buildStoneTransformChoices(synthTarget, 'same')
               if (choices.length <= 0) {
-                showHintToast('backpack_full_buy', 'Lv7转化：当前无可用候选', 0xffb27a)
+                showHintToast('backpack_full_buy', 'Lv7转化：当前无可用候选', 0xffb27a, _ctx)
                 restoreDraggedItemToZone(
                   instanceId,
                   defId,
@@ -4449,17 +4391,17 @@ function buildBattleZoneUI(stage: Container, cfg: ReturnType<typeof getConfig>, 
               const opened = showNeutralChoiceOverlay(stage, '选择变化方向', choices, (picked) => {
                 const ok = transformPlacedItemKeepLevelTo(synthTarget.instanceId, synthTarget.zone, picked.item, true)
                 if (!ok) {
-                  showHintToast('backpack_full_buy', 'Lv7转化失败', 0xff8f8f)
+                  showHintToast('backpack_full_buy', 'Lv7转化失败', 0xff8f8f, _ctx)
                   return false
                 }
                 removeInstanceMeta(instanceId)
                 grantSynthesisExp(1, { instanceId: synthTarget.instanceId, zone: synthTarget.zone })
-                showHintToast('no_gold_buy', 'Lv7合成：已触发变化石效果', 0x9be5ff)
+                showHintToast('no_gold_buy', 'Lv7合成：已触发变化石效果', 0x9be5ff, _ctx)
                 refreshShopUI()
                 return true
               }, 'special_shop_like')
               if (!opened) {
-                showHintToast('backpack_full_buy', 'Lv7转化：当前无可用候选', 0xffb27a)
+                showHintToast('backpack_full_buy', 'Lv7转化：当前无可用候选', 0xffb27a, _ctx)
                 restoreDraggedItemToZone(
                   instanceId,
                   defId,
@@ -4521,7 +4463,7 @@ function buildBattleZoneUI(stage: Container, cfg: ReturnType<typeof getConfig>, 
             const runCrossSynthesis = () => {
               const synth = synthesizeTarget(defId, fromTier, fromStar, synthTarget.instanceId, synthTarget.zone)
               if (!synth) {
-                showHintToast('backpack_full_buy', '合成目标无效', 0xff8f8f)
+                showHintToast('backpack_full_buy', '合成目标无效', 0xff8f8f, _ctx)
                 restoreDragToHome()
                 return
               }
@@ -4581,7 +4523,7 @@ function buildBattleZoneUI(stage: Container, cfg: ReturnType<typeof getConfig>, 
       ) {
         const autoPlan = buildBackpackAutoPackPlan(defId, size)
         if (!autoPlan) {
-          showHintToast('backpack_full_transfer', '背包已满，无法转移', 0xff8f8f)
+          showHintToast('backpack_full_transfer', '背包已满，无法转移', 0xff8f8f, _ctx)
           return false
         }
         homeSystem.remove(instanceId)
@@ -4891,14 +4833,14 @@ function buildButtonRowUI(stage: Container, cfg: ReturnType<typeof getConfig>, c
       const boardItemCount = ctx.battleSystem?.getAllItems().length ?? 0
       const backpackItemCount = ctx.backpackSystem?.getAllItems().length ?? 0
       if (boardItemCount <= 0 && canAffordQuickBuyNow()) {
-        showHintToast('no_gold_buy', '请先购买物品作战', 0xffd48f)
+        showHintToast('no_gold_buy', '请先购买物品作战', 0xffd48f, _ctx)
         showBuyGuideHand(ctx)
         return
       }
       if (boardItemCount <= 0 && backpackItemCount > 0) {
         // PVP 模式：允许直接提交（背包物品不参与战斗，但快照交换正常工作）
         if (!PvpContext.isActive()) {
-          showHintToast('no_gold_buy', '请将物品拖入上阵区', 0xffd48f)
+          showHintToast('no_gold_buy', '请将物品拖入上阵区', 0xffd48f, _ctx)
           showMoveToBattleGuideHand(ctx)
           return
         }
