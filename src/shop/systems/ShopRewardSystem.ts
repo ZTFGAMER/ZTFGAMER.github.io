@@ -14,7 +14,7 @@ import { GridSystem } from '@/common/grid/GridSystem'
 import { GridZone } from '@/common/grid/GridZone'
 import { CELL_SIZE, CELL_HEIGHT } from '@/common/grid/GridZone'
 import { Graphics, Ticker, Container, Text } from 'pixi.js'
-import { getConfig as getGameConfig } from '@/core/DataLoader'
+import { getAllItems, getConfig as getGameConfig } from '@/core/DataLoader'
 import { normalizeSize } from '@/common/items/ItemDef'
 import {
   nextId,
@@ -25,7 +25,7 @@ import {
   levelFromLegacyTierStar,
   setInstanceQualityLevel,
 } from './ShopInstanceRegistry'
-import { getItemDefById, getMinTierDropWeight } from './ShopSynthesisLogic'
+import { getItemDefById, isNeutralItemDef, parseTierName } from './ShopSynthesisLogic'
 import { getNeutralSpecialKind } from '../panels/NeutralItemPanel'
 import type { NeutralSpecialKind, NeutralChoiceCandidate } from '../panels/NeutralItemPanel'
 import { captureShopState, saveShopStateToStorage } from '../ShopStateStorage'
@@ -41,7 +41,7 @@ import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import { CANVAS_W, CANVAS_H } from '@/config/layoutConstants'
 import { type ToastReason, showHintToast } from '../ui/ShopToastSystem'
 import { findFirstBackpackPlace } from './ShopGridInventory'
-import { collectPoolCandidatesByLevel } from './QuickBuySystem'
+import { getAllowedLevelsByStartingTier, levelToTierStar, pickQualityByPseudoRandomBag } from './QuickBuySystem'
 import { toVisualTier } from '../ShopMathHelpers'
 import { stopFlashEffect } from '../ui/ShopAnimationEffects'
 import { applySellButtonState } from './ShopDragSystem'
@@ -350,39 +350,66 @@ function pickQuickDraftLevelByWeights(weights: number[]): 1 | 2 | 3 | 4 | 5 | 6 
 
 function pickWeightedQuickDraftCandidate(cands: QuickDraftCandidate[]): QuickDraftCandidate | null {
   if (cands.length <= 0) return null
-  let total = 0
-  const ws = cands.map((one) => {
-    const item = getItemDefById(one.defId)
-    const w = item ? Math.max(0, Number(getMinTierDropWeight(item, one.tier, one.star) || 0)) : 0
-    total += w
-    return w
-  })
-  if (total <= 0) return cands[Math.floor(Math.random() * cands.length)] ?? null
-  let roll = Math.random() * total
-  for (let i = 0; i < cands.length; i++) {
-    roll -= ws[i] ?? 0
-    if (roll <= 0) return cands[i] ?? null
+  const byStartTier: Record<'Bronze' | 'Silver' | 'Gold' | 'Diamond', QuickDraftCandidate[]> = {
+    Bronze: [], Silver: [], Gold: [], Diamond: [],
   }
-  return cands[cands.length - 1] ?? null
+  for (const one of cands) {
+    const item = getItemDefById(one.defId)
+    const minTier = parseTierName(item?.starting_tier ?? '') ?? 'Bronze'
+    byStartTier[minTier].push(one)
+  }
+  const available: Array<'Bronze' | 'Silver' | 'Gold' | 'Diamond'> = (['Bronze', 'Silver', 'Gold', 'Diamond'] as const)
+    .filter((tier) => byStartTier[tier].length > 0)
+  if (available.length <= 0) return cands[Math.floor(Math.random() * cands.length)] ?? null
+  const level = cands[0]!.level
+  const desired = pickQualityByPseudoRandomBag(level, available)
+  let pool = byStartTier[desired]
+  if (pool.length <= 0) {
+    const order: Array<'Bronze' | 'Silver' | 'Gold' | 'Diamond'> = ['Bronze', 'Silver', 'Gold', 'Diamond']
+    const start = Math.max(0, order.indexOf(desired))
+    for (let i = start + 1; i < order.length; i++) {
+      const t = order[i]!
+      if (byStartTier[t].length > 0) {
+        pool = byStartTier[t]
+        break
+      }
+    }
+  }
+  if (pool.length <= 0) pool = cands
+  return pool[Math.floor(Math.random() * pool.length)] ?? null
 }
 
-function buildQuickDraftCandidates(playerLevel: number, ctx: ShopSceneCtx, callbacks: RewardSystemCallbacks): QuickDraftCandidate[] {
+function collectQuickDraftCandidatesByLevel(
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7,
+  callbacks: RewardSystemCallbacks,
+): QuickDraftCandidate[] {
+  const out: QuickDraftCandidate[] = []
+  for (const item of getAllItems()) {
+    if (!item || isNeutralItemDef(item)) continue
+    const minTier = parseTierName(item.starting_tier) ?? 'Bronze'
+    if (!getAllowedLevelsByStartingTier(minTier).includes(level)) continue
+    const tierStar = levelToTierStar(level)
+    if (!tierStar) continue
+    const size = normalizeSize(item.size)
+    if (!callbacks.findFirstBattlePlace(size) && !callbacks.findFirstBackpackPlace(size)) continue
+    out.push({
+      defId: item.id,
+      level,
+      tier: tierStar.tier,
+      star: tierStar.star,
+    })
+  }
+  return out
+}
+
+function buildQuickDraftCandidates(playerLevel: number, _ctx: ShopSceneCtx, callbacks: RewardSystemCallbacks): QuickDraftCandidate[] {
   const out: QuickDraftCandidate[] = []
   const blockedDefIds = new Set<string>()
   const weights = getQuickDraftWeightsByPlayerLevel(playerLevel)
   for (let i = 0; i < 3; i++) {
     const level = pickQuickDraftLevelByWeights(weights)
-    const pool = collectPoolCandidatesByLevel(ctx, level, {
-      findFirstBattlePlace: (size) => callbacks.findFirstBattlePlace(size),
-      findFirstBackpackPlace: (size) => callbacks.findFirstBackpackPlace(size),
-    })
-      .filter((one) => !blockedDefIds.has(one.item.id))
-      .map((one) => ({
-        defId: one.item.id,
-        level: one.level,
-        tier: one.tier,
-        star: one.star,
-      }))
+    const pool = collectQuickDraftCandidatesByLevel(level, callbacks)
+      .filter((one) => !blockedDefIds.has(one.defId))
     const picked = pickWeightedQuickDraftCandidate(pool)
     if (!picked) continue
     out.push(picked)

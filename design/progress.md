@@ -1,5 +1,75 @@
 # 大巴扎 — 开发进度记录
 
+## 验收优化追加（2026-03-12，快捷三选一最终品质应用修正）
+
+- 用户反馈：升级快捷三选一在 Lv4/Lv6 看起来固定高品质，怀疑最终物品未应用品质桶。
+- 根因：候选先按等级池抽取后，虽然走了品质桶选“起始品质”，但最终写回 `tier/star` 仍沿用等级映射值（如 Lv4=Gold#1、Lv6=Diamond#1）。
+- 已完成：`src/shop/systems/ShopRewardSystem.ts`
+  - 在 `pickWeightedQuickDraftCandidate(...)` 中，最终候选 `tier` 改为所选物品的起始品质；
+  - 新增 `deriveStarForTierByLevel(...)`，按当前等级推导该品质的星级上限（Silver>=3 为 2 星、Gold>=5 为 2 星、Diamond>=7 为 2 星）；
+  - 保证“最后落地的品质/星级”真正体现品质桶随机结果。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认 Lv4/Lv6 不再表现为固定品质。
+
+### 验收补充（同阶段）
+
+- 用户复验反馈：Lv2 仍几乎全白银。
+- 追加根因：快捷三选一候选池复用了 `collectPoolCandidatesByLevel(...)`，该池会按“等级映射 tier（如 Lv2=Silver）+ available_tiers”先过滤，导致低等级时青铜候选被大量排除，品质桶名义生效但可选集已偏斜。
+- 已完成：`src/shop/systems/ShopRewardSystem.ts`
+  - 新增 `collectQuickDraftCandidatesByLevel(...)`，快捷三选一改为基于“起始品质允许等级（getAllowedLevelsByStartingTier）”构建候选；
+  - 不再依赖 quick-buy 的 `available_tiers` 约束作为前置过滤；
+  - 保留品质桶抽取与最终品质落地逻辑。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认 Lv2 不再固定白银，分布符合桶概率。
+
+### 验收补充（同阶段-2）
+
+- 用户反馈：虽然品质分布修正了，但奖励卡片等级不再固定（出现“应是 Lv2 却显示 Lv1”）。
+- 追加根因：上一步将最终候选 `tier/star` 跟随物品起始品质，破坏了“先定等级再随机物品”的展示口径。
+- 已完成：`src/shop/systems/ShopRewardSystem.ts`
+  - 最终候选 `tier/star` 改回严格由抽中的 `level` 映射（`levelToTierStar(level)`）；
+  - 品质桶仅用于“选哪个物品 defId”，不再直接覆盖等级显示。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认“等级固定正确，同时物品仍按品质桶随机”。
+
+## 验收优化追加（2026-03-12，品质桶概率更新）
+
+- 用户需求：更新“合成出不同物品概率”对应的品质桶权重（Lv1~Lv7）。
+- 已完成：`data/game_config.json`
+  - 更新 `qualityPseudoRandomWeightsByLevel`：
+    - Bronze: `[1, 0.7, 0.5, 0.4, 0.3, 0.2, 0]`
+    - Silver: `[0, 0.3, 0.5, 0.4, 0.4, 0.3, 0.3]`
+    - Gold: `[0, 0, 0, 0.2, 0.3, 0.4, 0.4]`
+    - Diamond: `[0, 0, 0, 0, 0, 0.1, 0.3]`
+- 验证：JSON 语法校验通过。
+- 当前阶段：等待用户确认升级快捷三选一/相关品质抽取结果是否符合新概率。
+
+## 验收优化追加（2026-03-12，异物合成与升级三选一品质桶统一）
+
+- 用户需求：
+  - 异物合成“最终抽取权重”应与起始品质桶一致，不再叠加第二层品质权重；
+  - 升级快捷三选一也要走同一套起始品质桶逻辑，修正当前品质偏差。
+- 已完成：
+  - `src/shop/systems/ShopSynthesisController.ts`
+    - `pickCrossSynthesisResultWithCycle(...)` 改为：
+      - 先按品质桶选目标池（含向高品质回退）；
+      - 最终仅在该池内等概率抽取，不再使用 `synthesisMinTierDropWeightsByResultLevel` 二次加权。
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 升级快捷三选一候选从“按 `getMinTierDropWeight` 加权”改为“按 `pickQualityByPseudoRandomBag` 先选起始品质桶，再从桶内抽候选（无桶则向高桶回退）”。
+  - `src/shop/panels/PvpPanel.ts`
+    - 顺手移除两个未使用常量，避免本地编译噪声。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“异物合成与升级三选一的品质分布是否与起始桶一致”。
+
+## 验收优化追加（2026-03-12，大亨首日额外金币口径统一）
+
+- 用户需求：大亨首日额外金币也改为 `day+1`（Day1 为 +2）。
+- 已完成：`src/shop/systems/ShopHeroSystem.ts`
+  - `grantHeroStartDayEffectsIfNeeded(...)` 中大亨首日额外金币由 `currentDay * 3` 改为 `currentDay + 1`；
+  - 与每日逻辑 `grantHeroPeriodicEffectsOnNewDay(...)` 的 `day + 1` 口径统一。
+- 验证：尝试执行 `npm run build`；当前分支存在上游拉取后的既有 TS 报错（`src/shop/panels/PvpPanel.ts` 两个未使用常量），与本次改动无关。
+- 当前阶段：等待用户确认 Day1 选择大亨时提示与金币变化为 `+2`。
+
 ## 验收优化追加（2026-03-12，版本号升级到1.0.1）
 
 - 用户需求：将项目版本更新为 `1.0.1`。

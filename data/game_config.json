@@ -1703,10 +1703,10 @@
       },
       "qualityPseudoRandomWindowSize": 10,
       "qualityPseudoRandomWeightsByLevel": {
-        "Bronze": [1, 0.7, 0.5, 0.4, 0.3, 0.3, 0.2],
-        "Silver": [0, 0.3, 0.5, 0.4, 0.4, 0.3, 0.2],
-        "Gold": [0, 0, 0, 0.2, 0.3, 0.3, 0.4],
-        "Diamond": [0, 0, 0, 0, 0, 0.1, 0.2]
+        "Bronze": [1, 0.7, 0.5, 0.4, 0.3, 0.2, 0],
+        "Silver": [0, 0.3, 0.5, 0.4, 0.4, 0.3, 0.3],
+        "Gold": [0, 0, 0, 0.2, 0.3, 0.4, 0.4],
+        "Diamond": [0, 0, 0, 0, 0, 0.1, 0.3]
       },
       "quickBuyNeutralChance": 0.25,
       "quickBuyNeutralStartDay": 2,
