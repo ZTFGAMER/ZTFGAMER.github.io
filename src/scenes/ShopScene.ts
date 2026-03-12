@@ -16,14 +16,10 @@ import {
   getWinTrophyState,
   resetLifeState,
 } from '@/core/RunState'
-import { GridSystem }        from '@/grid/GridSystem'
-import type { ItemSizeNorm, PlacedItem } from '@/grid/GridSystem'
-import { GridZone, CELL_HEIGHT } from '@/grid/GridZone'
-import { DragController }    from '@/grid/DragController'
-import { normalizeSize, type ItemDef } from '@/items/ItemDef'
+import type { ItemSizeNorm } from '@/grid/GridSystem'
+import { CELL_HEIGHT } from '@/grid/GridZone'
+import type { ItemDef } from '@/items/ItemDef'
 import { ShopManager, getDailyGoldForDay, type TierKey } from '@/shop/ShopManager'
-import { ShopPanelView }     from '@/ui/ShopPanelView'
-import type { ItemInfoCustomDisplay } from '@/ui/SellPopup'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import { PhaseManager } from '@/core/PhaseManager'
 import { clearBattleSnapshot, getBattleSnapshot, setBattleSnapshot, type BattleSnapshotBundle } from '@/combat/BattleSnapshotStore'
@@ -40,8 +36,7 @@ import {
 import {
   nextTierLevel, tierStarLevelIndex,
   getPrimaryArchetype, toSkillArchetype,
-  isNeutralArchetypeKey, isNeutralItemDef, getItemDefById,
-  canUseLv7MorphSynthesis,
+  isNeutralItemDef, getItemDefById,
 } from './shop/SynthesisLogic'
 import {
   saveShopStateToStorage, loadShopStateFromStorage,
@@ -54,7 +49,7 @@ import {
   nextId,
   instanceToDefId,
   instanceToTier, instanceToPermanentDamageBonus,
-  removeInstanceMeta, clearAllInstanceMaps,
+  clearAllInstanceMaps,
   setInstanceQualityLevel, getInstanceLevel,
   getInstanceTier, getInstanceTierStar,
   levelFromLegacyTierStar,
@@ -66,7 +61,6 @@ import { EventDraftPanel } from './shop/EventDraftPanel'
 import { SpecialShopPanel } from './shop/SpecialShopPanel'
 import {
   NeutralItemPanel,
-  isNeutralTargetStone,
   getNeutralDailyRollCap,
   neutralRandomCategoryOfItem,
   type NeutralSpecialKind,
@@ -78,38 +72,23 @@ import {
   isStarterClassItem,
   isFirstPurchaseLockedToStarterClass,
   canBuyItemUnderFirstPurchaseRule,
-  canUseHeroDailyCardReroll,
-  canTriggerHeroSameItemSynthesisChoice,
   shouldShowHeroDailySkillReadyStar,
-  createGuideItemCard,
-  getGuideFrameTierByLevel,
 } from './shop/HeroSystem'
 import * as HeroSystem from './shop/HeroSystem'
 import {
-  markEventSelected,
   resetEventSelectionCounters,
-  getSelectedEventCount,
-  getEventPoolRows,
-  isEventChoiceAvailable,
-  pickRandomEventDraftChoices,
-  pickRandomEventDraftChoicesNoOverlap,
-  resolveEventDescText,
   resetDayEventState,
   resetFutureEventState,
 } from './shop/EventSystem'
 import * as EventSystem from './shop/EventSystem'
 import {
-  pickQualityByPseudoRandomBag,
   getQuickBuyLevelWeightsByDay,
-  getMaxQuickBuyLevelForDay,
-  levelToTierStar,
   getUnlockPoolBuyPriceByLevel,
   QUALITY_PSEUDO_RANDOM_STATE,
   QUICK_BUY_LEVEL_PSEUDO_RANDOM_STATE,
 } from './shop/QuickBuySystem'
 import * as QuickBuySystem from './shop/QuickBuySystem'
 import {
-  getQualityLevelRange,
 } from './shop/PlayerStatusUI'
 import * as PlayerStatusUI from './shop/PlayerStatusUI'
 import {
@@ -117,18 +96,9 @@ import {
   resetSkill15NextBuyDiscountState,
   resetSkill30BundleState,
   resolveBuyPriceWithSkills,
-  consumeSkill15NextBuyDiscountAfterSuccess,
-  consumeSkill30BundleAfterSuccess,
-  getDailyPlanRow,
-  getSkillTierForDay,
-  pickSkillChoices,
-  pickSkillChoicesNoOverlap,
-  pickSkillChoicesExactTier,
 } from './shop/SkillSystem'
 import * as SkillSystem from './shop/SkillSystem'
 import {
-  playSynthesisFlashEffect,
-  playTransformOrUpgradeFlashEffect,
   stopFlashEffect,
   stopBattleGuideHandAnim,
   stopUnlockRevealPlayback
@@ -136,32 +106,28 @@ import {
 import { CANVAS_W } from '@/config/layoutConstants'
 import { getShopUiColor, getClassColor } from '@/config/colorPalette'
 import {
-  parseAvailableTiers, getSpecialShopSpeedTierText,
-  ammoValueFromLineByStar,
   getSpecialShopSimpleDesc, getSpecialShopDetailDesc,
   setZoneItemAmmo,
 } from './shop/SpecialShopDesc'
 import {
   clamp01, easeOutCubic, lerp,
-  getSizeCols, getSizeCellDim, makeGridCellKey,
-  compareTier, toVisualTier,
+  getSizeCellDim, makeGridCellKey,
+  toVisualTier,
   getDayActiveCols,
-  getBattleItemScale, getBattleZoneX, getBackpackZoneX, getBackpackZoneYByBattle,
+  getBattleItemScale, getBattleZoneX, getBackpackZoneYByBattle,
 } from './shop/ShopMathHelpers'
 import {
   type ToastReason,
   showHintToast,
 } from './shop/ShopToastSystem'
 import {
-  shouldShowSimpleDescriptions, isSkillDraftRerollEnabled, isEventDraftRerollEnabled,
-  getDefaultItemInfoMode, getDefaultSkillDetailMode,
+  shouldShowSimpleDescriptions,
+  getDefaultSkillDetailMode,
   resetInfoModeSelection,
   isShopInputEnabled,
 } from './shop/ShopModeHelpers'
 import {
   clearAutoPackCache,
-  buildBackpackAutoPackPlan, applyBackpackAutoPackExisting,
-  canBackpackAcceptByAutoPack,
 } from './shop/ShopAutoPackManager'
 import { buildBattleSnapshot } from './shop/ShopBattleSnapshot'
 import * as GridInventory from './shop/ShopGridInventory'
@@ -186,6 +152,10 @@ import * as UIBuilders from './shop/ShopUIBuilders'
 import type { TopAreaUICallbacks, ButtonRowUICallbacks } from './shop/ShopUIBuilders'
 import * as EventBusSetup from './shop/ShopEventBusSetup'
 import type { EventBusSetupCallbacks } from './shop/ShopEventBusSetup'
+import * as PanelInit from './shop/ShopPanelInitializer'
+import type { PanelInitDeps } from './shop/ShopPanelInitializer'
+import * as BattleZoneBuilder from './shop/ShopBattleZoneBuilder'
+import type { BattleZoneUICallbacks } from './shop/ShopBattleZoneBuilder'
 
 // ---- 場景共享狀態上下文 ----
 const _ctx: ShopSceneCtx = createShopSceneCtx()
@@ -753,17 +723,6 @@ function addArchetypeCornerBadge(card: Container, item: ItemDef, cardW: number, 
   card.addChild(text)
 }
 
-function isCrossIdSynthesisConfirmEnabled(): boolean {
-  const runtimeToggle = getDebugCfg('gameplayCrossSynthesisConfirm') >= 0.5
-  if (runtimeToggle) return true
-  const raw = getConfig().shopRules?.crossIdSynthesisRequireConfirm
-  return raw === true
-}
-
-function isBattleZoneNoSynthesisEnabled(): boolean {
-  return getDebugCfg('gameplayBattleZoneNoSynthesis') >= 0.5
-}
-
 function isSameArchetypeDiffItemStoneSynthesisEnabled(): boolean {
   return getDebugCfg('gameplaySameArchetypeDiffItemStoneSynthesis') >= 0.5
 }
@@ -932,6 +891,87 @@ function makeButtonRowUICallbacks(): ButtonRowUICallbacks {
 }
 
 
+function makeBattleZoneUICallbacks(): BattleZoneUICallbacks {
+  return {
+    refreshShopUI: () => refreshShopUI(),
+    isBackpackDropLocked: (col, row, size) => isBackpackDropLocked(col, row, size),
+    clearSelection: () => clearSelection(),
+    grantHeroDiscardSameLevelReward: (defId, level) => grantHeroDiscardSameLevelReward(defId, level),
+    checkAndPopPendingRewards: () => checkAndPopPendingRewards(),
+    grantSynthesisExp: (amount, from) => grantSynthesisExp(amount, from),
+    updateMiniMap: () => updateMiniMap(),
+    refreshBattlePassiveStatBadges: (showJump) => refreshBattlePassiveStatBadges(showJump),
+    startShopDrag: (slotIndex, e, stage) => startShopDrag(slotIndex, e, stage),
+    startGridDragButtonFlash: (stage, canSell, canToBackpack, sellPrice) => startGridDragButtonFlash(stage, canSell, canToBackpack, sellPrice),
+    stopGridDragButtonFlash: () => stopGridDragButtonFlash(),
+    setSellButtonPrice: (price) => setSellButtonPrice(price),
+    applySellButtonState: () => applySellButtonState(),
+    hideSynthesisHoverInfo: () => synthesisPanel?.hideSynthesisHoverInfo(),
+    showSynthesisHoverInfo: (defId, tier, star, target) => synthesisPanel?.showSynthesisHoverInfo(defId, tier, star, target),
+    showCrossSynthesisConfirmOverlay: (source, target, toTier, toStar, onConfirm, onCancel) =>
+      synthesisPanel?.showCrossSynthesisConfirmOverlay(source, target, toTier, toStar, onConfirm, onCancel),
+    applyInstanceTierVisuals: () => applyInstanceTierVisuals(),
+    refreshNeutralStoneGuideArrows: (sourceDef, excludeId) => refreshNeutralStoneGuideArrows(sourceDef, excludeId),
+    applyNeutralDiscardEffect: (source, stage) => applyNeutralDiscardEffect(source, stage),
+    findNeutralStoneTargetWithDragProbe: (sourceDef, gx, gy, dragSize) => findNeutralStoneTargetWithDragProbe(sourceDef, gx, gy, dragSize),
+    applyNeutralStoneTargetEffect: (sourceDef, target, stage) => applyNeutralStoneTargetEffect(sourceDef, target, stage),
+    showLv7MorphSynthesisConfirmOverlay: (stage, onConfirm, onCancel) => showLv7MorphSynthesisConfirmOverlay(stage, onConfirm, onCancel),
+    buildStoneTransformChoices: (target, rule) => buildStoneTransformChoices(target, rule),
+    showNeutralChoiceOverlay: (stage, title, candidates, onConfirm, mode) => showNeutralChoiceOverlay(stage, title, candidates, onConfirm, mode),
+    transformPlacedItemKeepLevelTo: (instanceId, zone, def, withFx) => transformPlacedItemKeepLevelTo(instanceId, zone, def, withFx),
+    tryRunSameArchetypeDiffItemStoneSynthesis: (sid, sdefId, stier, sstar, target, restore) =>
+      tryRunSameArchetypeDiffItemStoneSynthesis(sid, sdefId, stier, sstar, target, restore),
+    showNeutralStoneHoverInfo: (sourceDef, target) => showNeutralStoneHoverInfo(sourceDef, target),
+    synthesizeTarget: (defId, tier, star, targetId, zone) => synthesizeTarget(defId, tier, star, targetId, zone),
+    tryRunHeroCrossSynthesisReroll: (stage, synth) => tryRunHeroCrossSynthesisReroll(stage, synth),
+    tryRunHeroSameItemSynthesisChoice: (stage, defId, tier, star, target, consumeSource) =>
+      tryRunHeroSameItemSynthesisChoice(stage, defId, tier, star, target, consumeSource),
+  }
+}
+
+function makePanelInitDeps(): PanelInitDeps {
+  return {
+    refreshShopUI: () => refreshShopUI(),
+    refreshPlayerStatusUI: () => refreshPlayerStatusUI(),
+    setTransitionInputEnabled: (enabled) => setTransitionInputEnabled(enabled),
+    setBaseShopPrimaryButtonsVisible: (visible) => setBaseShopPrimaryButtonsVisible(visible),
+    applyPhaseInputLock: () => applyPhaseInputLock(),
+    clearSelection: () => clearSelection(),
+    applySellButtonState: () => applySellButtonState(),
+    checkAndPopPendingRewards: () => checkAndPopPendingRewards(),
+    grantSynthesisExp: (amount, from) => grantSynthesisExp(amount, from),
+    applyInstanceTierVisuals: () => applyInstanceTierVisuals(),
+    syncShopOwnedTierRules: () => syncShopOwnedTierRules(),
+    markShopPurchaseDone: () => markShopPurchaseDone(),
+    recordNeutralItemObtained: (defId) => recordNeutralItemObtained(defId),
+    unlockItemToPool: (defId) => unlockItemToPool(defId),
+    showFirstPurchaseRuleHint: () => showFirstPurchaseRuleHint(),
+    isBackpackDropLocked: (col, row, size) => isBackpackDropLocked(col, row, size),
+    canUseSameArchetypeDiffItemStoneSynthesis: (a, b, c, d, e, f) => canUseSameArchetypeDiffItemStoneSynthesis(a, b, c, d, e, f),
+    collectPoolCandidatesByLevel: (level) => collectPoolCandidatesByLevel(level),
+    addArchetypeCornerBadge: (card, item, cardW, iconTopY) => addArchetypeCornerBadge(card, item, cardW, iconTopY),
+    getSpecialShopShownDesc: (item, tier, star, detailed) => getSpecialShopShownDesc(item, tier, star, detailed),
+    markHeroSameItemSynthesisChoiceTriggered: () => markHeroSameItemSynthesisChoiceTriggered(),
+    upsertPickedSkill: (id) => upsertPickedSkill(id),
+    removePickedSkill: (id) => removePickedSkill(id),
+    applyEventEffect: (event, fromTest) => applyEventEffect(event, fromTest),
+    placeItemToInventoryOrBattle: (def, tier, star) => placeItemToInventoryOrBattle(def, tier, star),
+    upgradePlacedItem: (instanceId, zone, withFx) => upgradePlacedItem(instanceId, zone, withFx),
+    getAllOwnedPlacedItems: () => getAllOwnedPlacedItems(),
+    collectUpgradeableOwnedPlacedItems: (zone) => collectUpgradeableOwnedPlacedItems(zone),
+    findFirstBattlePlace: (size) => findFirstBattlePlace(size),
+    findFirstBackpackPlace: (size) => findFirstBackpackPlace(size),
+    refreshSkillIconBarFn: () => skillDraftPanel?.refreshSkillIconBar(),
+    openEventDraftPanel: () => { eventDraftPanel?.closeEventDraftOverlay(); eventDraftPanel?.ensureEventDraftSelection() },
+    openSkillDraftPanel: (_tier) => { skillDraftPanel?.closeSkillDraftOverlay(); skillDraftPanel?.ensureSkillDraftSelection(); return true },
+    openSpecialShopPanel: () => specialShopPanel?.openSpecialShopFromNeutralScroll() ?? false,
+    clearBackpackSynthesisGuideArrows: () => clearBackpackSynthesisGuideArrows(),
+    rewriteNeutralRandomPick: (item) => rewriteNeutralRandomPick(item),
+    canRandomNeutralItem: (item) => canRandomNeutralItem(item),
+    getItemDefByCn: (nameCn) => getItemDefByCn(nameCn),
+  }
+}
+
 function makeEventBusSetupCallbacks(): EventBusSetupCallbacks {
   return {
     refreshShopUI: () => refreshShopUI(),
@@ -993,54 +1033,14 @@ function applyPostBattleEffects(snapshot: BattleSnapshotBundle | null): void {
 
 
 
-function isPointInItemBounds(view: GridZone, item: PlacedItem, gx: number, gy: number): boolean {
-  return SynthesisCtrl.isPointInItemBounds(view, item, gx, gy)
-}
-
-function refreshBackpackSynthesisGuideArrows(
-  defId: string | null,
-  tier: TierKey | null,
-  star: 1 | 2,
-  excludeInstanceId?: string,
-  ctx: ShopSceneCtx = _ctx,
-): void {
-  SynthesisCtrl.refreshBackpackSynthesisGuideArrows(defId, tier, star, ctx, excludeInstanceId)
-}
 
 function clearBackpackSynthesisGuideArrows(ctx: ShopSceneCtx = _ctx): void {
   SynthesisCtrl.clearBackpackSynthesisGuideArrows(ctx)
 }
 
-function findSynthesisTargetWithDragProbe(
-  defId: string,
-  tier: TierKey,
-  star: 1 | 2,
-  gx: number,
-  gy: number,
-  dragSize?: ItemSizeNorm,
-): SynthesisTarget | null {
-  return SynthesisCtrl.findSynthesisTargetWithDragProbe(defId, tier, star, gx, gy, dragSize, _ctx, makeSynthesisCallbacks())
-}
 
-function findBattleSynthesisTargetWithDragProbeIgnoringNoSynthesis(
-  defId: string,
-  tier: TierKey,
-  star: 1 | 2,
-  gx: number,
-  gy: number,
-  dragSize?: ItemSizeNorm,
-  ctx: ShopSceneCtx = _ctx,
-): SynthesisTarget | null {
-  return SynthesisCtrl.findBattleSynthesisTargetWithDragProbeIgnoringNoSynthesis(defId, tier, star, gx, gy, dragSize, ctx)
-}
 
-function getSynthesisTargetItem(target: SynthesisTarget, ctx: ShopSceneCtx = _ctx): PlacedItem | null {
-  return SynthesisCtrl.getSynthesisTargetItem(target, ctx)
-}
 
-function highlightSynthesisTarget(target: SynthesisTarget | null, ctx: ShopSceneCtx = _ctx): void {
-  SynthesisCtrl.highlightSynthesisTarget(target, ctx)
-}
 
 function synthesizeTarget(
   defId: string,
@@ -1053,20 +1053,6 @@ function synthesizeTarget(
   return SynthesisCtrl.synthesizeTarget(defId, tier, star, targetInstanceId, zone, ctx, makeSynthesisCallbacks())
 }
 
-function restoreDraggedItemToZone(
-  instanceId: string,
-  defId: string,
-  size: ItemSizeNorm,
-  tier: TierKey,
-  star: 1 | 2,
-  originCol: number,
-  originRow: number,
-  homeSystem: GridSystem,
-  homeView: GridZone,
-  ctx: ShopSceneCtx = _ctx,
-): void {
-  GridInventory.restoreDraggedItemToZone(instanceId, defId, size, tier, star, originCol, originRow, homeSystem, homeView, ctx)
-}
 
 
 function findFirstBackpackPlace(size: ItemSizeNorm, ctx: ShopSceneCtx = _ctx): { col: number; row: number } | null {
@@ -1577,18 +1563,6 @@ function setSellButtonPrice(price: number, ctx: ShopSceneCtx = _ctx): void {
 
 
 
-function isOverGridDragSellArea(gx: number, gy: number): boolean {
-  return DragSystem.isOverGridDragSellArea(gx, gy)
-}
-
-function isOverAnyGridDropTarget(gx: number, gy: number, size: ItemSizeNorm, ctx: ShopSceneCtx = _ctx): boolean {
-  return DragSystem.isOverAnyGridDropTarget(gx, gy, size, ctx)
-}
-
-function updateGridDragSellAreaHover(gx: number, gy: number, size: ItemSizeNorm, ctx: ShopSceneCtx = _ctx): void {
-  DragSystem.updateGridDragSellAreaHover(gx, gy, size, ctx)
-}
-
 function startGridDragButtonFlash(stage: Container, canSell: boolean, canToBackpack: boolean, sellPrice = 0, ctx: ShopSceneCtx = _ctx): void {
   DragSystem.startGridDragButtonFlash(stage, canSell, canToBackpack, sellPrice, ctx)
 }
@@ -1609,207 +1583,21 @@ function resetDrag(ctx: ShopSceneCtx = _ctx): void {
   DragSystem.resetDrag(ctx, makeShopDragDeps())
 }
 
-function isOverBpBtn(gx: number, gy: number): boolean {
-  return DragSystem.isOverBpBtn(gx, gy)
-}
-
-function isPointInZoneArea(view: GridZone | null, gx: number, gy: number): boolean {
-  return DragSystem.isPointInZoneArea(view, gx, gy)
-}
-
 
 // ============================================================
 // onEnter 子初始化函数
 // ============================================================
 
 function initPanelInstances(stage: Container, ctx: ShopSceneCtx = _ctx): void {
-  // ---- PVP 面板初始化 ----
-  pvpPanel = new PvpPanel(ctx)
-    stage.addChild(pvpPanel)
-
-    // ---- Settings/Debug 面板初始化 ----
-    settingsPanel = new SettingsDebugPanel(ctx, stage, {
-      refreshShopUI: () => refreshShopUI(),
-      captureAndSave: () => saveShopStateToStorage(captureShopState(ctx)),
-      refreshSkillIconBar: () => skillDraftPanel?.refreshSkillIconBar(),
-      hasPickedSkill: (id) => hasPickedSkill(ctx, id),
-      upsertPickedSkill: (id) => upsertPickedSkill(id),
-      removePickedSkill: (id) => removePickedSkill(id),
-      applyEventEffect: (event, fromTest) => applyEventEffect(event, fromTest),
-      markEventSelected: (id) => markEventSelected(ctx, id),
-      resetEventSelectionCounters: () => resetEventSelectionCounters(ctx),
-      showHintToast: (reason, msg, color) => showHintToast(reason, msg, color, _ctx),
-      placeItemToInventoryOrBattle: (def, tier, star) => placeItemToInventoryOrBattle(def, tier, star),
-      getQualityLevelRange: (quality) => getQualityLevelRange(quality),
-      levelToTierStar: (level) => levelToTierStar(level),
-      getEventPoolRows: () => getEventPoolRows(),
-      getSelectedEventCount: (id) => getSelectedEventCount(ctx, id),
-      isEventChoiceAvailable: (event, day) => isEventChoiceAvailable(ctx, event, day),
-      getPrimaryArchetype: (tags) => getPrimaryArchetype(tags),
-      isNeutralArchetypeKey: (arch) => isNeutralArchetypeKey(arch),
-      getAllItems: () => [...getAllItems()],
-    })
-    stage.addChild(settingsPanel)
-
-    // ---- SkillDraft 面板初始化 ----
-    skillDraftPanel = new SkillDraftPanel(ctx, stage, {
-      captureAndSave: () => saveShopStateToStorage(captureShopState(ctx)),
-      clearSelection: () => clearSelection(),
-      setTransitionInputEnabled: (enabled) => setTransitionInputEnabled(enabled),
-      setBaseShopPrimaryButtonsVisible: (visible) => setBaseShopPrimaryButtonsVisible(visible),
-      applyPhaseInputLock: () => applyPhaseInputLock(),
-      upsertPickedSkill: (skillId) => upsertPickedSkill(skillId),
-      getSkillTierForDay: (day) => getSkillTierForDay(day),
-      pickSkillChoices: (tier, day) => pickSkillChoices(ctx, tier, day),
-      pickSkillChoicesNoOverlap: (tier, day, blocked) => pickSkillChoicesNoOverlap(ctx, tier, day, blocked),
-      pickSkillChoicesExactTier: (tier, blocked) => pickSkillChoicesExactTier(ctx, tier, blocked),
-      shouldShowSimpleDescriptions: () => shouldShowSimpleDescriptions(),
-      isSkillDraftRerollEnabled: () => isSkillDraftRerollEnabled(),
-      getDefaultSkillDetailMode: () => getDefaultSkillDetailMode(),
-      showHintToast: (reason, msg, color) => showHintToast(reason, msg, color, _ctx),
-      resetInfoModeSelection: () => resetInfoModeSelection(_ctx),
-      applySellButtonState: () => applySellButtonState(),
-    })
-    stage.addChild(skillDraftPanel)
-
-    // ---- EventDraft 面板初始化 ----
-    eventDraftPanel = new EventDraftPanel(ctx, stage, {
-      captureAndSave: () => saveShopStateToStorage(captureShopState(ctx)),
-      clearSelection: () => clearSelection(),
-      setTransitionInputEnabled: (enabled) => setTransitionInputEnabled(enabled),
-      setBaseShopPrimaryButtonsVisible: (visible) => setBaseShopPrimaryButtonsVisible(visible),
-      applyPhaseInputLock: () => applyPhaseInputLock(),
-      applyEventEffect: (event, fromTest) => applyEventEffect(event, fromTest),
-      markEventSelected: (id) => markEventSelected(ctx, id),
-      getDailyPlanRow: (day) => getDailyPlanRow(day),
-      pickRandomEventDraftChoices: (day) => pickRandomEventDraftChoices(ctx, day),
-      pickRandomEventDraftChoicesNoOverlap: (day, blocked) => pickRandomEventDraftChoicesNoOverlap(ctx, day, blocked),
-      resolveEventDescText: (event, detailed) => resolveEventDescText(ctx, event, detailed),
-      shouldShowSimpleDescriptions: () => shouldShowSimpleDescriptions(),
-      isEventDraftRerollEnabled: () => isEventDraftRerollEnabled(),
-      showHintToast: (reason, msg, color) => showHintToast(reason, msg, color, _ctx),
-    })
-    stage.addChild(eventDraftPanel)
-
-    // ---- SpecialShop 面板初始化 ----
-    specialShopPanel = new SpecialShopPanel(ctx, stage, {
-      captureAndSave: () => saveShopStateToStorage(captureShopState(ctx)),
-      clearSelection: () => clearSelection(),
-      setTransitionInputEnabled: (enabled) => setTransitionInputEnabled(enabled),
-      setBaseShopPrimaryButtonsVisible: (visible) => setBaseShopPrimaryButtonsVisible(visible),
-      applyPhaseInputLock: () => applyPhaseInputLock(),
-      refreshShopUI: () => refreshShopUI(),
-      refreshPlayerStatusUI: () => refreshPlayerStatusUI(),
-      showHintToast: (reason, msg, color) => showHintToast(reason, msg, color, _ctx),
-      checkAndPopPendingRewards: () => checkAndPopPendingRewards(),
-      getDailyPlanRow: (day) => getDailyPlanRow(day),
-      parseAvailableTiers: (raw) => parseAvailableTiers(raw),
-      getSizeCols: (size) => getSizeCols(size),
-      getInstanceTier: (instanceId) => getInstanceTier(instanceId),
-      getInstanceTierStar: (instanceId) => getInstanceTierStar(instanceId),
-      toVisualTier: (tier, star) => toVisualTier(tier, star),
-      removeInstanceMeta: (instanceId) => removeInstanceMeta(instanceId),
-      setInstanceQualityLevel: (instanceId, defId, quality, level) => setInstanceQualityLevel(instanceId, defId, quality, level),
-      instanceToDefId,
-      instanceToTier,
-      instanceToPermanentDamageBonus,
-      nextId: () => nextId(),
-      markShopPurchaseDone: () => markShopPurchaseDone(),
-      recordNeutralItemObtained: (defId) => recordNeutralItemObtained(defId),
-      unlockItemToPool: (defId) => unlockItemToPool(defId),
-      resolveBuyPriceWithSkills: (basePrice) => resolveBuyPriceWithSkills(ctx, basePrice),
-      consumeSkill15NextBuyDiscountAfterSuccess: () => consumeSkill15NextBuyDiscountAfterSuccess(ctx),
-      consumeSkill30BundleAfterSuccess: (consumed) => consumeSkill30BundleAfterSuccess(ctx, consumed),
-      canBuyItemUnderFirstPurchaseRule: (item) => canBuyItemUnderFirstPurchaseRule(ctx, item),
-      showFirstPurchaseRuleHint: () => showFirstPurchaseRuleHint(),
-      findFirstBattlePlace: (size) => findFirstBattlePlace(size),
-      findFirstBackpackPlace: (size) => findFirstBackpackPlace(size),
-      shouldShowSimpleDescriptions: () => shouldShowSimpleDescriptions(),
-      addArchetypeCornerBadge: (card, item, cardW, iconTopY) => addArchetypeCornerBadge(card, item, cardW, iconTopY),
-      ammoValueFromLineByStar: (item, tier, star, line) => ammoValueFromLineByStar(item, tier, star, line),
-      rewriteNeutralRandomPick: (item) => rewriteNeutralRandomPick(item),
-      canRandomNeutralItem: (item) => canRandomNeutralItem(item),
-    })
-    stage.addChild(specialShopPanel)
-
-    // ---- NeutralItem 面板初始化 ----
-    neutralItemPanel = new NeutralItemPanel(ctx, stage, {
-      captureAndSave: () => saveShopStateToStorage(captureShopState(ctx)),
-      refreshShopUI: () => refreshShopUI(),
-      refreshPlayerStatusUI: () => refreshPlayerStatusUI(),
-      setTransitionInputEnabled: (enabled) => setTransitionInputEnabled(enabled),
-      setBaseShopPrimaryButtonsVisible: (visible) => setBaseShopPrimaryButtonsVisible(visible),
-      applyPhaseInputLock: () => applyPhaseInputLock(),
-      showHintToast: (reason, msg, color) => showHintToast(reason, msg, color, _ctx),
-      clearBackpackSynthesisGuideArrows: () => clearBackpackSynthesisGuideArrows(),
-      placeItemToInventoryOrBattle: (def, tier, star) => placeItemToInventoryOrBattle(def, tier, star),
-      unlockItemToPool: (defId) => unlockItemToPool(defId),
-      getInstanceLevel: (instanceId) => getInstanceLevel(instanceId),
-      getInstanceTier: (instanceId) => getInstanceTier(instanceId),
-      getInstanceTierStar: (instanceId) => getInstanceTierStar(instanceId),
-      setInstanceQualityLevel: (instanceId, defId, quality, level) => setInstanceQualityLevel(instanceId, defId, quality, level),
-      removeInstanceMeta: (instanceId) => removeInstanceMeta(instanceId),
-      toVisualTier: (tier, star) => toVisualTier(tier, star),
-      instanceToDefId,
-      isBackpackDropLocked: (col, row, size) => isBackpackDropLocked(col, row, size),
-      isPointInItemBounds: (view, item, gx, gy) => isPointInItemBounds(view, item, gx, gy),
-      getSizeCellDim: (size) => getSizeCellDim(size),
-      findFirstBattlePlace: (size) => findFirstBattlePlace(size),
-      findFirstBackpackPlace: (size) => findFirstBackpackPlace(size),
-      upgradePlacedItem: (instanceId, zone, withFx) => upgradePlacedItem(instanceId, zone, withFx),
-      getAllOwnedPlacedItems: () => getAllOwnedPlacedItems(),
-      collectUpgradeableOwnedPlacedItems: (zone) => collectUpgradeableOwnedPlacedItems(zone),
-      applyInstanceTierVisuals: () => applyInstanceTierVisuals(),
-      syncShopOwnedTierRules: () => syncShopOwnedTierRules(),
-      refreshUpgradeHints: () => refreshUpgradeHints(_ctx),
-      grantSynthesisExp: (amount, from) => grantSynthesisExp(amount, from),
-      playTransformOrUpgradeFlashEffect: (instanceId, zone) => playTransformOrUpgradeFlashEffect(ctx, instanceId, zone),
-      canTriggerHeroSameItemSynthesisChoice: () => canTriggerHeroSameItemSynthesisChoice(ctx),
-      markHeroSameItemSynthesisChoiceTriggered: () => markHeroSameItemSynthesisChoiceTriggered(),
-      canUseSameArchetypeDiffItemStoneSynthesis: (a, b, c, d, e, f) => canUseSameArchetypeDiffItemStoneSynthesis(a, b, c, d, e, f),
-      canUseHeroDailyCardReroll: () => canUseHeroDailyCardReroll(ctx),
-      collectPoolCandidatesByLevel: (level) => collectPoolCandidatesByLevel(level),
-      pickQualityByPseudoRandomBag: (level, available) => pickQualityByPseudoRandomBag(level, available),
-      getMaxQuickBuyLevelForDay: (day) => getMaxQuickBuyLevelForDay(day),
-      getQuickBuyLevelWeightsByDay: (day) => getQuickBuyLevelWeightsByDay(day),
-      getUnlockPoolBuyPriceByLevel: (level) => getUnlockPoolBuyPriceByLevel(level as 1 | 2 | 3 | 4 | 5 | 6 | 7),
-      parseAvailableTiers: (raw) => parseAvailableTiers(raw),
-      compareTier: (a, b) => compareTier(a, b),
-      openEventDraftPanel: () => {
-        eventDraftPanel?.closeEventDraftOverlay()
-        eventDraftPanel?.ensureEventDraftSelection()
-      },
-      openSpecialShopPanel: () => specialShopPanel?.openSpecialShopFromNeutralScroll() ?? false,
-      openSkillDraftPanel: (_tier) => {
-        skillDraftPanel?.closeSkillDraftOverlay()
-        skillDraftPanel?.ensureSkillDraftSelection()
-        return true
-      },
-      shouldShowSimpleDescriptions: () => shouldShowSimpleDescriptions(),
-      addArchetypeCornerBadge: (card, item, cardW, iconTopY) => addArchetypeCornerBadge(card, item, cardW, iconTopY),
-      getSpecialShopShownDesc: (item, tier, star, detailed) => getSpecialShopShownDesc(item, tier, star, detailed),
-      getSpecialShopSpeedTierText: (ms) => getSpecialShopSpeedTierText(ms),
-      ammoValueFromLineByStar: (item, tier, star, line) => ammoValueFromLineByStar(item, tier, star, line),
-      createGuideItemCard: (item, levelText, tierForFrame) => createGuideItemCard(item, levelText, tierForFrame),
-      getGuideFrameTierByLevel: (levelText) => getGuideFrameTierByLevel(levelText),
-      pickSkillChoicesExactTier: (tier) => pickSkillChoicesExactTier(ctx, tier),
-      pickRandomEventDraftChoices: (day) => pickRandomEventDraftChoices(ctx, day),
-    })
-    stage.addChild(neutralItemPanel)
-
-    synthesisPanel = new SynthesisPanel(ctx, stage, {
-      captureAndSave: () => saveShopStateToStorage(captureShopState(ctx)),
-      refreshShopUI: () => refreshShopUI(),
-      refreshPlayerStatusUI: () => refreshPlayerStatusUI(),
-      canUseSameArchetypeDiffItemStoneSynthesis: (a, b, c, d, e, f) => canUseSameArchetypeDiffItemStoneSynthesis(a, b, c, d, e, f),
-      getInstanceTier: (instanceId) => getInstanceTier(instanceId),
-      getInstanceTierStar: (instanceId) => getInstanceTierStar(instanceId),
-      toVisualTier: (tier, star) => toVisualTier(tier, star),
-      getItemDefByCn: (nameCn) => getItemDefByCn(nameCn),
-    })
-    stage.addChild(synthesisPanel)
+  const panels = PanelInit.initPanelInstances(stage, ctx, makePanelInitDeps())
+  pvpPanel = panels.pvpPanel
+  settingsPanel = panels.settingsPanel
+  skillDraftPanel = panels.skillDraftPanel
+  eventDraftPanel = panels.eventDraftPanel
+  specialShopPanel = panels.specialShopPanel
+  neutralItemPanel = panels.neutralItemPanel
+  synthesisPanel = panels.synthesisPanel
 }
-
 function setupEventBusAndPvpCallbacks(stage: Container, ctx: ShopSceneCtx = _ctx): void {
   EventBusSetup.setupEventBusAndPvpCallbacks(stage, ctx, makeEventBusSetupCallbacks())
 }
@@ -1818,424 +1606,8 @@ function buildTopAreaUI(stage: Container, cfg: ReturnType<typeof getConfig>, ctx
   UIBuilders.buildTopAreaUI(stage, cfg, ctx, makeTopAreaUICallbacks())
 }
 function buildBattleZoneUI(stage: Container, cfg: ReturnType<typeof getConfig>, ctx: ShopSceneCtx = _ctx): void {
-    const canvas = getApp().canvas as HTMLCanvasElement
-
-    // 商店面板
-    ctx.shopPanel = new ShopPanelView()
-    ctx.shopPanel.x = getDebugCfg('shopAreaX')
-    ctx.shopPanel.y = getDebugCfg('shopAreaY')
-    ctx.shopPanel.onDragStart = (slotIndex, e) => startShopDrag(slotIndex, e, stage)
-    ctx.shopPanel.visible = false
-    stage.addChild(ctx.shopPanel)
-
-    // 格子系统
-    const compactMode = cfg.gameplayModeValues?.compactMode
-    const activeCols = compactMode?.enabled
-      ? (compactMode.battleCols ?? 6)
-      : (cfg.dailyBattleSlots[0] ?? 4)
-    const backpackRows = compactMode?.enabled
-      ? (compactMode.backpackRows ?? 3)
-      : 2
-    ctx.battleSystem   = new GridSystem(6)
-    ctx.backpackSystem = new GridSystem(6, backpackRows)
-    ctx.battleView     = new GridZone('上阵区', 6, activeCols, 1)
-    ctx.backpackView   = new GridZone('背包', 6, 6, backpackRows)
-    ctx.backpackView.setAutoPackEnabled(false)
-    ctx.battleView.setStatBadgeMode('archetype')
-    ctx.backpackView.setStatBadgeMode('archetype')
-    ctx.battleView.x   = getBattleZoneX(activeCols, ctx)
-    ctx.battleView.y   = getDebugCfg('battleZoneY')
-    ctx.backpackView.x = getBackpackZoneX(ctx.backpackView.activeColCount, ctx)
-    ctx.backpackView.y = getBackpackZoneYByBattle(ctx)
-    ctx.backpackView.visible = true
-
-    stage.addChild(ctx.battleView)
-    stage.addChild(ctx.backpackView)
-    ctx.battleZoneTitleText = new Text({
-      text: '上阵区',
-      style: {
-        fontSize: cfg.textSizes.gridZoneLabel,
-        fill: 0xd8e5ff,
-        fontFamily: 'Arial',
-        fontWeight: 'bold',
-        stroke: { color: 0x0f1a3a, width: 4 },
-      },
-    })
-    ctx.battleZoneTitleText.anchor.set(0.5)
-    ctx.battleZoneTitleText.zIndex = 14
-    stage.addChild(ctx.battleZoneTitleText)
-
-    ctx.backpackZoneTitleText = new Text({
-      text: '背包区',
-      style: {
-        fontSize: cfg.textSizes.gridZoneLabel,
-        fill: 0xd8e5ff,
-        fontFamily: 'Arial',
-        fontWeight: 'bold',
-        stroke: { color: 0x0f1a3a, width: 4 },
-      },
-    })
-    ctx.backpackZoneTitleText.anchor.set(0.5)
-    ctx.backpackZoneTitleText.zIndex = 14
-    stage.addChild(ctx.backpackZoneTitleText)
-    if (ctx.passiveJumpLayer) ctx.battleView.addChild(ctx.passiveJumpLayer)
-
-    ctx.drag = new DragController(stage, canvas)
-    ctx.drag.addZone(ctx.battleSystem,  ctx.battleView)
-    ctx.drag.addZone(ctx.backpackSystem, ctx.backpackView)
-    ctx.drag.onDropCellLocked = ({ view, col, row, size }) => {
-      if (view !== ctx.backpackView) return false
-      return isBackpackDropLocked(col, row, size)
-    }
-    ctx.drag.onDragStart = (instanceId: string) => {
-      clearSelection()
-      const defId = instanceToDefId.get(instanceId)
-      if (!defId || !ctx.sellPopup || !ctx.shopManager) return
-      const item = getAllItems().find(i => i.id === defId)
-      if (!item) return
-      const tier = getInstanceTier(instanceId)
-      const star = getInstanceTierStar(instanceId)
-      const sellPrice = 0
-      if (isNeutralTargetStone(item)) refreshNeutralStoneGuideArrows(item, instanceId)
-      else refreshBackpackSynthesisGuideArrows(defId, tier ?? null, star, instanceId)
-      // 拖拽中视为选中：显示物品详情（不设置区域高亮，因物品已脱离格子）
-      const inBattle = !!ctx.battleView?.hasItem(instanceId)
-      ctx.currentSelection = { kind: inBattle ? 'battle' : 'backpack', instanceId }
-      ctx.selectedSellAction = null  // 拖拽中暂不执行出售
-      ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, getDefaultItemInfoMode())
-      setSellButtonPrice(sellPrice)
-      applySellButtonState()
-
-      // 按钮闪烁提示：可出售则闪出售；战斗区->背包（背包未打开且有空位）则闪背包按钮
-      const canSell = true
-      const canToBackpack = inBattle && !ctx.showingBackpack
-        && canBackpackAcceptByAutoPack(item.id, normalizeSize(item.size), ctx)
-      startGridDragButtonFlash(stage, canSell, canToBackpack, 0)
-    }
-    ctx.drag.onSpecialDrop = ({ instanceId, anchorGx, anchorGy, size, originCol, originRow, homeSystem, homeView, defId }) => {
-      if (!ctx.shopManager) return false
-      const item = getAllItems().find(i => i.id === defId)
-      if (!item) return false
-
-      const sourceDef = getItemDefById(defId)
-      const sourceLevel = getInstanceLevel(instanceId)
-      const overSellArea = isOverGridDragSellArea(anchorGx, anchorGy)
-      const overAnyDropTarget = isOverAnyGridDropTarget(anchorGx, anchorGy, size)
-      const forceDiscardForNeutralStone = !!sourceDef && isNeutralTargetStone(sourceDef) && overSellArea
-
-      // 1) 拖到下方丢弃区域：直接丢弃
-      // 普通物品：未命中任意格子候选时才丢弃；
-      // 变化石/转职石：命中丢弃区时优先允许丢弃，避免“无目标时无法丢弃”。
-      if ((overSellArea && !overAnyDropTarget) || forceDiscardForNeutralStone) {
-        if (sourceDef && isNeutralItemDef(sourceDef)) {
-          const ok = applyNeutralDiscardEffect(sourceDef, stage)
-          if (!ok) return false
-        }
-        homeSystem.remove(instanceId)
-        removeInstanceMeta(instanceId)
-        showHintToast('no_gold_buy', `已丢弃：${sourceDef?.name_cn ?? item.name_cn}`, 0x9be5ff, _ctx)
-        if (sourceDef && sourceLevel) {
-          grantHeroDiscardSameLevelReward(sourceDef.id, sourceLevel)
-        }
-        refreshShopUI()
-        checkAndPopPendingRewards()
-        return true
-      }
-
-      if (sourceDef && isNeutralTargetStone(sourceDef)) {
-        const target = findNeutralStoneTargetWithDragProbe(sourceDef, anchorGx, anchorGy, size)
-        if (!target) return false
-        const ok = applyNeutralStoneTargetEffect(sourceDef, target, stage)
-        if (!ok) return false
-        homeSystem.remove(instanceId)
-        removeInstanceMeta(instanceId)
-        refreshShopUI()
-        return true
-      }
-
-      const fromTier = getInstanceTier(instanceId) ?? 'Bronze'
-      const fromStar = getInstanceTierStar(instanceId)
-
-      if (
-        isBattleZoneNoSynthesisEnabled()
-        && homeView === ctx.backpackView
-        && (!!nextTierLevel(fromTier, fromStar) || canUseLv7MorphSynthesis(defId, defId, fromTier, fromStar, fromTier, fromStar))
-        && isPointInZoneArea(ctx.battleView, anchorGx, anchorGy)
-      ) {
-        const blockedBattleSynth = findBattleSynthesisTargetWithDragProbeIgnoringNoSynthesis(defId, fromTier, fromStar, anchorGx, anchorGy, size)
-        if (blockedBattleSynth) {
-          showHintToast('backpack_full_buy', '上阵区内无法合成', 0xffd48f, _ctx)
-        }
-      }
-
-      // 1.5) 拖到同装备同品质目标物品：执行合成（优先于挤出/普通落位）
-      const canLv7Morph = canUseLv7MorphSynthesis(defId, defId, fromTier, fromStar, fromTier, fromStar)
-      if (nextTierLevel(fromTier, fromStar) || canLv7Morph) {
-        const synthTarget = findSynthesisTargetWithDragProbe(defId, fromTier, fromStar, anchorGx, anchorGy, size)
-        if (synthTarget) {
-          const targetItem = getSynthesisTargetItem(synthTarget)
-          const targetTier = getInstanceTier(synthTarget.instanceId) ?? fromTier
-          const targetStar = getInstanceTierStar(synthTarget.instanceId)
-          const lv7MorphMode = !!targetItem && canUseLv7MorphSynthesis(defId, targetItem.defId, fromTier, fromStar, targetTier, targetStar)
-          if (lv7MorphMode) {
-            showLv7MorphSynthesisConfirmOverlay(stage, () => {
-              const choices = buildStoneTransformChoices(synthTarget, 'same')
-              if (choices.length <= 0) {
-                showHintToast('backpack_full_buy', 'Lv7转化：当前无可用候选', 0xffb27a, _ctx)
-                restoreDraggedItemToZone(
-                  instanceId,
-                  defId,
-                  size,
-                  fromTier,
-                  fromStar,
-                  originCol,
-                  originRow,
-                  homeSystem,
-                  homeView,
-                )
-                refreshShopUI()
-                return
-              }
-              const opened = showNeutralChoiceOverlay(stage, '选择变化方向', choices, (picked) => {
-                const ok = transformPlacedItemKeepLevelTo(synthTarget.instanceId, synthTarget.zone, picked.item, true)
-                if (!ok) {
-                  showHintToast('backpack_full_buy', 'Lv7转化失败', 0xff8f8f, _ctx)
-                  return false
-                }
-                removeInstanceMeta(instanceId)
-                grantSynthesisExp(1, { instanceId: synthTarget.instanceId, zone: synthTarget.zone })
-                showHintToast('no_gold_buy', 'Lv7合成：已触发变化石效果', 0x9be5ff, _ctx)
-                refreshShopUI()
-                return true
-              }, 'special_shop_like')
-              if (!opened) {
-                showHintToast('backpack_full_buy', 'Lv7转化：当前无可用候选', 0xffb27a, _ctx)
-                restoreDraggedItemToZone(
-                  instanceId,
-                  defId,
-                  size,
-                  fromTier,
-                  fromStar,
-                  originCol,
-                  originRow,
-                  homeSystem,
-                  homeView,
-                )
-                refreshShopUI()
-              }
-            }, () => {
-              restoreDraggedItemToZone(
-                instanceId,
-                defId,
-                size,
-                fromTier,
-                fromStar,
-                originCol,
-                originRow,
-                homeSystem,
-                homeView,
-              )
-              refreshShopUI()
-            })
-            return true
-          }
-          if (targetItem && targetItem.defId !== defId) {
-            const targetDef = getItemDefById(targetItem.defId)
-            if (!targetDef) return false
-            const upgradeTo = nextTierLevel(fromTier, fromStar)
-            if (!upgradeTo) return false
-            const restoreDragToHome = () => {
-              restoreDraggedItemToZone(
-                instanceId,
-                defId,
-                size,
-                fromTier,
-                fromStar,
-                originCol,
-                originRow,
-                homeSystem,
-                homeView,
-              )
-              refreshShopUI()
-            }
-            if (tryRunSameArchetypeDiffItemStoneSynthesis(
-              instanceId,
-              defId,
-              fromTier,
-              fromStar,
-              synthTarget,
-              restoreDragToHome,
-            )) {
-              return true
-            }
-            const runCrossSynthesis = () => {
-              const synth = synthesizeTarget(defId, fromTier, fromStar, synthTarget.instanceId, synthTarget.zone)
-              if (!synth) {
-                showHintToast('backpack_full_buy', '合成目标无效', 0xff8f8f, _ctx)
-                restoreDragToHome()
-                return
-              }
-              removeInstanceMeta(instanceId)
-              playSynthesisFlashEffect(ctx, stage, synth)
-              if (!tryRunHeroCrossSynthesisReroll(stage, synth)) {
-                refreshShopUI()
-              }
-            }
-            if (isCrossIdSynthesisConfirmEnabled()) {
-              synthesisPanel?.showCrossSynthesisConfirmOverlay(
-                { def: item, tier: fromTier, star: fromStar },
-                { def: targetDef, tier: targetTier, star: targetStar },
-                upgradeTo.tier,
-                upgradeTo.star,
-                runCrossSynthesis,
-                () => {
-                  restoreDragToHome()
-                },
-              )
-            } else {
-              runCrossSynthesis()
-            }
-            return true
-          }
-
-          if (tryRunHeroSameItemSynthesisChoice(
-            stage,
-            defId,
-            fromTier,
-            fromStar,
-            synthTarget,
-            () => {
-              removeInstanceMeta(instanceId)
-              return true
-            },
-          )) {
-            return true
-          }
-          const synth = synthesizeTarget(defId, fromTier, fromStar, synthTarget.instanceId, synthTarget.zone)
-          if (synth) {
-            removeInstanceMeta(instanceId)
-            playSynthesisFlashEffect(ctx, stage, synth)
-            refreshShopUI()
-            return true
-          }
-        }
-      }
-
-      // 2) 战斗区拖到背包按钮：背包未打开时执行自动整理后放入
-      if (
-        homeView === ctx.battleView
-        && !ctx.showingBackpack
-        && isOverBpBtn(anchorGx, anchorGy)
-        && ctx.backpackSystem
-        && ctx.backpackView
-      ) {
-        const autoPlan = buildBackpackAutoPackPlan(defId, size, ctx)
-        if (!autoPlan) {
-          showHintToast('backpack_full_transfer', '背包已满，无法转移', 0xff8f8f, _ctx)
-          return false
-        }
-        homeSystem.remove(instanceId)
-        applyBackpackAutoPackExisting(autoPlan.existing, ctx)
-        ctx.backpackSystem.place(autoPlan.incoming.col, autoPlan.incoming.row, size, defId, instanceId)
-        const tier = getInstanceTier(instanceId)
-        const star = getInstanceTierStar(instanceId)
-        ctx.backpackView.addItem(instanceId, defId, size, autoPlan.incoming.col, autoPlan.incoming.row, toVisualTier(tier, star)).then(() => {
-          ctx.backpackView!.setItemTier(instanceId, toVisualTier(tier, star))
-          ctx.drag?.refreshZone(ctx.backpackView!)
-        })
-        refreshShopUI()
-        return true
-      }
-
-      return false
-    }
-    ctx.drag.onDragMove = ({ instanceId, anchorGx, anchorGy, size }) => {
-      updateGridDragSellAreaHover(anchorGx, anchorGy, size)
-
-      // 可用状态随时重算（例如拖拽过程中背包可见状态变化）
-      if (ctx.gridDragCanToBackpack) {
-        ctx.gridDragCanToBackpack = !ctx.showingBackpack
-      }
-
-      const defId = instanceToDefId.get(instanceId)
-      const tier = getInstanceTier(instanceId)
-      const star = getInstanceTierStar(instanceId)
-      const item = defId ? getItemDefById(defId) : null
-      if (isNeutralTargetStone(item)) refreshNeutralStoneGuideArrows(item, instanceId)
-      else refreshBackpackSynthesisGuideArrows(defId ?? null, tier ?? null, star, instanceId)
-
-      const sellPrice = 0
-      const overSell = ctx.gridDragCanSell && ctx.gridDragSellHot
-      if (item && ctx.sellPopup && tier && overSell) {
-        const stoneHint = isNeutralTargetStone(item)
-          ? (item.name_cn === '转职石' ? '拖到目标物品上触发转职效果' : '拖到目标物品上触发变化效果')
-          : '丢弃后不会获得金币'
-        const customDisplay: ItemInfoCustomDisplay = {
-          overrideName: `${item.name_cn}（拖拽丢弃）`,
-          lines: [stoneHint],
-          suppressStats: true,
-        }
-        ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, 'detailed', undefined, customDisplay)
-        ctx.drag?.setSqueezeSuppressed(false)
-        synthesisPanel?.hideSynthesisHoverInfo()
-        return
-      }
-
-      const canLv7Morph = !!defId && !!tier && canUseLv7MorphSynthesis(defId, defId, tier, star, tier, star)
-      if (!defId || !tier || (!nextTierLevel(tier, star) && !canLv7Morph)) {
-        ctx.drag?.setSqueezeSuppressed(false)
-        clearBackpackSynthesisGuideArrows()
-        if (item && ctx.sellPopup) {
-          ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, getDefaultItemInfoMode())
-        }
-        return
-      }
-
-      if (item && isNeutralTargetStone(item)) {
-        const target = findNeutralStoneTargetWithDragProbe(item, anchorGx, anchorGy, size)
-        if (target) {
-          ctx.drag?.setSqueezeSuppressed(true, true)
-          highlightSynthesisTarget(target)
-          showNeutralStoneHoverInfo(item, target)
-        } else {
-          ctx.drag?.setSqueezeSuppressed(false)
-          synthesisPanel?.hideSynthesisHoverInfo()
-          if (ctx.sellPopup) {
-            const customDisplay: ItemInfoCustomDisplay = {
-              lines: ['拖到目标物品上触发效果'],
-              suppressStats: true,
-            }
-            ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, 'detailed', undefined, customDisplay)
-          }
-        }
-        return
-      }
-
-      const synthTarget = findSynthesisTargetWithDragProbe(defId, tier, star, anchorGx, anchorGy, size)
-      if (synthTarget) {
-        ctx.drag?.setSqueezeSuppressed(true, true)
-        highlightSynthesisTarget(synthTarget)
-        synthesisPanel?.showSynthesisHoverInfo(defId, tier, star, synthTarget)
-      } else {
-        ctx.drag?.setSqueezeSuppressed(false)
-        synthesisPanel?.hideSynthesisHoverInfo()
-        if (item && ctx.sellPopup) {
-          ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, getDefaultItemInfoMode())
-        }
-      }
-    }
-    ctx.drag.onDragEnd = () => {
-      ctx.drag?.setSqueezeSuppressed(false)
-      synthesisPanel?.hideSynthesisHoverInfo()
-      clearBackpackSynthesisGuideArrows()
-      stopGridDragButtonFlash(ctx)
-      applyInstanceTierVisuals()
-      updateMiniMap()
-      refreshBattlePassiveStatBadges(true)
-      clearSelection()
-    }
+  BattleZoneBuilder.buildBattleZoneUI(stage, cfg, ctx, makeBattleZoneUICallbacks())
 }
-
 function buildButtonRowUI(stage: Container, cfg: ReturnType<typeof getConfig>, ctx: ShopSceneCtx = _ctx): void {
   UIBuilders.buildButtonRowUI(stage, cfg, ctx, makeButtonRowUICallbacks())
 }
