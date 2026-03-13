@@ -501,6 +501,7 @@ export const PvpContext = {
   endSession(): void {
     // 清理 ShopScene 的 in-memory 状态，防止 PVP 残留存档污染 PVE 商店
     clearShopStateCallback?.()
+    clearShopStateCallback = null
     // 清除 PVP 内存进度覆盖，恢复冒险模式从 localStorage 读取
     setPvpPlayerProgressOverride(null)
     room?.destroy()

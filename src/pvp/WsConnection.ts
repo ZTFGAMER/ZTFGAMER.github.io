@@ -36,6 +36,7 @@ class SimpleEventEmitter {
 export class VirtualDataConnection extends SimpleEventEmitter {
   /** 远端 peer 的 ID（对应 PeerJS DataConnection.peer） */
   readonly peer: string
+  private _closeFired = false
 
   constructor(
     private ws: WebSocket,
@@ -48,6 +49,11 @@ export class VirtualDataConnection extends SimpleEventEmitter {
   send(data: unknown): void {
     if (this.ws.readyState !== WebSocket.OPEN) {
       console.warn('[WsConnection] send() called but ws not open, peer=' + this.peer)
+      // ws 处于 CLOSING/CLOSED 状态，连接已断——主动通知上层触发断线处理
+      // （ws.onclose 可能还未触发，提前感知避免消息静默丢失后卡住）
+      if (this.ws.readyState !== WebSocket.CONNECTING) {
+        this._receiveClose()
+      }
       return
     }
     try {
@@ -68,7 +74,11 @@ export class VirtualDataConnection extends SimpleEventEmitter {
 
   /** 由 WsConnection 内部调用 */
   _receiveData(data: unknown): void { this.emit('data', data) }
-  _receiveClose(): void { this.emit('close') }
+  _receiveClose(): void {
+    if (this._closeFired) return
+    this._closeFired = true
+    this.emit('close')
+  }
   _receiveError(err: unknown): void { this.emit('error', err) }
 }
 
