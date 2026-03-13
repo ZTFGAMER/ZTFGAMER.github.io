@@ -1550,7 +1550,7 @@ export function grantHeroStartDayEffectsIfNeeded(
 ): void {
   if (!ctx.shopManager) return
   if (isSelectedHero(ctx, 'hero2') && !ctx.heroTycoonGoldGrantedDays.has(ctx.currentDay)) {
-    const bonus = Math.max(0, ctx.currentDay * 3)
+    const bonus = Math.max(0, ctx.currentDay + 1)
     if (bonus > 0) {
       ctx.shopManager.gold += bonus
       ctx.heroTycoonGoldGrantedDays.add(ctx.currentDay)

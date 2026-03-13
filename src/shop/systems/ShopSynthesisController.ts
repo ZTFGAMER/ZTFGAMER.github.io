@@ -20,7 +20,6 @@ import {
   getPrimaryArchetype,
   canSynthesizePair,
   canUseLv7MorphSynthesis,
-  pickSynthesisResultWithGuarantee,
   getItemDefById,
 } from './ShopSynthesisLogic'
 import {
@@ -102,7 +101,7 @@ export function pickCrossSynthesisResultWithCycle(
     }
   }
   if (pool.length <= 0) pool = candidates
-  return pickSynthesisResultWithGuarantee(pool, resultTier, resultStar)
+  return pool[Math.floor(Math.random() * pool.length)] ?? null
 }
 
 export function shouldGuaranteeNewUnlock(resultTier: TierKey, resultStar: 1 | 2): boolean {
