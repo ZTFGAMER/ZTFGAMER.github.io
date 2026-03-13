@@ -74,6 +74,7 @@ let offStatusRemoveEvent: (() => void) | null = null
 let offFatigueStartEvent: (() => void) | null = null
 let offUnitDieEvent: (() => void) | null = null
 let offItemDestroyEvent: (() => void) | null = null
+let offBattleEndEvent: (() => void) | null = null
 let onStageTapHidePopup: (() => void) | null = null
 let itemInfoPopup: SellPopup | null = null
 let selectedItemId: string | null = null
@@ -310,7 +311,6 @@ function makeSpeedButton(): Container {
     const next = BATTLE_SPEED_STEPS[(idx + 1) % BATTLE_SPEED_STEPS.length] ?? 1
     battleSpeed = next
     if (speedBtnText) speedBtnText.text = `x${battleSpeed}`
-    pushBattleLog(`战斗倍速切换 x${battleSpeed}`)
   })
   return con
 }
@@ -564,9 +564,6 @@ function applyLayout(activeCols: number): void {
   }
 }
 
-function pushBattleLog(line: string): void {
-  console.log(`[BattleLog] ${line}`)
-}
 
 function showFatigueToast(message: string, durationMs = 1300): void {
   if (!fatigueToastCon || !fatigueToastBg || !fatigueToastText) return
@@ -1012,7 +1009,6 @@ export const BattleScene: Scene = {
 
     offFireEvent = EventBus.on('battle:item_fire', (e) => {
       fxPool.tryPulseItem(e.sourceItemId, e.side)
-      pushBattleLog(`开火 ${e.side === 'player' ? '我方' : '敌方'} ${e.itemId} x${e.multicast}`)
     })
     offItemDestroyEvent = EventBus.on('battle:item_destroy', (e) => {
       fxPool.tryPulseItem(e.sourceItemId, e.sourceSide)
@@ -1022,7 +1018,6 @@ export const BattleScene: Scene = {
       fxPool.spawnProjectile(from, to, destroyOrbColor, () => {
         fxPool.tryPulseItem(e.targetItemId, e.targetSide)
       }, e.sourceItemId)
-      pushBattleLog(`摧毁弹道 ${e.sourceSide === 'player' ? '我方' : '敌方'} -> ${e.targetSide === 'player' ? '我方' : '敌方'}物品`)
     })
     offDamageEvent = EventBus.on('battle:take_damage', (e) => {
       if (engine) {
@@ -1063,7 +1058,6 @@ export const BattleScene: Scene = {
         if (e.sourceItemId.startsWith('status_') || isFatigueDamage) {
           if (enemyAttackToPlayer) portraitFX.triggerPlayerHit()
           fxPool.spawnFloatingNumber(fxPool.offsetFloatingNumberTarget(side, to), `-${damageShown}`, textColor, textSize)
-          pushBattleLog(`结算 ${e.type} ${side === 'enemy' ? '敌方' : '我方'} ${damageShown}`)
           return
         }
         fxPool.spawnProjectile(from, projectileTarget, bulletColor, () => {
@@ -1074,7 +1068,6 @@ export const BattleScene: Scene = {
           }
           fxPool.spawnFloatingNumber(floatingTarget, `-${damageShown}`, textColor, textSize)
         }, e.sourceItemId)
-        pushBattleLog(`伤害 ${side === 'enemy' ? '敌方' : '我方'} ${damageShown}`)
       }
 
       if (e.sourceItemId.startsWith('status_') || isFatigueDamage) {
@@ -1104,7 +1097,6 @@ export const BattleScene: Scene = {
         }
         fxPool.spawnFloatingNumber(floatingTarget, `+${e.amount}`, shieldColor, textSize)
       }, e.sourceItemId)
-      pushBattleLog(`护盾 ${side === 'enemy' ? '敌方' : '我方'} ${e.amount}`)
     })
     offHealEvent = EventBus.on('battle:heal', (e) => {
       const side = e.targetSide ?? (e.targetId === 'hero_enemy' ? 'enemy' : 'player')
@@ -1115,7 +1107,6 @@ export const BattleScene: Scene = {
       const floatingTarget = fxPool.offsetFloatingNumberTarget(side, projectileTarget)
       if (e.sourceItemId.startsWith('status_')) {
         fxPool.spawnFloatingNumber(fxPool.offsetFloatingNumberTarget(side, to), `+${e.amount}`, getBattleFloatTextColor('regen'), textSize)
-        pushBattleLog(`回复 ${side === 'enemy' ? '敌方' : '我方'} ${e.amount}`)
       } else {
         const regenColor = getBattleFloatTextColor('regen')
         const regenOrbColor = getBattleOrbColor('regen')
@@ -1125,7 +1116,6 @@ export const BattleScene: Scene = {
           }
           fxPool.spawnFloatingNumber(floatingTarget, `+${e.amount}`, regenColor, textSize)
         }, e.sourceItemId)
-        pushBattleLog(`治疗 ${side === 'enemy' ? '敌方' : '我方'} ${e.amount}`)
       }
     })
     offStatusApplyEvent = EventBus.on('battle:status_apply', (e) => {
@@ -1158,12 +1148,8 @@ export const BattleScene: Scene = {
         if (targetIsHero && targetSide === 'enemy') portraitFX.triggerEnemyHit()
         if (targetIsHero && targetSide === 'player') portraitFX.triggerPlayerHit()
       }, e.sourceItemId)
-      pushBattleLog(`施加 ${e.status} ${targetSide === 'enemy' ? '敌方' : '我方'} +${e.amount}`)
     })
-    offStatusRemoveEvent = EventBus.on('battle:status_remove', (e) => {
-      const side = e.targetSide ?? (e.targetId === 'hero_enemy' ? 'enemy' : 'player')
-      pushBattleLog(`移除 ${e.status} ${side === 'enemy' ? '敌方' : '我方'}`)
-    })
+    offStatusRemoveEvent = EventBus.on('battle:status_remove', () => {})
     offFatigueStartEvent = EventBus.on('battle:fatigue_start', () => {
       if (getDebugCfg('toastEnabled') < 0.5 || getDebugCfg('toastShowFatigueStart') < 0.5) return
       showFatigueToast('加时赛风暴来袭')
@@ -1173,9 +1159,11 @@ export const BattleScene: Scene = {
       const side = e.side === 'enemy' ? 'enemy' : 'player'
       fxPool.tryPulseItem(e.unitId, side)
       fxPool.pendingDestroyedItemDueMs.set(e.unitId, battlePresentationMs + 180)
-      pushBattleLog(`摧毁 ${side === 'enemy' ? '敌方' : '我方'} 物品`)
     })
-    pushBattleLog('战斗开始')
+    offBattleEndEvent = EventBus.on('battle:end', (e) => {
+      const result = e.winner === 'player' ? '胜' : e.winner === 'enemy' ? '败' : '平'
+      console.log(`[Battle] ${e.blameLog.join(' ')} result=${result}`)
+    })
   },
   onExit() {
     const { stage } = getApp()
@@ -1216,6 +1204,7 @@ export const BattleScene: Scene = {
     offFatigueStartEvent?.(); offFatigueStartEvent = null
     offUnitDieEvent?.(); offUnitDieEvent = null
     offItemDestroyEvent?.(); offItemDestroyEvent = null
+    offBattleEndEvent?.(); offBattleEndEvent = null
     itemInfoPopup = null
     selectedItemId = null
     selectedItemSide = null

@@ -638,14 +638,12 @@ export function buyRandomBronzeToBoardOrBackpack(ctx: ShopSceneCtx, deps: BuyRan
       ctx.battleView!.setItemTier(id, visualTier)
       ctx.drag?.refreshZone(ctx.battleView!)
     })
-    console.log(`[SkillSystem] 购买(${tierForced}#${starForced})→上阵区 ${itemForced.name_cn} -${priced.finalPrice}G，金币: ${manager.gold}`)
   } else if (backpackSlot) {
     ctx.backpackSystem.place(backpackSlot.col, backpackSlot.row, size, itemForced.id, id)
     void ctx.backpackView.addItem(id, itemForced.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
       ctx.backpackView!.setItemTier(id, visualTier)
       ctx.drag?.refreshZone(ctx.backpackView!)
     })
-    console.log(`[SkillSystem] 购买(${tierForced}#${starForced})→背包 ${itemForced.name_cn} -${priced.finalPrice}G，金币: ${manager.gold}`)
   }
   deps.instanceToDefId.set(id, itemForced.id)
   const sourceLevel = deps.levelFromLegacyTierStar(sourceTier, sourceStar)

@@ -486,8 +486,10 @@ export class PvpPanel extends Container {
     const readySet = new Set(PvpContext.getSyncReadyIndices())
     const snapshots = PvpContext.getLastPlayerSnapshots()
     const alivePlayers = session.players.filter(p => !session.eliminatedPlayers.includes(p.index))
-    const totalAlive = alivePlayers.length
-    const readyCount = alivePlayers.filter(p => readySet.has(p.index)).length
+    // 等待计数只统计在线玩家（断线玩家不再阻塞战斗，不应计入等待分母）
+    const onlineAlive = alivePlayers.filter(p => p.connected || p.index === session.myIndex)
+    const totalAlive = onlineAlive.length
+    const readyCount = onlineAlive.filter(p => readySet.has(p.index)).length
 
     // ── 半透明背景遮罩（阻止商店交互）──
     const mask = new Graphics()
@@ -600,6 +602,7 @@ export class PvpPanel extends Container {
     alivePlayers.forEach((player) => {
       const isReady = readySet.has(player.index)
       const isMe = player.index === session.myIndex
+      const isOffline = !player.connected && !isMe
       const hasSnap = !!snapshots[player.index]
 
       const rowCon = new Container()
@@ -609,14 +612,14 @@ export class PvpPanel extends Container {
       // 行背景
       const rowBg = new Graphics()
       rowBg.roundRect(0, 0, ROW_W, ROW_H, 12)
-        .fill({ color: isMe ? 0x14102a : (isReady ? 0x0d1e12 : 0x10192a) })
+        .fill({ color: isMe ? 0x14102a : isOffline ? 0x1a1818 : (isReady ? 0x0d1e12 : 0x10192a) })
       rowBg.roundRect(0, 0, ROW_W, ROW_H, 12)
-        .stroke({ color: isMe ? 0x6644aa : (isReady ? 0x336644 : 0x1c2e44), width: 1 })
+        .stroke({ color: isMe ? 0x6644aa : isOffline ? 0x555555 : (isReady ? 0x336644 : 0x1c2e44), width: 1 })
       rowCon.addChild(rowBg)
 
       // 就绪状态图标
       const iconT = new Text({
-        text: isReady ? '✅' : '⏳',
+        text: isReady ? '✅' : isOffline ? '📵' : '⏳',
         style: { fontSize: 28 },
       })
       iconT.anchor.set(0.5, 0.5)
@@ -626,9 +629,9 @@ export class PvpPanel extends Container {
 
       // 名字
       const nameT = new Text({
-        text: player.nickname + (isMe ? ' (我)' : ''),
+        text: player.nickname + (isMe ? ' (我)' : isOffline ? ' (已断线)' : ''),
         style: {
-          fill: isMe ? 0xffd86b : (isReady ? 0x88eebb : 0xccddf0),
+          fill: isMe ? 0xffd86b : isOffline ? 0x888888 : (isReady ? 0x88eebb : 0xccddf0),
           fontSize: 26,
           fontWeight: isMe ? 'bold' : 'normal',
         },
@@ -643,7 +646,7 @@ export class PvpPanel extends Container {
       const BTN_H = 40
       const btnX = ROW_W - BTN_W - 10
 
-      if (!isMe && !isReady) {
+      if (!isMe && !isReady && !isOffline) {
         // 臭鸡蛋按钮（无冷却，可无限扔）
         const urgeBtnCon = new Container()
         urgeBtnCon.x = btnX

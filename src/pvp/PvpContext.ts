@@ -98,6 +98,11 @@ export const PvpContext = {
     // PVP 模式使用独立内存进度，从 Lv1 开始，不污染冒险模式存档
     setPvpPlayerProgressOverride({ level: 1, exp: 0 })
 
+    // 游戏中玩家断线/重连时同步 session.players（客户端 _players 会被整体替换，session 引用需刷新）
+    pvpRoom.onRoomStateChange = (players) => {
+      if (session) session.players = players
+    }
+
     // 注册房间回调
     pvpRoom.onDayReady = (day, countdownMs, byeOpponentMap) => {
       // 异步PVP无倒计时：玩家手动点"准备"推进，无需自动提交

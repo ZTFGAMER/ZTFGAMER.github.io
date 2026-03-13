@@ -407,16 +407,20 @@ async function bootstrap(): Promise<void> {
   }
 
   // 2. 初始化 PixiJS Application（WebGPU 优先，不支持时自动回退 WebGL）
+  // 移动端限制 DPR 最高 2，避免高 DPR 手机渲染缓冲区过大导致内存崩溃
+  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+  const resolution = isMobile ? Math.min(window.devicePixelRatio || 1, 2) : (window.devicePixelRatio || 1)
   const app = new Application()
   await app.init({
     preference:      'webgpu',
     width:           window.innerWidth,
     height:          window.innerHeight,
     backgroundColor: 0x1a1a2e,
-    resolution:      window.devicePixelRatio || 1,
+    resolution,
     autoDensity:     true,
-    antialias:       true,
+    antialias:       !isMobile,   // 移动端关闭抗锯齿，节省 MSAA 内存
   })
+  console.log(`[Renderer] ${app.renderer.type === 0 ? 'WebGL' : 'WebGPU'} | DPR=${window.devicePixelRatio} resolution=${resolution} | canvas=${app.renderer.width}x${app.renderer.height} | antialias=${!isMobile}`)
   setApp(app)
 
   // 3. 挂载 Canvas

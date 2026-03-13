@@ -220,16 +220,7 @@ export class PvpRoom {
       const readyIndices = Array.from(this.daySyncReadyPlayers.get(day)!)
       this.broadcastToClients({ type: 'sync_ready_update', day, readyIndices })
       this.onSyncReadyUpdate?.(day, readyIndices)
-      const humanPlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
-      if (humanPlayers.every((p) => this.daySyncReadyPlayers.get(day)?.has(p.index))) {
-        console.log('[PvpRoom] 所有玩家 sync-ready，统一分发当日快照 + 广播 battle_sync_start day=' + day)
-        // 统一分发：所有人当日快照已到齐，保证对战的都是今日最新阵容
-        for (const p of humanPlayers) {
-          this.hostDispatchToPlayer(p.index, day)
-        }
-        this.broadcastToClients({ type: 'battle_sync_start', day })
-        this.onBattleSyncStart?.(day)
-      }
+      this.tryTriggerSyncStart(day)
     } else if (msg.type === 'shop_entered') {
       const player = this._players.find((p) => p.peerId === peerId)
       if (!player) return
@@ -269,6 +260,15 @@ export class PvpRoom {
     this.hostConns.delete(peerId)
     this.broadcastRoomState()
     this.onRoomStateChange?.(this._players)
+    // 断线后重新检查各阶段就绪状态，避免断线玩家永久阻塞游戏推进
+    if (this.gameStarted) {
+      for (const day of this.daySyncReadyPlayers.keys()) {
+        this.tryTriggerSyncStart(day)
+      }
+      for (const day of this.shopEnteredByDay.keys()) {
+        this.checkAndStartCountdown(day)
+      }
+    }
   }
 
   // ----------------------------------------------------------------
@@ -674,6 +674,20 @@ export class PvpRoom {
     this.broadcastToClients({ type: 'room_state', players: state, maxPlayers: this._maxPlayers })
   }
 
+  /** 检查在线存活玩家是否全员 sync-ready，若是则统一分发快照并广播开战 */
+  private tryTriggerSyncStart(day: number): void {
+    if (!this.isHost) return
+    const humanPlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index) && p.connected)
+    if (humanPlayers.length > 0 && humanPlayers.every((p) => this.daySyncReadyPlayers.get(day)?.has(p.index))) {
+      console.log('[PvpRoom] 所有在线玩家 sync-ready，统一分发快照 + 广播 battle_sync_start day=' + day)
+      for (const p of humanPlayers) {
+        this.hostDispatchToPlayer(p.index, day)
+      }
+      this.broadcastToClients({ type: 'battle_sync_start', day })
+      this.onBattleSyncStart?.(day)
+    }
+  }
+
   /** Mode A: client/host signals ready for sync battle */
   notifySyncReady(day: number): void {
     if (this.isHost) {
@@ -683,16 +697,7 @@ export class PvpRoom {
       const readyIndices = Array.from(this.daySyncReadyPlayers.get(day)!)
       this.broadcastToClients({ type: 'sync_ready_update', day, readyIndices })
       this.onSyncReadyUpdate?.(day, readyIndices)
-      const humanPlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
-      if (humanPlayers.every((p) => this.daySyncReadyPlayers.get(day)?.has(p.index))) {
-        console.log('[PvpRoom] 所有玩家 sync-ready（host路径），统一分发当日快照 + 广播 battle_sync_start day=' + day)
-        // 统一分发：此时所有人当日快照已到齐，所有玩家对战的都是今日最新阵容
-        for (const p of humanPlayers) {
-          this.hostDispatchToPlayer(p.index, day)
-        }
-        this.broadcastToClients({ type: 'battle_sync_start', day })
-        this.onBattleSyncStart?.(day)
-      }
+      this.tryTriggerSyncStart(day)
     } else {
       this.sendToHost({ type: 'battle_sync_ready', day })
     }
