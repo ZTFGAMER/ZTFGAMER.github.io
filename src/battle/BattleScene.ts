@@ -112,6 +112,94 @@ let enemyStatusLayer: Container | null = null
 let playerStatusLayer: Container | null = null
 let lastHudTickIndex = -1
 let skillUI: BattleSkillUI | null = null
+const runtimeChargePercentByIdScratch = new Map<string, number>()
+const runtimeByIdScratch = new Map<string, ReturnType<CombatEngine['getRuntimeState']>[number]>()
+const playerItemsScratch: CombatBoardItem[] = []
+const enemyItemsScratch: CombatBoardItem[] = []
+const playerAliveIdsScratch = new Set<string>()
+const enemyAliveIdsScratch = new Set<string>()
+let monitorSampleElapsedMs = 0
+let monitorHighStreak = 0
+let monitorRecoverStreak = 0
+let autoFxDegradeLevel = 0
+let lastMonitorHeapMb = 0
+let lastMonitorPendingRatio = 0
+let lastMonitorFxRatio = 0
+
+function readUsedHeapMb(): number {
+  const mem = (performance as Performance & { memory?: { usedJSHeapSize?: number } }).memory
+  const used = mem?.usedJSHeapSize
+  if (typeof used !== 'number' || !Number.isFinite(used) || used <= 0) return 0
+  return used / (1024 * 1024)
+}
+
+function tickAutoFxDegrade(dtMs: number): void {
+  if (!engine) return
+  const runtimeCfg = getGameCfg().combatRuntime
+  monitorSampleElapsedMs += dtMs
+  const sampleEveryMs = Math.max(100, Math.round(runtimeCfg.memoryMonitorSampleMs))
+  if (monitorSampleElapsedMs < sampleEveryMs) return
+  monitorSampleElapsedMs = 0
+
+  const fxStats = fxPool.getPerfStats()
+  const fxLimits = fxPool.getCurrentFxLimits()
+  const queueStats = engine.getQueuePerfStats()
+
+  const pendingRatio = Math.max(
+    queueStats.pendingHits / Math.max(1, queueStats.maxPendingHits),
+    queueStats.pendingItemFires / Math.max(1, queueStats.maxPendingItemFires),
+    queueStats.pendingChargePulses / Math.max(1, queueStats.maxPendingChargePulses),
+    queueStats.pendingAmmoRefills / Math.max(1, queueStats.maxPendingAmmoRefills),
+  )
+  const fxRatio = Math.max(
+    fxStats.activeProjectiles / Math.max(1, fxLimits.maxProjectiles),
+    fxStats.activeFloatingNumbers / Math.max(1, fxLimits.maxFloatingNumbers),
+    fxStats.activeFx / Math.max(1, fxLimits.maxActiveTotal),
+  )
+  const heapMb = readUsedHeapMb()
+
+  lastMonitorPendingRatio = pendingRatio
+  lastMonitorFxRatio = fxRatio
+  lastMonitorHeapMb = heapMb
+
+  const isHigh = pendingRatio >= runtimeCfg.memoryMonitorHighPendingRatio
+    || fxRatio >= runtimeCfg.memoryMonitorHighFxRatio
+    || (heapMb > 0 && heapMb >= runtimeCfg.memoryMonitorHighHeapMb)
+  const canRecoverByHeap = heapMb <= 0 || heapMb <= runtimeCfg.memoryMonitorRecoverHeapMb
+  const isRecover = pendingRatio <= runtimeCfg.memoryMonitorRecoverPendingRatio
+    && fxRatio <= runtimeCfg.memoryMonitorRecoverFxRatio
+    && canRecoverByHeap
+
+  if (isHigh) {
+    monitorHighStreak += 1
+    monitorRecoverStreak = 0
+  } else if (isRecover) {
+    monitorRecoverStreak += 1
+    monitorHighStreak = 0
+  } else {
+    monitorHighStreak = 0
+    monitorRecoverStreak = 0
+  }
+
+  const escalateSamples = Math.max(1, Math.round(runtimeCfg.memoryMonitorEscalateSamples))
+  const recoverSamples = Math.max(1, Math.round(runtimeCfg.memoryMonitorRecoverSamples))
+
+  if (monitorHighStreak >= escalateSamples && autoFxDegradeLevel < 2) {
+    autoFxDegradeLevel += 1
+    monitorHighStreak = 0
+    monitorRecoverStreak = 0
+    fxPool.setAutoDegradeLevel(autoFxDegradeLevel)
+    console.warn(`[BattleScene] Auto FX degrade escalated to L${autoFxDegradeLevel}`)
+  }
+
+  if (monitorRecoverStreak >= recoverSamples && autoFxDegradeLevel > 0) {
+    autoFxDegradeLevel -= 1
+    monitorHighStreak = 0
+    monitorRecoverStreak = 0
+    fxPool.setAutoDegradeLevel(autoFxDegradeLevel)
+    console.warn(`[BattleScene] Auto FX degrade recovered to L${autoFxDegradeLevel}`)
+  }
+}
 
 function shouldShowSimpleDescriptions(): boolean {
   return getDebugCfg('gameplayShowSimpleDescriptions') >= 0.5
@@ -349,11 +437,10 @@ async function mountZoneItems(zone: GridZone, items: CombatBoardItem[]): Promise
   }
 }
 
-function syncRemovedZoneItems(zone: GridZone, side: 'player' | 'enemy', items: CombatBoardItem[]): void {
+function syncRemovedZoneItems(zone: GridZone, side: 'player' | 'enemy', aliveIds: Set<string>): void {
   const mounted = side === 'player' ? fxPool.playerMountedItemIds : fxPool.enemyMountedItemIds
-  const alive = new Set(items.map((it) => it.id))
   for (const id of Array.from(mounted)) {
-    if (alive.has(id)) continue
+    if (aliveIds.has(id)) continue
     const due = fxPool.pendingDestroyedItemDueMs.get(id)
     if (typeof due === 'number' && battlePresentationMs < due) continue
     zone.removeItem(id)
@@ -597,6 +684,14 @@ export const BattleScene: Scene = {
     fxPool.sourceNextDamageVisualAtMs.clear()
     battleSpeed = 1
     lastHudTickIndex = -1
+    monitorSampleElapsedMs = 0
+    monitorHighStreak = 0
+    monitorRecoverStreak = 0
+    autoFxDegradeLevel = 0
+    lastMonitorHeapMb = 0
+    lastMonitorPendingRatio = 0
+    lastMonitorFxRatio = 0
+    fxPool.setAutoDegradeLevel(0)
     damageStats.reset()
     root = new Container()
     root.sortableChildren = true
@@ -1140,6 +1235,13 @@ export const BattleScene: Scene = {
     enteredSnapshot = null
     battleSpeed = 1
     fxPool.reset()
+    monitorSampleElapsedMs = 0
+    monitorHighStreak = 0
+    monitorRecoverStreak = 0
+    autoFxDegradeLevel = 0
+    lastMonitorHeapMb = 0
+    lastMonitorPendingRatio = 0
+    lastMonitorFxRatio = 0
     lastHudTickIndex = -1
     damageStats.reset()
     // PVP sync cleanup
@@ -1154,6 +1256,7 @@ export const BattleScene: Scene = {
     const simDt = dt * speed
     const dtMs = simDt * 1000
     battlePresentationMs += dtMs
+    tickAutoFxDegrade(dtMs)
     skillUI?.tickIntro(dtMs, playerZone)
     const introDone = transition.tickIntro(simDt * 1000, root)
     if (introDone && syncAStarted) {
@@ -1169,7 +1272,12 @@ export const BattleScene: Scene = {
     const debugState = engine.getDebugState()
     const tickChanged = debugState.tickIndex !== lastHudTickIndex
     const pulseActive = fxPool.getPulseStatesSize() > 0
-    const runtimeChargePercentById = new Map(runtime.map((it) => [it.id, it.chargePercent]))
+    runtimeChargePercentByIdScratch.clear()
+    runtimeByIdScratch.clear()
+    for (const it of runtime) {
+      runtimeChargePercentByIdScratch.set(it.id, it.chargePercent)
+      runtimeByIdScratch.set(it.id, it)
+    }
     const activeCols = getDayActiveCols(battleDay)
     enemyZone.setActiveColCount(activeCols)
     playerZone.setActiveColCount(activeCols)
@@ -1177,23 +1285,33 @@ export const BattleScene: Scene = {
     applyZoneVisualStyle(playerZone)
     applyLayout(activeCols)
 
-    const playerItems = board.items.filter((it) => it.side === 'player')
-    const enemyItems = board.items.filter((it) => it.side === 'enemy')
+    playerItemsScratch.length = 0
+    enemyItemsScratch.length = 0
+    playerAliveIdsScratch.clear()
+    enemyAliveIdsScratch.clear()
+    for (const it of board.items) {
+      if (it.side === 'player') {
+        playerItemsScratch.push(it)
+        playerAliveIdsScratch.add(it.id)
+      } else {
+        enemyItemsScratch.push(it)
+        enemyAliveIdsScratch.add(it.id)
+      }
+    }
     if (skillUI) {
       skillUI.setEnemyBarVisible(enemyPresentationVisible && skillUI.getEnemySkills().length > 0)
       if (!enemyPresentationVisible && skillUI.isDetailPopupVisible()) skillUI.hideDetailPopup()
     }
-    const runtimeById = new Map(runtime.map((it) => [it.id, it]))
-    syncRemovedZoneItems(playerZone, 'player', playerItems)
-    syncRemovedZoneItems(enemyZone, 'enemy', enemyItems)
+    syncRemovedZoneItems(playerZone, 'player', playerAliveIdsScratch)
+    syncRemovedZoneItems(enemyZone, 'enemy', enemyAliveIdsScratch)
     if (tickChanged || pulseActive) {
-      drawCooldownOverlay(playerZone, playerCdOverlay, playerItems, runtimeChargePercentById)
-      drawCooldownOverlay(enemyZone, enemyCdOverlay, enemyItems, runtimeChargePercentById)
+      drawCooldownOverlay(playerZone, playerCdOverlay, playerItemsScratch, runtimeChargePercentByIdScratch)
+      drawCooldownOverlay(enemyZone, enemyCdOverlay, enemyItemsScratch, runtimeChargePercentByIdScratch)
       fxPool.updateStatusFx(playerZone, enemyZone, engine, playerStatusLayer, enemyStatusLayer, playerFreezeOverlay, enemyFreezeOverlay)
     }
     if (tickChanged) {
-      updateRuntimeStatBadges(playerZone, playerItems, runtimeById)
-      updateRuntimeStatBadges(enemyZone, enemyItems, runtimeById)
+      updateRuntimeStatBadges(playerZone, playerItemsScratch, runtimeByIdScratch)
+      updateRuntimeStatBadges(enemyZone, enemyItemsScratch, runtimeByIdScratch)
       drawHeroBars(board.player, board.enemy)
       lastHudTickIndex = debugState.tickIndex
     }
@@ -1204,7 +1322,12 @@ export const BattleScene: Scene = {
 
     if (statusText) {
       const perfStats = fxPool.getPerfStats()
-      statusText.text = `phase:${engine.getPhase()} ticks:${debugState.tickIndex} fatigue:${debugState.inFatigue ? 'on' : 'off'} fx:${perfStats.activeFx} p:${perfStats.activeProjectiles}/40 t:${perfStats.activeFloatingNumbers}/30 drop:${perfStats.droppedProjectiles + perfStats.droppedFloatingNumbers}`
+      const fxLimits = fxPool.getCurrentFxLimits()
+      const queueStats = engine.getQueuePerfStats()
+      const heapText = lastMonitorHeapMb > 0 ? `${Math.round(lastMonitorHeapMb)}mb` : 'na'
+      const pRatio = Math.round(lastMonitorPendingRatio * 100)
+      const fRatio = Math.round(lastMonitorFxRatio * 100)
+      statusText.text = `phase:${engine.getPhase()} ticks:${debugState.tickIndex} fatigue:${debugState.inFatigue ? 'on' : 'off'} fxL:${perfStats.degradeLevel} fx:${perfStats.activeFx}/${fxLimits.maxActiveTotal} p:${perfStats.activeProjectiles}/${fxLimits.maxProjectiles} t:${perfStats.activeFloatingNumbers}/${fxLimits.maxFloatingNumbers} qh:${queueStats.pendingHits}/${queueStats.maxPendingHits} qf:${queueStats.pendingItemFires}/${queueStats.maxPendingItemFires} pr:${pRatio}% fr:${fRatio}% mem:${heapText} drop:${perfStats.droppedProjectiles + perfStats.droppedFloatingNumbers}`
     }
 
     if (battleEndMask) {

@@ -348,6 +348,25 @@ export interface GameConfig {
     cardHasteMs?: number
     cardSlowFactor?: number
     cardHasteFactor?: number
+    maxPendingHits: number
+    maxPendingItemFires: number
+    maxPendingChargePulses: number
+    maxPendingAmmoRefills: number
+    fxDegradeProjectileScaleL1: number
+    fxDegradeProjectileScaleL2: number
+    fxDegradeFloatingScaleL1: number
+    fxDegradeFloatingScaleL2: number
+    fxDegradeActiveScaleL1: number
+    fxDegradeActiveScaleL2: number
+    memoryMonitorSampleMs: number
+    memoryMonitorEscalateSamples: number
+    memoryMonitorRecoverSamples: number
+    memoryMonitorHighPendingRatio: number
+    memoryMonitorRecoverPendingRatio: number
+    memoryMonitorHighFxRatio: number
+    memoryMonitorRecoverFxRatio: number
+    memoryMonitorHighHeapMb: number
+    memoryMonitorRecoverHeapMb: number
     enemyByDay?: Array<{
       dayStart: number
       dayEnd: number

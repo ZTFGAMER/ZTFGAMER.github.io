@@ -22,6 +22,18 @@ type ItemBattleStat = {
   shield: number
 }
 
+type DamageStatsRowView = {
+  root: Container
+  iconFrame: Graphics
+  icon: Sprite
+  name: Text
+  triggerText: Text
+  damageFill: Graphics
+  damageText: Text
+  shieldFill: Graphics
+  shieldText: Text
+}
+
 const DAMAGE_STATS_PANEL_W = 560
 const DAMAGE_STATS_PANEL_H = 700
 
@@ -93,6 +105,8 @@ export class BattleDamageStats {
   private damageStatsTabPlayerBtn: Container | null = null
   private damageStatsTabEnemyBtn: Container | null = null
   private statsBtnText: Text | null = null
+  private damageStatsRowViews: DamageStatsRowView[] = []
+  private damageStatsEmptyText: Text | null = null
 
   // ---- private helpers ----
 
@@ -148,115 +162,161 @@ export class BattleDamageStats {
     const maxStatValue = Math.max(1, ...rows.map((r) => Math.max(r.damage, r.shield)))
 
     this.damageStatsTitleText.text = engine?.isFinished() ? '战斗统计（已结束）' : '战斗统计（进行中）'
-    this.damageStatsRowsCon.removeChildren().forEach((c) => c.destroy({ children: true }))
-
-    if (rows.length <= 0) {
-      const empty = new Text({
-        text: '暂无统计',
-        style: { fontSize: 24, fill: 0xbfd0ef, fontFamily: 'Arial', fontWeight: 'bold' },
-      })
-      empty.anchor.set(0.5)
-      empty.x = 0
-      empty.y = 40
-      this.damageStatsRowsCon.addChild(empty)
-    } else {
-      const rowW = 520
-      const rowH = 88
-      for (let i = 0; i < Math.min(6, rows.length); i++) {
-        const stat = rows[i]!
-        const y = -210 + i * (rowH + 10)
-        const row = new Container()
-
-        const rowBg = new Graphics()
-        rowBg.roundRect(-rowW / 2, y, rowW, rowH, 12)
-        rowBg.fill({ color: 0x1a2744, alpha: 0.88 })
-        rowBg.stroke({ color: 0x5f79a8, width: 1, alpha: 0.9 })
-        row.addChild(rowBg)
-
-        const iconSide = 46
-        const iconX = -rowW / 2 + 36
-        const iconY = y + rowH / 2
-        const iconFrame = new Graphics()
-        iconFrame.roundRect(iconX - iconSide / 2, iconY - iconSide / 2, iconSide, iconSide, 9)
-        iconFrame.fill({ color: 0x1d2a45, alpha: 1 })
-        iconFrame.stroke({ color: getTierColor(stat.baseTier), width: 2, alpha: 0.98 })
-        row.addChild(iconFrame)
-
-        const iconUrl = getItemIconUrl(stat.defId)
-        const icon = new Sprite(Texture.from(iconUrl))
-        icon.anchor.set(0.5)
-        icon.x = iconX
-        icon.y = iconY
-        icon.width = 42
-        icon.height = 42
-        row.addChild(icon)
-
-        const name = new Text({
-          text: `${i + 1}. ${stat.itemName} ${tierCn(stat.baseTier)}Lv${stat.level}`,
-          style: { fontSize: 21, fill: 0xeaf2ff, fontFamily: 'Arial', fontWeight: 'bold' },
-        })
-        name.x = -rowW / 2 + 64
-        name.y = y + 8
-        row.addChild(name)
-
-        const barW = 228
-        const barH = 13
-        const barX = -rowW / 2 + 64
-
-        const triggerText = new Text({
-          text: `触发 ${Math.max(0, Math.round(stat.triggerCount))}次`,
-          style: { fontSize: 18, fill: 0xfff0bf, fontFamily: 'Arial', fontWeight: 'bold' },
-        })
-        triggerText.x = barX + barW + 10
-        triggerText.y = y + 10
-        row.addChild(triggerText)
-
-        const dmgBg = new Graphics()
-        dmgBg.roundRect(barX, y + 42, barW, barH, 6)
-        dmgBg.fill({ color: 0x2a3557, alpha: 1 })
-        row.addChild(dmgBg)
-        const dmgRatio = Math.min(1, Math.max(0, stat.damage / maxStatValue))
-        const dmgFillW = stat.damage > 0 ? Math.max(2, Math.round(barW * dmgRatio)) : 0
-        if (dmgFillW > 0) {
-          const dmgFg = new Graphics()
-          dmgFg.roundRect(barX, y + 42, dmgFillW, barH, 6)
-          dmgFg.fill({ color: 0xe95d5d, alpha: 1 })
-          row.addChild(dmgFg)
-        }
-        const dmgText = new Text({
-          text: `伤害 ${Math.round(stat.damage)}`,
-          style: { fontSize: 18, fill: 0xffd6d6, fontFamily: 'Arial', fontWeight: 'bold' },
-        })
-        dmgText.x = barX + barW + 10
-        dmgText.y = y + 34
-        row.addChild(dmgText)
-
-        const shBg = new Graphics()
-        shBg.roundRect(barX, y + 62, barW, barH, 6)
-        shBg.fill({ color: 0x2a3557, alpha: 1 })
-        row.addChild(shBg)
-        const shieldRatio = Math.min(1, Math.max(0, stat.shield / maxStatValue))
-        const shieldFillW = stat.shield > 0 ? Math.max(2, Math.round(barW * shieldRatio)) : 0
-        if (shieldFillW > 0) {
-          const shFg = new Graphics()
-          shFg.roundRect(barX, y + 62, shieldFillW, barH, 6)
-          shFg.fill({ color: Math.round(getDebugCfg('battleColorShield')), alpha: 1 })
-          row.addChild(shFg)
-        }
-        const shText = new Text({
-          text: `护盾 ${Math.round(stat.shield)}`,
-          style: { fontSize: 18, fill: 0xd8ebff, fontFamily: 'Arial', fontWeight: 'bold' },
-        })
-        shText.x = barX + barW + 10
-        shText.y = y + 54
-        row.addChild(shText)
-
-        this.damageStatsRowsCon.addChild(row)
-      }
+    this.ensureDamageStatsRowsBuilt()
+    const visibleCount = Math.min(this.damageStatsRowViews.length, rows.length)
+    if (this.damageStatsEmptyText) this.damageStatsEmptyText.visible = visibleCount <= 0
+    for (let i = 0; i < this.damageStatsRowViews.length; i++) {
+      const view = this.damageStatsRowViews[i]!
+      const stat = i < visibleCount ? rows[i] : null
+      view.root.visible = !!stat
+      if (!stat) continue
+      this.updateDamageStatsRowView(view, i, stat, maxStatValue)
     }
 
     this.damageStatsDirty = false
     this.damageStatsLastRenderAtMs = battlePresentationMs
+  }
+
+  private ensureDamageStatsRowsBuilt(): void {
+    if (!this.damageStatsRowsCon) return
+    if (this.damageStatsRowViews.length > 0) return
+
+    this.damageStatsEmptyText = new Text({
+      text: '暂无统计',
+      style: { fontSize: 24, fill: 0xbfd0ef, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    this.damageStatsEmptyText.anchor.set(0.5)
+    this.damageStatsEmptyText.x = 0
+    this.damageStatsEmptyText.y = 40
+    this.damageStatsRowsCon.addChild(this.damageStatsEmptyText)
+
+    const rowW = 520
+    const rowH = 88
+    const iconSide = 46
+    const barW = 228
+    const barH = 13
+    const barX = -rowW / 2 + 64
+
+    for (let i = 0; i < 6; i++) {
+      const row = new Container()
+      row.y = -210 + i * (rowH + 10)
+
+      const rowBg = new Graphics()
+      rowBg.roundRect(-rowW / 2, 0, rowW, rowH, 12)
+      rowBg.fill({ color: 0x1a2744, alpha: 0.88 })
+      rowBg.stroke({ color: 0x5f79a8, width: 1, alpha: 0.9 })
+      row.addChild(rowBg)
+
+      const iconX = -rowW / 2 + 36
+      const iconY = rowH / 2
+      const iconFrame = new Graphics()
+      iconFrame.roundRect(iconX - iconSide / 2, iconY - iconSide / 2, iconSide, iconSide, 9)
+      iconFrame.fill({ color: 0x1d2a45, alpha: 1 })
+      iconFrame.stroke({ color: getTierColor('Bronze'), width: 2, alpha: 0.98 })
+      row.addChild(iconFrame)
+
+      const icon = new Sprite(Texture.WHITE)
+      icon.anchor.set(0.5)
+      icon.x = iconX
+      icon.y = iconY
+      icon.width = 42
+      icon.height = 42
+      row.addChild(icon)
+
+      const name = new Text({
+        text: '',
+        style: { fontSize: 21, fill: 0xeaf2ff, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      name.x = -rowW / 2 + 64
+      name.y = 8
+      row.addChild(name)
+
+      const triggerText = new Text({
+        text: '',
+        style: { fontSize: 18, fill: 0xfff0bf, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      triggerText.x = barX + barW + 10
+      triggerText.y = 10
+      row.addChild(triggerText)
+
+      const dmgBg = new Graphics()
+      dmgBg.roundRect(barX, 42, barW, barH, 6)
+      dmgBg.fill({ color: 0x2a3557, alpha: 1 })
+      row.addChild(dmgBg)
+
+      const damageFill = new Graphics()
+      row.addChild(damageFill)
+
+      const damageText = new Text({
+        text: '',
+        style: { fontSize: 18, fill: 0xffd6d6, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      damageText.x = barX + barW + 10
+      damageText.y = 34
+      row.addChild(damageText)
+
+      const shBg = new Graphics()
+      shBg.roundRect(barX, 62, barW, barH, 6)
+      shBg.fill({ color: 0x2a3557, alpha: 1 })
+      row.addChild(shBg)
+
+      const shieldFill = new Graphics()
+      row.addChild(shieldFill)
+
+      const shieldText = new Text({
+        text: '',
+        style: { fontSize: 18, fill: 0xd8ebff, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      shieldText.x = barX + barW + 10
+      shieldText.y = 54
+      row.addChild(shieldText)
+
+      this.damageStatsRowsCon.addChild(row)
+      this.damageStatsRowViews.push({
+        root: row,
+        iconFrame,
+        icon,
+        name,
+        triggerText,
+        damageFill,
+        damageText,
+        shieldFill,
+        shieldText,
+      })
+    }
+  }
+
+  private updateFillBar(fill: Graphics, x: number, y: number, width: number, height: number, color: number, ratio: number): void {
+    const clampedRatio = Math.max(0, Math.min(1, ratio))
+    const fillW = clampedRatio > 0 ? Math.max(2, Math.round(width * clampedRatio)) : 0
+    fill.clear()
+    if (fillW <= 0) return
+    fill.roundRect(x, y, fillW, height, 6)
+    fill.fill({ color, alpha: 1 })
+  }
+
+  private updateDamageStatsRowView(view: DamageStatsRowView, rowIndex: number, stat: ItemBattleStat, maxStatValue: number): void {
+    const rowW = 520
+    const barW = 228
+    const barH = 13
+    const barX = -rowW / 2 + 64
+    const iconSide = 46
+    const iconX = -rowW / 2 + 36
+    const iconY = 88 / 2
+
+    view.iconFrame.clear()
+    view.iconFrame.roundRect(iconX - iconSide / 2, iconY - iconSide / 2, iconSide, iconSide, 9)
+    view.iconFrame.fill({ color: 0x1d2a45, alpha: 1 })
+    view.iconFrame.stroke({ color: getTierColor(stat.baseTier), width: 2, alpha: 0.98 })
+
+    view.icon.texture = Texture.from(getItemIconUrl(stat.defId))
+    view.name.text = `${rowIndex + 1}. ${stat.itemName} ${tierCn(stat.baseTier)}Lv${stat.level}`
+    view.triggerText.text = `触发 ${Math.max(0, Math.round(stat.triggerCount))}次`
+    view.damageText.text = `伤害 ${Math.round(stat.damage)}`
+    view.shieldText.text = `护盾 ${Math.round(stat.shield)}`
+
+    this.updateFillBar(view.damageFill, barX, 42, barW, barH, 0xe95d5d, stat.damage / maxStatValue)
+    this.updateFillBar(view.shieldFill, barX, 62, barW, barH, Math.round(getDebugCfg('battleColorShield')), stat.shield / maxStatValue)
   }
 
   private setDamageStatsTab(tab: 'player' | 'enemy', battlePresentationMs: number, engine: CombatEngine | null): void {
@@ -499,6 +559,8 @@ export class BattleDamageStats {
     this.damageStatsTabPlayerBtn = null
     this.damageStatsTabEnemyBtn = null
     this.statsBtnText = null
+    this.damageStatsRowViews = []
+    this.damageStatsEmptyText = null
   }
 
   getPanel(): Container | null {

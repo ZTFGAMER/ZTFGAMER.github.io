@@ -29,6 +29,14 @@ function validateCombatRuntime(v: unknown): void {
     'fatigueDoubleEveryMs', 'critMultiplier',
     'burnTickMs', 'poisonTickMs', 'regenTickMs',
     'burnShieldFactor', 'burnDecayPct', 'healCleansePct',
+    'maxPendingHits', 'maxPendingItemFires', 'maxPendingChargePulses', 'maxPendingAmmoRefills',
+    'fxDegradeProjectileScaleL1', 'fxDegradeProjectileScaleL2',
+    'fxDegradeFloatingScaleL1', 'fxDegradeFloatingScaleL2',
+    'fxDegradeActiveScaleL1', 'fxDegradeActiveScaleL2',
+    'memoryMonitorSampleMs', 'memoryMonitorEscalateSamples', 'memoryMonitorRecoverSamples',
+    'memoryMonitorHighPendingRatio', 'memoryMonitorRecoverPendingRatio',
+    'memoryMonitorHighFxRatio', 'memoryMonitorRecoverFxRatio',
+    'memoryMonitorHighHeapMb', 'memoryMonitorRecoverHeapMb',
   ]
   const bad = required.filter(k => typeof r[k] !== 'number' || !Number.isFinite(r[k] as number))
   if (bad.length > 0) throw new Error(`${loc}: 缺少或非法字段 [${bad.join(', ')}]`)

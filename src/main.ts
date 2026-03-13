@@ -349,6 +349,49 @@ function applyReleaseLogSwitch(): void {
   console.error = muted
 }
 
+function isIosWebKitLike(): boolean {
+  const ua = navigator.userAgent || ''
+  const byUA = /iPad|iPhone|iPod/i.test(ua)
+  const ipadOsDesktopUA = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
+  return byUA || ipadOsDesktopUA
+}
+
+function installMobileLongPressGuards(root: HTMLElement, canvas: HTMLCanvasElement): void {
+  if (!isIosWebKitLike()) return
+
+  const rootStyle = root.style
+  rootStyle.webkitUserSelect = 'none'
+  rootStyle.userSelect = 'none'
+  ;(rootStyle as CSSStyleDeclaration & { webkitTouchCallout?: string }).webkitTouchCallout = 'none'
+  ;(rootStyle as CSSStyleDeclaration & { webkitTapHighlightColor?: string }).webkitTapHighlightColor = 'transparent'
+  rootStyle.touchAction = 'none'
+
+  const canvasStyle = canvas.style
+  canvasStyle.webkitUserSelect = 'none'
+  canvasStyle.userSelect = 'none'
+  ;(canvasStyle as CSSStyleDeclaration & { webkitTouchCallout?: string }).webkitTouchCallout = 'none'
+  ;(canvasStyle as CSSStyleDeclaration & { webkitTapHighlightColor?: string }).webkitTapHighlightColor = 'transparent'
+  canvasStyle.touchAction = 'none'
+
+  const preventDefault = (e: Event) => {
+    e.preventDefault()
+  }
+  const preventDefaultIfInsideRoot = (e: Event) => {
+    const t = e.target
+    if (t instanceof Node && root.contains(t)) e.preventDefault()
+  }
+  const nonPassive = { passive: false } as const
+
+  canvas.addEventListener('touchstart', preventDefault, nonPassive)
+  canvas.addEventListener('touchmove', preventDefault, nonPassive)
+  canvas.addEventListener('contextmenu', preventDefault, nonPassive)
+  canvas.addEventListener('selectstart', preventDefault, nonPassive)
+
+  document.addEventListener('contextmenu', preventDefaultIfInsideRoot, nonPassive)
+  document.addEventListener('selectstart', preventDefaultIfInsideRoot, nonPassive)
+  document.addEventListener('gesturestart', preventDefaultIfInsideRoot, nonPassive)
+}
+
 async function bootstrap(): Promise<void> {
   applyReleaseLogSwitch()
   if (window.location.protocol === 'app:') {
@@ -378,7 +421,9 @@ async function bootstrap(): Promise<void> {
 
   // 3. 挂载 Canvas
   const container = document.getElementById('app')!
-  container.appendChild(app.canvas as HTMLCanvasElement)
+  const canvas = app.canvas as HTMLCanvasElement
+  container.appendChild(canvas)
+  installMobileLongPressGuards(container, canvas)
 
   // 4. 适配（Canvas 全屏，stage 等比缩放并居中）
   function resize(): void {
@@ -415,7 +460,6 @@ async function bootstrap(): Promise<void> {
       bleedY,
     })
 
-    const canvas = app.canvas as HTMLCanvasElement
     canvas.style.width = '100%'
     canvas.style.height = '100%'
     canvas.style.display = 'block'

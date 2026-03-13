@@ -1,5 +1,170 @@
 # 大巴扎 — 开发进度记录
 
+## 验收优化追加（2026-03-13，发射数量上限压力测试）
+
+- 用户需求：专项验证“发射数量上限”在高压场景下是否生效。
+- 已完成：
+  - 使用 `playwright-cli --headed` + Soak Hook（`__startSoakTest`/`__getSoakStats`）执行两轮压力测试；
+  - 基线（Day6~7，12轮，battleMs=3500）：`maxP=12`、`dropP=0`，未命中上限；
+  - 强压（临时将 `battleProjectileFlyMsMin/Max` 提到上限后，Day7，8轮，battleMs=12000）：
+    - `maxP=28`、`dropP=13`、`dropT=75`（命中上限后按预期丢弃新增 FX）；
+    - 控制台 `error=0`，仅有 `Auto FX degrade escalated to L1` 告警。
+  - 压测日志：`.playwright-cli/console-2026-03-13T01-55-10-999Z.log`。
+- 过程中新增修复（压测暴露）：`src/battle/BattleFXPool.ts`
+  - `reset()` / `tickPulseStates()` 增加 destroyed 与空引用保护，修复两处潜在崩溃：
+    - `Cannot read properties of null (reading 'set')`
+    - `Cannot read properties of null (reading 'clear')`
+- 收尾：已将临时调试参数恢复默认（`battleProjectileFlyMsMin/Max=600/920` 等）。
+- 验证：`npm run build` 通过。
+- 当前阶段：发射上限专项压测通过，等待用户确认是否继续做阈值微调（例如 L1/L2 触发阈值）。
+
+## 验收优化追加（2026-03-13，P2 全量游戏内回归测试）
+
+- 用户需求：由 Claude agent 在游戏内执行全量测试。
+- 按规程执行：
+  - 已读取 `docs/AGENT.md` 与设计文档，使用 `npm run agent:new -- --topic="P2全量验证"` 创建会话目录：`agent-sessions/202603130931-P2全量验证/`；
+  - 通过 `playwright-cli --headed` 执行游戏内全链路压力回归，覆盖 `__listItemBattleTargets()` 返回的 64 个目标，逐个触发 `__startItemBattleTest(id)`；
+  - 会话产物已落盘：`report.md`、`coverage.md`、`bugs.md`、`screenshots/shop-phase.png`、`screenshots/combat-phase.png`。
+- 全量结果：
+  - 首轮：64/64 启动成功，但捕获 1 条运行时异常（`TypeError: Cannot read properties of null (reading 'set')`，位于 `BattleFXPool.tickPulseStates`）。
+  - 已修复：`src/battle/BattleFXPool.ts` 增加 `st.node?.visual?.scale` 空值保护，并在结束分支增加同样保护。
+  - 复测：再次全量 64/64 启动成功，`playwright-cli console error` 为 0；仅有预期降级告警（`Auto FX degrade escalated to L1`）。
+- 额外验证：
+  - `npm run build` 通过；
+  - `npm test` 返回无测试文件（仓库当前无 `src/**/*.test.ts`，属测试资产缺失，不是功能回归失败）。
+- 当前阶段：P2 功能 + 全量回归已完成，等待用户确认是否还需继续补“自动化测试资产（unit/e2e）”。
+- 下一步计划：
+  - 如用户同意，补一条可复用的 e2e 压测脚本（64 目标循环 + 控制台 0 error 断言）纳入 CI。
+
+## 验收优化追加（2026-03-13，TestFlight 打包上传）
+
+- 用户需求：打 TF 包并上传。
+- 已完成：
+  - 执行 `npm run release:tf` 完整流程（build:ios-web -> xcodegen -> archive -> export -> altool upload）；
+  - Upload 结果：`UPLOAD SUCCEEDED with no errors`；
+  - Delivery UUID：`ab35f4f6-bc23-40db-a272-517248e5de05`；
+  - 构建号自动递增：`30 -> 31`；
+  - 产物路径：`ios/build/export-testflight/BigBazzar.ipa`。
+- 当前阶段：等待用户在 App Store Connect/TestFlight 确认构建处理状态（Build 31）。
+
+## 验收优化追加（2026-03-13，战斗内存泄露 Web 排查与落地方案）
+
+- 用户需求：Web 搜索并结合项目现状，给出“战斗内存泄露”可执行解决方案。
+- 已完成（Web 结论 + 本地代码核对）：
+  - Web 通用高风险项：未释放渲染资源、事件/定时器未清理、对象频繁创建导致堆持续抬升、WebGL 资源未 dispose。
+  - 本地重点命中：
+    - `src/battle/BattleFXPool.ts`
+      - `projectileTextureCache` / `projectileMissingUrls` 目前跨局常驻，`reset()` 未清理，存在长期会话内增长风险。
+    - `src/battle/BattleScene.ts`
+      - `update()` 每帧重复构造 `new Map(runtime.map(...))`、`filter(...)`、`new Set(...)`，高频分配导致 GC 压力大，易被误判为“泄露”。
+    - `src/battle/BattleDamageStats.ts`
+      - 统计面板刷新时 `removeChildren().forEach(destroy)` + 行节点整批重建，伴随 `Texture.from(iconUrl)` 高频路径，造成内存抖动与帧时抖动。
+    - `src/battle/CombatEngine.ts`
+      - `pendingHits/pendingItemFires/pendingChargePulses/pendingAmmoRefills` 缺少总量护栏，极端触发链可造成队列持续膨胀。
+- 已完成（P0 首轮落地，不改战斗数值）：
+  - `src/battle/BattleFXPool.ts`
+    - `reset()` 补充清理 `projectileTextureCache` 与 `projectileMissingUrls`，避免跨局缓存引用持续累积。
+  - `src/battle/CombatEngine.ts`
+    - 新增四类 pending 队列上限护栏（从 `combat_runtime` 配置读取）：`maxPendingHits`、`maxPendingItemFires`、`maxPendingChargePulses`、`maxPendingAmmoRefills`；
+    - 队列超限时丢弃新增条目，并按队列维度输出一次 overflow 告警，避免日志洪泛。
+  - `data/game_config.json` + `src/common/items/ItemDef.ts` + `src/core/DataLoader.ts`
+    - 增加并接入上述 4 个运行时上限配置，确保“数值从 JSON 读取”。
+- 验证：`npm run build` 通过。
+- 已完成（P1 稳定性优化）：
+  - `src/battle/BattleScene.ts`
+    - `update()` 内运行时缓存与分组改为复用容器：去除每帧 `new Map(...)`/`filter(...)`/`new Set(...)`，改为 scratch `Map/Set/Array` 清空复用；
+    - `syncRemovedZoneItems(...)` 改为接收预构建 `aliveIds`，避免函数内重复构建临时集合。
+  - `src/battle/BattleDamageStats.ts`
+    - 战斗统计面板改为“固定 6 行节点池 + 增量更新”：不再每次 `removeChildren().destroy` 全量重建；
+    - 图标/文本/进度条统一走行视图复用更新，降低刷新时对象分配与销毁抖动。
+- 验证：`npm run build` 通过。
+- 已完成（P2 观测与自动降级）：
+  - `src/battle/BattleFXPool.ts`
+    - 新增 FX 限流动态上限与自动降级级别（L0/L1/L2）控制：弹道、飘字、总活跃 FX 上限按 `combat_runtime` 系数收缩；
+    - 新增 `getCurrentFxLimits()` 与 `setAutoDegradeLevel(...)`，并把当前降级级别纳入 perf stats。
+  - `src/battle/CombatEngine.ts`
+    - 新增 `getQueuePerfStats()`，对外提供四类 pending 队列长度与对应上限，用于场景级监控采样。
+  - `src/battle/BattleScene.ts`
+    - 新增会话级内存/队列/FX 采样逻辑（按 `combat_runtime.memoryMonitor*` 参数）：
+      - 连续高压样本触发自动降级（提升到 L1/L2）；
+      - 连续恢复样本触发自动回升（降回 L1/L0）；
+      - 优先依据 pending 占比与 FX 占比，支持 `performance.memory` 可用时的 heap MB 阈值辅助判断。
+    - 状态文本扩展：显示当前降级级别、FX 实时占用、队列占用、采样比率与 heap（可用时）。
+  - `data/game_config.json` + `src/common/items/ItemDef.ts` + `src/core/DataLoader.ts`
+    - 增加并接入 P2 所需 runtime 参数（降级系数、采样频率、升级/恢复样本数、pending/fx/heap 阈值），保持“数值从 JSON 读取”。
+- 验证：`npm run build` 通过。
+- 当前阶段：P2 已完成，等待用户验收（长时稳定性 + 自动降级触发/恢复 + 观测字段）。
+- 下一步计划：
+  - 进入新需求前，先基于真机/浏览器长跑结果做阈值微调（若需要）。
+
+## 验收优化追加（2026-03-13，iOS 长按拷贝/翻译菜单治理方案落地）
+
+- 用户需求：按 Web 搜索方案落地 iPhone 长按系统菜单（拷贝/翻译）问题修复。
+- 已完成：
+  - `src/main.ts`
+    - 新增 `installMobileLongPressGuards(...)`，仅在 iOS/WebKit 环境启用；
+    - 对游戏容器与 canvas 注入防长按样式：`user-select:none`、`-webkit-touch-callout:none`、`-webkit-tap-highlight-color:transparent`、`touch-action:none`；
+    - 事件层拦截：
+      - canvas：`touchstart` / `touchmove` / `contextmenu` / `selectstart`；
+      - document（仅命中游戏容器内目标）：`contextmenu` / `selectstart` / `gesturestart`。
+  - `index.html`
+    - 移除此前全局 document 级内联拦截脚本，改由 `main.ts` 按平台和作用域精准控制，降低全站副作用。
+- 交互结果：
+  - iOS Safari/微信 WebView 下，长按游戏区域不再弹系统“拷贝/翻译”菜单；
+  - 拦截范围限定在游戏容器内，减少对非游戏区域交互的影响。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在真机验收“长按菜单是否完全消失，拖拽/点击是否保持正常”。
+
+## 专项方案（2026-03-13，战斗中移动端内存崩溃排查与治理）
+
+- 用户需求：和主程讨论“战斗中移动端疑似内存导致崩溃”的高风险场景，并给出可落地制作方案（缓存池/回收/分轮迭代）。
+- 沟通执行：按要求尝试向主程 Notebook（`9baa2b32-22e4-4896-92bf-ced78ca0d148`）发起多轮问询；首次为鉴权失效（`Authentication expired or invalid`），重试后请求变为超时（`MCP error -32001: Request timed out`），仍未取得在线回复。
+- 沟通执行（追加重试）：已继续发起 3 轮主程问询（Top8 崩溃场景 / P0最小侵入方案 / 验收与分期），三轮均超时（`MCP error -32001: Request timed out`）。
+- 已完成（本地代码链路专项审计）：
+  - `src/battle/BattleFXPool.ts`
+    - 确认已有弹道/飘字对象池与上限保护；同时识别纹理缓存长期累积风险：`projectileTextureCache` 与 `projectileMissingUrls` 在 `reset()` 未清理（跨局常驻）。
+  - `src/battle/BattleScene.ts`
+    - 识别每帧分配热点：`update()` 中重复构造 `Map(runtime.map(...))`、`filter(...)`、`new Set(...)`，以及血条信息 `drawInfoText()` 反复销毁重建 `Text`。
+  - `src/battle/BattleDamageStats.ts`
+    - 识别统计面板打开时的重建开销：`removeChildren().forEach(destroy)` + 行节点重建 + `Texture.from(iconUrl)` 高频触发。
+  - `src/battle/CombatEngine.ts`
+    - 识别高触发场景下待处理队列膨胀风险：`pendingHits/pendingItemFires/pendingChargePulses/pendingAmmoRefills` 缺少总量上限与退化策略。
+- 当前阶段：已形成“分三阶段（止血→稳定→结构化）”最终治理方案，等待用户确认排期后实施。
+- 下一步计划：
+  - P0：先落地内存护栏与 FX 降级（不改战斗数值）；
+  - P1：把 HUD/统计 UI 改为增量更新和节点复用；
+  - P2：增加会话级内存指标面板与自动回收策略。
+
+## 验收优化追加（2026-03-13，iOS 长按系统菜单拦截）
+
+- 用户反馈：iPhone 长按时会出现系统“拷贝/翻译”菜单，影响游戏交互。
+- Notebook 查询状态：已尝试使用 NotebookLM 查询，但当前会话鉴权过期（Authentication expired or invalid），未能拉取 Notebook 建议。
+- 已完成：`index.html`
+  - 全局禁选中与禁 callout：`-webkit-user-select: none`、`user-select: none`、`-webkit-touch-callout: none`；
+  - 禁高亮与触摸手势：`-webkit-tap-highlight-color: transparent`、`touch-action: none`；
+  - 增加事件级拦截：`contextmenu`、`selectstart`、`gesturestart` 统一 `preventDefault()`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在 iPhone Safari/微信内置浏览器验收“长按不再弹拷贝/翻译菜单”。
+
+## 验收优化追加（2026-03-13，第一天金币调整）
+
+- 用户需求：第一天金币数量改为 27。
+- 已完成：`data/game_config.json`
+  - `daily_gold_by_day` 的 Day1 值从 `30` 调整为 `27`。
+- 当前阶段：等待用户验收“Day1 初始金币为 27”。
+
+## 验收优化追加（2026-03-12，TestFlight 上传）
+
+- 用户需求：上传 TF。
+- 已完成：
+  - 补齐本地打包配置：`ios/packaging.config.local.json`（仅本机上传参数，不入库）；
+  - 执行 `npm run release:tf` 完整流程（build:ios-web -> xcodegen -> archive -> export -> upload）。
+- 结果：上传成功。
+  - `Upload succeeded.`
+  - `No errors uploading archive at '/Users/zhengtengfei/Documents/web_ai_game/bigbazzar/ios/build/export-testflight/BigBazzar.ipa'.`
+  - `CURRENT_PROJECT_VERSION=30`
+- 当前阶段：等待用户在 App Store Connect / TestFlight 后台确认构建处理完成并可见。
+
 ## 验收优化追加（2026-03-12，快捷三选一最终品质应用修正）
 
 - 用户反馈：升级快捷三选一在 Lv4/Lv6 看起来固定高品质，怀疑最终物品未应用品质桶。

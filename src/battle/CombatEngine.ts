@@ -25,6 +25,7 @@ export class CombatEngine {
   private state: CombatState = createCombatState()
   private skillSystem: SkillTriggerSystem = new SkillTriggerSystem(this.state, this as unknown as ICombatEngineBase)
   private itemSystem: ItemTriggerSystem = new ItemTriggerSystem(this.state, this as unknown as IItemTriggerEngineBase)
+  private queueOverflowWarned = new Set<string>()
   // ── 技能/英雄辅助（CombatEngine 内部使用，与 SkillTriggerSystem 共享逻辑）
   private hasPlayerSkill(id: string): boolean { return this.state.playerSkillIds.has(id) }
   private hasEnemySkill(id: string): boolean { return this.state.enemySkillIds.has(id) }
@@ -202,6 +203,28 @@ export class CombatEngine {
       enemyHp: this.state.enemyHero.hp,
       inFatigue: this.state.inFatigue,
       enemySkillCount: this.state.enemySkillIds.size,
+    }
+  }
+
+  getQueuePerfStats(): {
+    pendingHits: number
+    pendingItemFires: number
+    pendingChargePulses: number
+    pendingAmmoRefills: number
+    maxPendingHits: number
+    maxPendingItemFires: number
+    maxPendingChargePulses: number
+    maxPendingAmmoRefills: number
+  } {
+    return {
+      pendingHits: this.state.pendingHits.length,
+      pendingItemFires: this.state.pendingItemFires.length,
+      pendingChargePulses: this.state.pendingChargePulses.length,
+      pendingAmmoRefills: this.state.pendingAmmoRefills.length,
+      maxPendingHits: this.getQueueLimit('pendingHits'),
+      maxPendingItemFires: this.getQueueLimit('pendingItemFires'),
+      maxPendingChargePulses: this.getQueueLimit('pendingChargePulses'),
+      maxPendingAmmoRefills: this.getQueueLimit('pendingAmmoRefills'),
     }
   }
 
@@ -399,6 +422,7 @@ export class CombatEngine {
     this.state.pendingItemFires = []
     this.state.pendingChargePulses = []
     this.state.pendingAmmoRefills = []
+    this.queueOverflowWarned.clear()
     this.state.lastQueuedFireTickByItem.clear()
     this.state.playerSkillIds.clear()
     this.state.enemySkillIds.clear()
@@ -427,6 +451,56 @@ export class CombatEngine {
     this.state.enemyBackpackItemCount = 0
     this.state.enemyGoldAtBattleStart = 0
     this.state.enemyTrophyWinsAtBattleStart = 0
+  }
+
+  private getQueueLimit(name: 'pendingHits' | 'pendingItemFires' | 'pendingChargePulses' | 'pendingAmmoRefills'): number {
+    const cfg = getConfig().combatRuntime
+    if (name === 'pendingHits') return Math.max(1, Math.round(cfg.maxPendingHits))
+    if (name === 'pendingItemFires') return Math.max(1, Math.round(cfg.maxPendingItemFires))
+    if (name === 'pendingChargePulses') return Math.max(1, Math.round(cfg.maxPendingChargePulses))
+    return Math.max(1, Math.round(cfg.maxPendingAmmoRefills))
+  }
+
+  private warnQueueOverflow(name: 'pendingHits' | 'pendingItemFires' | 'pendingChargePulses' | 'pendingAmmoRefills', limit: number): void {
+    if (this.queueOverflowWarned.has(name)) return
+    this.queueOverflowWarned.add(name)
+    console.warn(`[CombatEngine] ${name} overflow, dropping new entries (limit=${limit})`)
+  }
+
+  private pushPendingHit(entry: CombatState['pendingHits'][number]): void {
+    const limit = this.getQueueLimit('pendingHits')
+    if (this.state.pendingHits.length >= limit) {
+      this.warnQueueOverflow('pendingHits', limit)
+      return
+    }
+    this.state.pendingHits.push(entry)
+  }
+
+  private pushPendingItemFire(entry: CombatState['pendingItemFires'][number]): void {
+    const limit = this.getQueueLimit('pendingItemFires')
+    if (this.state.pendingItemFires.length >= limit) {
+      this.warnQueueOverflow('pendingItemFires', limit)
+      return
+    }
+    this.state.pendingItemFires.push(entry)
+  }
+
+  private pushPendingChargePulse(entry: CombatState['pendingChargePulses'][number]): void {
+    const limit = this.getQueueLimit('pendingChargePulses')
+    if (this.state.pendingChargePulses.length >= limit) {
+      this.warnQueueOverflow('pendingChargePulses', limit)
+      return
+    }
+    this.state.pendingChargePulses.push(entry)
+  }
+
+  private pushPendingAmmoRefill(entry: CombatState['pendingAmmoRefills'][number]): void {
+    const limit = this.getQueueLimit('pendingAmmoRefills')
+    if (this.state.pendingAmmoRefills.length >= limit) {
+      this.warnQueueOverflow('pendingAmmoRefills', limit)
+      return
+    }
+    this.state.pendingAmmoRefills.push(entry)
   }
   private isDamageItemForUniqueCheck(item: CombatItemRunner): boolean {
     if (isDamageBonusEligible(item)) return true
@@ -592,7 +666,7 @@ export class CombatEngine {
       const baseDue = this.state.tickIndex + 1
       const prevDue = this.state.lastQueuedFireTickByItem.get(owner.id) ?? (this.state.tickIndex - 1)
       const dueTick = Math.max(baseDue, prevDue + 1)
-      this.state.pendingItemFires.push({ dueTick, sourceItemId: owner.id })
+      this.pushPendingItemFire({ dueTick, sourceItemId: owner.id })
       this.state.lastQueuedFireTickByItem.set(owner.id, dueTick)
     }
   }
@@ -608,7 +682,7 @@ export class CombatEngine {
     const step = Math.max(1, Math.round(intervalTick))
     const gain = Math.max(1, Math.round(gainMs))
     for (let i = 0; i < count; i++) {
-      this.state.pendingChargePulses.push({
+      this.pushPendingChargePulse({
         dueTick: this.state.tickIndex + i * step,
         sourceItemId: source.id,
         targetItemId: target.id,
@@ -619,7 +693,7 @@ export class CombatEngine {
 
   enqueueExtraTriggeredUse(source: CombatItemRunner): void {
     const nextTick = this.state.tickIndex + 1
-    this.state.pendingItemFires.push({
+    this.pushPendingItemFire({
       dueTick: nextTick,
       sourceItemId: source.id,
       extraTriggered: true,
@@ -673,7 +747,7 @@ export class CombatEngine {
       const baseDue = this.state.tickIndex + 1
       const lastDue = this.state.lastQueuedFireTickByItem.get(owner.id) ?? (this.state.tickIndex - 1)
       const dueTick = Math.max(baseDue, lastDue + 1)
-      this.state.pendingItemFires.push({ dueTick, sourceItemId: owner.id })
+      this.pushPendingItemFire({ dueTick, sourceItemId: owner.id })
       this.state.lastQueuedFireTickByItem.set(owner.id, dueTick)
       this.debugShieldChargeLog('queue_from_pending_charge', {
         tick: this.state.tickIndex,
@@ -687,7 +761,7 @@ export class CombatEngine {
     const baseDamage = this.scaledDamage(source, source.baseStats.damage + this.runtimeGlobalDamageBonus(source))
     const damage = this.scaledDamage(source, source.baseStats.damage + source.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(source))
     if (damage <= 0) return
-    this.state.pendingHits.push({
+    this.pushPendingHit({
       dueTick: this.state.tickIndex,
       side: source.side,
       sourceItemId: source.id,
@@ -838,7 +912,7 @@ export class CombatEngine {
       })
       if (owner.runtime.modifiers.freezeMs > 0) {
         const nextTick = this.state.tickIndex + 1
-        this.state.pendingItemFires.push({ dueTick: nextTick, sourceItemId: owner.id })
+        this.pushPendingItemFire({ dueTick: nextTick, sourceItemId: owner.id })
         this.state.lastQueuedFireTickByItem.set(owner.id, nextTick)
         this.debugShieldChargeLog('dequeue_frozen_requeue', {
           tick: this.state.tickIndex,
@@ -994,7 +1068,7 @@ export class CombatEngine {
       if (line) {
         const v = Math.round(tierValueFromLine(line, tIdx))
         if (v > 0) {
-          this.state.pendingHits.push({
+          this.pushPendingHit({
             dueTick: this.state.tickIndex,
             side: item.side,
             sourceItemId: item.id,
@@ -1332,7 +1406,7 @@ export class CombatEngine {
         if (willEmptyAmmoThisUse && emptyAmmoBurstMul > 1) {
           shotDamage = Math.max(0, Math.round(shotDamage * emptyAmmoBurstMul))
         }
-          this.state.pendingHits.push({
+          this.pushPendingHit({
           dueTick: this.state.tickIndex + i * shotIntervalTick,
           side: item.side,
           sourceItemId: item.id,
@@ -1414,7 +1488,7 @@ export class CombatEngine {
           if (!line) continue
           const gain = Math.max(0, Math.round(tierValueFromLine(line, tierIndexFromRaw(ownerDef, owner.tier))))
           if (gain <= 0) continue
-          this.state.pendingAmmoRefills.push({
+          this.pushPendingAmmoRefill({
             dueTick: this.state.tickIndex + 1,
             sourceItemId: owner.id,
             targetItemId: item.id,

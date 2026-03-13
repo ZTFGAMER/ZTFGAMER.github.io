@@ -2,7 +2,7 @@ import { Assets, Container, Graphics, Sprite, Texture, Text } from 'pixi.js'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import { getBattleOrbColor } from '@/config/colorPalette'
 import { getItemIconUrl, getItemIconUrlByName } from '@/core/AssetPath'
-import { getAllItems } from '@/core/DataLoader'
+import { getAllItems, getConfig as getGameCfg } from '@/core/DataLoader'
 import { CELL_SIZE, CELL_HEIGHT, type GridZone } from '@/common/grid/GridZone'
 import type { ItemDef } from '@/common/items/ItemDef'
 import type { ItemSizeNorm } from '@/common/items/ItemDef'
@@ -17,6 +17,13 @@ export type BattleFxPerfStats = {
   pooledProjectileSprites: number
   pooledProjectileDots: number
   pooledFloatingNumbers: number
+  degradeLevel: number
+}
+
+export type BattleFxLimitStats = {
+  maxProjectiles: number
+  maxFloatingNumbers: number
+  maxActiveTotal: number
 }
 
 const FX_MAX_PROJECTILES = 40
@@ -138,6 +145,7 @@ export class BattleFXPool {
   private pendingDelayedDamageVisualCount = 0
   private droppedProjectileCount = 0
   private droppedFloatingNumberCount = 0
+  private fxDegradeLevel = 0
   private projectileUseCursor = 1
   readonly sourceNextDamageVisualAtMs = new Map<string, number>()
   readonly playerMountedItemIds = new Set<string>()
@@ -228,11 +236,12 @@ export class BattleFXPool {
   }
 
   private canSpawnProjectileFx(): boolean {
-    if (this.activeFx.length >= FX_MAX_ACTIVE_TOTAL) {
+    const limits = this.getCurrentFxLimits()
+    if (this.activeFx.length >= limits.maxActiveTotal) {
       this.droppedProjectileCount += 1
       return false
     }
-    if (this.activeProjectileCount >= FX_MAX_PROJECTILES) {
+    if (this.activeProjectileCount >= limits.maxProjectiles) {
       this.droppedProjectileCount += 1
       return false
     }
@@ -240,15 +249,39 @@ export class BattleFXPool {
   }
 
   private canSpawnFloatingNumberFx(): boolean {
-    if (this.activeFx.length >= FX_MAX_ACTIVE_TOTAL) {
+    const limits = this.getCurrentFxLimits()
+    if (this.activeFx.length >= limits.maxActiveTotal) {
       this.droppedFloatingNumberCount += 1
       return false
     }
-    if (this.activeFloatingNumberCount >= FX_MAX_FLOATING_NUMBERS) {
+    if (this.activeFloatingNumberCount >= limits.maxFloatingNumbers) {
       this.droppedFloatingNumberCount += 1
       return false
     }
     return true
+  }
+
+  getCurrentFxLimits(): BattleFxLimitStats {
+    const runtime = getGameCfg().combatRuntime
+    const projectileScale = this.fxDegradeLevel >= 2
+      ? runtime.fxDegradeProjectileScaleL2
+      : (this.fxDegradeLevel === 1 ? runtime.fxDegradeProjectileScaleL1 : 1)
+    const floatingScale = this.fxDegradeLevel >= 2
+      ? runtime.fxDegradeFloatingScaleL2
+      : (this.fxDegradeLevel === 1 ? runtime.fxDegradeFloatingScaleL1 : 1)
+    const activeScale = this.fxDegradeLevel >= 2
+      ? runtime.fxDegradeActiveScaleL2
+      : (this.fxDegradeLevel === 1 ? runtime.fxDegradeActiveScaleL1 : 1)
+
+    return {
+      maxProjectiles: Math.max(1, Math.round(FX_MAX_PROJECTILES * Math.max(0.1, projectileScale))),
+      maxFloatingNumbers: Math.max(1, Math.round(FX_MAX_FLOATING_NUMBERS * Math.max(0.1, floatingScale))),
+      maxActiveTotal: Math.max(1, Math.round(FX_MAX_ACTIVE_TOTAL * Math.max(0.1, activeScale))),
+    }
+  }
+
+  setAutoDegradeLevel(level: number): void {
+    this.fxDegradeLevel = Math.max(0, Math.min(2, Math.round(level)))
   }
 
   private acquireProjectileSprite(from: { x: number; y: number }): Sprite {
@@ -576,7 +609,7 @@ export class BattleFXPool {
 
   private tickPulseStates(dtMs: number): void {
     for (const [id, st] of this.pulseStates) {
-      if (!st.node || !st.node.visual) {
+      if (!st.node?.visual?.scale) {
         this.pulseStates.delete(id)
         continue
       }
@@ -587,12 +620,15 @@ export class BattleFXPool {
       st.node.visual.scale.set(cur)
       st.flash.alpha = wave
       if (p >= 1) {
-        st.node.visual.scale.set(1)
-        if (st.flash.parent) st.flash.parent.removeChild(st.flash)
-        st.flash.clear()
-        st.flash.alpha = 1
-        if (this.pulseFlashPool.length < FX_POOL_MAX_PULSE_FLASHES) this.pulseFlashPool.push(st.flash)
-        else st.flash.destroy()
+        if (st.node?.visual?.scale) st.node.visual.scale.set(1)
+        const flash = st.flash
+        if (!(flash as Graphics & { destroyed?: boolean }).destroyed) {
+          if (flash.parent) flash.parent.removeChild(flash)
+          flash.clear()
+          flash.alpha = 1
+          if (this.pulseFlashPool.length < FX_POOL_MAX_PULSE_FLASHES) this.pulseFlashPool.push(flash)
+          else flash.destroy()
+        }
         this.pulseStates.delete(id)
       }
     }
@@ -762,6 +798,7 @@ export class BattleFXPool {
       pooledProjectileSprites: this.projectileSpritePool.length,
       pooledProjectileDots: this.projectileDotPool.length,
       pooledFloatingNumbers: this.floatingNumberPool.length,
+      degradeLevel: this.fxDegradeLevel,
     }
   }
 
@@ -771,22 +808,28 @@ export class BattleFXPool {
     this.pendingDelayedDamageVisualCount = 0
     this.droppedProjectileCount = 0
     this.droppedFloatingNumberCount = 0
+    this.fxDegradeLevel = 0
     this.activeFx.length = 0
     this.sourceNextDamageVisualAtMs.clear()
     this.playerMountedItemIds.clear()
     this.enemyMountedItemIds.clear()
     this.pendingDestroyedItemDueMs.clear()
     for (const [, st] of this.pulseStates) {
-      st.node?.visual.scale.set(1)
-      if (st.flash.parent) st.flash.parent.removeChild(st.flash)
-      st.flash.clear()
-      st.flash.alpha = 1
-      if (this.pulseFlashPool.length < FX_POOL_MAX_PULSE_FLASHES) this.pulseFlashPool.push(st.flash)
-      else st.flash.destroy()
+      if (st.node?.visual?.scale) st.node.visual.scale.set(1)
+      const flash = st.flash
+      if (!(flash as Graphics & { destroyed?: boolean }).destroyed) {
+        if (flash.parent) flash.parent.removeChild(flash)
+        flash.clear()
+        flash.alpha = 1
+        if (this.pulseFlashPool.length < FX_POOL_MAX_PULSE_FLASHES) this.pulseFlashPool.push(flash)
+        else flash.destroy()
+      }
     }
     this.pulseStates.clear()
     this.pulseDedupAtMs.clear()
     this.projectileVariantCursor.clear()
+    this.projectileTextureCache.clear()
+    this.projectileMissingUrls.clear()
     for (const [, fx] of this.statusFxByKey) {
       if (fx.root.parent) fx.root.parent.removeChild(fx.root)
       fx.root.destroy({ children: true })
