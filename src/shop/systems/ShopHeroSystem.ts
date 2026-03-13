@@ -14,7 +14,7 @@
 // ============================================================
 
 import { getAllItems } from '@/core/DataLoader'
-import { getPlayerProgressState, setLifeState } from '@/core/RunState'
+import { getLifeState, getPlayerProgressState, setLifeState } from '@/core/RunState'
 import { normalizeSize, type ItemDef } from '@/common/items/ItemDef'
 import { resolveItemTierBaseStats } from '@/common/items/ItemTierStats'
 import type { TierKey } from '@/shop/ShopManager'
@@ -32,11 +32,14 @@ import {
   parseTierName,
   isNeutralItemDef,
   getItemDefById,
+  getPrimaryArchetype,
+  toSkillArchetype,
 } from './ShopSynthesisLogic'
 import type { ShopSceneCtx, StarterClass, PendingHeroPeriodicReward } from '../ShopSceneContext'
 import type { NeutralChoiceCandidate } from '../panels/NeutralItemPanel'
 import { clampPlayerLevel, getPlayerMaxLifeByLevel } from '../ui/PlayerStatusUI'
 import { getItemInfoPanelBottomAnchorByBattle } from '../ShopMathHelpers'
+import { getAllowedLevelsByStartingTier, levelToTierStar, pickQualityByPseudoRandomBag } from './QuickBuySystem'
 
 // ============================================================
 // 本地常量
@@ -81,6 +84,71 @@ type SynthesizeResult = {
   targetSize: ReturnType<typeof normalizeSize>
 }
 
+type HeroQuickDraftCandidate = {
+  item: ItemDef
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7
+  tier: TierKey
+  star: 1 | 2
+}
+
+function collectHeroQuickDraftCandidatesByLevel(
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7,
+  callbacks: {
+    findFirstBattlePlace: (size: ReturnType<typeof normalizeSize>) => { col: number; row: number } | null
+    findFirstBackpackPlace: (size: ReturnType<typeof normalizeSize>) => { col: number; row: number } | null
+  },
+): HeroQuickDraftCandidate[] {
+  const out: HeroQuickDraftCandidate[] = []
+  const tierStar = levelToTierStar(level)
+  if (!tierStar) return out
+  for (const item of getAllItems()) {
+    if (!item || isNeutralItemDef(item)) continue
+    const minTier = parseTierName(item.starting_tier) ?? 'Bronze'
+    if (!getAllowedLevelsByStartingTier(minTier).includes(level)) continue
+    const size = normalizeSize(item.size)
+    if (!callbacks.findFirstBattlePlace(size) && !callbacks.findFirstBackpackPlace(size)) continue
+    out.push({
+      item,
+      level,
+      tier: tierStar.tier,
+      star: tierStar.star,
+    })
+  }
+  return out
+}
+
+function pickHeroQuickDraftCandidateByQualityBucket(
+  cands: HeroQuickDraftCandidate[],
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7,
+): HeroQuickDraftCandidate | null {
+  if (cands.length <= 0) return null
+  const byStartTier: Record<'Bronze' | 'Silver' | 'Gold' | 'Diamond', HeroQuickDraftCandidate[]> = {
+    Bronze: [], Silver: [], Gold: [], Diamond: [],
+  }
+  for (const one of cands) {
+    const minTier = parseTierName(one.item.starting_tier) ?? 'Bronze'
+    byStartTier[minTier].push(one)
+  }
+  const available: Array<'Bronze' | 'Silver' | 'Gold' | 'Diamond'> = (['Bronze', 'Silver', 'Gold', 'Diamond'] as const)
+    .filter((tier) => byStartTier[tier].length > 0)
+  if (available.length <= 0) return cands[Math.floor(Math.random() * cands.length)] ?? null
+  const desired = pickQualityByPseudoRandomBag(level, available)
+  let pool = byStartTier[desired]
+  if (pool.length <= 0) {
+    const order: Array<'Bronze' | 'Silver' | 'Gold' | 'Diamond'> = ['Bronze', 'Silver', 'Gold', 'Diamond']
+    const start = Math.max(0, order.indexOf(desired))
+    for (let i = start + 1; i < order.length; i++) {
+      const one = order[i]!
+      if (byStartTier[one].length > 0) {
+        pool = byStartTier[one]
+        break
+      }
+    }
+  }
+  if (pool.length <= 0) pool = cands
+  return pool[Math.floor(Math.random() * pool.length)] ?? null
+}
+
 // ============================================================
 // 职业预设数据
 // ============================================================
@@ -116,7 +184,7 @@ export const STARTER_CLASS_PRESETS: Record<StarterClass, {
   },
   hero1: {
     title: '占卜师',
-    subtitle: '不同物品合成时可以3选1（每天限1次）',
+    subtitle: '不同物品合成时可以2选1（每天限1次）',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero1.png',
   },
@@ -128,43 +196,43 @@ export const STARTER_CLASS_PRESETS: Record<StarterClass, {
   },
   hero3: {
     title: '魔术师',
-    subtitle: '每天首次丢弃物品，获得同等级的其他物品',
+    subtitle: '每天首次丢弃物品，获得等级-1的随机物品',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero3.png',
   },
   hero4: {
     title: '戏法师',
-    subtitle: '相同物品合成时可以3选1（每天限1次）',
+    subtitle: '相同物品合成时可以2选1（每天限1次）',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero4.png',
   },
   hero5: {
     title: '铁匠',
-    subtitle: '每隔5天获得1颗升级石（效果：随机升级1个物品）',
+    subtitle: '每隔4天获得1颗升级石（效果：随机升级1个物品）',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero5.png',
   },
   hero6: {
     title: '冒险家',
-    subtitle: '每隔3天获得1张冒险券（效果：进行1次冒险）',
+    subtitle: '每隔2天获得1张冒险券（效果：进行1次冒险）',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero6.png',
   },
   hero7: {
     title: '指挥官',
-    subtitle: '每隔3天获得1枚勋章（效果：获得1个特定职业物品）',
+    subtitle: '每隔3天选择1颗转职石（效果：将物品变为指定职业的物品）',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero7.png',
   },
   hero8: {
     title: '继承者',
-    subtitle: '第3天获得1个黄金宝箱（效果：获得1个黄金物品）',
+    subtitle: '第2天获得1个黄金宝箱（效果：获得1个黄金物品）',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero8.png',
   },
   hero9: {
     title: '大胃王',
-    subtitle: '初始红心设置为40点',
+    subtitle: '初始红心额外+10',
     gifts: ['短剑', '圆盾'],
     heroImage: '/resource/hero/hero9.png',
   },
@@ -343,7 +411,8 @@ export function grantHeroDiscardSameLevelReward(
   discardedDefId: string,
   level: 1 | 2 | 3 | 4 | 5 | 6 | 7,
   callbacks: {
-    collectPoolCandidatesByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7) => PoolCandidate[]
+    findFirstBattlePlace: (size: ReturnType<typeof normalizeSize>) => { col: number; row: number } | null
+    findFirstBackpackPlace: (size: ReturnType<typeof normalizeSize>) => { col: number; row: number } | null
     grantPoolCandidateToBoardOrBackpack: (
       candidate: PoolCandidate,
       source: string,
@@ -355,11 +424,13 @@ export function grantHeroDiscardSameLevelReward(
   if (!canTriggerHeroFirstDiscardReward(ctx)) return
   const discardedDef = getItemDefById(discardedDefId)
   if (!discardedDef || isNeutralItemDef(discardedDef)) return
-  const candidates = callbacks.collectPoolCandidatesByLevel(level).filter((one) => one.item.id !== discardedDefId)
-  if (candidates.length <= 0) return
-  const picked = candidates[Math.floor(Math.random() * candidates.length)]
+  const rollLevel = Math.max(1, level - 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const pool = collectHeroQuickDraftCandidatesByLevel(rollLevel, callbacks)
+    .filter((one) => one.item.id !== discardedDefId)
+  const picked = pickHeroQuickDraftCandidateByQualityBucket(pool, rollLevel)
   if (!picked) return
-  if (callbacks.grantPoolCandidateToBoardOrBackpack(picked, '魔术师', { flyFromHeroAvatar: true })) {
+  const pickedPoolCandidate: PoolCandidate = { ...picked, price: 0 }
+  if (callbacks.grantPoolCandidateToBoardOrBackpack(pickedPoolCandidate, '魔术师', { flyFromHeroAvatar: true })) {
     markHeroFirstDiscardRewardTriggered(ctx, { refreshPlayerStatusUI: callbacks.refreshPlayerStatusUI })
   }
 }
@@ -373,7 +444,8 @@ export function tryRunHeroCrossSynthesisReroll(
   stage: Container,
   synth: SynthesizeResult,
   callbacks: {
-    collectPoolCandidatesByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7) => PoolCandidate[]
+    findFirstBattlePlace: (size: ReturnType<typeof normalizeSize>) => { col: number; row: number } | null
+    findFirstBackpackPlace: (size: ReturnType<typeof normalizeSize>) => { col: number; row: number } | null
     showNeutralChoiceOverlay: (
       stage: Container,
       title: string,
@@ -405,7 +477,6 @@ export function tryRunHeroCrossSynthesisReroll(
     refreshShopUI: () => void
     refreshPlayerStatusUI: () => void
     tierStarLevelIndex: (tier: TierKey, star: 1 | 2) => number
-    pickRandomElements: <T>(list: T[], count: number) => T[]
   },
 ): boolean {
   if (!canUseHeroDailyCardReroll(ctx)) return false
@@ -416,15 +487,27 @@ export function tryRunHeroCrossSynthesisReroll(
   const currentDefId = current.defId
   const currentDef = getItemDefById(currentDefId)
   if (!currentDef) return false
+  const currentArch = toSkillArchetype(getPrimaryArchetype(currentDef.tags))
   const targetSize = synth.targetSize
-  const pool = callbacks.collectPoolCandidatesByLevel(targetLevel)
-    .filter((one) => normalizeSize(one.item.size) === targetSize && one.item.id !== currentDefId)
-  const altPicks = callbacks.pickRandomElements(pool, 2)
+  const pool = collectHeroQuickDraftCandidatesByLevel(targetLevel, callbacks)
+    .filter((one) => {
+      if (normalizeSize(one.item.size) !== targetSize) return false
+      if (one.item.id === currentDefId) return false
+      return toSkillArchetype(getPrimaryArchetype(one.item.tags)) !== currentArch
+    })
+  const altPicks: HeroQuickDraftCandidate[] = []
+  const blockedDefIds = new Set<string>()
+  for (let i = 0; i < 2; i++) {
+    const picked = pickHeroQuickDraftCandidateByQualityBucket(
+      pool.filter((one) => !blockedDefIds.has(one.item.id)),
+      targetLevel,
+    )
+    if (!picked) break
+    altPicks.push(picked)
+    blockedDefIds.add(picked.item.id)
+  }
   if (altPicks.length < 2) return false
-  const choices: NeutralChoiceCandidate[] = [
-    { item: currentDef, tier: synth.toTier, star: synth.toStar },
-    ...altPicks.map((one) => ({ item: one.item, tier: one.tier, star: one.star })),
-  ]
+  const choices: NeutralChoiceCandidate[] = altPicks.map((one) => ({ item: one.item, tier: one.tier, star: one.star }))
 
   if (callbacks.isLevelQuickDraftEnabled()) {
     const queued = callbacks.enqueueLevelQuickDraftChoices('占卜师：选择合成结果', choices, {
@@ -1316,7 +1399,10 @@ export function ensureStarterClassSelection(
     ctx.starterGranted = true
     ctx.starterBattleGuideShown = false
     if (selected === 'hero9') {
-      setLifeState(40, 40)
+      const life = getLifeState()
+      const baseMax = Math.max(1, Math.round(life.max))
+      const nextMax = baseMax + 10
+      setLifeState(nextMax, nextMax)
     }
     callbacks.seedInitialUnlockPoolByStarterClass(selected)
     callbacks.grantHeroStartDayEffectsIfNeeded()
@@ -1565,6 +1651,15 @@ export function grantHeroPeriodicEffectsOnNewDay(
   callbacks: {
     showHintToast: (reason: string, message: string, color?: number) => void
     grantHeroPeriodicRewardOrQueue: (nameCn: string, source: string) => boolean
+    isLevelQuickDraftEnabled: () => boolean
+    enqueueLevelQuickDraftChoices: (
+      title: string,
+      choices: NeutralChoiceCandidate[],
+      opts?: {
+        consumePickedAsReward?: boolean
+        onPicked?: (picked: NeutralChoiceCandidate) => void
+      },
+    ) => boolean
   },
 ): void {
   if (!ctx.shopManager) return
@@ -1576,20 +1671,38 @@ export function grantHeroPeriodicEffectsOnNewDay(
       callbacks.showHintToast('no_gold_buy', `大亨：额外获得${bonus}金币`, 0xf4d67d)
     }
   }
-  if (day % 5 === 0) {
+  if (day % 4 === 0) {
     if (isSelectedHero(ctx, 'hero5') && !ctx.heroSmithStoneGrantedDays.has(day)) {
       if (callbacks.grantHeroPeriodicRewardOrQueue('升级石', '铁匠')) ctx.heroSmithStoneGrantedDays.add(day)
     }
   }
-  if (day % 3 === 0) {
+  if (day % 2 === 0) {
     if (isSelectedHero(ctx, 'hero6') && !ctx.heroAdventurerScrollGrantedDays.has(day)) {
-      if (callbacks.grantHeroPeriodicRewardOrQueue('冒险卷轴', '冒险家')) ctx.heroAdventurerScrollGrantedDays.add(day)
-    }
-    if (isSelectedHero(ctx, 'hero7') && !ctx.heroCommanderMedalGrantedDays.has(day)) {
-      if (callbacks.grantHeroPeriodicRewardOrQueue('勋章', '指挥官')) ctx.heroCommanderMedalGrantedDays.add(day)
+      if (callbacks.grantHeroPeriodicRewardOrQueue('冒险券', '冒险家')) ctx.heroAdventurerScrollGrantedDays.add(day)
     }
   }
-  if (day === 3 && isSelectedHero(ctx, 'hero8') && !ctx.heroHeirGoldEquipGrantedDays.has(day)) {
+  if (day % 3 === 0) {
+    if (isSelectedHero(ctx, 'hero7') && !ctx.heroCommanderMedalGrantedDays.has(day)) {
+      let granted = false
+      if (callbacks.isLevelQuickDraftEnabled()) {
+        const choices: NeutralChoiceCandidate[] = ['item64', 'item66', 'item65']
+          .map((id) => getItemDefById(id))
+          .filter((item): item is ItemDef => !!item)
+          .map((item) => ({ item, tier: parseTierName(item.starting_tier) ?? 'Bronze', star: 1 as 1 | 2 }))
+        if (choices.length > 0) {
+          granted = callbacks.enqueueLevelQuickDraftChoices('指挥官：选择转职石', choices, {
+            consumePickedAsReward: true,
+          })
+          if (granted) callbacks.showHintToast('no_gold_buy', '指挥官：可选择战士石/刺客石/弓手石', 0x9be5ff)
+        }
+      }
+      if (!granted) {
+        granted = callbacks.grantHeroPeriodicRewardOrQueue('转职石', '指挥官')
+      }
+      if (granted) ctx.heroCommanderMedalGrantedDays.add(day)
+    }
+  }
+  if (day === 2 && isSelectedHero(ctx, 'hero8') && !ctx.heroHeirGoldEquipGrantedDays.has(day)) {
     if (callbacks.grantHeroPeriodicRewardOrQueue('黄金宝箱', '继承者')) ctx.heroHeirGoldEquipGrantedDays.add(day)
     else callbacks.showHintToast('backpack_full_buy', '继承者：当前无可发放黄金宝箱', 0xffb27a)
   }

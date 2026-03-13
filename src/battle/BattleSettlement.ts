@@ -5,7 +5,7 @@ import { PvpContext } from '@/pvp/PvpContext'
 import {
   addWinTrophy,
   clearCurrentRunState,
-  deductLife,
+  applyLifeDamageWithLastStand,
   getLifeState,
   getPlayerWinStreakState,
   getWinTrophyState,
@@ -132,7 +132,11 @@ export class BattleSettlement {
     if (PvpContext.isActive()) {
       PvpContext.recordBattleResult(winner, engine.getResult()?.survivingDamage ?? 1)
     }
-    const after = (!PvpContext.isActive() && winner === 'enemy') ? deductLife(roundLifeDamage) : before
+    const lifeResult = (!PvpContext.isActive() && winner === 'enemy')
+      ? applyLifeDamageWithLastStand(roundLifeDamage)
+      : { life: before, triggered: false }
+    const after = lifeResult.life
+    const pveLastStandTriggered = lifeResult.triggered
     const shouldAddTrophy = !PvpContext.isActive() && (winner === 'player' || winner === 'draw')
     const trophyAfter = shouldAddTrophy ? addWinTrophy(trophyTarget) : trophyBefore
     if (!PvpContext.isActive()) {
@@ -142,7 +146,7 @@ export class BattleSettlement {
     const delta = after.current - before.current
     this.settlementResolved = true
     // PVP 模式不触发 PVE 的游戏结束/最终胜利逻辑，防止意外调用 window.location.reload()
-    this.settlementGameOver = !PvpContext.isActive() && winner === 'enemy' && after.current <= 0
+    this.settlementGameOver = !PvpContext.isActive() && winner === 'enemy' && after.current <= 0 && !pveLastStandTriggered
     this.settlementFinalVictory = !PvpContext.isActive() && winner === 'player' && trophyAfter.wins >= trophyAfter.target
 
     if (!this.settlementTitleText || !this.settlementLifeText || !this.settlementTrophyText || !this.settlementDescText || !this.settlementActionLabel) return
@@ -169,19 +173,25 @@ export class BattleSettlement {
       this.settlementLifeText.text = '⚔️ PVP 对战'
       this.settlementLifeText.style.fill = 0x99bbdd
       if (damage > 0) {
-        this.settlementTrophyText.text = hpAfter <= 0
+        const usedLastStand = pvpSession?.lastStandUsedPlayers?.[pvpSession?.myIndex ?? -1] === true
+        const willTriggerLastStand = !usedLastStand && myHp - damage <= 0
+        this.settlementTrophyText.text = willTriggerLastStand
+          ? `❤️ ${myHp} → 1  绝地反击`
+          : hpAfter <= 0
           ? `❤️ ${myHp} → 0  已淘汰`
           : `❤️ ${myHp} → ${hpAfter}  (-${damage})`
-        this.settlementTrophyText.style.fill = hpAfter <= 0 ? 0xff4444 : 0xff9999
+        this.settlementTrophyText.style.fill = willTriggerLastStand ? 0xffd86b : (hpAfter <= 0 ? 0xff4444 : 0xff9999)
       } else {
         this.settlementTrophyText.text = `❤️ ${myHp} HP`
         this.settlementTrophyText.style.fill = 0x7fff7f
       }
     } else {
-      this.settlementLifeText.text = delta < 0
+      this.settlementLifeText.text = pveLastStandTriggered
+        ? `❤️ ${before.current}/${before.max} -> 1/${after.max} (绝地反击)`
+        : delta < 0
         ? `❤️ ${before.current}/${before.max} -> ${after.current}/${after.max} (-${Math.abs(delta)})`
         : `❤️ ${after.current}/${after.max}`
-      this.settlementLifeText.style.fill = after.current <= 1 ? 0xff6a6a : 0xffd4d4
+      this.settlementLifeText.style.fill = pveLastStandTriggered ? 0xffd86b : (after.current <= 1 ? 0xff6a6a : 0xffd4d4)
       this.settlementTrophyText.text = (winner === 'player' || winner === 'draw')
         ? `🏆 ${trophyBefore.wins}/${trophyBefore.target} -> ${trophyAfter.wins}/${trophyAfter.target} (+1)`
         : `🏆 ${trophyAfter.wins}/${trophyAfter.target}`
@@ -195,7 +205,9 @@ export class BattleSettlement {
       this.settlementDescText.text = '❤️ 已耗尽，点击重新开始'
       this.settlementActionLabel.text = '重新开始'
     } else {
-      this.settlementDescText.text = winner === 'enemy' ? '调整阵容后再战' : '继续前往商店'
+      this.settlementDescText.text = pveLastStandTriggered
+        ? '触发绝地反击，回到商店可立刻三选一'
+        : winner === 'enemy' ? '调整阵容后再战' : '继续前往商店'
       this.settlementActionLabel.text = '返回商店'
     }
   }

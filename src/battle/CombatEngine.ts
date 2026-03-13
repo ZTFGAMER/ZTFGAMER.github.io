@@ -273,7 +273,7 @@ export class CombatEngine {
           if (lines.some((s) => /等同于当前自身护盾值|根据当前护盾值对对方造成伤害/.test(s))) {
             runtimeDamage += Math.max(0, sourceHero.shield)
           }
-          const maxHpLine = lines.find((s) => /最大生命值.*%.*伤害/.test(s) && !/摧毁自身/.test(s) && !/第一次攻击/.test(s))
+          const maxHpLine = lines.find((s) => /目标最大生命值.*%.*伤害/.test(s) && !/摧毁自身/.test(s) && !/第一次攻击/.test(s))
           if (maxHpLine) {
             const m = maxHpLine.match(/最大生命值\s*([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*)\s*的伤害/)
             if (m?.[1]) {
@@ -1340,7 +1340,7 @@ export class CombatEngine {
       damageAfterBonus += Math.max(0, sourceHero.shield)
     }
     // 目标最大生命值百分比伤害
-    const maxHpLine = lines.find((s) => /最大生命值.*%.*伤害/.test(s) && !/摧毁自身/.test(s) && !/第一次攻击/.test(s))
+    const maxHpLine = lines.find((s) => /目标最大生命值.*%.*伤害/.test(s) && !/摧毁自身/.test(s) && !/第一次攻击/.test(s))
     if (maxHpLine) {
       const m = maxHpLine.match(/最大生命值\s*([+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*)\s*的伤害/)
       if (m?.[1]) {

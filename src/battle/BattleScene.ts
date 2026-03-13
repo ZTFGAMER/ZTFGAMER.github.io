@@ -350,7 +350,12 @@ function getClampedTopActionBtnY(): number {
 }
 
 function isBattleSpeedButtonEnabled(): boolean {
+  if (isPvpSpeedupDisabled()) return false
   return getDebugCfg('gameplayShowSpeedButton') >= 0.5
+}
+
+function isPvpSpeedupDisabled(): boolean {
+  return PvpContext.isActive() && getDebugCfg('gameplayPvpDisableSpeedup') >= 0.5
 }
 
 function drawHeroBars(
@@ -1241,7 +1246,10 @@ export const BattleScene: Scene = {
   update(dt: number) {
     if (!engine || !enemyZone || !playerZone || !enemyCdOverlay || !playerCdOverlay || !enemyFreezeOverlay || !playerFreezeOverlay || !enemyStatusLayer || !playerStatusLayer) return
     if (transition.tickExit(dt * 1000)) return
-    const speed = Math.max(1, battleSpeed)
+    if (isPvpSpeedupDisabled() && battleSpeed !== 1) {
+      battleSpeed = 1
+    }
+    const speed = isPvpSpeedupDisabled() ? 1 : Math.max(1, battleSpeed)
     const simDt = dt * speed
     const dtMs = simDt * 1000
     battlePresentationMs += dtMs

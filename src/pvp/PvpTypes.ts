@@ -37,6 +37,8 @@ export interface PvpSession {
   initialHp: number                       // 初始血量（房主创建时设定）
   myEliminationRank?: number              // 被淘汰时的排名（1=冠军，仅非 host 淘汰时填入）
   predictedElimination?: boolean         // 本地预判被淘汰，等待 round_summary 确认中
+  lastStandUsedPlayers?: Record<number, boolean> // 每位玩家是否已触发过一次绝地反击
+  pendingLastStandReward?: boolean       // 我方待发放的绝地反击奖励（回到商店时消费）
 }
 
 /**
@@ -80,7 +82,7 @@ export type PvpMsgToClient =
   | { type: 'opponent_snapshot'; day: number; snapshot: BattleSnapshotBundle; opponentPlayerIndex?: number }
   | { type: 'game_over'; rankings: { nickname: string; wins: number | null; index: number }[] }
   | { type: 'battle_sync_start'; day: number }
-  | { type: 'round_summary'; day: number; hpMap: Record<number, number>; newlyEliminated: number[]; snapshots: Record<number, BattleSnapshotBundle> }
+  | { type: 'round_summary'; day: number; hpMap: Record<number, number>; newlyEliminated: number[]; snapshots: Record<number, BattleSnapshotBundle>; lastStandTriggered: number[] }
   | { type: 'sync_ready_update'; day: number; readyIndices: number[] }
   | { type: 'urge_notify'; fromPlayerIndex: number; fromNickname: string }
   | { type: 'countdown_start'; day: number }

@@ -55,6 +55,10 @@ export class PvpRoom {
   private roundEndProcessedDays = new Set<number>()  // 防止 hostProcessRoundEnd 重入
   // day → 该天分发快照时的存活玩家 index 列表（升序），供 hostProcessRoundEnd 对称使用
   private dayAliveIndices = new Map<number, number[]>()
+  // 每位玩家本局是否已触发过绝地反击（仅一次）
+  private lastStandUsed = new Set<number>()
+  // 每位玩家本局是否已应用过英雄额外红心（hero9）
+  private heroHpBonusApplied = new Set<number>()
   // 淘汰顺序记录：按淘汰先后排列 playerIndex，第一个元素为最先被淘汰的玩家
   private eliminationOrder: number[] = []
   // sync-a：每天预计算的轮空配对（playerIndex → mirrorOpponentIndex）
@@ -81,7 +85,7 @@ export class PvpRoom {
   onOpponentSnapshot?: (day: number, snapshot: BattleSnapshotBundle, opponentPlayerIndex?: number) => void
   onGameOver?: (rankings: { nickname: string; wins: number | null; index: number }[]) => void
   onError?: (msg: string) => void
-  onRoundSummary?: (day: number, hpMap: Record<number, number>, newlyEliminated: number[], snapshots: Record<number, BattleSnapshotBundle>) => void
+  onRoundSummary?: (day: number, hpMap: Record<number, number>, newlyEliminated: number[], snapshots: Record<number, BattleSnapshotBundle>, lastStandTriggered: number[]) => void
   onSyncReadyUpdate?: (day: number, readyIndices: number[]) => void
   onUrgeNotify?: (fromPlayerIndex: number, fromNickname: string) => void
 
@@ -316,7 +320,7 @@ export class PvpRoom {
         this.onBattleSyncStart?.(msg.day)
         break
       case 'round_summary':
-        this.onRoundSummary?.(msg.day, msg.hpMap, msg.newlyEliminated, msg.snapshots)
+        this.onRoundSummary?.(msg.day, msg.hpMap, msg.newlyEliminated, msg.snapshots, msg.lastStandTriggered)
         break
       case 'sync_ready_update':
         this.onSyncReadyUpdate?.(msg.day, msg.readyIndices)
@@ -344,6 +348,8 @@ export class PvpRoom {
     // Initialize HP for all players
     const initHp = this._initialHp
     this._players.forEach((p) => this.playerHps.set(p.index, initHp))
+    this.lastStandUsed.clear()
+    this.heroHpBonusApplied.clear()
 
     // 广播房间状态
     this.broadcastRoomState()
@@ -481,6 +487,8 @@ export class PvpRoom {
 
   /** 更新快照并在 isFinal 时分发（sync-a：等全员提交后统一分发；async：立即分发） */
   private hostStoreAndMaybeDispatch(playerIndex: number, day: number, snapshot: BattleSnapshotBundle, isFinal: boolean): void {
+    this.tryApplyHeroHpBonus(playerIndex, snapshot)
+
     // 始终更新 latestDaySnapshots（shop1→shop2→shop3 覆盖）
     const map = this.latestDaySnapshots.get(day) ?? new Map<number, BattleSnapshotBundle>()
     this.latestDaySnapshots.set(day, map)
@@ -500,6 +508,16 @@ export class PvpRoom {
         this.hostDispatchToPlayer(playerIndex, day)
       }
     }
+  }
+
+  private tryApplyHeroHpBonus(playerIndex: number, snapshot: BattleSnapshotBundle): void {
+    if (!this.isHost) return
+    if (this.heroHpBonusApplied.has(playerIndex)) return
+    if (snapshot.ownerHeroId !== 'hero9') return
+    const currentHp = this.playerHps.get(playerIndex)
+    if (typeof currentHp !== 'number' || !Number.isFinite(currentHp)) return
+    this.playerHps.set(playerIndex, currentHp + 10)
+    this.heroHpBonusApplied.add(playerIndex)
   }
 
   // ----------------------------------------------------------------
@@ -786,6 +804,7 @@ export class PvpRoom {
     if (!results) return
     const hpMap: Record<number, number> = {}
     const newlyEliminated: number[] = []
+    const lastStandTriggered: number[] = []
 
     // 只处理存活的真人玩家 HP（AI 玩家不参与 HP 计算）
     // 使用派发快照时记录的存活列表，保证配对与分发时一致
@@ -800,7 +819,12 @@ export class PvpRoom {
         void opponentIdx
         const damage = Math.max(1, Math.min(8, Math.round(day)))
         const currentHp = this.playerHps.get(player.index) ?? 0
-        const newHp = Math.max(0, currentHp - damage)
+        let newHp = Math.max(0, currentHp - damage)
+        if (newHp <= 0 && !this.lastStandUsed.has(player.index)) {
+          newHp = 1
+          this.lastStandUsed.add(player.index)
+          lastStandTriggered.push(player.index)
+        }
         this.playerHps.set(player.index, newHp)
       }
       hpMap[player.index] = this.playerHps.get(player.index) ?? 0
@@ -831,9 +855,9 @@ export class PvpRoom {
       snapshots[idx] = snap
     }
 
-    console.log('[PvpRoom] hostProcessRoundEnd day=' + day + ' hpMap=' + JSON.stringify(hpMap) + ' newlyEliminated=' + JSON.stringify(newlyEliminated))
-    this.broadcastToClients({ type: 'round_summary', day, hpMap, newlyEliminated, snapshots })
-    this.onRoundSummary?.(day, hpMap, newlyEliminated, snapshots)
+    console.log('[PvpRoom] hostProcessRoundEnd day=' + day + ' hpMap=' + JSON.stringify(hpMap) + ' newlyEliminated=' + JSON.stringify(newlyEliminated) + ' lastStand=' + JSON.stringify(lastStandTriggered))
+    this.broadcastToClients({ type: 'round_summary', day, hpMap, newlyEliminated, snapshots, lastStandTriggered })
+    this.onRoundSummary?.(day, hpMap, newlyEliminated, snapshots, lastStandTriggered)
 
     // Check game over
     const cfg = getConfig()

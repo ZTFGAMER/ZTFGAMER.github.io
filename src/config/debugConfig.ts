@@ -992,6 +992,15 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     step: 1,
     unit: '',
   },
+  gameplayPvpDisableSpeedup: {
+    labelCn:      'PVP禁用战斗加速',
+    description:  '1=PVP 战斗强制 x1 且不显示倍速按钮；0=PVP 允许倍速',
+    defaultValue: 1,
+    min:  0,
+    max:  1,
+    step: 1,
+    unit: '',
+  },
   gameplayCrossSynthesisConfirm: {
     labelCn:      '跨物品合成二次确认',
     description:  '1=不同物品合成弹出确认；0=直接合成',

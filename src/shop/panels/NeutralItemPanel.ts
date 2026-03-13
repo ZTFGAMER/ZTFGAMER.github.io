@@ -48,6 +48,7 @@ import {
   tierStarLevelIndex,
   nextTierLevel,
 } from '../systems/ShopSynthesisLogic'
+import { getAllowedLevelsByStartingTier } from '../systems/QuickBuySystem'
 
 import { CANVAS_W, CANVAS_H } from '@/config/layoutConstants'
 
@@ -269,7 +270,7 @@ export function getNeutralSpecialKind(item: ItemDef): NeutralSpecialKind | null 
   if (key === '真钻石') return 'diamond_morph_stone'
   if (key === '技能卷轴' || key === '青铜卷轴' || key === '白银卷轴' || key === '黄金卷轴') return 'skill_scroll'
   if (key === '购物卷轴') return 'shop_scroll'
-  if (key === '冒险卷轴') return 'event_scroll'
+  if (key === '冒险卷轴' || key === '冒险券') return 'event_scroll'
   if (key === '原石') return 'raw_stone'
   if (key === '勋章') return 'medal'
   if (key === '空白卷轴') return 'blank_scroll'
@@ -575,7 +576,7 @@ export class NeutralItemPanel extends Container {
           ? '青铜卷轴'
           : only === 'shop_scroll'
             ? '购物卷轴'
-            : '冒险卷轴'
+            : '冒险券'
         return _getItemDefByCn(onlyName) ?? item
       }
     }
@@ -1586,7 +1587,7 @@ export class NeutralItemPanel extends Container {
     }
     if (kind === 'event_scroll') {
       const ok = this._openEventDraftFromNeutralScroll(stage)
-      if (!ok) this.cb.showHintToast('no_gold_buy', '冒险卷轴：当前无法打开事件选择', 0xffb27a)
+      if (!ok) this.cb.showHintToast('no_gold_buy', '冒险券：当前无法打开事件选择', 0xffb27a)
       return true
     }
     if (kind === 'raw_stone') {
@@ -1605,7 +1606,7 @@ export class NeutralItemPanel extends Container {
       return true
     }
     if (kind === 'blank_scroll') {
-      const picks = _pickCandidateItemsByNames(['青铜卷轴', '购物卷轴', '冒险卷轴'])
+      const picks = _pickCandidateItemsByNames(['青铜卷轴', '购物卷轴', '冒险券'])
         .filter((item) => {
           const oneKind = getNeutralSpecialKind(item)
           return oneKind ? this._isNeutralKindRandomAvailable(oneKind) : true
@@ -1965,13 +1966,41 @@ export class NeutralItemPanel extends Container {
     const nextLevel = Math.max(1, Math.min(7, tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
     const sourceDef = getItemDefById(sourceDefId)
     if (!sourceDef) return false
-    const all = this.cb.collectPoolCandidatesByLevel(nextLevel)
-    const altPool = all.filter((one) => one.item.id !== sourceDefId)
+    const sourceSize = normalizeSize(sourceDef.size)
+    const altPool = getAllItems()
+      .filter((one) => !!one && !isNeutralItemDef(one))
+      .filter((one) => one.id !== sourceDefId)
+      .filter((one) => normalizeSize(one.size) === sourceSize)
+      .filter((one) => {
+        const minTier = parseTierName(one.starting_tier) ?? 'Bronze'
+        return getAllowedLevelsByStartingTier(minTier).includes(nextLevel)
+      })
+      .filter((one) => {
+        const size = normalizeSize(one.size)
+        return !!this.cb.findFirstBattlePlace(size) || !!this.cb.findFirstBackpackPlace(size)
+      })
     if (altPool.length <= 0) return false
-    const altPicks = _pickRandomElements(altPool, 2)
+    const availableTiers = Array.from(new Set(altPool.map((one) => parseTierName(one.starting_tier) ?? 'Bronze')))
+    const pickedTier = availableTiers.length > 0 ? this.cb.pickQualityByPseudoRandomBag(nextLevel, availableTiers) : null
+    let pickPool = pickedTier
+      ? altPool.filter((one) => (parseTierName(one.starting_tier) ?? 'Bronze') === pickedTier)
+      : altPool
+    if (pickPool.length <= 0 && pickedTier) {
+      const qualityOrder: TierKey[] = ['Bronze', 'Silver', 'Gold', 'Diamond']
+      const start = Math.max(0, qualityOrder.indexOf(pickedTier))
+      for (let i = start + 1; i < qualityOrder.length; i++) {
+        const tier = qualityOrder[i]!
+        const higher = altPool.filter((one) => (parseTierName(one.starting_tier) ?? 'Bronze') === tier)
+        if (higher.length > 0) {
+          pickPool = higher
+          break
+        }
+      }
+    }
+    const altPicks = _pickRandomElements(pickPool.length > 0 ? pickPool : altPool, 1)
     const choices: NeutralChoiceCandidate[] = [
       { item: sourceDef, tier: upgradeTo.tier, star: upgradeTo.star },
-      ...altPicks.map((one) => ({ item: one.item, tier: one.tier, star: one.star })),
+      ...altPicks.map((one) => ({ item: one, tier: upgradeTo.tier, star: upgradeTo.star })),
     ]
     if (this.cb.isLevelQuickDraftEnabled()) {
       if (!consumeSource()) return false

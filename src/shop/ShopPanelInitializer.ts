@@ -183,6 +183,7 @@ export type PanelInitDeps = {
   rewriteNeutralRandomPick: (item: ItemDef) => ItemDef
   canRandomNeutralItem: (item: ItemDef) => boolean
   getItemDefByCn: (nameCn: string) => ItemDef | null
+  addOnePlayerLevelForTest: () => void
   isLevelQuickDraftEnabled: () => boolean
   enqueueLevelQuickDraftChoices: (
     title: string,
@@ -228,6 +229,7 @@ export function initPanelInstances(
     getPrimaryArchetype: (tags) => getPrimaryArchetype(tags),
     isNeutralArchetypeKey: (arch) => isNeutralArchetypeKey(arch),
     getAllItems: () => [...getAllItems()],
+    addOnePlayerLevelForTest: () => deps.addOnePlayerLevelForTest(),
   })
   stage.addChild(settingsPanel)
 

@@ -50,6 +50,7 @@ export interface SettingsDebugCallbacks {
   getPrimaryArchetype: (tags: string) => string
   isNeutralArchetypeKey: (arch: string) => boolean
   getAllItems: () => ItemDef[]
+  addOnePlayerLevelForTest: () => void
 }
 
 // ============================================================
@@ -811,6 +812,7 @@ export class SettingsDebugPanel extends Container {
     this.closeSettingsOverlay()
     const stage = this.stage
     const ctx = this.ctx
+    const cb = this.cb
     const overlay = new Container()
     overlay.zIndex = 7200
     overlay.eventMode = 'static'
@@ -985,9 +987,30 @@ export class SettingsDebugPanel extends Container {
     itemTestBtn.addChild(itemTestBg, itemTestText)
     panel.addChild(itemTestBtn)
 
+    const addLevelBtn = new Container()
+    addLevelBtn.x = 0
+    addLevelBtn.y = controlBaseY + controlGapY * (rows.length + 3)
+    addLevelBtn.eventMode = 'static'
+    addLevelBtn.cursor = 'pointer'
+    const addLevelBg = new Graphics()
+    addLevelBg.roundRect(-172, -28, 344, 56, 16)
+    addLevelBg.fill({ color: 0x4f6fb0, alpha: 0.96 })
+    addLevelBg.stroke({ color: 0xb9d4ff, width: 3, alpha: 0.95 })
+    const addLevelText = new Text({
+      text: '测试+1级',
+      style: { fontSize: 26, fill: 0xf3f9ff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    addLevelText.anchor.set(0.5)
+    addLevelBtn.on('pointerdown', (e) => {
+      e.stopPropagation()
+      cb.addOnePlayerLevelForTest()
+    })
+    addLevelBtn.addChild(addLevelBg, addLevelText)
+    panel.addChild(addLevelBtn)
+
     const closeBtn = new Container()
     closeBtn.x = 0
-    closeBtn.y = controlBaseY + controlGapY * (rows.length + 3)
+    closeBtn.y = controlBaseY + controlGapY * (rows.length + 4)
     closeBtn.eventMode = 'static'
     closeBtn.cursor = 'pointer'
     const closeBg = new Graphics()

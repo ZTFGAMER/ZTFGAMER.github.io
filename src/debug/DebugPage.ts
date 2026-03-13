@@ -200,6 +200,7 @@ const GAMEPLAY_KEYS = [
 const GAMEPLAY_CHECKBOX_KEYS = [
   'gameplayGrantAllClassItems',
   'gameplayShowSpeedButton',
+  'gameplayPvpDisableSpeedup',
   'gameplayCrossSynthesisConfirm',
   'gameplayBattleZoneNoSynthesis',
   'gameplaySameArchetypeDiffItemStoneSynthesis',

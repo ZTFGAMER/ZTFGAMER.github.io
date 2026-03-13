@@ -105,6 +105,7 @@
   "levelQuickRewardOffsetY": -200,
   "gameplayGrantAllClassItems": 0,
   "gameplayShowSpeedButton": 1,
+  "gameplayPvpDisableSpeedup": 1,
   "gameplayCrossSynthesisConfirm": 0,
   "gameplayBattleZoneNoSynthesis": 0,
   "gameplaySameArchetypeDiffItemStoneSynthesis": 1,

@@ -12,13 +12,16 @@ import { getApp } from '@/core/AppContext'
 import { getConfig, getAllItems } from '@/core/DataLoader'
 import {
   clearCurrentRunState,
+  consumeLastStandPendingReward,
   getLifeState,
+  getPlayerProgressState,
   getWinTrophyState,
   resetLifeState,
 } from '@/core/RunState'
 import type { ItemSizeNorm } from '@/common/grid/GridSystem'
 import { CELL_HEIGHT, CELL_SIZE } from '@/common/grid/GridZone'
 import type { ItemDef } from '@/common/items/ItemDef'
+import { parseTierName } from '@/common/items/ItemTierStats'
 import { ShopManager, getDailyGoldForDay, type TierKey } from '@/shop/ShopManager'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import { PhaseManager } from '@/core/PhaseManager'
@@ -220,6 +223,8 @@ function grantHeroPeriodicEffectsOnNewDay(day: number, ctx: ShopSceneCtx = _ctx)
   HeroSystem.grantHeroPeriodicEffectsOnNewDay(ctx, day, {
     showHintToast: (r, m, c) => showHintToast(r as ToastReason, m, c, ctx),
     grantHeroPeriodicRewardOrQueue: (n, s) => grantHeroPeriodicRewardOrQueue(n, s, ctx),
+    isLevelQuickDraftEnabled: () => RewardSystem.isLevelQuickDraftEnabled(),
+    enqueueLevelQuickDraftChoices: (title, choices, opts) => RewardSystem.enqueueLevelQuickDraftChoices(ctx, title, choices, opts),
   })
 }
 
@@ -232,7 +237,8 @@ function grantSilverDailyGoldBonusesOnNewDay(ctx: ShopSceneCtx = _ctx): void {
 
 function grantHeroDiscardSameLevelReward(discardedDefId: string, level: 1 | 2 | 3 | 4 | 5 | 6 | 7, ctx: ShopSceneCtx = _ctx): void {
   HeroSystem.grantHeroDiscardSameLevelReward(ctx, discardedDefId, level, {
-    collectPoolCandidatesByLevel: (lv) => collectPoolCandidatesByLevel(lv),
+    findFirstBattlePlace: (size) => findFirstBattlePlace(size),
+    findFirstBackpackPlace: (size) => findFirstBackpackPlace(size),
     grantPoolCandidateToBoardOrBackpack: (c, s, o) => grantPoolCandidateToBoardOrBackpack(c, s, o),
     refreshPlayerStatusUI: () => refreshPlayerStatusUI(),
   })
@@ -257,7 +263,8 @@ function seedInitialUnlockPoolByStarterClass(pick: StarterClass, ctx: ShopSceneC
 
 function tryRunHeroCrossSynthesisReroll(stage: Container, synth: SynthesizeResult, ctx: ShopSceneCtx = _ctx): boolean {
   return HeroSystem.tryRunHeroCrossSynthesisReroll(ctx, stage, synth, {
-    collectPoolCandidatesByLevel: (lv) => collectPoolCandidatesByLevel(lv),
+    findFirstBattlePlace: (size) => findFirstBattlePlace(size),
+    findFirstBackpackPlace: (size) => findFirstBackpackPlace(size),
     showNeutralChoiceOverlay: (s, t, c, onC, m) => showNeutralChoiceOverlay(s, t, c, onC, m),
     isLevelQuickDraftEnabled: () => RewardSystem.isLevelQuickDraftEnabled(),
     enqueueLevelQuickDraftChoices: (title, choices, opts) => RewardSystem.enqueueLevelQuickDraftChoices(ctx, title, choices, opts),
@@ -271,7 +278,6 @@ function tryRunHeroCrossSynthesisReroll(stage: Container, synth: SynthesizeResul
     refreshShopUI: () => refreshShopUI(),
     refreshPlayerStatusUI: () => refreshPlayerStatusUI(),
     tierStarLevelIndex: (t, s) => tierStarLevelIndex(t, s),
-    pickRandomElements: (list, count) => pickRandomElements(list, count),
   })
 }
 
@@ -458,6 +464,38 @@ const SHOP_QUICK_BUY_PRICE = 3
 
 type EventLane = 'left' | 'right'
 type EventArchetype = 'warrior' | 'archer' | 'assassin'
+
+function rollDesperateCounterChoice(archetype: EventArchetype): NeutralChoiceCandidate | null {
+  const pool = getAllItems().filter((item) => {
+    if (isNeutralItemDef(item)) return false
+    if (parseTierName(item.starting_tier) !== 'Diamond') return false
+    return toSkillArchetype(getPrimaryArchetype(item.tags)) === archetype
+  })
+  if (pool.length <= 0) return null
+  const picked = pool[Math.floor(Math.random() * pool.length)]
+  if (!picked) return null
+  return { item: picked, tier: 'Diamond', star: 1 }
+}
+
+function tryGrantDesperateCounterReward(ctx: ShopSceneCtx = _ctx): void {
+  const fromPve = consumeLastStandPendingReward()
+  const fromPvp = PvpContext.consumePendingLastStandReward()
+  if (!fromPve && !fromPvp) return
+  const choices: NeutralChoiceCandidate[] = []
+  const archetypes: EventArchetype[] = ['warrior', 'archer', 'assassin']
+  for (const archetype of archetypes) {
+    const picked = rollDesperateCounterChoice(archetype)
+    if (picked) choices.push(picked)
+  }
+  if (choices.length <= 0) return
+  const queued = RewardSystem.enqueueLevelQuickDraftChoices(ctx, '绝地反击奖励', choices, {
+    consumePickedAsReward: true,
+    force: true,
+  })
+  if (queued) {
+    showHintToast('no_gold_buy', '绝地反击：获得一次钻石Lv6快捷三选一', 0xffd86b, ctx)
+  }
+}
 
 type EventChoice = {
   id: string
@@ -832,6 +870,22 @@ function grantSynthesisExp(amount = 1, from?: { instanceId: string; zone: 'battl
   RewardSystem.grantSynthesisExp(amount, from, ctx, makeRewardSystemCallbacks())
 }
 
+function addOnePlayerLevelForTest(ctx: ShopSceneCtx = _ctx): void {
+  const progress = getPlayerProgressState()
+  const level = PlayerStatusUI.clampPlayerLevel(progress.level)
+  const levelCap = PlayerStatusUI.getPlayerLevelCap()
+  if (level >= levelCap) {
+    showHintToast('no_gold_buy', '[测试] 已达到等级上限', 0xffd48f, ctx)
+    return
+  }
+  const expNeed = PlayerStatusUI.getPlayerExpNeedByLevel(level)
+  const expNow = Math.max(0, Math.round(progress.exp))
+  const delta = Math.max(1, expNeed - expNow)
+  grantSynthesisExp(delta, undefined, ctx)
+  refreshPlayerStatusUI(ctx)
+  saveShopStateToStorage(captureShopState(ctx))
+}
+
 
 
 
@@ -990,6 +1044,7 @@ function makePanelInitDeps(): PanelInitDeps {
     rewriteNeutralRandomPick: (item) => rewriteNeutralRandomPick(item),
     canRandomNeutralItem: (item) => canRandomNeutralItem(item),
     getItemDefByCn: (nameCn) => getItemDefByCn(nameCn),
+    addOnePlayerLevelForTest: () => addOnePlayerLevelForTest(_ctx),
     isLevelQuickDraftEnabled: () => RewardSystem.isLevelQuickDraftEnabled(),
     enqueueLevelQuickDraftChoices: (title, choices, opts) => RewardSystem.enqueueLevelQuickDraftChoices(_ctx, title, choices, opts),
   }
@@ -1096,10 +1151,6 @@ function findFirstBattlePlace(size: ItemSizeNorm, ctx: ShopSceneCtx = _ctx): { c
 
 function getAllOwnedPlacedItems(ctx: ShopSceneCtx = _ctx): OwnedPlacedItem[] {
   return GridInventory.getAllOwnedPlacedItems(ctx)
-}
-
-function pickRandomElements<T>(list: T[], count: number): T[] {
-  return GridInventory.pickRandomElements(list, count)
 }
 
 function removePlacedItemById(instanceId: string, zone: 'battle' | 'backpack', ctx: ShopSceneCtx = _ctx): void {
@@ -1339,7 +1390,8 @@ function refreshShopUI(ctx: ShopSceneCtx = _ctx): void {
       // PVP 模式：显示 PVP HP，不显示 PVE 生命
       const pvpSession = PvpContext.getSession()
       const myHp = pvpSession?.playerHps?.[pvpSession?.myIndex ?? -1] ?? 30
-      const initHp = pvpSession?.initialHp ?? 30
+      const initHpBase = pvpSession?.initialHp ?? 30
+      const initHp = initHpBase + (ctx.starterClass === 'hero9' ? 10 : 0)
       ctx.livesText.text = `❤️ ${myHp}/${initHp}`
       ctx.livesText.style.fill = myHp <= 2 ? 0xff6a6a : 0xffd4d4
     } else {
@@ -1790,6 +1842,7 @@ export const ShopScene: Scene = {
       syncUnlockPoolToManager()
       grantSkill20DailyBronzeItemIfNeeded()
     }
+    tryGrantDesperateCounterReward(_ctx)
     skillDraftPanel?.refreshSkillIconBar()
     refreshShopUI()
     applyPhaseInputLock()
@@ -2075,7 +2128,8 @@ export const ShopScene: Scene = {
     if (PvpContext.isActive() && _ctx.livesText) {
       const pvpSession = PvpContext.getSession()
       const myHp = pvpSession?.playerHps?.[pvpSession?.myIndex ?? -1] ?? 30
-      const initHp = pvpSession?.initialHp ?? 30
+      const initHpBase = pvpSession?.initialHp ?? 30
+      const initHp = initHpBase + (_ctx.starterClass === 'hero9' ? 10 : 0)
       const next = `❤️ ${myHp}/${initHp}`
       if (_ctx.livesText.text !== next) {
         _ctx.livesText.text = next

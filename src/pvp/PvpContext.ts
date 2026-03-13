@@ -93,6 +93,8 @@ export const PvpContext = {
     active = true
     room = pvpRoom
     session = pvpSession
+    if (!session.lastStandUsedPlayers) session.lastStandUsedPlayers = {}
+    session.pendingLastStandReward = false
     currentDayPhase = 'shop1'
     pendingWildGoldBonus = 0
     // PVP 模式使用独立内存进度，从 Lv1 开始，不污染冒险模式存档
@@ -208,7 +210,7 @@ export const PvpContext = {
       }
     }
 
-    pvpRoom.onRoundSummary = (day, hpMap, newlyEliminated, snapshots) => {
+    pvpRoom.onRoundSummary = (day, hpMap, newlyEliminated, snapshots, lastStandTriggered) => {
       if (!session) return
       // 更新所有玩家 HP
       Object.entries(hpMap).forEach(([idx, hp]) => {
@@ -231,6 +233,14 @@ export const PvpContext = {
           session!.eliminatedPlayers.push(idx)
         }
       })
+      // 标记绝地反击触发（每人每局一次）
+      if (!session.lastStandUsedPlayers) session.lastStandUsedPlayers = {}
+      for (const idx of (lastStandTriggered ?? [])) {
+        session.lastStandUsedPlayers[idx] = true
+      }
+      if ((lastStandTriggered ?? []).includes(session.myIndex)) {
+        session.pendingLastStandReward = true
+      }
       console.log('[PvpContext] round_summary day=' + day + ' hpMap=' + JSON.stringify(hpMap) + ' eliminated=' + JSON.stringify(newlyEliminated))
       // 通知等待面板刷新（eliminatedPlayers 已更新）
       if (newlyEliminated.length > 0) PvpContext.onEliminatedPlayersUpdate?.()
@@ -281,7 +291,14 @@ export const PvpContext = {
       session.playerHps = {}
       session.players.forEach((p) => { session!.playerHps[p.index] = initHp })
     }
+    if (!session.lastStandUsedPlayers) session.lastStandUsedPlayers = {}
     if (!session.eliminatedPlayers) session.eliminatedPlayers = []
+  },
+
+  consumePendingLastStandReward(): boolean {
+    if (!session?.pendingLastStandReward) return false
+    session.pendingLastStandReward = false
+    return true
   },
 
   /** ShopScene 注册自动提交回调（仅 sync-a 模式有效，异步PVP忽略） */
@@ -437,7 +454,8 @@ export const PvpContext = {
     if (!room?.isHost && pendingRoundWinner === 'enemy') {
       const myHp = session.playerHps?.[session.myIndex] ?? session.initialHp
       const damage = Math.max(1, Math.round(session.currentDay))
-      if (myHp - damage <= 0) {
+      const usedLastStand = session.lastStandUsedPlayers?.[session.myIndex] === true
+      if (myHp - damage <= 0 && usedLastStand) {
         console.log('[PvpContext] 本地预判淘汰，等待 round_summary 确认')
         session.predictedElimination = true
         currentDayPhase = 'shop1'

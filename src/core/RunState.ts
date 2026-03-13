@@ -10,6 +10,8 @@ const WIN_STREAK_STORAGE_KEY = 'bigbazzar_win_streak_v1'
 const WIN_STREAK_STORAGE_VERSION = 1
 const PLAYER_PROGRESS_STORAGE_KEY = 'bigbazzar_player_progress_v1'
 const PLAYER_PROGRESS_STORAGE_VERSION = 1
+const LAST_STAND_STATE_STORAGE_KEY = 'bigbazzar_last_stand_state_v1'
+const LAST_STAND_STATE_STORAGE_VERSION = 1
 const DEFAULT_PLAYER_LEVEL = 1
 const DEFAULT_PLAYER_EXP = 0
 
@@ -38,6 +40,11 @@ export type WinStreakState = {
 export type PlayerProgressState = {
   level: number
   exp: number
+}
+
+export type LastStandState = {
+  used: boolean
+  pendingReward: boolean
 }
 
 function clampLives(current: number, max: number): LifeState {
@@ -119,6 +126,26 @@ function savePlayerProgressState(state: PlayerProgressState): PlayerProgressStat
   return normalized
 }
 
+function clampLastStandState(used: unknown, pendingReward: unknown): LastStandState {
+  return {
+    used: used === true,
+    pendingReward: pendingReward === true,
+  }
+}
+
+function saveLastStandState(state: LastStandState): LastStandState {
+  const normalized = clampLastStandState(state.used, state.pendingReward)
+  try {
+    localStorage.setItem(LAST_STAND_STATE_STORAGE_KEY, JSON.stringify({
+      version: LAST_STAND_STATE_STORAGE_VERSION,
+      state: normalized,
+    }))
+  } catch {
+    // ignore
+  }
+  return normalized
+}
+
 export function getLifeState(): LifeState {
   try {
     const raw = localStorage.getItem(LIFE_STATE_STORAGE_KEY)
@@ -163,9 +190,46 @@ export function clearCurrentRunState(): void {
     localStorage.removeItem(TROPHY_STATE_STORAGE_KEY)
     localStorage.removeItem(WIN_STREAK_STORAGE_KEY)
     localStorage.removeItem(PLAYER_PROGRESS_STORAGE_KEY)
+    localStorage.removeItem(LAST_STAND_STATE_STORAGE_KEY)
   } catch {
     // ignore
   }
+}
+
+export function getLastStandState(): LastStandState {
+  try {
+    const raw = localStorage.getItem(LAST_STAND_STATE_STORAGE_KEY)
+    if (!raw) return saveLastStandState({ used: false, pendingReward: false })
+    const parsed = JSON.parse(raw) as {
+      version?: unknown
+      state?: { used?: unknown; pendingReward?: unknown }
+    } | null
+    if (!parsed || parsed.version !== LAST_STAND_STATE_STORAGE_VERSION || !parsed.state) {
+      return saveLastStandState({ used: false, pendingReward: false })
+    }
+    return saveLastStandState(clampLastStandState(parsed.state.used, parsed.state.pendingReward))
+  } catch {
+    return saveLastStandState({ used: false, pendingReward: false })
+  }
+}
+
+export function applyLifeDamageWithLastStand(amount = 1): { life: LifeState; triggered: boolean } {
+  const state = getLifeState()
+  const lastStand = getLastStandState()
+  const dmg = Number.isFinite(amount) ? Math.max(0, Math.round(amount)) : 1
+  const next = state.current - dmg
+  if (next <= 0 && !lastStand.used) {
+    saveLastStandState({ used: true, pendingReward: true })
+    return { life: saveLifeState({ current: 1, max: state.max }), triggered: true }
+  }
+  return { life: saveLifeState({ current: next, max: state.max }), triggered: false }
+}
+
+export function consumeLastStandPendingReward(): boolean {
+  const state = getLastStandState()
+  if (!state.pendingReward) return false
+  saveLastStandState({ used: state.used, pendingReward: false })
+  return true
 }
 
 export function getPlayerProgressState(): PlayerProgressState {

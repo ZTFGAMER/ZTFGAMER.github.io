@@ -324,9 +324,9 @@ export function checkAndPopPendingRewards(ctx: ShopSceneCtx, callbacks: RewardSy
 
 function getQuickDraftWeightsByPlayerLevel(level: number): number[] {
   const rows = getGameConfig().shopRules?.levelQuickDraftLevelWeightsByPlayerLevel
-  if (!Array.isArray(rows) || rows.length <= 0) return [1, 0, 0, 0, 0, 0]
+  if (!Array.isArray(rows) || rows.length <= 0) return [1, 0, 0, 0, 0, 0, 0, 0]
   const idx = Math.max(0, Math.min(rows.length - 1, Math.round(level) - 1))
-  const row = rows[idx] ?? rows[rows.length - 1] ?? [1, 0, 0, 0, 0, 0]
+  const row = rows[idx] ?? rows[rows.length - 1] ?? [1, 0, 0, 0, 0, 0, 0, 0]
   return [
     Math.max(0, Number(row[0] ?? 0)),
     Math.max(0, Number(row[1] ?? 0)),
@@ -334,11 +334,26 @@ function getQuickDraftWeightsByPlayerLevel(level: number): number[] {
     Math.max(0, Number(row[3] ?? 0)),
     Math.max(0, Number(row[4] ?? 0)),
     Math.max(0, Number(row[5] ?? 0)),
+    Math.max(0, Number(row[6] ?? 0)),
+    Math.max(0, Number(row[7] ?? 0)),
   ]
 }
 
+function pickQuickDraftModeByWeights(weights: number[]): 'normal' | 'class_stone' {
+  const normal = Math.max(0, Number(weights[0] ?? 0))
+    + Math.max(0, Number(weights[1] ?? 0))
+    + Math.max(0, Number(weights[2] ?? 0))
+    + Math.max(0, Number(weights[3] ?? 0))
+    + Math.max(0, Number(weights[4] ?? 0))
+    + Math.max(0, Number(weights[5] ?? 0))
+  const classStone = Math.max(0, Number(weights[6] ?? 0)) + Math.max(0, Number(weights[7] ?? 0))
+  const total = normal + classStone
+  if (total <= 0) return 'normal'
+  return Math.random() * total < classStone ? 'class_stone' : 'normal'
+}
+
 function pickQuickDraftLevelByWeights(weights: number[]): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
-  const total = weights.reduce((sum, one) => sum + Math.max(0, Number(one || 0)), 0)
+  const total = weights.slice(0, 6).reduce((sum, one) => sum + Math.max(0, Number(one || 0)), 0)
   if (total <= 0) return 2
   let roll = Math.random() * total
   for (let i = 0; i < 6; i++) {
@@ -402,10 +417,45 @@ function collectQuickDraftCandidatesByLevel(
   return out
 }
 
+function buildQuickDraftCandidateByDefId(
+  defId: string,
+  callbacks: RewardSystemCallbacks,
+): QuickDraftCandidate | null {
+  const def = getItemDefById(defId)
+  if (!def) return null
+  const minTier = parseTierName(def.starting_tier) ?? 'Bronze'
+  const level = (getAllowedLevelsByStartingTier(minTier)[0] ?? 2) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const tierStar = levelToTierStar(level)
+  if (!tierStar) return null
+  const size = normalizeSize(def.size)
+  if (!callbacks.findFirstBattlePlace(size) && !callbacks.findFirstBackpackPlace(size)) return null
+  return {
+    defId,
+    level,
+    tier: tierStar.tier,
+    star: tierStar.star,
+  }
+}
+
+function buildClassStoneQuickDraftCandidates(callbacks: RewardSystemCallbacks): QuickDraftCandidate[] {
+  const fixedIds = ['item64', 'item66', 'item65']
+  const out: QuickDraftCandidate[] = []
+  for (const id of fixedIds) {
+    const cand = buildQuickDraftCandidateByDefId(id, callbacks)
+    if (!cand) continue
+    out.push(cand)
+  }
+  return out.slice(0, 3)
+}
+
 function buildQuickDraftCandidates(playerLevel: number, _ctx: ShopSceneCtx, callbacks: RewardSystemCallbacks): QuickDraftCandidate[] {
   const out: QuickDraftCandidate[] = []
   const blockedDefIds = new Set<string>()
   const weights = getQuickDraftWeightsByPlayerLevel(playerLevel)
+  if (pickQuickDraftModeByWeights(weights) === 'class_stone') {
+    const fixed = buildClassStoneQuickDraftCandidates(callbacks)
+    if (fixed.length > 0) return fixed
+  }
   for (let i = 0; i < 3; i++) {
     const level = pickQuickDraftLevelByWeights(weights)
     const pool = collectQuickDraftCandidatesByLevel(level, callbacks)
@@ -440,19 +490,29 @@ function computeLevelQuickRewardPosition(ctx: ShopSceneCtx, battleScale: number)
   return { quickX, quickY, quickW, quickH }
 }
 
+function getLevelQuickRewardCentersLocal(itemCount: number, battleScale: number): number[] {
+  const cellW = CELL_SIZE * battleScale
+  const center = cellW * 1.5
+  const gapPx = 30
+  if (itemCount <= 1) return [center]
+  if (itemCount === 2) {
+    const delta = (cellW + gapPx) * 0.5
+    return [center - delta, center + delta]
+  }
+  return [cellW * 0.5 - gapPx, cellW * 1.5, cellW * 2.5 + gapPx]
+}
+
 function applyLevelQuickRewardItemSpacing(ctx: ShopSceneCtx, battleScale: number): void {
   if (!ctx.levelQuickRewardSystem || !ctx.levelQuickRewardView) return
   const items = ctx.levelQuickRewardSystem.getAllItems().slice().sort((a, b) => a.col - b.col)
   if (items.length <= 0) return
-  const gapPx = 30
-  const shift = gapPx / Math.max(0.1, battleScale)
+  const cellW = CELL_SIZE * battleScale
+  const centers = getLevelQuickRewardCentersLocal(Math.min(3, items.length), battleScale)
   for (let i = 0; i < items.length; i++) {
     const item = items[i]!
-    let offset = 0
-    if (items.length >= 3) {
-      if (i === 0) offset = -shift
-      else if (i === items.length - 1) offset = shift
-    }
+    const desiredCenter = centers[Math.min(i, centers.length - 1)] ?? (cellW * (item.col + 0.5))
+    const baseCenter = cellW * (item.col + 0.5)
+    const offset = (desiredCenter - baseCenter) / Math.max(0.1, battleScale)
     ctx.levelQuickRewardView.setItemOffsetX(item.instanceId, offset)
   }
 }
@@ -464,12 +524,15 @@ function refreshLevelQuickRewardBackdrop(quickX: number, quickY: number, _quickW
 
   const battleScale = Math.max(0.1, Number(ctx.backpackView?.scale.x || ctx.battleView?.scale.x || 1))
   const cellW = CELL_SIZE * battleScale
-  const slotXs = [quickX - 30, quickX + cellW, quickX + cellW * 2 + 30]
+  const active = getLevelQuickRewardActiveEntry(ctx)
+  const itemCount = Math.max(1, Math.min(3, (active?.picks.length ?? ctx.levelQuickRewardInstanceIds.size) || 3))
+  const centers = getLevelQuickRewardCentersLocal(itemCount, battleScale)
   const r = Math.max(8, getDebugCfg('gridItemCornerRadius'))
   const g = new Graphics()
   g.zIndex = 17
   g.eventMode = 'none'
-  for (const x of slotXs) {
+  for (const center of centers) {
+    const x = quickX + center - cellW * 0.5
     g.roundRect(x, quickY, cellW, quickH, r)
     g.fill({ color: 0x2a2a3e, alpha: 1 })
   }
@@ -506,9 +569,8 @@ function refreshLevelQuickRewardOverlayTitle(quickX: number, quickW: number, qui
   title.y = Math.round(quickY - 22)
   overlay.addChild(title)
 
-  const center1 = quickX + CELL_SIZE * 0.5 * battleScale - 30
-  const center2 = quickX + CELL_SIZE * 1.5 * battleScale
-  const center3 = quickX + CELL_SIZE * 2.5 * battleScale + 30
+  const itemCount = Math.max(1, Math.min(3, (active?.picks.length ?? ctx.levelQuickRewardInstanceIds.size) || 3))
+  const centers = getLevelQuickRewardCentersLocal(itemCount, battleScale).map((x) => quickX + x)
   const orY = Math.round(quickY + (CELL_HEIGHT * battleScale) / 2)
   const makeOr = (x: number): Text => {
     const t = new Text({
@@ -527,8 +589,11 @@ function refreshLevelQuickRewardOverlayTitle(quickX: number, quickW: number, qui
     t.y = orY
     return t
   }
-  overlay.addChild(makeOr((center1 + center2) / 2))
-  overlay.addChild(makeOr((center2 + center3) / 2))
+  for (let i = 0; i < centers.length - 1; i++) {
+    const left = centers[i]!
+    const right = centers[i + 1]!
+    overlay.addChild(makeOr((left + right) / 2))
+  }
 
   ctx.levelQuickRewardOverlay = overlay
   getApp().stage.addChild(overlay)
@@ -550,13 +615,14 @@ function tryShowNextQueuedQuickDraft(ctx: ShopSceneCtx): boolean {
       const def = getItemDefById(pick.defId)
       if (!def) continue
       const id = nextId()
-      ctx.levelQuickRewardSystem.place(i, 0, '1x1', pick.defId, id)
+      const placeCol = entry.picks.length === 1 ? 1 : entry.picks.length === 2 ? i * 2 : i
+      ctx.levelQuickRewardSystem.place(placeCol, 0, '1x1', pick.defId, id)
       instanceToDefId.set(id, pick.defId)
       setInstanceQualityLevel(id, pick.defId, pick.tier, levelFromLegacyTierStar(pick.tier, pick.star))
       instanceToPermanentDamageBonus.set(id, 0)
       ctx.levelQuickRewardInstanceIds.add(id)
       activeById.set(id, pick)
-      void ctx.levelQuickRewardView.addItem(id, pick.defId, '1x1', i, 0, `${pick.tier}#${pick.star}`).then(() => {
+      void ctx.levelQuickRewardView.addItem(id, pick.defId, '1x1', placeCol, 0, `${pick.tier}#${pick.star}`).then(() => {
         ctx.levelQuickRewardView?.setItemTier(id, `${pick.tier}#${pick.star}`)
         ctx.drag?.refreshZone(ctx.levelQuickRewardView!)
       })
@@ -660,9 +726,10 @@ export function enqueueLevelQuickDraftChoices(
   opts?: {
     consumePickedAsReward?: boolean
     onPicked?: (picked: NeutralChoiceCandidate) => void
+    force?: boolean
   },
 ): boolean {
-  if (!isLevelQuickDraftEnabled()) return false
+  if (!opts?.force && !isLevelQuickDraftEnabled()) return false
   const picks = choices.map((one) => toQuickDraftCandidate(one)).slice(0, 3)
   if (picks.length <= 0) return false
   return enqueueLevelQuickRewardEntry(ctx, {
