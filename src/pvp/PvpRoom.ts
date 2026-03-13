@@ -270,6 +270,14 @@ export class PvpRoom {
         this.tryTriggerSyncStart(day)
         this.checkAndStartCountdown(day)
       }
+      // 补检正在等待结算的回合：断线玩家不再阻塞 round_result 收集
+      for (const day of this.roundResultsByDay.keys()) {
+        if (this.roundEndProcessedDays.has(day)) continue
+        const connectedAlivePlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index) && p.connected)
+        if (connectedAlivePlayers.length > 0 && connectedAlivePlayers.every((p) => this.roundResultsByDay.get(day)?.has(p.index))) {
+          this.hostProcessRoundEnd(day)
+        }
+      }
     }
   }
 
@@ -760,10 +768,9 @@ export class PvpRoom {
     this.roundResultsByDay.get(day)!.set(playerIndex, { winner, survivingDamage })
     console.log('[PvpRoom] round_result day=' + day + ' player[' + playerIndex + '] winner=' + winner + ' dmg=' + survivingDamage)
 
-    // Check if all alive players have reported
-    // 只等待存活的真人玩家上报（AI 玩家没有连接，永远不会上报）
-    const humanAlivePlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index))
-    const allReported = humanAlivePlayers.every((p) => this.roundResultsByDay.get(day)?.has(p.index))
+    // 只等待在线的存活真人玩家上报（断线玩家不阻塞结算）
+    const humanAlivePlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index) && p.connected)
+    const allReported = humanAlivePlayers.length > 0 && humanAlivePlayers.every((p) => this.roundResultsByDay.get(day)?.has(p.index))
     if (allReported) {
       this.hostProcessRoundEnd(day)
     }
@@ -787,7 +794,8 @@ export class PvpRoom {
     for (const player of alivePlayers) {
       const opponentIdx = getOpponentFromAlive(player.index, aliveIndices, day - 1)
       const myResult = results.get(player.index)
-      const lost = myResult?.winner === 'enemy'
+      // 断线玩家无结果上报，视为本轮落败（扣血并可能淘汰）
+      const lost = myResult?.winner === 'enemy' || (myResult === undefined && !player.connected)
       if (lost) {
         void opponentIdx
         const damage = Math.max(1, Math.min(8, Math.round(day)))
