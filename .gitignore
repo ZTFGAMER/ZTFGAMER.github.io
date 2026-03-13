@@ -4,6 +4,7 @@ dist-ios/
 *.tsbuildinfo
 .DS_Store
 .claude/
+ios/
 android/
 dist-android/
 ios/build/
