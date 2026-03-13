@@ -103,6 +103,17 @@ export const PvpContext = {
       if (session) session.players = players
     }
 
+    // 游戏中与 Host 的连接断开（WS 关闭）：停止倒计时，跳转结算页
+    pvpRoom.onError = (msg) => {
+      console.error('[PvpContext] 连接断开，跳转结算:', msg)
+      stopCountdown()
+      autoSubmitCallback = null
+      const cur = SceneManager.currentName()
+      if (cur === 'shop' || cur === 'battle') {
+        SceneManager.goto('pvp-result')
+      }
+    }
+
     // 注册房间回调
     pvpRoom.onDayReady = (day, countdownMs, byeOpponentMap) => {
       // 异步PVP无倒计时：玩家手动点"准备"推进，无需自动提交

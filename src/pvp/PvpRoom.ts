@@ -63,6 +63,9 @@ export class PvpRoom {
   private shopEnteredByDay = new Map<number, Set<number>>()
   // sync-a：已触发过倒计时的天数，防止重复广播
   private countdownStartedDays = new Set<number>()
+  // 周期性状态重检定时器：每 60s 重新评估所有活跃天的就绪状态
+  // 对齐 relay 心跳周期（30s），兜底 relay close 通知偶发丢失的情况
+  private stateCheckInterval: ReturnType<typeof setInterval> | null = null
 
   pvpMode: PvpMode = 'async'
   // Mode A: sync-ready tracking per day
@@ -261,11 +264,10 @@ export class PvpRoom {
     this.broadcastRoomState()
     this.onRoomStateChange?.(this._players)
     // 断线后重新检查各阶段就绪状态，避免断线玩家永久阻塞游戏推进
+    // 使用 latestDaySnapshots.keys() 遍历所有已激活的天数（比 daySyncReadyPlayers/shopEnteredByDay 更完整）
     if (this.gameStarted) {
-      for (const day of this.daySyncReadyPlayers.keys()) {
+      for (const day of this.latestDaySnapshots.keys()) {
         this.tryTriggerSyncStart(day)
-      }
-      for (const day of this.shopEnteredByDay.keys()) {
         this.checkAndStartCountdown(day)
       }
     }
@@ -352,6 +354,14 @@ export class PvpRoom {
 
     // 房主自己触发 onGameStart
     this.onGameStart?.(0, this._totalPlayers)
+
+    // 启动周期状态重检（对齐 relay 心跳周期，兜底 close 通知偶发丢失）
+    this.stateCheckInterval = setInterval(() => {
+      for (const day of this.latestDaySnapshots.keys()) {
+        this.tryTriggerSyncStart(day)
+        this.checkAndStartCountdown(day)
+      }
+    }, 60_000)
 
     // 马上开始 Day 1
     setTimeout(() => this.hostStartDay(1), 300)
@@ -698,6 +708,7 @@ export class PvpRoom {
       this.broadcastToClients({ type: 'sync_ready_update', day, readyIndices })
       this.onSyncReadyUpdate?.(day, readyIndices)
       this.tryTriggerSyncStart(day)
+      // 注：断线兜底由 stateCheckInterval（60s 周期）统一负责，无需每天单独设 timer
     } else {
       this.sendToHost({ type: 'battle_sync_ready', day })
     }
@@ -843,6 +854,7 @@ export class PvpRoom {
   // ----------------------------------------------------------------
   destroy(): void {
     if (this.dayCountdownTimer) clearTimeout(this.dayCountdownTimer)
+    if (this.stateCheckInterval) clearInterval(this.stateCheckInterval)
     this.hostConns.forEach((conn) => conn.close())
     this.clientConn?.close()
     this.peerConn.destroy()
