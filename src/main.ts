@@ -321,6 +321,26 @@ function getSoakStats(): SoakTestStats | null {
   return soakState ? { ...soakState } : null
 }
 
+// 移动端：将背景图缩放到设计分辨率，避免超大纹理（如 1568×2744=16MB）撑爆 Android WebView GPU 内存
+async function loadBgTexture(url: string, downscale: boolean): Promise<Texture> {
+  if (!downscale) return Assets.load<Texture>(url)
+  return new Promise<Texture>((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const scale = Math.min(1, BASE_W / img.naturalWidth, BASE_H / img.naturalHeight)
+      if (scale >= 1) { resolve(Texture.from(img)); return }
+      const offscreen = document.createElement('canvas')
+      offscreen.width = Math.round(img.naturalWidth * scale)
+      offscreen.height = Math.round(img.naturalHeight * scale)
+      offscreen.getContext('2d')!.drawImage(img, 0, 0, offscreen.width, offscreen.height)
+      console.log(`[BgTex] 缩放 ${img.naturalWidth}x${img.naturalHeight} → ${offscreen.width}x${offscreen.height} (scale=${scale.toFixed(2)})`)
+      resolve(Texture.from(offscreen))
+    }
+    img.onerror = reject
+    img.src = url
+  })
+}
+
 function showFatalError(message: string): void {
   const body = document.body
   if (!body) return
@@ -480,21 +500,39 @@ async function bootstrap(): Promise<void> {
   bgSprite.tint = 0x1a1a2e  // 先用深色占位，避免背景图加载前闪白
   app.stage.addChildAt(bgSprite, 0)
   try {
-    const defaultBgTex = await Assets.load<Texture>(getSceneImageUrl('background.png'))
+    const defaultBgTex = await loadBgTexture(getSceneImageUrl('background.png'), isMobile)
     bgSprite.tint = 0xffffff  // 恢复正常着色
     bgSprite.texture = defaultBgTex
 
+    // 移动端：background2 在首次进入商店时再懒加载，节省启动内存约 16MB
     let shopBgTex: Texture | null = null
-    try {
-      shopBgTex = await Assets.load<Texture>(getSceneImageUrl('background2.png'))
-    } catch (shopErr) {
-      console.warn('[main] 商店背景图 background2.png 加载失败，回退默认背景', shopErr)
+    let shopBgLoading = false
+    const loadShopBgOnce = (): void => {
+      if (shopBgLoading || shopBgTex) return
+      shopBgLoading = true
+      loadBgTexture(getSceneImageUrl('background2.png'), isMobile)
+        .then((tex) => {
+          shopBgTex = tex
+          if (SceneManager.currentName() === 'shop') bgSprite.texture = shopBgTex
+        })
+        .catch((err) => {
+          console.warn('[main] 商店背景图 background2.png 加载失败，回退默认背景', err)
+        })
+    }
+
+    if (!isMobile) {
+      // 桌面端保持原有行为：启动时预加载
+      try {
+        shopBgTex = await loadBgTexture(getSceneImageUrl('background2.png'), false)
+      } catch (shopErr) {
+        console.warn('[main] 商店背景图 background2.png 加载失败，回退默认背景', shopErr)
+      }
     }
 
     const applyBackgroundByScene = (scene: SceneName | null): void => {
-      if (scene === 'shop' && shopBgTex) {
-        bgSprite.texture = shopBgTex
-        return
+      if (scene === 'shop') {
+        loadShopBgOnce()
+        if (shopBgTex) { bgSprite.texture = shopBgTex; return }
       }
       bgSprite.texture = defaultBgTex
     }

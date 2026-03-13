@@ -272,7 +272,7 @@ export const MenuScene: Scene = {
 
     // ── 底部 ──────────────────────────────────────────────
     const ver = new Text({
-      text: 'v1.0.3',
+      text: 'v1.0.4',
       style: { fill: 0x6688aa, fontSize: 18 },
     })
     ver.anchor.set(1, 1)
