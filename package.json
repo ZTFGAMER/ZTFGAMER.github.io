@@ -14,6 +14,7 @@
     "perf:p1-check": "python3 scripts/perf_p1_check.py",
     "agent:new": "python3 scripts/create_agent_session.py",
     "build:android-web": "tsc -b && vite build --base ./ --outDir dist-android",
+    "build:deploy": "tsc -b && vite build --base ./",
     "android:sync": "npx cap sync android",
     "android:open": "npx cap open android"
   },
