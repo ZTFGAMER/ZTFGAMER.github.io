@@ -17,7 +17,8 @@ import { getAllItems, getConfig as getGameCfg } from '@/core/DataLoader'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import type { ItemSizeNorm } from '@/common/items/ItemDef'
 import { EventBus } from '@/core/EventBus'
-import { SellPopup, type ItemInfoMode, type ItemInfoRuntimeOverride } from '@/common/ui/SellPopup'
+import { SellPopup, type ItemInfoEnchantmentDisplay, type ItemInfoMode, type ItemInfoRuntimeOverride } from '@/common/ui/SellPopup'
+import { getItemEnchantmentDisplay, resolveItemEnchantmentEffectCn } from '@/common/items/ItemEnchantment'
 import { getBattleEffectColor, getBattleFloatTextColor, getBattleOrbColor } from '@/config/colorPalette'
 import { BattlePortraitFX } from './BattlePortraitFX'
 import { BattleSkillUI } from './BattleSkillUI'
@@ -50,7 +51,6 @@ function readPlayerHeroVisualId(): HeroVisualId {
 
 let root: Container | null = null
 let titleText: Text | null = null
-let statusText: Text | null = null
 let backBtn: Container | null = null
 let speedBtn: Container | null = null
 let speedBtnText: Text | null = null
@@ -123,9 +123,6 @@ let monitorSampleElapsedMs = 0
 let monitorHighStreak = 0
 let monitorRecoverStreak = 0
 let autoFxDegradeLevel = 0
-let lastMonitorHeapMb = 0
-let lastMonitorPendingRatio = 0
-let lastMonitorFxRatio = 0
 
 function readUsedHeapMb(): number {
   const mem = (performance as Performance & { memory?: { usedJSHeapSize?: number } }).memory
@@ -158,10 +155,6 @@ function tickAutoFxDegrade(dtMs: number): void {
     fxStats.activeFx / Math.max(1, fxLimits.maxActiveTotal),
   )
   const heapMb = readUsedHeapMb()
-
-  lastMonitorPendingRatio = pendingRatio
-  lastMonitorFxRatio = fxRatio
-  lastMonitorHeapMb = heapMb
 
   const isHigh = pendingRatio >= runtimeCfg.memoryMonitorHighPendingRatio
     || fxRatio >= runtimeCfg.memoryMonitorHighFxRatio
@@ -437,6 +430,7 @@ function applyZoneVisualStyle(zone: GridZone): void {
 async function mountZoneItems(zone: GridZone, items: CombatBoardItem[]): Promise<void> {
   for (const it of items) {
     await zone.addItem(it.id, it.defId, it.size, it.col, it.row, it.tier)
+    zone.setItemEnchantment(it.id, it.enchantment)
     if (it.side === 'player') fxPool.playerMountedItemIds.add(it.id)
     else fxPool.enemyMountedItemIds.add(it.id)
   }
@@ -666,7 +660,13 @@ function showBattleItemInfo(instanceId: string, side: 'player' | 'enemy', keepMo
     simpleDesc: getDebugCfg('itemInfoSimpleDescFontSize'),
   })
   itemInfoPopup.setCenterY(getBattleInfoPanelCenterY())
-  itemInfoPopup.show(item, 0, 'none', hit.tier, undefined, selectedItemInfoMode, runtimeOverride)
+  const enchantmentDisplay: ItemInfoEnchantmentDisplay | undefined = hit.enchantment
+    ? {
+      ...getItemEnchantmentDisplay(hit.enchantment),
+      effectCn: resolveItemEnchantmentEffectCn(item, hit.enchantment),
+    }
+    : undefined
+  itemInfoPopup.show(item, 0, 'none', hit.tier, undefined, selectedItemInfoMode, runtimeOverride, undefined, enchantmentDisplay)
 }
 
 export const BattleScene: Scene = {
@@ -690,9 +690,6 @@ export const BattleScene: Scene = {
     monitorHighStreak = 0
     monitorRecoverStreak = 0
     autoFxDegradeLevel = 0
-    lastMonitorHeapMb = 0
-    lastMonitorPendingRatio = 0
-    lastMonitorFxRatio = 0
     fxPool.setAutoDegradeLevel(0)
     damageStats.reset()
     root = new Container()
@@ -898,14 +895,6 @@ export const BattleScene: Scene = {
     itemInfoPopup.zIndex = 55
     itemInfoPopup.visible = false
     root.addChild(itemInfoPopup)
-
-    statusText = new Text({
-      text: '初始化中...',
-      style: { fontSize: 18, fill: 0xcdd3ff, fontFamily: 'Arial' },
-    })
-    statusText.x = 20
-    statusText.y = 1140
-    root.addChild(statusText)
 
     battleEndMask = new Graphics()
     battleEndMask.zIndex = 180
@@ -1149,10 +1138,11 @@ export const BattleScene: Scene = {
               : e.status === 'slow' ? getBattleOrbColor('slow')
                 : e.status === 'haste' ? getBattleOrbColor('haste')
                   : getBattleOrbColor('regen')
+      const forceDot = e.status === 'freeze' || e.status === 'slow' || e.status === 'haste'
       fxPool.spawnProjectile(from, to, color, () => {
         if (targetIsHero && targetSide === 'enemy') portraitFX.triggerEnemyHit()
         if (targetIsHero && targetSide === 'player') portraitFX.triggerPlayerHit()
-      }, e.sourceItemId)
+      }, e.sourceItemId, { forceDot })
     })
     offStatusRemoveEvent = EventBus.on('battle:status_remove', () => {})
     offFatigueStartEvent = EventBus.on('battle:fatigue_start', () => {
@@ -1180,7 +1170,6 @@ export const BattleScene: Scene = {
     root?.destroy({ children: true })
     root = null
     titleText = null
-    statusText = null
     backBtn = null
     speedBtn = null
     speedBtnText = null
@@ -1233,9 +1222,6 @@ export const BattleScene: Scene = {
     monitorHighStreak = 0
     monitorRecoverStreak = 0
     autoFxDegradeLevel = 0
-    lastMonitorHeapMb = 0
-    lastMonitorPendingRatio = 0
-    lastMonitorFxRatio = 0
     lastHudTickIndex = -1
     damageStats.reset()
     // PVP sync cleanup
@@ -1316,16 +1302,6 @@ export const BattleScene: Scene = {
     fxPool.tick(dtMs)
     portraitFX.tickEnemy(dtMs)
     portraitFX.tickPlayer(dtMs)
-
-    if (statusText) {
-      const perfStats = fxPool.getPerfStats()
-      const fxLimits = fxPool.getCurrentFxLimits()
-      const queueStats = engine.getQueuePerfStats()
-      const heapText = lastMonitorHeapMb > 0 ? `${Math.round(lastMonitorHeapMb)}mb` : 'na'
-      const pRatio = Math.round(lastMonitorPendingRatio * 100)
-      const fRatio = Math.round(lastMonitorFxRatio * 100)
-      statusText.text = `phase:${engine.getPhase()} ticks:${debugState.tickIndex} fatigue:${debugState.inFatigue ? 'on' : 'off'} fxL:${perfStats.degradeLevel} fx:${perfStats.activeFx}/${fxLimits.maxActiveTotal} p:${perfStats.activeProjectiles}/${fxLimits.maxProjectiles} t:${perfStats.activeFloatingNumbers}/${fxLimits.maxFloatingNumbers} qh:${queueStats.pendingHits}/${queueStats.maxPendingHits} qf:${queueStats.pendingItemFires}/${queueStats.maxPendingItemFires} pr:${pRatio}% fr:${fRatio}% mem:${heapText} drop:${perfStats.droppedProjectiles + perfStats.droppedFloatingNumbers}`
-    }
 
     if (battleEndMask) {
       if (engine.isFinished()) {

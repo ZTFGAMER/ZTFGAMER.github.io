@@ -19,6 +19,7 @@ import type { GridSystem, ItemSizeNorm } from '@/common/grid/GridSystem'
 import type { GridZone } from '@/common/grid/GridZone'
 import type { DragController } from '@/common/grid/DragController'
 import type { SkillArchetype, SkillTier } from '@/common/items/ItemDef'
+import type { ItemEnchantmentKey } from '@/common/items/ItemEnchantment'
 
 // ============================================================
 // 简易类型化 EventBus
@@ -210,6 +211,7 @@ export type SavedPlacedItem = {
   tier: TierKey
   tierStar: 1 | 2
   permanentDamageBonus: number
+  enchantment?: ItemEnchantmentKey
 }
 
 export type SavedShopState = {
@@ -227,6 +229,7 @@ export type SavedShopState = {
   draftedSkillDays?: number[]
   pendingSkillDraft?: PendingSkillDraft | null
   unlockedItemIds?: string[]
+  runClassItemPoolIds?: string[]
   nextQuickBuyOffer?: {
     itemId: string
     tier: TierKey

@@ -18,11 +18,13 @@ import { Container, Text, type FederatedPointerEvent } from 'pixi.js'
 import type { ItemInfoCustomDisplay } from '@/common/ui/SellPopup'
 import {
   instanceToDefId,
+  getInstanceEnchantment,
   getInstanceTier,
   getInstanceTierStar,
   getInstanceLevel,
   removeInstanceMeta,
 } from '../systems/ShopInstanceRegistry'
+import { getItemEnchantmentDisplay, resolveItemEnchantmentEffectCn } from '@/common/items/ItemEnchantment'
 import {
   getItemDefById,
   isNeutralItemDef,
@@ -123,7 +125,7 @@ export type BattleZoneUICallbacks = {
   tryRunSameArchetypeDiffItemStoneSynthesis: (sourceInstanceId: string, sourceDefId: string, sourceTier: TierKey, sourceStar: 1 | 2, target: SynthesisTarget, restore: () => void) => boolean
   showNeutralStoneHoverInfo: (sourceDef: ItemDef, target: SynthesisTarget) => void
   // SynthesisCtrl / HeroSystem compound operations
-  synthesizeTarget: (defId: string, tier: TierKey, star: 1 | 2, targetInstanceId: string, zone: 'battle' | 'backpack') => SynthesizeResult | null
+  synthesizeTarget: (defId: string, tier: TierKey, star: 1 | 2, targetInstanceId: string, zone: 'battle' | 'backpack', sourceInstanceId?: string) => SynthesizeResult | null
   tryRunHeroCrossSynthesisReroll: (stage: Container, synth: SynthesizeResult) => boolean
   tryRunHeroSameItemSynthesisChoice: (stage: Container, defId: string, tier: TierKey, star: 1 | 2, target: SynthesisTarget, consumeSource: () => boolean) => boolean
 }
@@ -251,6 +253,9 @@ export function buildBattleZoneUI(
   ctx.drag = new DragController(stage, canvas)
   ctx.drag.addZone(ctx.battleSystem,  ctx.battleView)
   ctx.drag.addZone(ctx.backpackSystem, ctx.backpackView)
+  ctx.drag.onItemPlaced = ({ view, instanceId }) => {
+    view.setItemEnchantment(instanceId, getInstanceEnchantment(instanceId))
+  }
   ctx.drag.onDropCellLocked = ({ view, col, row, size, instanceId }) => {
     if (view === ctx.levelQuickRewardView) return true
     const dragFromLevelQuickReward = ctx.levelQuickRewardInstanceIds.has(instanceId)
@@ -270,6 +275,13 @@ export function buildBattleZoneUI(
     if (!item) return
     const tier = getInstanceTier(instanceId)
     const star = getInstanceTierStar(instanceId)
+    const enchantment = getInstanceEnchantment(instanceId)
+    const enchantDisplay = enchantment
+      ? {
+        ...getItemEnchantmentDisplay(enchantment),
+        effectCn: resolveItemEnchantmentEffectCn(item, enchantment),
+      }
+      : undefined
     const sellPrice = 0
     if (isNeutralTargetStone(item)) refreshNeutralStoneGuideArrows(item, instanceId)
     else refreshBackpackSynthesisGuideArrows(defId, tier ?? null, star, ctx, instanceId)
@@ -277,7 +289,7 @@ export function buildBattleZoneUI(
     const inBattle = !!ctx.battleView?.hasItem(instanceId)
     ctx.currentSelection = { kind: inBattle ? 'battle' : 'backpack', instanceId }
     ctx.selectedSellAction = null  // 拖拽中暂不执行出售
-    ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, getDefaultItemInfoMode())
+    ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, getDefaultItemInfoMode(), undefined, undefined, enchantDisplay)
     setSellButtonPrice(sellPrice)
     applySellButtonState()
 
@@ -454,7 +466,7 @@ export function buildBattleZoneUI(
             return true
           }
           const runCrossSynthesis = () => {
-            const synth = synthesizeTarget(defId, fromTier, fromStar, synthTarget.instanceId, synthTarget.zone)
+            const synth = synthesizeTarget(defId, fromTier, fromStar, synthTarget.instanceId, synthTarget.zone, instanceId)
             if (!synth) {
               showHintToast('backpack_full_buy', '合成目标无效', 0xff8f8f, ctx)
               restoreDragToHome()
@@ -496,7 +508,7 @@ export function buildBattleZoneUI(
         )) {
           return true
         }
-        const synth = synthesizeTarget(defId, fromTier, fromStar, synthTarget.instanceId, synthTarget.zone)
+        const synth = synthesizeTarget(defId, fromTier, fromStar, synthTarget.instanceId, synthTarget.zone, instanceId)
         if (synth) {
           removeInstanceMeta(instanceId)
           playSynthesisFlashEffect(ctx, stage, synth)
@@ -526,6 +538,7 @@ export function buildBattleZoneUI(
       const star = getInstanceTierStar(instanceId)
       ctx.backpackView.addItem(instanceId, defId, size, autoPlan.incoming.col, autoPlan.incoming.row, toVisualTier(tier, star)).then(() => {
         ctx.backpackView!.setItemTier(instanceId, toVisualTier(tier, star))
+        ctx.backpackView!.setItemEnchantment(instanceId, getInstanceEnchantment(instanceId))
         ctx.drag?.refreshZone(ctx.backpackView!)
       })
       refreshShopUI()
@@ -551,16 +564,25 @@ export function buildBattleZoneUI(
 
     const sellPrice = 0
     const overSell = ctx.gridDragCanSell && ctx.gridDragSellHot
-    if (item && ctx.sellPopup && tier && overSell) {
+      if (item && ctx.sellPopup && tier && overSell) {
       const stoneHint = isNeutralTargetStone(item)
-        ? (item.name_cn === '转职石' ? '拖到目标物品上触发转职效果' : '拖到目标物品上触发变化效果')
+        ? (item.name_cn === '转职石'
+          ? '拖到目标物品上触发转职效果'
+          : (item.name_cn.includes('宝石') ? '拖到目标物品上触发附魔效果' : '拖到目标物品上触发变化效果'))
         : '丢弃后不会获得金币'
       const customDisplay: ItemInfoCustomDisplay = {
         overrideName: `${item.name_cn}（拖拽丢弃）`,
         lines: [stoneHint],
         suppressStats: true,
       }
-      ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, 'detailed', undefined, customDisplay)
+      const enchantment = getInstanceEnchantment(instanceId)
+      const enchantDisplay = enchantment
+        ? {
+          ...getItemEnchantmentDisplay(enchantment),
+          effectCn: resolveItemEnchantmentEffectCn(item, enchantment),
+        }
+        : undefined
+      ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, 'detailed', undefined, customDisplay, enchantDisplay)
       ctx.drag?.setSqueezeSuppressed(false)
       hideSynthesisHoverInfo()
       return
@@ -571,7 +593,14 @@ export function buildBattleZoneUI(
       ctx.drag?.setSqueezeSuppressed(false)
       clearBackpackSynthesisGuideArrows(ctx)
       if (item && ctx.sellPopup) {
-        ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, getDefaultItemInfoMode())
+        const enchantment = getInstanceEnchantment(instanceId)
+        const enchantDisplay = enchantment
+          ? {
+            ...getItemEnchantmentDisplay(enchantment),
+            effectCn: resolveItemEnchantmentEffectCn(item, enchantment),
+          }
+          : undefined
+        ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, getDefaultItemInfoMode(), undefined, undefined, enchantDisplay)
       }
       return
     }
@@ -605,7 +634,14 @@ export function buildBattleZoneUI(
       ctx.drag?.setSqueezeSuppressed(false)
       hideSynthesisHoverInfo()
       if (item && ctx.sellPopup) {
-        ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, getDefaultItemInfoMode())
+        const enchantment = getInstanceEnchantment(instanceId)
+        const enchantDisplay = enchantment
+          ? {
+            ...getItemEnchantmentDisplay(enchantment),
+            effectCn: resolveItemEnchantmentEffectCn(item, enchantment),
+          }
+          : undefined
+        ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, getDefaultItemInfoMode(), undefined, undefined, enchantDisplay)
       }
     }
   }

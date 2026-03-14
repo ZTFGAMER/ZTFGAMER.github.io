@@ -13,6 +13,7 @@ import {
   parseControlSpecsFromDef, isAdjacentByFootprint, itemWidth, isDamageBonusEligible,
   seedFrom, shuffleDeterministic,
 } from './CombatHelpers'
+import { resolveItemEnchantmentEffectCn } from '@/common/items/ItemEnchantment'
 
 // IItemTriggerEngineBase 复用 ICombatEngineBase，新增 enqueueOneAttackFrom
 export interface IItemTriggerEngineBase extends ICombatEngineBase {
@@ -29,6 +30,7 @@ export class ItemTriggerSystem {
 
   applyHasteToTargetItems(source: CombatItemRunner, targets: CombatItemRunner[], durationMs: number): void {
     for (const target of targets) {
+      if (target.enchantment === 'immune') continue
       target.runtime.modifiers.hasteMs = Math.max(target.runtime.modifiers.hasteMs, durationMs)
       EventBus.emit('battle:status_apply', {
         targetId: target.id,
@@ -49,10 +51,12 @@ export class ItemTriggerSystem {
     mode: ControlSpec['targetMode']
     source: CombatItemRunner
     excludeId?: string
+    requireActiveCooldown?: boolean
   }): CombatItemRunner[] {
-    const { side, count, mode, source, excludeId } = params
+    const { side, count, mode, source, excludeId, requireActiveCooldown } = params
     const base = this.state.items
       .filter((it) => it.side === side && it.id !== excludeId)
+      .filter((it) => !requireActiveCooldown || it.baseStats.cooldownMs > 0)
       .sort((a, b) => (a.col - b.col) || a.id.localeCompare(b.id))
     if (base.length === 0) return []
     const limitedCount = Math.max(0, Math.min(count, base.length))
@@ -90,6 +94,21 @@ export class ItemTriggerSystem {
     if (!def) return { freeze: 0, slow: 0, haste: 0 }
     const out = { freeze: 0, slow: 0, haste: 0 }
     const specs = parseControlSpecsFromDef(def, getConfig().combatRuntime)
+    if (source.enchantment) {
+      const effect = resolveItemEnchantmentEffectCn(def, source.enchantment)
+      const secMatch = effect.match(/(\d+(?:\.\d+)?)\s*秒/)
+      const sec = Math.max(0.1, Number(secMatch?.[1] ?? (source.enchantment === 'freeze' ? 1 : 2)))
+      const durationMs = Math.max(1, Math.round(sec * 1000))
+      if (source.enchantment === 'freeze' && !/使用相邻物品时/.test(effect)) {
+        specs.push({ status: 'freeze', durationMs, count: 1, targetSide: 'enemy', targetAll: false, targetMode: 'leftmost' })
+      }
+      if (source.enchantment === 'slow' && !/使用相邻物品时/.test(effect)) {
+        specs.push({ status: 'slow', durationMs, count: 1, targetSide: 'enemy', targetAll: false, targetMode: 'leftmost' })
+      }
+      if (source.enchantment === 'haste' && !/使用相邻物品时/.test(effect)) {
+        specs.push({ status: 'haste', durationMs, count: 1, targetSide: 'ally', targetAll: false, targetMode: 'leftmost' })
+      }
+    }
     for (const spec of specs) {
       const side: 'player' | 'enemy' =
         spec.targetSide === 'ally'
@@ -98,11 +117,13 @@ export class ItemTriggerSystem {
       const targets = this.pickControlTargets({
         side,
         count: spec.targetAll ? 999 : spec.count,
-        mode: spec.targetMode,
+        mode: (!spec.targetAll && spec.count === 1) ? 'random' : spec.targetMode,
         source,
         excludeId: spec.targetSide === 'ally' ? source.id : undefined,
+        requireActiveCooldown: true,
       })
       for (const target of targets) {
+        if (target.enchantment === 'immune' && (spec.status === 'freeze' || spec.status === 'slow' || spec.status === 'haste')) continue
         if (spec.status === 'freeze') target.runtime.modifiers.freezeMs = Math.max(target.runtime.modifiers.freezeMs, spec.durationMs)
         if (spec.status === 'slow') target.runtime.modifiers.slowMs = Math.max(target.runtime.modifiers.slowMs, spec.durationMs)
         if (spec.status === 'haste') target.runtime.modifiers.hasteMs = Math.max(target.runtime.modifiers.hasteMs, spec.durationMs)
@@ -134,8 +155,11 @@ export class ItemTriggerSystem {
       const def = findItemDef(owner.defId)
       if (!def) continue
       const line = skillLines(def).find((s) => /相邻物品使用时.*加速另一侧的物品/.test(s))
-      if (!line) continue
-      const sec = tierValueFromLine(line, tierIndexFromRaw(def, owner.tier))
+      const enchantEffect = owner.enchantment ? resolveItemEnchantmentEffectCn(def, owner.enchantment) : ''
+      const fromEnchantAdjacentHaste = owner.enchantment === 'haste' && /使用相邻物品时.*加速/.test(enchantEffect)
+      const sec = line
+        ? tierValueFromLine(line, tierIndexFromRaw(def, owner.tier))
+        : (fromEnchantAdjacentHaste ? Math.max(0.1, Number(enchantEffect.match(/(\d+(?:\.\d+)?)\s*秒/)?.[1] ?? 1)) : 0)
       if (sec <= 0) continue
 
       const ownerStart = owner.col
@@ -152,6 +176,44 @@ export class ItemTriggerSystem {
           return wantRight ? s === ownerEnd + 1 : e === ownerStart - 1
         })
       if (target) this.applyHasteToTargetItems(owner, [target], Math.round(sec * 1000))
+
+      if (fromEnchantAdjacentHaste) continue
+    }
+  }
+
+  applyAdjacentUseEnchantControlTriggers(fired: CombatItemRunner): void {
+    for (const owner of this.state.items) {
+      if (owner.side !== fired.side || owner.id === fired.id) continue
+      if (!isAdjacentByFootprint(owner, fired)) continue
+      const def = findItemDef(owner.defId)
+      if (!def || !owner.enchantment) continue
+      if (owner.enchantment !== 'slow' && owner.enchantment !== 'freeze') continue
+      const effect = resolveItemEnchantmentEffectCn(def, owner.enchantment)
+      if (!/使用相邻物品时/.test(effect)) continue
+      const sec = Math.max(0.1, Number(effect.match(/(\d+(?:\.\d+)?)\s*秒/)?.[1] ?? (owner.enchantment === 'freeze' ? 0.5 : 1)))
+      const durationMs = Math.max(1, Math.round(sec * 1000))
+      const targets = this.pickControlTargets({
+        side: owner.side === 'player' ? 'enemy' : 'player',
+        count: 1,
+        mode: 'random',
+        source: owner,
+        requireActiveCooldown: true,
+      })
+      for (const target of targets) {
+        if (target.enchantment === 'immune') continue
+        if (owner.enchantment === 'slow') target.runtime.modifiers.slowMs = Math.max(target.runtime.modifiers.slowMs, durationMs)
+        if (owner.enchantment === 'freeze') target.runtime.modifiers.freezeMs = Math.max(target.runtime.modifiers.freezeMs, durationMs)
+        EventBus.emit('battle:status_apply', {
+          targetId: target.id,
+          sourceItemId: owner.id,
+          status: owner.enchantment === 'slow' ? 'slow' : 'freeze',
+          amount: durationMs,
+          targetType: 'item',
+          targetSide: target.side,
+          sourceType: 'item',
+          sourceSide: owner.side,
+        })
+      }
     }
   }
 
@@ -205,10 +267,12 @@ export class ItemTriggerSystem {
       const targets = this.pickControlTargets({
         side: fired.side === 'player' ? 'enemy' : 'player',
         count: 1,
-        mode: 'leftmost',
+        mode: 'random',
         source: owner,
+        requireActiveCooldown: true,
       })
       for (const target of targets) {
+        if (target.enchantment === 'immune') continue
         const durationMs = Math.max(1, Math.round(sec * 1000))
         target.runtime.modifiers.slowMs = Math.max(target.runtime.modifiers.slowMs, durationMs)
         EventBus.emit('battle:status_apply', {

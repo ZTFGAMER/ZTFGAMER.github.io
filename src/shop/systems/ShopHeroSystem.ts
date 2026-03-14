@@ -13,7 +13,7 @@
 //   - 职业工具函数（isSelectedHero / getStarterClassTag / 等）
 // ============================================================
 
-import { getAllItems } from '@/core/DataLoader'
+import { getAllItems, getAllItemsRaw, isRunClassItemPoolAllowed, setRunClassItemPoolIds } from '@/core/DataLoader'
 import { getLifeState, getPlayerProgressState, setLifeState } from '@/core/RunState'
 import { normalizeSize, type ItemDef } from '@/common/items/ItemDef'
 import { resolveItemTierBaseStats } from '@/common/items/ItemTierStats'
@@ -290,6 +290,68 @@ function ammoValueFromLineByStar(
   const idx = Math.max(0, Math.min(parts.length - 1, base + (star - 1)))
   const n = Number(parts[idx])
   return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0
+}
+
+type RunPoolTier = 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
+const RUN_POOL_TIERS: RunPoolTier[] = ['Bronze', 'Silver', 'Gold', 'Diamond']
+const RUN_POOL_ARCHETYPES: Array<'战士' | '弓手' | '刺客'> = ['战士', '弓手', '刺客']
+
+function getRunClassPoolTierCounts(): Record<RunPoolTier, number> {
+  return {
+    Bronze: Math.max(0, Math.round(getDebugCfg('gameplayRunClassPoolBronzeCount'))),
+    Silver: Math.max(0, Math.round(getDebugCfg('gameplayRunClassPoolSilverCount'))),
+    Gold: Math.max(0, Math.round(getDebugCfg('gameplayRunClassPoolGoldCount'))),
+    Diamond: Math.max(0, Math.round(getDebugCfg('gameplayRunClassPoolDiamondCount'))),
+  }
+}
+
+function pickRandomUniqueItemIds(
+  pool: ItemDef[],
+  count: number,
+  used: Set<string>,
+): string[] {
+  const out: string[] = []
+  const cands = pool.filter((it) => !used.has(it.id))
+  for (let i = cands.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const t = cands[i]
+    cands[i] = cands[j]!
+    cands[j] = t!
+  }
+  const need = Math.max(0, Math.min(count, cands.length))
+  for (let i = 0; i < need; i++) {
+    const one = cands[i]
+    if (!one) continue
+    out.push(one.id)
+    used.add(one.id)
+  }
+  return out
+}
+
+function buildRunClassItemPoolIds(): string[] {
+  const all = getAllItemsRaw().filter((it) => !isNeutralItemDef(it))
+  const tierCounts = getRunClassPoolTierCounts()
+  const needPerClass = RUN_POOL_TIERS.reduce((acc, tier) => acc + tierCounts[tier], 0)
+  if (needPerClass <= 0) return []
+
+  const used = new Set<string>()
+  const out: string[] = []
+  for (const archetype of RUN_POOL_ARCHETYPES) {
+    const classItems = all.filter((it) => getPrimaryArchetype(it.tags) === archetype)
+    for (const tier of RUN_POOL_TIERS) {
+      const count = tierCounts[tier]
+      if (count <= 0) continue
+      const tierPool = classItems.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === tier)
+      out.push(...pickRandomUniqueItemIds(tierPool, count, used))
+    }
+    const classPicked = out.filter((id) => {
+      const hit = classItems.find((it) => it.id === id)
+      return !!hit
+    }).length
+    const needFallback = Math.max(0, needPerClass - classPicked)
+    if (needFallback > 0) out.push(...pickRandomUniqueItemIds(classItems, needFallback, used))
+  }
+  return out
 }
 
 // ============================================================
@@ -929,6 +991,8 @@ export function seedInitialUnlockPoolByStarterClass(
     syncUnlockPoolToManager: () => void
   },
 ): void {
+  const runClassItemPoolIds = buildRunClassItemPoolIds()
+  setRunClassItemPoolIds(runClassItemPoolIds)
   ctx.unlockedItemIds.clear()
   ctx.neutralObtainedCountByKind.clear()
   ctx.neutralRandomCategoryPool = []
@@ -951,11 +1015,7 @@ export function seedInitialUnlockPoolByStarterClass(
   ctx.heroCommanderMedalGrantedDays.clear()
   ctx.heroHeirGoldEquipGrantedDays.clear()
   ctx.heroTycoonGoldGrantedDays.clear()
-  // 按当前规则：开局解锁"所有青铜物品"，不再仅限所选职业
-  const bronzeIds = getAllItems()
-    .filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === 'Bronze')
-    .map((it) => it.id)
-  for (const id of bronzeIds) ctx.unlockedItemIds.add(id)
+  for (const id of runClassItemPoolIds) ctx.unlockedItemIds.add(id)
   callbacks.syncUnlockPoolToManager()
 }
 
@@ -1031,7 +1091,7 @@ export function grantStarterItemsByClass(
     )
     callbacks.instanceToPermanentDamageBonusSet(id, 0)
     callbacks.recordNeutralItemObtained(item.id)
-    ctx.unlockedItemIds.add(item.id)
+    if (isRunClassItemPoolAllowed(item.id)) ctx.unlockedItemIds.add(item.id)
   }
   callbacks.syncUnlockPoolToManager()
 }

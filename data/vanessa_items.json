@@ -1747,5 +1747,197 @@
     "attack_style": "不飞行",
     "simple_desc": "选择一个黄金级技能",
     "simple_desc_tiered": "丢弃时选择一个黄金级技能"
+  },
+  {
+    "id": "item70",
+    "name_en": "",
+    "name_cn": "伤害宝石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "拖动到物品上，为物品赋予伤害附魔。"
+      }
+    ],
+    "icon": "item70",
+    "attack_style": "不飞行",
+    "simple_desc": "为物品赋予伤害附魔",
+    "simple_desc_tiered": "拖动到物品上，为物品赋予伤害附魔"
+  },
+  {
+    "id": "item71",
+    "name_en": "",
+    "name_cn": "护盾宝石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "拖动到物品上，为物品赋予护盾附魔。"
+      }
+    ],
+    "icon": "item71",
+    "attack_style": "不飞行",
+    "simple_desc": "为物品赋予护盾附魔",
+    "simple_desc_tiered": "拖动到物品上，为物品赋予护盾附魔"
+  },
+  {
+    "id": "item72",
+    "name_en": "",
+    "name_cn": "回复宝石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "拖动到物品上，为物品赋予回复附魔。"
+      }
+    ],
+    "icon": "item72",
+    "attack_style": "不飞行",
+    "simple_desc": "为物品赋予回复附魔",
+    "simple_desc_tiered": "拖动到物品上，为物品赋予回复附魔"
+  },
+  {
+    "id": "item73",
+    "name_en": "",
+    "name_cn": "闪亮宝石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "拖动到物品上，为物品赋予闪亮附魔。"
+      }
+    ],
+    "icon": "item73",
+    "attack_style": "不飞行",
+    "simple_desc": "为物品赋予闪亮附魔",
+    "simple_desc_tiered": "拖动到物品上，为物品赋予闪亮附魔"
+  },
+  {
+    "id": "item74",
+    "name_en": "",
+    "name_cn": "加速宝石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "拖动到物品上，为物品赋予加速附魔。"
+      }
+    ],
+    "icon": "item74",
+    "attack_style": "不飞行",
+    "simple_desc": "为物品赋予加速附魔",
+    "simple_desc_tiered": "拖动到物品上，为物品赋予加速附魔"
+  },
+  {
+    "id": "item75",
+    "name_en": "",
+    "name_cn": "减速宝石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "拖动到物品上，为物品赋予减速附魔。"
+      }
+    ],
+    "icon": "item75",
+    "attack_style": "不飞行",
+    "simple_desc": "为物品赋予减速附魔",
+    "simple_desc_tiered": "拖动到物品上，为物品赋予减速附魔"
+  },
+  {
+    "id": "item76",
+    "name_en": "",
+    "name_cn": "冰冻宝石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "拖动到物品上，为物品赋予冰冻附魔。"
+      }
+    ],
+    "icon": "item76",
+    "attack_style": "不飞行",
+    "simple_desc": "为物品赋予冰冻附魔",
+    "simple_desc_tiered": "拖动到物品上，为物品赋予冰冻附魔"
+  },
+  {
+    "id": "item77",
+    "name_en": "",
+    "name_cn": "免疫宝石",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Diamond / 钻石",
+    "available_tiers": "Diamond",
+    "heroes": "",
+    "tags": "中立",
+    "position": "",
+    "cooldown": 0,
+    "cooldown_tiers": "无",
+    "skills": [
+      {
+        "en": "",
+        "cn": "拖动到物品上，为物品赋予免疫附魔。"
+      }
+    ],
+    "icon": "item77",
+    "attack_style": "不飞行",
+    "simple_desc": "为物品赋予免疫附魔",
+    "simple_desc_tiered": "拖动到物品上，为物品赋予免疫附魔"
   }
 ]

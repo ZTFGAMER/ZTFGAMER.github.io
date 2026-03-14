@@ -815,7 +815,7 @@ export class SkillTriggerSystem {
             if (ally.side !== owner.side || ally.id === owner.id) continue
             if (!isAdjacentByFootprint(ally, owner)) continue
             if (!isDamageBonusEligible(ally)) continue
-            ally.runtime.damageScale *= (1 + pct)
+            ally.runtime.finalDamageBonusPct += pct
           }
         }
       }

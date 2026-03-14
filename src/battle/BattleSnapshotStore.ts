@@ -1,5 +1,6 @@
 import type { CombatEntity } from '@/common/grid/GridSystem'
 import type { TierKey } from '@/shop/ShopManager'
+import type { ItemEnchantmentKey } from '@/common/items/ItemEnchantment'
 
 export interface BattleSnapshotEntity extends CombatEntity {
   tier: TierKey
@@ -7,6 +8,7 @@ export interface BattleSnapshotEntity extends CombatEntity {
   quality?: TierKey
   level?: 1 | 2 | 3 | 4 | 5 | 6 | 7
   permanentDamageBonus?: number
+  enchantment?: ItemEnchantmentKey
   baseStats?: {
     cooldownMs: number
     damage: number

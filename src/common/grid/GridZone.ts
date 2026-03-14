@@ -18,9 +18,10 @@ import {
 } from 'pixi.js'
 import type { ItemSizeNorm, PlacedItem } from './GridSystem'
 import { getAllItems, getConfig as getGameConfig } from '@/core/DataLoader'
-import { getItemIconUrl, getUiImageUrl } from '@/core/AssetPath'
+import { getBuffIconUrl, getItemIconUrl, getUiImageUrl } from '@/core/AssetPath'
 import { getClassColor, getTierColor } from '@/config/colorPalette'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
+import { getItemEnchantmentDisplay, type ItemEnchantmentKey } from '@/common/items/ItemEnchantment'
 import {
   createItemStatBadges,
   type ItemBadgeDisplayMode,
@@ -161,6 +162,10 @@ interface ItemNode {
   starText: Text
   qualityDot: Graphics
   qualitySparkle: Graphics
+  enchantBadge: Container
+  enchantBadgeBg: Graphics
+  enchantBadgeSp: Sprite
+  enchantmentKey?: ItemEnchantmentKey
   upgradeArrow: ArrowNodeView
   crossUpgradeArrow: ArrowNodeView
   upgradeBaseY: number
@@ -566,6 +571,16 @@ export class GridZone extends Container {
     qualitySparkle.eventMode = 'none'
     this.badgeLayer.addChild(qualitySparkle)
 
+    const enchantBadge = new Container()
+    enchantBadge.eventMode = 'none'
+    enchantBadge.visible = false
+    const enchantBadgeBg = new Graphics()
+    const enchantBadgeSp = new Sprite(Texture.EMPTY)
+    enchantBadgeSp.anchor.set(0.5)
+    enchantBadge.addChild(enchantBadgeBg)
+    enchantBadge.addChild(enchantBadgeSp)
+    visual.addChild(enchantBadge)
+
     const upgradeArrow = createArrowNode()
     upgradeArrow.scale.set(UPGRADE_ARROW_SCALE)
 
@@ -578,6 +593,7 @@ export class GridZone extends Container {
     visual.addChild(sprite)
     visual.addChild(upgradeArrow)
     visual.addChild(crossUpgradeArrow)
+    visual.addChild(enchantBadge)
 
     this.itemLayer.addChild(container)
 
@@ -595,6 +611,9 @@ export class GridZone extends Container {
       starText,
       qualityDot,
       qualitySparkle,
+      enchantBadge,
+      enchantBadgeBg,
+      enchantBadgeSp,
       upgradeArrow,
       crossUpgradeArrow,
       upgradeBaseY: 0,
@@ -1131,6 +1150,13 @@ export class GridZone extends Container {
     this.updateStatBadgePosition(node)
   }
 
+  setItemEnchantment(instanceId: string, enchantmentKey?: ItemEnchantmentKey): void {
+    const node = this.nodes.get(instanceId)
+    if (!node) return
+    node.enchantmentKey = enchantmentKey
+    this.updateNodeEnchantmentBadge(node)
+  }
+
   setItemOffsetX(instanceId: string, offsetX: number): void {
     const normalized = Math.abs(offsetX) <= 0.5 ? 0 : offsetX
     if (normalized === 0) this.itemOffsetX.delete(instanceId)
@@ -1241,6 +1267,7 @@ export class GridZone extends Container {
 
     this.updateNodeStatBadges(node)
     this.updateNodeAmmoBadge(node)
+    this.updateNodeEnchantmentBadge(node)
     this.updateStatBadgePosition(node)
 
     const levelText = tierToLevelLabel(node.tier)
@@ -1320,6 +1347,36 @@ export class GridZone extends Container {
     }
     node.qualityDot.visible = true
     this.ensureQualityDotAnimState()
+  }
+
+  private updateNodeEnchantmentBadge(node: ItemNode): void {
+    const key = node.enchantmentKey
+    if (!key) {
+      node.enchantBadge.visible = false
+      return
+    }
+    const { pw, ph } = SIZE_PX[node.size]
+    const frameInset = this.getItemFrameInset()
+    const frameW = Math.max(1, pw - frameInset * 2)
+    const frameH = Math.max(1, ph - frameInset * 2)
+    const badgeSize = Math.max(40, Math.round(Math.min(frameW, frameH) * 0.52))
+    const radius = Math.round(badgeSize / 2)
+    node.enchantBadgeBg.clear()
+    node.enchantBadgeBg.visible = false
+    node.enchantBadge.x = frameInset + radius + 2 - 10
+    node.enchantBadge.y = frameInset + frameH - radius - 2 + 10
+    const iconSize = Math.max(12, Math.round(badgeSize * 0.8))
+    node.enchantBadgeSp.width = iconSize
+    node.enchantBadgeSp.height = iconSize
+    node.enchantBadge.visible = true
+    const display = getItemEnchantmentDisplay(key)
+    const expected = key
+    void Assets.load<Texture>(getBuffIconUrl(display.icon)).then((tex) => {
+      if (node.container.destroyed || node.enchantmentKey !== expected) return
+      node.enchantBadgeSp.texture = tex
+    }).catch(() => {
+      if (node.enchantmentKey === expected) node.enchantBadge.visible = false
+    })
   }
 
   private ensureQualityDotAnimState(): void {

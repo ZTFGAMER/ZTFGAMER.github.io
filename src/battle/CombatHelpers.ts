@@ -338,6 +338,7 @@ export function hasLine(def: ItemDef | null, regex: RegExp): boolean {
 }
 
 export function isItemDestroyImmune(item: CombatItemRunner): boolean {
+  if (item.enchantment === 'immune') return true
   return skillLines(findItemDef(item.defId)).some((s) => /无敌|不可摧毁/.test(s))
 }
 

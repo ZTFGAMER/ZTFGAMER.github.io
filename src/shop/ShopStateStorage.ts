@@ -9,7 +9,7 @@
 // ============================================================
 
 import { SHOP_STATE_STORAGE_KEY } from '@/core/RunState'
-import { getAllItems } from '@/core/DataLoader'
+import { getAllItems, getRunClassItemPoolIds, setRunClassItemPoolIds } from '@/core/DataLoader'
 import type { ShopSlot } from '@/shop/ShopManager'
 import type { GridSystem } from '@/common/grid/GridSystem'
 import type { GridZone } from '@/common/grid/GridZone'
@@ -23,12 +23,13 @@ import {
 } from './systems/QuickBuySystem'
 import {
   instCounter, setInstCounter,
-  instanceToDefId, instanceToPermanentDamageBonus,
+  instanceToDefId, instanceToPermanentDamageBonus, instanceToEnchantment,
   clearAllInstanceMaps, setInstanceQualityLevel,
   getInstanceQuality, getInstanceLevel,
   getInstanceTier, getInstanceTierStar,
   deriveQualityByDefId, levelFromLegacyTierStar,
 } from './systems/ShopInstanceRegistry'
+import type { ItemEnchantmentKey } from '@/common/items/ItemEnchantment'
 import type {
   ShopSceneCtx,
   SavedShopState, SavedPlacedItem,
@@ -117,6 +118,7 @@ export function captureShopState(ctx: ShopSceneCtx): SavedShopState | null {
     tier: getInstanceTier(it.instanceId) ?? 'Bronze',
     tierStar: getInstanceTierStar(it.instanceId),
     permanentDamageBonus: Math.max(0, Math.round(instanceToPermanentDamageBonus.get(it.instanceId) ?? 0)),
+    enchantment: instanceToEnchantment.get(it.instanceId),
   }))
 
   return {
@@ -139,6 +141,7 @@ export function captureShopState(ctx: ShopSceneCtx): SavedShopState | null {
     draftedSkillDays: ctx.draftedSkillDays,
     pendingSkillDraft: ctx.pendingSkillDraft,
     unlockedItemIds: Array.from(ctx.unlockedItemIds),
+    runClassItemPoolIds: getRunClassItemPoolIds(),
     nextQuickBuyOffer: ctx.nextQuickBuyOffer,
     guaranteedNewUnlockTriggeredLevels: Array.from(ctx.guaranteedNewUnlockTriggeredLevels),
     skill20GrantedDays: Array.from(ctx.skill20GrantedDays),
@@ -225,6 +228,10 @@ export function applySavedShopState(
   if (!ctx.shopManager || !ctx.battleSystem || !ctx.backpackSystem || !ctx.battleView || !ctx.backpackView) return
   const { toVisualTier, syncUnlockPoolToManager, hasPickedSkill,
     resetSkill15NextBuyDiscountState, resetSkill30BundleState } = callbacks
+  const savedRunPoolIds = Array.isArray(state.runClassItemPoolIds)
+    ? state.runClassItemPoolIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+    : []
+  setRunClassItemPoolIds(savedRunPoolIds.length > 0 ? savedRunPoolIds : null)
   const all = getAllItems()
   const byId = new Map(all.map((it) => [it.id, it] as const))
 
@@ -480,10 +487,12 @@ export function applySavedShopState(
     const migratedQuality = it.quality ?? deriveQualityByDefId(it.defId)
     setInstanceQualityLevel(it.instanceId, it.defId, migratedQuality, migratedLevel)
     instanceToPermanentDamageBonus.set(it.instanceId, Math.max(0, Math.round(it.permanentDamageBonus ?? 0)))
+    if (it.enchantment) instanceToEnchantment.set(it.instanceId, it.enchantment as ItemEnchantmentKey)
     const restoredTier = getInstanceTier(it.instanceId) ?? it.tier
     const restoredStar = getInstanceTierStar(it.instanceId)
     view.addItem(it.instanceId, it.defId, it.size, it.col, it.row, toVisualTier(restoredTier, restoredStar), { playAcquireFx: false }).then(() => {
       view.setItemTier(it.instanceId, toVisualTier(restoredTier, restoredStar))
+      if (it.enchantment) view.setItemEnchantment(it.instanceId, it.enchantment)
       ctx.drag?.refreshZone(view)
     })
   }

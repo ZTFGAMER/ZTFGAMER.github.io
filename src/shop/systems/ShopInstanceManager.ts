@@ -5,6 +5,7 @@
 
 import type { ShopSceneCtx } from '../ShopSceneContext'
 import type { TierKey } from '@/shop/ShopManager'
+import { isRunClassItemPoolAllowed } from '@/core/DataLoader'
 import {
   instanceToDefId,
   instanceToTier,
@@ -50,6 +51,7 @@ export function syncUnlockPoolToManager(ctx: ShopSceneCtx): void {
 export function unlockItemToPool(defId: string, ctx: ShopSceneCtx): boolean {
   const item = getItemDefById(defId)
   if (!item) return false
+  if (!isRunClassItemPoolAllowed(defId)) return false
   if (ctx.unlockedItemIds.has(defId)) return false
   ctx.unlockedItemIds.add(defId)
   ctx.shopManager?.unlockItem(defId)

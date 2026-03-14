@@ -1,6 +1,7 @@
 import { EventBus } from '@/core/EventBus'
 import type { BattleSnapshotBundle } from '@/battle/BattleSnapshotStore'
 import { getConfig } from '@/core/DataLoader'
+import { resolveItemEnchantmentEffectCn } from '@/common/items/ItemEnchantment'
 export type { CombatPhase, CombatResult, CombatBoardItem, CombatItemRuntimeState } from './CombatTypes'
 import type {
   CombatPhase, CombatResult, HeroState, CombatItemRunner, CombatItemRuntimeState,
@@ -40,6 +41,101 @@ export class CombatEngine {
   }
   private isHeroInvincible(side: 'player' | 'enemy'): boolean {
     return this.state.heroInvincibleMsBySide[side] > 0
+  }
+
+  private resolveEnchantmentMirrorSpec(item: CombatItemRunner): { source: 'damage' | 'shield' | 'heal'; target: 'damage' | 'shield' | 'heal' } | null {
+    const key = item.enchantment
+    if (key !== 'damage' && key !== 'shield' && key !== 'heal') return null
+    const def = findItemDef(item.defId)
+    if (!def) return null
+    const effectCn = resolveItemEnchantmentEffectCn(def, key)
+    const sourceFromText = /等同于伤害/.test(effectCn)
+      ? 'damage'
+      : /等同于护盾/.test(effectCn)
+        ? 'shield'
+        : /等同于(?:加血|生命值)/.test(effectCn)
+          ? 'heal'
+          : null
+    const targetFromText = /获得等同于.*伤害/.test(effectCn)
+      ? 'damage'
+      : /获得等同于.*护盾/.test(effectCn)
+        ? 'shield'
+        : /获得等同于.*(?:加血|生命值)/.test(effectCn)
+          ? 'heal'
+          : null
+    const target: 'damage' | 'shield' | 'heal' = targetFromText ?? (key as 'damage' | 'shield' | 'heal')
+    const source: 'damage' | 'shield' | 'heal' = sourceFromText ?? (() => {
+      const stats: Array<{ k: 'damage' | 'shield' | 'heal'; v: number }> = [
+        { k: 'damage', v: Math.max(0, Math.round(item.baseStats.damage + this.runtimeGlobalDamageBonus(item) + item.runtime.tempDamageBonus)) },
+        { k: 'shield', v: Math.max(0, Math.round(item.baseStats.shield + this.shieldGainBonusForItem(item))) },
+        { k: 'heal', v: Math.max(0, Math.round(item.baseStats.heal)) },
+      ]
+      const candidates = stats.filter((s) => s.k !== target)
+      candidates.sort((a, b) => b.v - a.v)
+      return (candidates[0]?.k ?? (target === 'damage' ? 'shield' : 'damage'))
+    })()
+    if (source === target) return null
+    return { source, target }
+  }
+
+  private applyEnchantmentMirrorValues(
+    spec: { source: 'damage' | 'shield' | 'heal'; target: 'damage' | 'shield' | 'heal' } | null,
+    values: { damage: number; heal: number; shield: number },
+  ): { damage: number; heal: number; shield: number } {
+    if (!spec) return values
+    const out = { ...values }
+    const sourceVal = Math.max(0, Math.round(out[spec.source]))
+    out[spec.target] = sourceVal
+    return out
+  }
+
+  private mirrorDamageTargetFromEnchantment(item: CombatItemRunner): 'shield' | 'heal' | null {
+    const key = item.enchantment
+    if (key !== 'shield' && key !== 'heal') return null
+    const def = findItemDef(item.defId)
+    const effect = def ? resolveItemEnchantmentEffectCn(def, key) : ''
+    if (/等同于伤害/.test(effect)) return key
+    const spec = this.resolveEnchantmentMirrorSpec(item)
+    if (!spec || spec.source !== 'damage') return null
+    return spec.target === 'shield' || spec.target === 'heal' ? spec.target : null
+  }
+
+  private grantHeroShieldFromItem(source: { id: string; side: 'player' | 'enemy'; isShieldSource?: boolean }, amount: number): void {
+    const gain = Math.max(0, Math.round(amount))
+    if (gain <= 0) return
+    const hero = this.heroOf(source.side)
+    hero.shield += gain
+    EventBus.emit('battle:gain_shield', {
+      targetId: hero.id,
+      sourceItemId: source.id,
+      amount: gain,
+      targetType: 'hero',
+      targetSide: hero.side,
+      sourceType: 'item',
+      sourceSide: source.side,
+    })
+    this.skillSystem.applyOnShieldGainCharge(source.side)
+    this.skillSystem.applyShieldGainSkillTriggers(source.side, source.id, gain, source.isShieldSource === true)
+  }
+
+  private healHeroFromItem(source: { id: string; side: 'player' | 'enemy' }, amount: number): void {
+    const panel = Math.max(0, Math.round(amount))
+    if (panel <= 0) return
+    const hero = this.heroOf(source.side)
+    if (hero.hp <= 0) return
+    const real = Math.max(0, Math.min(hero.maxHp - hero.hp, panel))
+    if (real <= 0) return
+    hero.hp += real
+    EventBus.emit('battle:heal', {
+      targetId: hero.id,
+      sourceItemId: source.id,
+      amount: real,
+      isRegen: false,
+      targetType: 'hero',
+      targetSide: hero.side,
+      sourceType: 'item',
+      sourceSide: source.side,
+    })
   }
 
 
@@ -243,6 +339,7 @@ export class CombatEngine {
         size: it.size,
         tier: it.tier,
         tierStar: it.tierStar,
+        enchantment: it.enchantment,
         chargeRatio: Math.max(0, Math.min(1, it.runtime.currentChargeMs / Math.max(1, this.effectiveCooldownMs(it)))),
       })),
     }
@@ -342,7 +439,8 @@ export class CombatEngine {
             }
           }
         }
-        runtimeDamage = Math.max(0, Math.min(ITEM_DAMAGE_CAP, Math.round(runtimeDamage)))
+        const enchantDamageMul = this.enchantmentFinalMultiplier(it, 'damage', def)
+        runtimeDamage = Math.max(0, Math.min(ITEM_DAMAGE_CAP, Math.round(runtimeDamage * enchantDamageMul)))
         let runtimeHeal = Math.max(0, it.baseStats.heal)
         let runtimeShield = Math.max(0, it.baseStats.shield + this.shieldGainBonusForItem(it))
         if (def) {
@@ -374,6 +472,13 @@ export class CombatEngine {
             }
           }
         }
+        const enchantHealMul = this.enchantmentFinalMultiplier(it, 'heal', def)
+        const enchantShieldMul = this.enchantmentFinalMultiplier(it, 'shield', def)
+        const runtimeValues = this.applyEnchantmentMirrorValues(this.resolveEnchantmentMirrorSpec(it), {
+          damage: runtimeDamage,
+          heal: Math.max(0, Math.round(runtimeHeal * enchantHealMul)),
+          shield: Math.max(0, Math.min(HERO_SHIELD_CAP, Math.round(runtimeShield * enchantShieldMul))),
+        })
         return {
           id: it.id,
           side: it.side,
@@ -387,9 +492,9 @@ export class CombatEngine {
           freezeMs: it.runtime.modifiers.freezeMs,
           slowMs: it.runtime.modifiers.slowMs,
           hasteMs: it.runtime.modifiers.hasteMs,
-          damage: runtimeDamage,
-          heal: Math.max(0, runtimeHeal),
-          shield: Math.max(0, Math.min(HERO_SHIELD_CAP, runtimeShield)),
+          damage: runtimeValues.damage,
+          heal: runtimeValues.heal,
+          shield: runtimeValues.shield,
           burn: Math.max(0, it.baseStats.burn),
           poison: Math.max(0, it.baseStats.poison),
           multicast: (() => {
@@ -563,6 +668,42 @@ export class CombatEngine {
   private scaledDamage(item: CombatItemRunner, value: number): number {
     const scaled = Math.max(0, Math.round(Math.max(0, value) * this.itemDamageScale(item)))
     return Math.min(ITEM_DAMAGE_CAP, scaled)
+  }
+
+  private enchantmentFinalMultiplier(
+    item: CombatItemRunner,
+    stat: 'damage' | 'shield' | 'heal',
+    def?: ReturnType<typeof findItemDef>,
+  ): number {
+    let bonus = 0
+    if (item.enchantment === stat) {
+      const itemDef = def ?? findItemDef(item.defId)
+      if (itemDef) {
+        const effect = resolveItemEnchantmentEffectCn(itemDef, stat)
+        if (/翻倍/.test(effect)) bonus += 1
+      }
+    }
+
+    for (const owner of this.state.items) {
+      if (owner.side !== item.side || owner.id === item.id) continue
+      if (!isAdjacentByFootprint(owner, item)) continue
+      if (!owner.enchantment) continue
+      const ownerDef = findItemDef(owner.defId)
+      if (!ownerDef) continue
+      const effect = resolveItemEnchantmentEffectCn(ownerDef, owner.enchantment)
+      const pctMatch = (
+        stat === 'damage'
+          ? effect.match(/相邻物品伤害\+([+\-]?\d+(?:\.\d+)?)%/)
+          : stat === 'shield'
+            ? effect.match(/相邻物品护盾\+([+\-]?\d+(?:\.\d+)?)%/)
+            : effect.match(/相邻物品(?:加血|生命值)\+([+\-]?\d+(?:\.\d+)?)%/)
+      )
+      const pct = Number(pctMatch?.[1] ?? 0)
+      if (Number.isFinite(pct) && pct > 0) bonus += pct / 100
+    }
+
+    if (stat === 'damage') bonus += Math.max(0, Number(item.runtime.finalDamageBonusPct || 0))
+    return Math.max(0, 1 + bonus)
   }
 
   private clampHeroState(hero: HeroState): void {
@@ -758,8 +899,10 @@ export class CombatEngine {
   }
 
   enqueueOneAttackFrom(source: CombatItemRunner): void {
-    const baseDamage = this.scaledDamage(source, source.baseStats.damage + this.runtimeGlobalDamageBonus(source))
-    const damage = this.scaledDamage(source, source.baseStats.damage + source.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(source))
+    const enchantMul = this.enchantmentFinalMultiplier(source, 'damage')
+    const mirrorDamageTarget = this.mirrorDamageTargetFromEnchantment(source)
+    const baseDamage = Math.max(0, Math.round(this.scaledDamage(source, source.baseStats.damage + this.runtimeGlobalDamageBonus(source)) * enchantMul))
+    const damage = Math.max(0, Math.round(this.scaledDamage(source, source.baseStats.damage + source.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(source)) * enchantMul))
     if (damage <= 0) return
     this.pushPendingHit({
       dueTick: this.state.tickIndex,
@@ -768,7 +911,8 @@ export class CombatEngine {
       defId: source.defId,
       baseDamage,
       damage,
-      attackerDamageAtQueue: this.scaledDamage(source, source.baseStats.damage + source.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(source)),
+      mirrorDamageTarget: mirrorDamageTarget ?? undefined,
+      attackerDamageAtQueue: damage,
       crit: source.baseStats.crit,
     })
   }
@@ -800,6 +944,10 @@ export class CombatEngine {
     const queue: CombatItemRunner[] = []
     for (const item of this.state.items) {
       if (item.baseStats.cooldownMs <= 0) continue
+      if (item.enchantment === 'immune') {
+        item.runtime.modifiers.freezeMs = 0
+        item.runtime.modifiers.slowMs = 0
+      }
       const freezeBefore = item.runtime.modifiers.freezeMs
       const slowBefore = item.runtime.modifiers.slowMs
       const hasteBefore = item.runtime.modifiers.hasteMs
@@ -942,6 +1090,9 @@ export class CombatEngine {
     const def = findItemDef(item.defId)
     const lines = skillLines(def)
     const tIdx = tierIndexFromRaw(def, item.tier)
+    const mirrorSpec = this.resolveEnchantmentMirrorSpec(item)
+    const mirrorDamageTarget = this.mirrorDamageTargetFromEnchantment(item)
+    let mirrorDamageFromOtherStats = 0
     const sourceArch = itemArchetype(def)
     const isAllAmmoShot = lines.some((s) => /(?:一次)?打出所有弹药/.test(s))
     // 特殊实现（火药桶口径）：
@@ -996,6 +1147,7 @@ export class CombatEngine {
 
     for (let i = 0; i < useRepeatCount; i++) {
       this.itemSystem.applyAdjacentUseHasteTriggers(item)
+      this.itemSystem.applyAdjacentUseEnchantControlTriggers(item)
       if (!fromExtraTrigger) this.itemSystem.applyAdjacentUseExtraFireTriggers(item)
       this.itemSystem.applyAdjacentUseBurnTriggers(item)
       this.itemSystem.applyBurnUseSlowTriggers(item)
@@ -1066,7 +1218,8 @@ export class CombatEngine {
     if (ctrl.haste > 0) {
       const line = lines.find((s) => /触发加速时.*额外造成\d+(?:[\/|]\d+)*伤害/.test(s))
       if (line) {
-        const v = Math.round(tierValueFromLine(line, tIdx))
+        const enchantDamageMul = this.enchantmentFinalMultiplier(item, 'damage', def)
+        const v = Math.round(tierValueFromLine(line, tIdx) * enchantDamageMul)
         if (v > 0) {
           this.pushPendingHit({
             dueTick: this.state.tickIndex,
@@ -1075,13 +1228,22 @@ export class CombatEngine {
             defId: item.defId,
             baseDamage: v,
             damage: v,
+            mirrorDamageTarget: mirrorDamageTarget ?? undefined,
             crit: item.baseStats.crit,
           })
         }
       }
     }
 
-    if (item.baseStats.shield > 0 && sourceHero.hp > 0) {
+    const maxHpHealLine = lines.find((s) => /恢复最大生命值\s*[+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*\s*的生命值/.test(s))
+    const maxHpHealAmount = (() => {
+      if (!maxHpHealLine) return 0
+      const pct = Math.max(0, tierValueFromLine(maxHpHealLine, tIdx)) / 100
+      if (pct <= 0) return 0
+      return Math.max(0, Math.round(sourceHero.maxHp * pct))
+    })()
+
+    if ((item.baseStats.shield > 0 || mirrorSpec?.target === 'shield') && sourceHero.hp > 0) {
       const rawShieldPanel = item.baseStats.shield + this.shieldGainBonusForItem(item)
       let shieldPanel = this.skillSystem.scaleShieldGain(item.side, rawShieldPanel)
       const currentHpShieldLine = lines.find((s) => /获得护盾[，,]?等于当前生命值/.test(s))
@@ -1090,24 +1252,24 @@ export class CombatEngine {
         const pct = pctRaw > 0 ? pctRaw : 100
         shieldPanel = Math.max(0, Math.round(sourceHero.hp * (pct / 100)))
       }
-      sourceHero.shield += shieldPanel
+      if (mirrorSpec?.target === 'shield') {
+        if (mirrorSpec.source === 'damage') shieldPanel = 0
+        else if (mirrorSpec.source === 'heal') shieldPanel = 0
+      }
+      shieldPanel = Math.max(0, Math.round(shieldPanel * this.enchantmentFinalMultiplier(item, 'shield', def)))
       this.debugShieldChargeLog('shield_gain_happened', {
         tick: this.state.tickIndex,
         sourceItemId: item.id,
         side: item.side,
         amount: shieldPanel,
       })
-      EventBus.emit('battle:gain_shield', {
-        targetId: sourceHero.id,
-        sourceItemId: item.id,
-        amount: shieldPanel,
-        targetType: 'hero',
-        targetSide: sourceHero.side,
-        sourceType: 'item',
-        sourceSide: item.side,
-      })
-      this.skillSystem.applyOnShieldGainCharge(item.side)
-      this.skillSystem.applyShieldGainSkillTriggers(item.side, item.id, shieldPanel, isShieldItem(item))
+      this.grantHeroShieldFromItem({ id: item.id, side: item.side, isShieldSource: isShieldItem(item) }, shieldPanel)
+      if (mirrorSpec?.source === 'shield' && mirrorSpec.target === 'damage') {
+        mirrorDamageFromOtherStats = Math.max(0, Math.round(shieldPanel))
+      }
+      if (mirrorSpec?.source === 'shield' && mirrorSpec.target === 'heal') {
+        this.healHeroFromItem({ id: item.id, side: item.side }, shieldPanel)
+      }
 
       // 获得护盾时加速 1 件物品
       const shieldHasteLine = lines.find((s) => /获得护盾时.*加速.*件物品/.test(s))
@@ -1117,9 +1279,10 @@ export class CombatEngine {
           const targets = this.itemSystem.pickControlTargets({
             side: item.side,
             count: 1,
-            mode: 'leftmost',
+            mode: 'random',
             source: item,
             excludeId: item.id,
+            requireActiveCooldown: true,
           })
           this.itemSystem.applyHasteToTargetItems(item, targets, Math.round(sec * 1000))
         }
@@ -1163,16 +1326,13 @@ export class CombatEngine {
         }
       }
     }
-    const maxHpHealLine = lines.find((s) => /恢复最大生命值\s*[+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)*\s*的生命值/.test(s))
-    const maxHpHealAmount = (() => {
-      if (!maxHpHealLine) return 0
-      const pct = Math.max(0, tierValueFromLine(maxHpHealLine, tIdx)) / 100
-      if (pct <= 0) return 0
-      return Math.max(0, Math.round(sourceHero.maxHp * pct))
-    })()
-
-    if ((item.baseStats.heal > 0 || maxHpHealAmount > 0) && sourceHero.hp > 0) {
-      const totalHeal = Math.max(0, item.baseStats.heal + maxHpHealAmount)
+    if ((item.baseStats.heal > 0 || maxHpHealAmount > 0 || mirrorSpec?.target === 'heal') && sourceHero.hp > 0) {
+      let totalHealRaw = Math.max(0, item.baseStats.heal + maxHpHealAmount)
+      if (mirrorSpec?.target === 'heal') {
+        if (mirrorSpec.source === 'damage') totalHealRaw = 0
+        else if (mirrorSpec.source === 'shield') totalHealRaw = 0
+      }
+      const totalHeal = Math.max(0, Math.round(totalHealRaw * this.enchantmentFinalMultiplier(item, 'heal', def)))
       const realHeal = Math.max(0, Math.min(sourceHero.maxHp - sourceHero.hp, totalHeal))
       if (realHeal > 0) {
         sourceHero.hp += realHeal
@@ -1210,6 +1370,12 @@ export class CombatEngine {
             targetSide: sourceHero.side,
           })
         }
+      }
+      if (mirrorSpec?.source === 'heal' && mirrorSpec.target === 'damage') {
+        mirrorDamageFromOtherStats = Math.max(0, Math.round(totalHeal))
+      }
+      if (mirrorSpec?.source === 'heal' && mirrorSpec.target === 'shield') {
+        this.grantHeroShieldFromItem({ id: item.id, side: item.side, isShieldSource: isShieldItem(item) }, totalHeal)
       }
     }
 
@@ -1382,6 +1548,12 @@ export class CombatEngine {
       if (v > 0) damageAfterBonus += v
     }
 
+    if (mirrorSpec?.target === 'damage') {
+      if (mirrorSpec.source === 'shield' || mirrorSpec.source === 'heal') {
+        damageAfterBonus = Math.max(0, mirrorDamageFromOtherStats)
+      }
+    }
+
     if (damageAfterBonus > 0 && !selfDestructOnlyDamage) {
       const isLastShotDoubleTriggered = this.hasSkill(item.side, 'skill50')
         && item.runtime.ammoMax > 0
@@ -1390,6 +1562,7 @@ export class CombatEngine {
         const attackers = this.state.items.filter((it) => it.side === item.side && it.baseStats.damage > 0)
         if (attackers.length === 1) fireCount = Math.max(fireCount, 2)
       }
+      const enchantDamageMul = this.enchantmentFinalMultiplier(item, 'damage', def)
       let progressiveUseBonus = 0
       for (let i = 0; i < fireCount; i++) {
         let shotDamage = Math.max(0, damageAfterBonus + this.scaledDamage(item, progressiveUseBonus))
@@ -1406,6 +1579,7 @@ export class CombatEngine {
         if (willEmptyAmmoThisUse && emptyAmmoBurstMul > 1) {
           shotDamage = Math.max(0, Math.round(shotDamage * emptyAmmoBurstMul))
         }
+        shotDamage = Math.max(0, Math.round(shotDamage * enchantDamageMul))
           this.pushPendingHit({
           dueTick: this.state.tickIndex + i * shotIntervalTick,
           side: item.side,
@@ -1413,7 +1587,8 @@ export class CombatEngine {
           defId: item.defId,
           baseDamage,
           damage: shotDamage,
-          attackerDamageAtQueue: this.scaledDamage(item, item.baseStats.damage + item.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(item)),
+          mirrorDamageTarget: mirrorDamageTarget ?? undefined,
+          attackerDamageAtQueue: Math.max(0, Math.round(this.scaledDamage(item, item.baseStats.damage + item.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(item)) * enchantDamageMul)),
           lockAttackerDelta: true,
           crit: item.baseStats.crit,
         })
@@ -1649,11 +1824,13 @@ export class CombatEngine {
         const targets = this.itemSystem.pickControlTargets({
           side,
           count: spec.targetAll ? 999 : spec.count,
-          mode: spec.targetMode,
+          mode: (!spec.targetAll && spec.count === 1) ? 'random' : spec.targetMode,
           source: item,
           excludeId: spec.targetSide === 'ally' ? item.id : undefined,
+          requireActiveCooldown: true,
         })
         for (const target of targets) {
+          if (target.enchantment === 'immune' && (spec.status === 'freeze' || spec.status === 'slow' || spec.status === 'haste')) continue
           if (spec.status === 'freeze') target.runtime.modifiers.freezeMs = Math.max(target.runtime.modifiers.freezeMs, spec.durationMs)
           if (spec.status === 'slow') target.runtime.modifiers.slowMs = Math.max(target.runtime.modifiers.slowMs, spec.durationMs)
           if (spec.status === 'haste') target.runtime.modifiers.hasteMs = Math.max(target.runtime.modifiers.hasteMs, spec.durationMs)
@@ -1691,7 +1868,13 @@ export class CombatEngine {
       let resolvedBaseDamage = hit.baseDamage
       let resolvedDamage = hit.damage
       if (attacker && !hit.lockAttackerDelta && typeof hit.attackerDamageAtQueue === 'number') {
-        const currentAttackerDamage = this.scaledDamage(attacker, attacker.baseStats.damage + attacker.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(attacker))
+        const currentAttackerDamage = Math.max(
+          0,
+          Math.round(
+            this.scaledDamage(attacker, attacker.baseStats.damage + attacker.runtime.tempDamageBonus + this.runtimeGlobalDamageBonus(attacker))
+            * this.enchantmentFinalMultiplier(attacker, 'damage'),
+          ),
+        )
         const delta = currentAttackerDamage - hit.attackerDamageAtQueue
         if (delta !== 0) {
           resolvedBaseDamage = Math.max(0, hit.baseDamage + delta)
@@ -1736,6 +1919,28 @@ export class CombatEngine {
         baseDamage: resolvedBaseDamage,
         finalDamage: remaining,
       })
+
+      const mirrorDamageTargetAtResolve: 'shield' | 'heal' | null = (() => {
+        if (hit.mirrorDamageTarget === 'shield' || hit.mirrorDamageTarget === 'heal') return hit.mirrorDamageTarget
+        if (!attacker) return null
+        const key = attacker.enchantment
+        if (key !== 'shield' && key !== 'heal') return null
+        const def = findItemDef(attacker.defId)
+        if (!def) return null
+        const effect = resolveItemEnchantmentEffectCn(def, key)
+        return /等同于伤害/.test(effect) ? key : null
+      })()
+
+      if (mirrorDamageTargetAtResolve === 'shield') {
+        const pseudo = attacker
+          ? { id: attacker.id, side: attacker.side, isShieldSource: isShieldItem(attacker) }
+          : { id: hit.sourceItemId, side: hit.side, isShieldSource: false }
+        this.grantHeroShieldFromItem(pseudo, panel)
+      }
+      if (mirrorDamageTargetAtResolve === 'heal') {
+        const pseudo = attacker ? { id: attacker.id, side: attacker.side } : { id: hit.sourceItemId, side: hit.side }
+        this.healHeroFromItem(pseudo, panel)
+      }
 
       if (panel > 0) {
         this.skillSystem.applyOnHeroDamagedReactions(targetHero.side)

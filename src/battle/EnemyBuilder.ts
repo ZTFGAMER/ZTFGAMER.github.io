@@ -60,6 +60,7 @@ export function toRunner(entity: BattleSnapshotEntity, idPrefix: string): Combat
       pendingChargeMs: 0,
       tempDamageBonus: 0,
       damageScale: 1,
+      finalDamageBonusPct: 0,
       bonusMulticast: 0,
       executeCount: 0,
       ammoMax,
@@ -75,6 +76,7 @@ export function toRunner(entity: BattleSnapshotEntity, idPrefix: string): Combat
     size: entity.size,
     tier: tierRaw,
     tierStar,
+    enchantment: entity.enchantment,
   }
 }
 
@@ -201,6 +203,7 @@ function buildEnemyRunner(
       pendingChargeMs: 0,
       tempDamageBonus: 0,
       damageScale: 1,
+      finalDamageBonusPct: 0,
       bonusMulticast: 0,
       executeCount: 0,
       ammoMax,

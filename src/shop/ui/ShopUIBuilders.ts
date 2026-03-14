@@ -20,9 +20,11 @@ import { CANVAS_W, CANVAS_H, BTN_RADIUS } from '@/config/layoutConstants'
 import {
   instanceToDefId,
   removeInstanceMeta,
+  getInstanceEnchantment,
   getInstanceTier,
   getInstanceTierStar,
 } from '../systems/ShopInstanceRegistry'
+import { getItemEnchantmentDisplay, resolveItemEnchantmentEffectCn } from '@/common/items/ItemEnchantment'
 import { layoutPlayerStatusPanel } from './PlayerStatusUI'
 import { toVisualTier, getBattleZoneDisplayY } from '../ShopMathHelpers'
 import {
@@ -379,7 +381,14 @@ export function buildButtonRowUI(
     else refreshBackpackSynthesisGuideArrows(defId, tier ?? null, star, ctx, instanceId)
     const sellPrice = 0
     const infoMode = resolveInfoMode(`${kind}:${instanceId}:${tier}:${star}`, ctx)
-    ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, infoMode)
+    const enchantment = getInstanceEnchantment(instanceId)
+    const enchantDisplay = enchantment
+      ? {
+        ...getItemEnchantmentDisplay(enchantment),
+        effectCn: resolveItemEnchantmentEffectCn(item, enchantment),
+      }
+      : undefined
+    ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, infoMode, undefined, undefined, enchantDisplay)
     ctx.selectedSellAction = () => {
       system.remove(instanceId); view.removeItem(instanceId)
       removeInstanceMeta(instanceId); ctx.drag?.refreshZone(view)

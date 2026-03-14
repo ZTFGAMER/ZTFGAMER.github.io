@@ -63,3 +63,7 @@ export function getUiImageUrl(fileName: string): string {
 export function getEventIconUrl(fileStem: string): string {
   return `${getResourceBasePath()}/events/${fileStem}.png`
 }
+
+export function getBuffIconUrl(fileStem: string): string {
+  return `${getResourceBasePath()}/bufficon/${fileStem}.png`
+}

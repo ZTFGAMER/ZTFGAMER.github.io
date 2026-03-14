@@ -6,7 +6,7 @@ import { planAutoPack, type PackItem, type PackPlacement } from '@/common/grid/A
 import type { ItemSizeNorm } from '@/common/grid/GridSystem'
 import { CELL_SIZE, CELL_HEIGHT } from '@/common/grid/GridZone'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
-import { getInstanceTier, getInstanceTierStar } from './ShopInstanceRegistry'
+import { getInstanceEnchantment, getInstanceTier, getInstanceTierStar } from './ShopInstanceRegistry'
 import { toVisualTier } from '../ShopMathHelpers'
 import {
   playBackpackTransferMiniAnim,
@@ -126,6 +126,7 @@ export function applyBackpackAutoPackExisting(existingPlan: PackPlacement[], ctx
       const star = getInstanceTierStar(p.instanceId)
       ctx.backpackView.addItem(p.instanceId, p.defId, p.size, p.col, p.row, toVisualTier(tier, star)).then(() => {
         ctx.backpackView!.setItemTier(p.instanceId, toVisualTier(tier, star))
+        ctx.backpackView!.setItemEnchantment(p.instanceId, getInstanceEnchantment(p.instanceId))
         ctx.drag?.refreshZone(ctx.backpackView!)
       })
       continue
@@ -235,9 +236,11 @@ export function applyBackpackPlanWithTransferred(
     if (ctx.backpackView.hasItem(p.instanceId)) {
       ctx.backpackView.animateToCell(p.instanceId, p.col, p.row, moveMs)
       ctx.backpackView.setItemTier(p.instanceId, toVisualTier(tier, star))
+      ctx.backpackView.setItemEnchantment(p.instanceId, getInstanceEnchantment(p.instanceId))
     } else {
       ctx.backpackView.addItem(p.instanceId, p.defId, p.size, p.col, p.row, toVisualTier(tier, star)).then(() => {
         ctx.backpackView!.setItemTier(p.instanceId, toVisualTier(tier, star))
+        ctx.backpackView!.setItemEnchantment(p.instanceId, getInstanceEnchantment(p.instanceId))
         ctx.drag?.refreshZone(ctx.backpackView!)
       })
     }

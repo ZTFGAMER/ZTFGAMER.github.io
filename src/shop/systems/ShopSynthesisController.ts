@@ -26,6 +26,8 @@ import {
   instanceToDefId,
   instanceToTier,
   setInstanceQualityLevel,
+  getInstanceEnchantment,
+  setInstanceEnchantment,
   getInstanceTierStar,
 } from './ShopInstanceRegistry'
 import {
@@ -383,6 +385,7 @@ export function synthesizeTarget(
   star: 1 | 2,
   targetInstanceId: string,
   zone: 'battle' | 'backpack',
+  sourceInstanceId: string | null | undefined,
   ctx: ShopSceneCtx,
   callbacks: SynthesisCallbacks,
 ): SynthesizeResult | null {
@@ -461,11 +464,16 @@ export function synthesizeTarget(
     toVisualTier(upgradeTo.tier, upgradeTo.star),
   ).then(() => {
     view.setItemTier(targetInstanceId, toVisualTier(upgradeTo.tier, upgradeTo.star))
+    view.setItemEnchantment(targetInstanceId, getInstanceEnchantment(targetInstanceId))
     ctx.drag?.refreshZone(view)
   })
 
   instanceToDefId.set(targetInstanceId, evolvedDef.id)
   setInstanceQualityLevel(targetInstanceId, evolvedDef.id, parseTierName(evolvedDef.starting_tier) ?? 'Bronze', resultLevel)
+  const targetEnchant = getInstanceEnchantment(targetInstanceId)
+  const sourceEnchant = sourceInstanceId ? getInstanceEnchantment(sourceInstanceId) : undefined
+  const resolvedEnchant = sourceEnchant ?? targetEnchant
+  setInstanceEnchantment(targetInstanceId, resolvedEnchant)
   if (eventExtra && ctx.dayEventState.extraUpgradeRemaining > 0) {
     ctx.dayEventState.extraUpgradeRemaining = Math.max(0, ctx.dayEventState.extraUpgradeRemaining - 1)
   }

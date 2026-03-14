@@ -97,7 +97,7 @@ export type ShopDragDeps = {
   showNeutralChoiceOverlay: (stage: Container, title: string, candidates: NeutralChoiceCandidate[], onConfirm?: (c: NeutralChoiceCandidate) => boolean, mode?: 'default' | 'special_shop_like') => boolean
   transformPlacedItemKeepLevelTo: (instanceId: string, zone: 'battle' | 'backpack', def: ItemDef, withFx?: boolean) => boolean
   // 复合操作（ShopScene.ts shim 已持有完整回调）
-  synthesizeTarget: (defId: string, tier: TierKey, star: 1 | 2, targetInstanceId: string, zone: 'battle' | 'backpack') => SynthesizeResult | null
+  synthesizeTarget: (defId: string, tier: TierKey, star: 1 | 2, targetInstanceId: string, zone: 'battle' | 'backpack', sourceInstanceId?: string) => SynthesizeResult | null
   grantSynthesisExp: (amount: number, from: { instanceId: string; zone: 'battle' | 'backpack' }) => void
   tryRunHeroCrossSynthesisReroll: (stage: Container, synth: SynthesizeResult) => boolean
   tryRunHeroSameItemSynthesisChoice: (defId: string, tier: TierKey, star: 1 | 2, target: SynthesisTarget, consumeSource: () => boolean) => boolean

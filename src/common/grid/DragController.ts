@@ -73,6 +73,7 @@ export class DragController {
   onDragMove:  (payload: DragMovePayload) => void = () => {}
   onSpecialDrop: (payload: SpecialDropPayload) => boolean = () => false
   onDropCellLocked: (payload: { view: GridZone; col: number; row: number; size: ItemSizeNorm; instanceId: string }) => boolean = () => false
+  onItemPlaced: (payload: { view: GridZone; instanceId: string }) => void = () => {}
   shouldShowLockedHighlight: (payload: { view: GridZone; col: number; row: number; size: ItemSizeNorm; instanceId: string }) => boolean = () => true
   onDragEnd:   ()               => void = () => {}
   private suppressSqueeze = false
@@ -488,6 +489,7 @@ export class DragController {
           sourcePair.view.removeItem(tr.instanceId)
           destPair.view.addItem(tr.instanceId, movedItem.defId, movedItem.size, tr.newCol, tr.newRow, tier, { playAcquireFx: false }).then(() => {
             destPair.view.setItemTier(tr.instanceId, tier)
+            this.onItemPlaced({ view: destPair.view, instanceId: tr.instanceId })
             this.refreshZone(destPair.view)
           })
         }
@@ -522,6 +524,7 @@ export class DragController {
           sourcePair.view.removeItem(tr.instanceId)
           destPair.view.addItem(tr.instanceId, movedItem.defId, movedItem.size, tr.newCol, tr.newRow, tier, { playAcquireFx: false }).then(() => {
             destPair.view.setItemTier(tr.instanceId, tier)
+            this.onItemPlaced({ view: destPair.view, instanceId: tr.instanceId })
             this.refreshZone(destPair.view)
           })
         }
@@ -598,6 +601,7 @@ export class DragController {
 
       targetPair.view.addItem(id, item.defId, item.size, dropCol, dropRow, draggedTier, { playAcquireFx: false }).then(() => {
         targetPair.view.setItemTier(id, draggedTier)
+        this.onItemPlaced({ view: targetPair.view, instanceId: id })
         this.refreshZone(targetPair.view)
       })
     } else {
@@ -707,6 +711,7 @@ export class DragController {
         { playAcquireFx: false },
       ).then(() => {
         targetPair.view.setItemTier(item.instanceId, draggedTier)
+        this.onItemPlaced({ view: targetPair.view, instanceId: item.instanceId })
         this.refreshZone(targetPair.view)
       })
     } else {

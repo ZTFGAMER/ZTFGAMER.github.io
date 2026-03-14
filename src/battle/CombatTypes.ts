@@ -3,6 +3,7 @@
 // ============================================================
 
 import type { ItemSizeNorm, SkillArchetype } from '@/common/items/ItemDef'
+import type { ItemEnchantmentKey } from '@/common/items/ItemEnchantment'
 
 export type CombatPhase = 'IDLE' | 'INIT' | 'SETUP' | 'TICK' | 'RESOLVE' | 'END'
 
@@ -43,6 +44,7 @@ export interface CombatItemRunner {
     pendingChargeMs: number
     tempDamageBonus: number
     damageScale: number
+    finalDamageBonusPct: number
     bonusMulticast: number
     executeCount: number
     ammoMax: number
@@ -58,6 +60,7 @@ export interface CombatItemRunner {
   size: ItemSizeNorm
   tier: string
   tierStar: 1 | 2
+  enchantment?: ItemEnchantmentKey
   reviveUsed?: boolean
 }
 
@@ -89,6 +92,7 @@ export interface PendingHit {
   defId: string
   baseDamage: number
   damage: number
+  mirrorDamageTarget?: 'shield' | 'heal'
   attackerDamageAtQueue?: number
   lockAttackerDelta?: boolean
   crit: number
@@ -155,6 +159,7 @@ export interface CombatBoardItem {
   size: ItemSizeNorm
   tier: string
   tierStar: 1 | 2
+  enchantment?: ItemEnchantmentKey
   chargeRatio: number
 }
 

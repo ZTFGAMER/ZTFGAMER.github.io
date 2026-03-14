@@ -196,6 +196,10 @@ const GAMEPLAY_KEYS = [
   'gameplayLevelQuickDraft',
   'gameplayItemFrameColorByArchetype',
   'gameplayBaseBuyBronzeOnly',
+  'gameplayRunClassPoolBronzeCount',
+  'gameplayRunClassPoolSilverCount',
+  'gameplayRunClassPoolGoldCount',
+  'gameplayRunClassPoolDiamondCount',
 ]
 const GAMEPLAY_CHECKBOX_KEYS = [
   'gameplayGrantAllClassItems',

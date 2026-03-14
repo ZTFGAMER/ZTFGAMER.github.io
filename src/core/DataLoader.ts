@@ -8,6 +8,7 @@ import type { GameConfig, ItemDef } from '@/common/items/ItemDef'
 // Vite 支持直接 import JSON（resolveJsonModule）
 import rawConfig   from '../../data/game_config.json'
 import rawItems    from '../../data/vanessa_items.json'
+import rawItemEnchantments from '../../data/item_enchantments.json'
 
 // ---- GameConfig ---- //
 // game_config.json 是一个数组，每条是一个 ConfigEntry
@@ -16,6 +17,13 @@ interface ConfigEntry {
   name: string
   value: unknown
   note?: string
+}
+
+type EnchantmentKey = 'damage' | 'shield' | 'heal' | 'shiny' | 'haste' | 'slow' | 'freeze' | 'immune'
+type EnchantmentLineMap = Record<EnchantmentKey, string>
+type ItemEnchantmentsConfig = {
+  templates?: Record<string, Partial<EnchantmentLineMap>>
+  items?: Record<string, string>
 }
 
 // ── 运行时类型校验（防止 JSON 配置错误静默转为 NaN）────────────
@@ -111,6 +119,7 @@ function extractConfig(entries: ConfigEntry[]): GameConfig {
 // ---- 导出 ---- //
 let _config: GameConfig | null = null
 let _items:  ItemDef[]  | null = null
+let _runClassItemPoolIds: Set<string> | null = null
 
 // ---- Items normalize ---- //
 function toSafeString(v: unknown): string {
@@ -185,6 +194,43 @@ function deriveStatsFromSkills(skills: Array<{ cn: string }>): {
   return out
 }
 
+const ENCHANTMENT_NAME_CN: Record<EnchantmentKey, string> = {
+  damage: '伤害附魔',
+  shield: '护盾附魔',
+  heal: '回复附魔',
+  shiny: '闪亮附魔',
+  haste: '加速附魔',
+  slow: '减速附魔',
+  freeze: '冰冻附魔',
+  immune: '免疫附魔',
+}
+
+function buildItemEnchantmentsByName(): Map<string, ItemDef['enchantments']> {
+  const cfg = (rawItemEnchantments as ItemEnchantmentsConfig) || {}
+  const templates = (cfg.templates && typeof cfg.templates === 'object') ? cfg.templates : {}
+  const itemToTemplate = (cfg.items && typeof cfg.items === 'object') ? cfg.items : {}
+  const keys: EnchantmentKey[] = ['damage', 'shield', 'heal', 'shiny', 'haste', 'slow', 'freeze', 'immune']
+  const out = new Map<string, ItemDef['enchantments']>()
+  for (const [nameCn, templateName] of Object.entries(itemToTemplate)) {
+    const tpl = templates[String(templateName)]
+    if (!tpl || typeof tpl !== 'object') continue
+    const one: ItemDef['enchantments'] = {}
+    for (const key of keys) {
+      const effectCn = toSafeString((tpl as Partial<EnchantmentLineMap>)[key]).trim()
+      if (!effectCn) continue
+      one[key] = {
+        name_cn: ENCHANTMENT_NAME_CN[key],
+        effect_en: '',
+        effect_cn: effectCn,
+      }
+    }
+    if (Object.keys(one).length > 0) out.set(String(nameCn).trim(), one)
+  }
+  return out
+}
+
+const ITEM_ENCHANTMENTS_BY_NAME = buildItemEnchantmentsByName()
+
 function normalizeItem(raw: unknown): ItemDef | null {
   if (!raw || typeof raw !== 'object') return null
   const r = raw as Record<string, unknown>
@@ -205,9 +251,14 @@ function normalizeItem(raw: unknown): ItemDef | null {
   }))
   const derived = deriveStatsFromSkills(skills)
 
-  const enchantments = (r.enchantments && typeof r.enchantments === 'object')
+  const dataEnchantments = (r.enchantments && typeof r.enchantments === 'object')
     ? (r.enchantments as ItemDef['enchantments'])
     : {}
+  const cfgEnchantments = ITEM_ENCHANTMENTS_BY_NAME.get(nameCn) ?? {}
+  const enchantments: ItemDef['enchantments'] = {
+    ...cfgEnchantments,
+    ...dataEnchantments,
+  }
 
   return {
     id,
@@ -254,7 +305,41 @@ export function getConfig(): GameConfig {
   return _config
 }
 
-export function getAllItems(): ItemDef[] {
+function isNeutralItemDef(item: ItemDef): boolean {
+  const tags = `${item.tags ?? ''}`.split(/[，,\/\s]+/).map((s) => s.trim().toLowerCase()).filter(Boolean)
+  if (tags.includes('中立') || tags.includes('neutral')) return true
+  return item.id.startsWith('neutral_')
+}
+
+export function setRunClassItemPoolIds(ids: string[] | null | undefined): void {
+  if (!Array.isArray(ids) || ids.length <= 0) {
+    _runClassItemPoolIds = null
+    return
+  }
+  const next = new Set<string>()
+  for (const id of ids) {
+    if (typeof id !== 'string') continue
+    const trimmed = id.trim()
+    if (!trimmed) continue
+    next.add(trimmed)
+  }
+  _runClassItemPoolIds = next.size > 0 ? next : null
+}
+
+export function getRunClassItemPoolIds(): string[] {
+  return _runClassItemPoolIds ? Array.from(_runClassItemPoolIds) : []
+}
+
+export function isRunClassItemPoolAllowed(defId: string): boolean {
+  const all = getAllItemsRaw()
+  const item = all.find((it) => it.id === defId)
+  if (!item) return false
+  if (isNeutralItemDef(item)) return true
+  if (!_runClassItemPoolIds || _runClassItemPoolIds.size <= 0) return true
+  return _runClassItemPoolIds.has(defId)
+}
+
+export function getAllItemsRaw(): ItemDef[] {
   if (!_items) {
     const all = rawItems as unknown as unknown[]
     const out: ItemDef[] = []
@@ -268,6 +353,12 @@ export function getAllItems(): ItemDef[] {
     _items = out
   }
   return _items
+}
+
+export function getAllItems(): ItemDef[] {
+  const all = getAllItemsRaw()
+  if (!_runClassItemPoolIds || _runClassItemPoolIds.size <= 0) return all
+  return all.filter((it) => isNeutralItemDef(it) || _runClassItemPoolIds!.has(it.id))
 }
 
 /** 按 Hero 筛选（Demo 阶段只有 Vanessa） */

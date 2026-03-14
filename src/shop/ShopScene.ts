@@ -9,7 +9,7 @@
 
 import { SceneManager, type Scene } from '@/core/SceneManager'
 import { getApp } from '@/core/AppContext'
-import { getConfig, getAllItems } from '@/core/DataLoader'
+import { getConfig, getAllItems, setRunClassItemPoolIds } from '@/core/DataLoader'
 import {
   clearCurrentRunState,
   consumeLastStandPendingReward,
@@ -919,7 +919,7 @@ function makeShopDragDeps(): ShopDragDeps {
     buildStoneTransformChoices: (target, rule) => buildStoneTransformChoices(target, rule),
     showNeutralChoiceOverlay: (stage, title, candidates, onConfirm, mode) => showNeutralChoiceOverlay(stage, title, candidates, onConfirm, mode),
     transformPlacedItemKeepLevelTo: (id, zone, def, fx) => transformPlacedItemKeepLevelTo(id, zone, def, fx),
-    synthesizeTarget: (defId, tier, star, targetId, zone) => synthesizeTarget(defId, tier, star, targetId, zone),
+    synthesizeTarget: (defId, tier, star, targetId, zone, sourceInstanceId) => synthesizeTarget(defId, tier, star, targetId, zone, sourceInstanceId),
     grantSynthesisExp: (amount, from) => grantSynthesisExp(amount, from),
     tryRunHeroCrossSynthesisReroll: (stage, synth) => tryRunHeroCrossSynthesisReroll(stage, synth),
     tryRunHeroSameItemSynthesisChoice: (defId, tier, star, target, consumeSource) =>
@@ -997,7 +997,7 @@ function makeBattleZoneUICallbacks(): BattleZoneUICallbacks {
     tryRunSameArchetypeDiffItemStoneSynthesis: (sid, sdefId, stier, sstar, target, restore) =>
       tryRunSameArchetypeDiffItemStoneSynthesis(sid, sdefId, stier, sstar, target, restore),
     showNeutralStoneHoverInfo: (sourceDef, target) => showNeutralStoneHoverInfo(sourceDef, target),
-    synthesizeTarget: (defId, tier, star, targetId, zone) => synthesizeTarget(defId, tier, star, targetId, zone),
+    synthesizeTarget: (defId, tier, star, targetId, zone, sourceInstanceId) => synthesizeTarget(defId, tier, star, targetId, zone, sourceInstanceId),
     tryRunHeroCrossSynthesisReroll: (stage, synth) => tryRunHeroCrossSynthesisReroll(stage, synth),
     tryRunHeroSameItemSynthesisChoice: (stage, defId, tier, star, target, consumeSource) =>
       tryRunHeroSameItemSynthesisChoice(stage, defId, tier, star, target, consumeSource),
@@ -1131,9 +1131,10 @@ function synthesizeTarget(
   star: 1 | 2,
   targetInstanceId: string,
   zone: 'battle' | 'backpack',
+  sourceInstanceId?: string,
   ctx: ShopSceneCtx = _ctx,
 ): SynthesizeResult | null {
-  return SynthesisCtrl.synthesizeTarget(defId, tier, star, targetInstanceId, zone, ctx, makeSynthesisCallbacks())
+  return SynthesisCtrl.synthesizeTarget(defId, tier, star, targetInstanceId, zone, sourceInstanceId, ctx, makeSynthesisCallbacks())
 }
 
 
@@ -1742,6 +1743,7 @@ export const ShopScene: Scene = {
     console.log('[ShopScene] 进入商店场景')
     const app    = getApp()
     const cfg    = getConfig()
+    setRunClassItemPoolIds(null)
     const items  = getAllItems()
     const stage  = app.stage
 

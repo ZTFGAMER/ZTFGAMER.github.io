@@ -1,5 +1,290 @@
 # 大巴扎 — 开发进度记录
 
+## 验收优化追加（2026-03-14，控制类状态飞行特效统一圆点）
+
+- 用户需求：物品对其他物品施加 `加速/减速/冰冻` 时，飞行表现统一使用圆点，不再使用物品图标或 `_a` 变体图标。
+- 已完成：
+  - `src/battle/BattleFXPool.ts`
+    - 扩展 `spawnProjectile(...)` 参数，新增 `opts.forceDot`；
+    - 当 `forceDot=true` 时强制走圆点弹道，不走图标弹道资源加载。
+  - `src/battle/BattleScene.ts`
+    - 在 `battle:status_apply` 订阅中，对 `freeze/slow/haste` 三类状态设置 `forceDot=true`，确保控制类状态表现统一为圆点。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实机验收控制类状态飞行表现是否符合预期。
+
+## 验收优化追加（2026-03-14，每局按职业分层随机固定物品池）
+
+- 用户需求：
+  - 每局按职业（战士/弓手/刺客，排除中立）随机抽取固定数量的物品池；
+  - 默认口径为每职业 `2青铜 + 1白银 + 1黄金 + 1钻石`，合计 15 个非中立物品；
+  - 局内所有随机来源都只能从该局固定池中产出；
+  - 在网页“玩法数值”中可配置四个品质的每职业抽取数量。
+- 已完成：
+  - `src/config/debugConfig.ts` + `data/debug_defaults.json` + `src/debug/DebugPage.ts`
+    - 新增玩法参数：`gameplayRunClassPoolBronzeCount/SilverCount/GoldCount/DiamondCount`；
+    - 默认值设为 `2/1/1/1`，并接入 DebugPage 的“玩法数值”分组可在线调节。
+  - `src/core/DataLoader.ts`
+    - 新增“每局职业固定池”运行时白名单机制：支持设置/读取本局白名单；
+    - `getAllItems()` 在白名单生效时改为“中立全保留 + 非中立仅白名单可见”，从数据源层统一约束随机候选。
+  - `src/shop/systems/ShopHeroSystem.ts`
+    - 在开局英雄确认后生成本局职业池（按三职业与四品质计数随机），并写入运行时白名单；
+    - 初始解锁池改为使用该局固定职业池（不再默认解锁全青铜）。
+  - `src/shop/systems/ShopInstanceManager.ts`
+    - `unlockItemToPool` 增加白名单校验，避免局内流程把非本局池物品加入商店解锁池。
+  - `src/shop/ShopStateStorage.ts` + `src/shop/ShopSceneContext.ts` + `src/shop/ShopScene.ts`
+    - 存档新增并恢复 `runClassItemPoolIds`，保障跨场景/读档后仍沿用同一局固定池；
+    - 新开局（无存档）时清空旧白名单，避免跨局污染。
+- 当前阶段：已落地“每局固定职业池 + 全局随机约束 + 玩法参数可配”，等待用户验收局内随机来源是否稳定收敛到配置池。
+
+## 验收优化追加（2026-03-13，附魔“等同于”效果改为战斗内实时镜像）
+
+- 用户需求：
+  - `获得等同于护盾的伤害/加血`、`获得等同于伤害的护盾/加血`、`获得等同于加血的伤害/护盾` 三类效果，改为战斗内按实时最终值同步；
+  - 若战斗中来源属性被其他机制持续抬升，目标属性应始终与来源属性保持一致。
+- 已完成：
+  - `src/battle/CombatEngine.ts`
+    - 新增附魔镜像规格解析与应用：按效果文案识别 `来源属性 -> 目标属性`（damage/shield/heal）；
+    - 在运行时面板 `getRuntimeState()` 中，先计算最终实时值，再执行镜像覆盖，确保展示值同步；
+    - 在 `resolveFire(...)` 中接入同口径镜像：
+      - 护盾结算支持以“实时伤害/实时加血”作为护盾来源；
+      - 加血结算支持以“实时伤害/实时护盾”作为加血来源；
+      - 伤害结算支持以“实时护盾/实时加血”作为伤害来源。
+  - `src/shop/ShopBattleSnapshot.ts`
+    - 附魔预览从“加法叠加”改为“等同值镜像”（不再把两值相加），避免进战前基值被错误放大并与战斗内实时口径不一致。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“三类等同附魔在战斗内随实时值变化保持一一相等”。
+
+### 验收补充（同阶段-2）
+
+- 用户反馈：`切割镰刀` 这类“伤害随对方血量变化”的物品，附魔“获得等同于伤害的护盾”后只获得基础护盾，未与伤害显示值一致。
+- 追加修正：`src/battle/CombatEngine.ts`
+  - 镜像来源改为取该物品**当前实时展示值**（`getRuntimeState` 的 damage/shield/heal），而非早期基础值；
+  - 使“等同于伤害/护盾/加血”的目标值严格与面板当前显示值一致，覆盖切割镰刀等动态伤害场景。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-3）
+
+- 用户复现：切割镰刀 + 护盾附魔仍仅获得 1 护盾。
+- 追加重构：`src/battle/CombatEngine.ts`
+  - 将“等同于”从静态属性映射改为**生效值映射**：
+    - `damage -> shield/heal`：在伤害命中结算点（`battle:take_damage` 同帧）按面板生效伤害值直接产出同值护盾/加血；
+    - `shield -> damage/heal`：在护盾结算点按本次生效护盾值同步；
+    - `heal -> damage/shield`：在加血结算点按本次生效加血值同步。
+  - 保证“显示伤害值”和“镜像产出值”使用同一结算口径，避免切割镰刀这类随目标血量变化的技能出现偏差。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-4）
+
+- 用户反馈：同阶段-3后仍复现“切割镰刀护盾附魔只加 1”。
+- 追加修正：`src/battle/CombatEngine.ts` + `src/battle/CombatTypes.ts`
+  - 在 `PendingHit` 中增加 `mirrorDamageTarget`，把“伤害镜像到护盾/加血”的目标在**入队时**固化；
+  - 命中结算时不再依赖攻击者对象是否仍在场，直接按该次命中 `panel damage`（即 UI 显示伤害）产出同值护盾/加血；
+  - 规避“攻击者在飞行命中前被移除/状态变化导致镜像退化到基础值”的问题。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-5）
+
+- 用户继续反馈：切割镰刀 + 护盾附魔仍异常。
+- 追加兜底：`src/battle/CombatEngine.ts`
+  - 强化附魔镜像规格解析：当文案解析失配时，回退到“目标属性=附魔类型、来源属性=其余属性中实时主值最高者”自动推断；
+  - 避免因个别文案差异/配置缺省导致 `damage->shield` 未识别，从而退化为基础护盾结算。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-6）
+
+- 用户继续反馈：切割镰刀 + 护盾附魔仍未命中预期。
+- 追加修正：`src/battle/CombatEngine.ts`
+  - `mirrorDamageTargetFromEnchantment` 增加直连判定：当附魔文案包含“等同于伤害”时，直接把 `shield/heal` 设为伤害镜像目标；
+  - 仅当文案直连未命中时再回退到通用镜像规格推断，减少链路误判概率。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-7）
+
+- 用户指令：继续定位切割镰刀 + 护盾附魔。
+- 追加修正：`src/battle/CombatEngine.ts`
+  - 在命中结算帧新增兜底：若 `PendingHit` 未携带镜像标记，但攻击者当前附魔文案属于“等同于伤害”，仍按该次 `panel damage` 直接产出护盾/加血；
+  - 使镜像产出在“入队标记缺失/个别路径未标注”时仍不退化。
+- 验证：`npm run build` 通过。
+
+## 验收优化追加（2026-03-13，当前仓库 iOS 工程搭建 + TestFlight 上传）
+
+- 用户需求：在当前仓库内完成 iOS 打包链路搭建，并上传新的 TestFlight 包。
+- 已完成：
+  - iOS 工程与打包链路：
+    - 新增 Capacitor iOS 平台目录 `ios/`；
+    - 新增 `ios/packaging.config.local.json`（本地打包配置）；
+    - 新增 `ios/ExportOptions_TestFlight.plist`（导出配置）；
+    - 新增 `ios/scripts/release_testflight.py`（一键 build/archive/export/upload，支持 `--build-number`）；
+    - `package.json` 的 `release:tf` 已接通到本地脚本。
+  - 配置修正：
+    - iOS Bundle ID 已对齐到 ASC 现有应用：`com.zhengtengfei.BigBazzar`。
+  - TestFlight 上传结果：
+    - `ARCHIVE SUCCEEDED`；
+    - `EXPORT SUCCEEDED`；
+    - `UPLOAD SUCCEEDED with no errors`；
+    - Delivery UUID：`71b0e25c-92fe-4dd1-9548-6914749d75fa`；
+    - 本次构建号：`100`（前序尝试因 build 号重复被拒，已通过显式 build 号规避）。
+- 当前阶段：等待用户在 App Store Connect/TestFlight 确认 Build `100` 处理状态。
+- 下一步计划：如需恢复线性递增，可在后续改为“读取 ASC 最新 build +1”自动分配策略。
+
+## 验收优化追加（2026-03-13，附魔石附魔与详情展示）
+
+- 用户需求：新增附魔石（8种）拖拽附魔能力；仅非中立物品可附魔；重复附魔替换旧附魔；物品详情名称增加“（伤害）”等后缀，并在描述底部新增附魔描述；附魔图标映射按 `buff1~buff8`。
+- 已完成：
+  - `src/common/items/ItemEnchantment.ts`
+    - 新增附魔定义与映射：`伤害/护盾/回复/闪亮/加速/减速/冰冻/免疫`；
+    - 新增宝石名称->附魔键映射与效果文案解析（按物品主数值类型自动生成描述）。
+  - `src/shop/panels/NeutralItemPanel.ts`
+    - 扩展中立特殊类型，接入 8 种附魔宝石；
+    - 目标判定支持“附魔宝石仅可作用于非中立物品”；
+    - 拖拽命中目标时直接写入附魔（重复附魔自动覆盖），并给出提示；
+    - 悬浮信息支持显示“将为目标附加xxx效果”。
+  - `src/shop/systems/ShopInstanceRegistry.ts` + `src/shop/ShopStateStorage.ts` + `src/shop/ShopSceneContext.ts`
+    - 新增实例级附魔元数据 `instanceToEnchantment`；
+    - 接入实例清理、存档序列化与恢复。
+  - `src/common/ui/SellPopup.ts` + `src/shop/ui/ShopUIBuilders.ts` + `src/shop/ui/ShopBattleZoneBuilder.ts`
+    - 物品详情支持附魔显示：名称后缀 `（附魔标题）`；
+    - 描述区底部新增 `附魔：...` 文案；
+    - 战斗区/背包区实例详情打开时自动读取并展示当前附魔。
+  - `src/shop/ShopBattleSnapshot.ts` + `src/battle/BattleSnapshotStore.ts` + `src/battle/CombatTypes.ts` + `src/battle/EnemyBuilder.ts`
+    - 战斗快照携带实例附魔字段；
+    - 附魔对基础战斗数值提供首轮生效（伤害/护盾/回复/闪亮）。
+  - `src/battle/ItemTriggerSystem.ts` + `src/battle/CombatHelpers.ts` + `src/battle/CombatEngine.ts`
+    - 加速/减速/冰冻附魔追加控制效果触发；
+    - 免疫附魔拦截控制并免疫摧毁判定。
+- 验证：`npm run build` 通过。
+- 当前阶段：附魔石基础链路（拖拽附魔、替换、存档、详情展示、战斗首轮生效）已落地，等待用户验收。
+
+### 验收补充（同阶段）
+
+- 用户反馈：在“物品测试”里看不到附魔石。
+- 根因：`data/vanessa_items.json` 当前数据末尾缺少 `item70~item77`（8种附魔宝石）条目，测试面板按 `getAllItems()` 渲染，因此不会出现。
+- 已完成：`data/vanessa_items.json`
+  - 补齐 `item70~item77`：伤害/护盾/回复/闪亮/加速/减速/冰冻/免疫宝石；
+  - 均标记为 `中立`、`Diamond`，并补全 `simple_desc/simple_desc_tiered` 与拖拽附魔技能文案。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-2，附魔改为严格配置驱动）
+
+- 用户需求：附魔效果必须严格按表格对不同物品生效，且通过配置管理。
+- 已完成：
+  - `data/item_enchantments.json`
+    - 新增附魔配置文件：模板 + 物品映射（按 `name_cn` 指定），覆盖伤害/护盾/回复/闪亮/加速/减速/冰冻/免疫 8 列效果；
+    - 将非中立物品按表格分组到 `damage_item/shield_item/heal_item/support_active/support_passive`。
+  - `src/core/DataLoader.ts`
+    - 接入 `item_enchantments.json`，加载时把配置合并到 `ItemDef.enchantments`（可被后续逻辑统一读取）。
+  - `src/common/items/ItemEnchantment.ts`
+    - `resolveItemEnchantmentEffectCn(...)` 改为优先读取配置效果；无配置时再走兜底规则。
+  - `src/shop/ShopBattleSnapshot.ts`
+    - 附魔预览数值改为按“配置效果文本”判定（例如 `技能效果翻倍` 不再错误转成 `连发次数+1`）。
+  - `src/battle/ItemTriggerSystem.ts` + `src/battle/CombatEngine.ts`
+    - 新增“使用相邻物品时...”类附魔触发链路（加速/减速/冰冻）并在战斗触发循环接入；
+    - 保持 `免疫附魔` 对控制与摧毁判定生效。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-3，附魔角标与战斗详情补齐）
+
+- 用户需求：
+  - 物品图标左下角（红圈处）显示附魔角标（商店与战斗都要有）；
+  - 详情面板图标左下角也显示附魔角标；
+  - 战斗中点物品详情必须显示附魔信息。
+- 已完成：
+  - `src/common/grid/GridZone.ts`
+    - 新增实例级附魔角标渲染节点（圆底 + buff 图标），锚定到物品图标左下角；
+    - 新增 `setItemEnchantment(instanceId, enchantmentKey?)` 接口，用于商店区/战斗区统一设置角标。
+  - `src/core/AssetPath.ts`
+    - 新增 `getBuffIconUrl(fileStem)`，统一解析 `resource/bufficon/buff*.png` 路径。
+  - `src/common/ui/SellPopup.ts`
+    - 详情面板图标新增附魔角标（同样位于左下角）；
+    - 角标图标按附魔映射加载 `buff1~buff8`。
+  - `src/battle/CombatTypes.ts` + `src/battle/CombatEngine.ts` + `src/battle/BattleScene.ts`
+    - 战斗面板数据 `CombatBoardItem` 增加 `enchantment` 字段并从引擎透出；
+    - 战斗区挂载物品时设置附魔角标；
+    - 战斗详情弹窗显示附魔标题/描述与图标角标。
+  - 商店链路补齐（防止跨区移动后丢角标）：
+    - `src/shop/panels/NeutralItemPanel.ts`
+    - `src/shop/ShopStateStorage.ts`
+    - `src/shop/ui/ShopBattleZoneBuilder.ts`
+    - `src/shop/systems/ShopGridInventory.ts`
+    - `src/shop/systems/ShopAutoPackManager.ts`
+    - `src/shop/systems/ShopSynthesisController.ts`
+    - 在附魔生效、读档恢复、转移/整理、升级/转化后，统一回写 `setItemEnchantment`。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-4，角标样式微调）
+
+- 用户需求：附魔角标放大 1 倍；去掉圆形边框；层级保持在图标上层、位置不变。
+- 已完成：
+  - `src/common/grid/GridZone.ts`
+    - 角标尺寸放大至约 2x；
+    - 移除圆形底和描边；
+    - 调整 child 层级，确保角标位于物品图标上层（位置锚点保持左下角不变）。
+  - `src/common/ui/SellPopup.ts`
+    - 详情角标同样放大至约 2x；
+    - 移除圆形底和描边（仅保留图标）。
+- 额外修复：
+  - `src/battle/CombatEngine.ts` 清理重复 import，恢复构建通过。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-5，合成附魔继承规则）
+
+- 用户需求：两个物品合成时，若双方都有附魔，则结果附魔应继承“拖动源物品”的附魔。
+- 已完成：
+  - `src/shop/systems/ShopSynthesisController.ts`
+    - `synthesizeTarget(...)` 新增 `sourceInstanceId` 参数；
+    - 合成完成后判定：当“源附魔 + 目标附魔”同时存在时，结果实例附魔覆盖为源附魔。
+  - `src/shop/ui/ShopBattleZoneBuilder.ts`
+    - 背包/上阵区拖拽物品进行合成时，传入 `instanceId` 作为 `sourceInstanceId`。
+  - `src/shop/systems/ShopDragSystem.ts` + `src/shop/ShopScene.ts`
+    - 同步扩展 `synthesizeTarget` 回调签名，兼容商店卡牌拖拽（无源实例）与实例拖拽（有源实例）两种调用。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-6，合成附魔继承规则修正）
+
+- 用户反馈：合成附魔继承方向反了；且“单边有附魔”时偶发被清空。
+- 已修正：`src/shop/systems/ShopSynthesisController.ts`
+  - 合成结果附魔统一按以下规则解析：
+    - 双方都有附魔：继承**目标槽位（被合成保留实例）**的附魔；
+    - 仅一方有附魔：继承该有附魔的一方；
+    - 双方都无附魔：结果无附魔。
+  - 每次合成后显式回写结果实例附魔，避免偶发清空。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-7，控制附魔目标选择规则）
+
+- 用户需求：`加速1件物品`、`减速1件物品`、`冰冻1件物品`目标应为随机；且目标必须是有冷却（非被动）物品。
+- 已完成：
+  - `src/battle/ItemTriggerSystem.ts`
+    - `pickControlTargets(...)` 增加 `requireActiveCooldown` 过滤（仅选 `baseStats.cooldownMs > 0` 物品）；
+    - 单目标控制（count=1）在控制结算时统一改为 `random` 目标模式；
+    - 邻接触发的减速/冰冻控制改为随机选取并过滤被动目标。
+  - `src/battle/CombatEngine.ts`
+    - `获得护盾时加速1件物品`改为随机选取；
+    - 战斗开场控制结算中，单目标控制改为随机，并过滤无冷却目标。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-8，升级奖励石头改为附魔石二选一）
+
+- 用户需求：原先会给职业石（转职石分支）的升级奖励，改为“附魔石二选一随机”。
+- 已完成：`src/shop/systems/ShopRewardSystem.ts`
+  - 升级奖励权重模式中，石头分支由 `class_stone` 改为 `enchant_stone`；
+  - 石头分支候选池改为 `item70~item77`（8种附魔石）；
+  - 每次触发石头分支时，从候选池中随机给出 2 个不同附魔石（二选一）。
+- 保持不变：普通等级物品奖励权重逻辑不变。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-9，石头分支语义修正）
+
+- 用户澄清：权重表里“转职石”和“附魔石”是两个独立分支。
+  - 转职石命中时：维持原逻辑（职业石三选一）。
+  - 附魔石命中时：附魔石二选一。
+- 已修正：`src/shop/systems/ShopRewardSystem.ts`
+  - `pickQuickDraftModeByWeights(...)` 从二态改为三态：`normal | class_stone | enchant_stone`；
+  - `weights[6]` 单独对应职业石分支，`weights[7]` 单独对应附魔石分支；
+  - 职业石分支恢复 `item64/item66/item65` 三选一池；
+  - 附魔石分支保持 `item70~item77` 二选一（并保留伪随机袋防短期重复）。
+- 验证：`npm run build` 通过。
+
 ## 验收优化追加（2026-03-13，英雄随机候选与升级快捷三选一口径统一）
 
 - 用户需求：占卜师、魔术师、戏法师的随机候选，统一走“确认等级后按 `starting_tier` 允许等级入池 + 非中立 + 可落位 + 品质伪随机袋选桶 + 候选去重”的升级快捷三选一选卡口径。
@@ -15142,3 +15427,78 @@ ShopSceneContext.ts、ShopStateStorage.ts、SynthesisLogic.ts、NeutralItemPanel
 - 影响范围：`getRuntimeState()` 展示伤害与 `resolveFire` 实战伤害逻辑均已同步修复（文件：`src/battle/CombatEngine.ts`）。
 - 回归：`npm run build` 通过。
 - 当前阶段：该修复进入验收阶段，等待用户确认“重力战锤仅按自身最大生命值 15% 造成额外伤害”。
+
+### 本次对话追加（2026-03-13，移除战斗中底部白色性能调试小字）
+
+- 用户需求：去掉战斗画面中武器栏上方那行白色小字（如 `phase ... pr:0%`）。
+- 已完成：
+  - `src/battle/BattleScene.ts`
+    - 移除战斗场景内 `statusText` 的创建与每帧文本更新逻辑；
+    - 同步清理仅用于该调试文字的监控缓存变量及重置代码，避免无效写入。
+- 回归：`npm run build` 通过。
+- 当前阶段：该 UI 清理进入验收阶段，等待用户确认“战斗中该行白色调试字已消失且其他战斗 UI 正常”。
+
+### 本次对话追加（2026-03-13，快捷三选一模式屏蔽补发旧普通升级奖励）
+
+- 用户反馈：开启“快捷三选一”后，当上阵区和背包都满时升级，后续腾出空位会补发此前“非快捷三选一模式”的普通升级奖励；期望该补发被屏蔽。
+- 已完成：
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - `checkAndPopPendingRewards()` 增加快捷三选一开关保护：在快捷三选一开启时，直接清空 `pendingLevelRewards` 并持久化，防止旧普通奖励在腾位后补发；
+    - `handleLevelReward()` 在快捷三选一开启时不再回退到普通升级奖励分支；若快捷三选一面板未成功打开则直接返回（仅保存状态，不入普通奖励队列）；
+    - 同步在进入快捷三选一分支前清理历史 `pendingLevelRewards`，兜底消除跨模式残留。
+- 回归：`npm run build` 通过。
+- 当前阶段：该修复进入验收阶段，等待用户确认“快捷三选一模式下不再补发旧普通升级奖励”。
+
+### 本次对话追加（2026-03-13，附魔翻倍改为最终值额外乘区）
+
+- 用户需求：附魔中的“伤害翻倍 / 护盾翻倍 / 加血翻倍”不应提前改基础值，而应在最终值结算完成后再作为额外乘区翻倍。
+- 已完成：
+  - `src/shop/ShopBattleSnapshot.ts`
+    - 调整快照侧 `applyEnchantmentPreview()`：移除 `damage/shield/heal` 三类附魔在快照阶段的“直接 ×2”处理，避免提前改写基础面板值；
+    - 保留“跨属性转化”逻辑（如等同护盾转伤害等）。
+  - `src/battle/CombatEngine.ts`
+    - 新增 `enchantmentFinalMultiplier()`，按附魔描述判定三类翻倍是否生效（仅命中“翻倍”效果）；
+    - 在 `getRuntimeState()` 中，将伤害/护盾/加血的展示值改为“最终值计算后再乘附魔倍数”；
+    - 在 `resolveFire()` 中，将护盾获得量、治疗量与命中伤害改为“最终值计算后再乘附魔倍数”；
+    - 对 `enqueueOneAttackFrom()` 与“触发加速时额外伤害”分支同步应用该最终乘区，保证触发类攻击口径一致。
+- 回归：`npm run build` 通过。
+- 当前阶段：该附魔口径调整进入验收阶段，等待用户确认“翻倍类附魔已按最终值额外乘区生效”。
+
+### 本次对话追加（2026-03-13，附魔相邻+50%改为最终乘区并与翻倍加算）
+
+- 用户需求：`相邻物品伤害+50% / 护盾+50% / 加血+50%` 逻辑与瞄准镜同口径，放在最终值阶段乘；并与“伤害翻倍附魔”等同乘区效果按加算叠加。
+- 已完成：
+  - `src/battle/CombatEngine.ts`
+    - 扩展 `enchantmentFinalMultiplier()`：
+      - 统计自身翻倍附魔贡献（`+100%`）；
+      - 统计相邻附魔贡献（如 `相邻物品伤害+50%` 记为 `+50%`，可多来源累加）；
+      - 伤害额外并入“瞄准镜类”相邻伤害加成桶（`runtime.finalDamageBonusPct`）；
+      - 最终按 `1 + 各来源加成` 统一作为末端乘区使用，避免乘乘叠导致放大。
+    - `resolvePendingHitsForCurrentTick()` 的实时攻击差值口径同步改为含最终乘区，确保队列补差一致。
+  - `src/battle/SkillTriggerSystem.ts`
+    - 将“相邻伤害物品伤害+X%”从 `damageScale *= (1+pct)` 改为累加到 `runtime.finalDamageBonusPct += pct`，进入最终加算乘区。
+  - `src/battle/CombatTypes.ts`、`src/battle/EnemyBuilder.ts`
+    - 新增并初始化 `runtime.finalDamageBonusPct` 字段，作为最终伤害乘区加算桶。
+- 回归：`npm run build` 通过。
+- 当前阶段：该附魔/相邻乘区加算调整进入验收阶段，等待用户确认“相邻+50% 与翻倍附魔等按最终乘区加算生效”。
+
+### 本次对话追加（2026-03-14，附魔风险盘点 + Agent 回归测试）
+
+- 用户需求：盘点当前附魔可能问题与测试用例，并通过 Agent 方式执行一轮验证。
+- 已完成：
+  - 风险与用例梳理（围绕“最终乘区加算、相邻+50%、翻倍附魔、实战结算一致性”）。
+  - 新增自动化回归用例：`src/battle/CombatEnchantmentMultiplier.test.ts`
+    - 覆盖“翻倍 + 相邻+50% + 瞄准镜类桶”按加算合并；
+    - 覆盖相邻护盾/加血 +50% 最终乘区；
+    - 覆盖 `resolveFire` 对伤害/护盾/治疗的最终乘区应用。
+  - 代码配套：
+    - `src/battle/CombatTypes.ts` / `src/battle/EnemyBuilder.ts` 新增并初始化 `runtime.finalDamageBonusPct`；
+    - `src/battle/SkillTriggerSystem.ts` 将“相邻伤害+X%”改为写入最终乘区桶（加算）；
+    - `src/battle/CombatEngine.ts` 统一最终乘区计算并接入命中补差。
+  - Agent 验证执行：
+    - `task_id=ses_314ac9a47ffev2eQpHBwU7STm9` 执行回归检查；
+    - `npm run test -- src/battle/CombatEnchantmentMultiplier.test.ts` 通过（3/3）；
+    - `npm run build` 通过；
+    - Agent 结论：`PASS`。
+- 备注：尝试按规程执行 `npm run agent:new -- --topic="enchantment multiplier regression"` 时，因缺失模板 `agent-sessions/_templates/report.md` 失败；不影响本次代码与测试结果。
+- 当前阶段：该附魔阶段进入验收，等待用户确认“相邻+50% 与翻倍附魔按最终乘区加算且测试通过”。

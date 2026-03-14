@@ -128,6 +128,7 @@ function syncPersistedQuickDraftEntries(ctx: ShopSceneCtx): void {
 const levelQuickRewardQueueByCtx = new WeakMap<ShopSceneCtx, QuickDraftQueueEntry[]>()
 const levelQuickRewardActiveEntryByCtx = new WeakMap<ShopSceneCtx, QuickDraftQueueEntry | null>()
 const levelQuickRewardActivePickByInstanceIdByCtx = new WeakMap<ShopSceneCtx, Map<string, QuickDraftCandidate>>()
+const enchantStoneBagByCtx = new WeakMap<ShopSceneCtx, string[]>()
 
 function getLevelQuickRewardQueue(ctx: ShopSceneCtx): QuickDraftQueueEntry[] {
   const existing = levelQuickRewardQueueByCtx.get(ctx)
@@ -154,6 +155,24 @@ function getLevelQuickRewardActivePickByInstanceId(ctx: ShopSceneCtx): Map<strin
   if (existing) return existing
   const created = new Map<string, QuickDraftCandidate>()
   levelQuickRewardActivePickByInstanceIdByCtx.set(ctx, created)
+  return created
+}
+
+function shuffleInPlace<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const tmp = arr[i]!
+    arr[i] = arr[j]!
+    arr[j] = tmp
+  }
+  return arr
+}
+
+function getEnchantStoneBag(ctx: ShopSceneCtx, allIds: string[]): string[] {
+  const existed = enchantStoneBagByCtx.get(ctx)
+  if (existed && existed.length > 0) return existed
+  const created = shuffleInPlace(allIds.slice())
+  enchantStoneBagByCtx.set(ctx, created)
   return created
 }
 
@@ -265,6 +284,10 @@ export function flyRewardToBackpack(
 // ---- 待领取奖励队列 ----
 
 export function checkAndPopPendingRewards(ctx: ShopSceneCtx, callbacks: RewardSystemCallbacks): void {
+  if (isLevelQuickDraftEnabled() && ctx.pendingLevelRewards.length > 0) {
+    ctx.pendingLevelRewards.length = 0
+    saveShopStateToStorage(captureShopState(ctx))
+  }
   if (ctx.pendingLevelRewards.length === 0) {
     callbacks.checkAndPopPendingHeroPeriodicRewards()
     return
@@ -339,17 +362,23 @@ function getQuickDraftWeightsByPlayerLevel(level: number): number[] {
   ]
 }
 
-function pickQuickDraftModeByWeights(weights: number[]): 'normal' | 'class_stone' {
+function pickQuickDraftModeByWeights(weights: number[]): 'normal' | 'class_stone' | 'enchant_stone' {
   const normal = Math.max(0, Number(weights[0] ?? 0))
     + Math.max(0, Number(weights[1] ?? 0))
     + Math.max(0, Number(weights[2] ?? 0))
     + Math.max(0, Number(weights[3] ?? 0))
     + Math.max(0, Number(weights[4] ?? 0))
     + Math.max(0, Number(weights[5] ?? 0))
-  const classStone = Math.max(0, Number(weights[6] ?? 0)) + Math.max(0, Number(weights[7] ?? 0))
-  const total = normal + classStone
+  const classStone = Math.max(0, Number(weights[6] ?? 0))
+  const enchantStone = Math.max(0, Number(weights[7] ?? 0))
+  const total = normal + classStone + enchantStone
   if (total <= 0) return 'normal'
-  return Math.random() * total < classStone ? 'class_stone' : 'normal'
+  let roll = Math.random() * total
+  roll -= normal
+  if (roll <= 0) return 'normal'
+  roll -= classStone
+  if (roll <= 0) return 'class_stone'
+  return 'enchant_stone'
 }
 
 function pickQuickDraftLevelByWeights(weights: number[]): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
@@ -448,12 +477,56 @@ function buildClassStoneQuickDraftCandidates(callbacks: RewardSystemCallbacks): 
   return out.slice(0, 3)
 }
 
-function buildQuickDraftCandidates(playerLevel: number, _ctx: ShopSceneCtx, callbacks: RewardSystemCallbacks): QuickDraftCandidate[] {
+function buildEnchantmentStoneQuickDraftCandidates(ctx: ShopSceneCtx, callbacks: RewardSystemCallbacks): QuickDraftCandidate[] {
+  const enchantStoneIds = ['item70', 'item71', 'item72', 'item73', 'item74', 'item75', 'item76', 'item77']
+  const byId = new Map<string, QuickDraftCandidate>()
+  for (const id of enchantStoneIds) {
+    const cand = buildQuickDraftCandidateByDefId(id, callbacks)
+    if (!cand) continue
+    byId.set(id, cand)
+  }
+  const pool = Array.from(byId.values())
+  if (pool.length <= 2) return pool
+
+  const out: QuickDraftCandidate[] = []
+  const usedId = new Set<string>()
+  let guard = 0
+  while (out.length < 2 && guard < 64) {
+    guard += 1
+    let bag = getEnchantStoneBag(ctx, enchantStoneIds)
+    if (bag.length <= 0) {
+      bag = shuffleInPlace(enchantStoneIds.slice())
+      enchantStoneBagByCtx.set(ctx, bag)
+    }
+    const id = bag.shift()
+    if (!id || usedId.has(id)) continue
+    const cand = byId.get(id)
+    if (!cand) continue
+    out.push(cand)
+    usedId.add(id)
+  }
+
+  if (out.length < 2) {
+    for (const cand of pool) {
+      if (usedId.has(cand.defId)) continue
+      out.push(cand)
+      if (out.length >= 2) break
+    }
+  }
+  return out
+}
+
+function buildQuickDraftCandidates(playerLevel: number, ctx: ShopSceneCtx, callbacks: RewardSystemCallbacks): QuickDraftCandidate[] {
   const out: QuickDraftCandidate[] = []
   const blockedDefIds = new Set<string>()
   const weights = getQuickDraftWeightsByPlayerLevel(playerLevel)
-  if (pickQuickDraftModeByWeights(weights) === 'class_stone') {
+  const mode = pickQuickDraftModeByWeights(weights)
+  if (mode === 'class_stone') {
     const fixed = buildClassStoneQuickDraftCandidates(callbacks)
+    if (fixed.length > 0) return fixed
+  }
+  if (mode === 'enchant_stone') {
+    const fixed = buildEnchantmentStoneQuickDraftCandidates(ctx, callbacks)
     if (fixed.length > 0) return fixed
   }
   for (let i = 0; i < 3; i++) {
@@ -872,8 +945,11 @@ export function handleLevelReward(level: number, ctx: ShopSceneCtx, callbacks: R
   }
   const quickDraftEnabled = getDebugCfg('gameplayLevelQuickDraft') >= 0.5
   if (quickDraftEnabled) {
+    if (ctx.pendingLevelRewards.length > 0) ctx.pendingLevelRewards.length = 0
     const opened = openQuickDraftLevelRewardOverlay(level, ctx, callbacks)
     if (opened) return
+    saveShopStateToStorage(captureShopState(ctx))
+    return
   }
   const rewards = callbacks.rollLevelRewardDefIds(level)
   if (rewards.length <= 0) {

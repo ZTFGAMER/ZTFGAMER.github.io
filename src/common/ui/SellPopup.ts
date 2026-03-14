@@ -11,7 +11,7 @@ import type { ItemDef } from '@/common/items/ItemDef'
 import { getConfig as getGameConfig } from '@/core/DataLoader'
 import { normalizeSize } from '@/common/items/ItemDef'
 import { CELL_SIZE } from '@/common/grid/GridZone'
-import { getItemIconUrl } from '@/core/AssetPath'
+import { getBuffIconUrl, getItemIconUrl } from '@/core/AssetPath'
 import { getTierColor } from '@/config/colorPalette'
 
 const DEFAULT_POPUP_W = 400
@@ -51,6 +51,14 @@ export interface ItemInfoCustomDisplay {
   useQuestionIcon?: boolean
   hideName?: boolean
   centerRichLineInFrame?: boolean
+}
+
+export interface ItemInfoEnchantmentDisplay {
+  key: string
+  nameCn: string
+  titleSuffixCn: string
+  effectCn: string
+  icon?: string
 }
 
 function parseTierName(raw: string): string {
@@ -344,6 +352,9 @@ export class SellPopup extends Container {
   private iconSp:  Sprite
   private iconQuestionT: Text
   private iconFrame: Graphics
+  private iconEnchantBadge: Container
+  private iconEnchantBadgeBg: Graphics
+  private iconEnchantBadgeSp: Sprite
   private nameT:   Text
   private tierBadgeBg: Graphics
   private tierBadgeT: Text
@@ -360,6 +371,7 @@ export class SellPopup extends Container {
   private lastInfoMode: ItemInfoMode = 'detailed'
   private lastRuntimeOverride: ItemInfoRuntimeOverride | undefined = undefined
   private lastCustomDisplay: ItemInfoCustomDisplay | undefined = undefined
+  private lastEnchantmentDisplay: ItemInfoEnchantmentDisplay | undefined = undefined
   private textSize = { name: 22, tier: 14, cooldown: 16, priceCorner: 20, desc: 16, simpleDesc: 16 }
   private cornerRadius = 10
 
@@ -414,6 +426,16 @@ export class SellPopup extends Container {
 
     this.iconFrame = new Graphics()
     this.panel.addChild(this.iconFrame)
+
+    this.iconEnchantBadge = new Container()
+    this.iconEnchantBadge.visible = false
+    this.iconEnchantBadge.eventMode = 'none'
+    this.iconEnchantBadgeBg = new Graphics()
+    this.iconEnchantBadgeSp = new Sprite(Texture.EMPTY)
+    this.iconEnchantBadgeSp.anchor.set(0.5)
+    this.iconEnchantBadge.addChild(this.iconEnchantBadgeBg)
+    this.iconEnchantBadge.addChild(this.iconEnchantBadgeSp)
+    this.panel.addChild(this.iconEnchantBadge)
 
     // 物品名
     this.nameT = new Text({
@@ -501,7 +523,7 @@ export class SellPopup extends Container {
     this.minH = Math.max(0, height)
     this.currentMinH = this.minH
     if (this.lastItem) {
-      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay)
+      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay)
     } else {
       this.redrawPanel(this.minH)
       this.setAnchor(0, this.anchorY)
@@ -511,7 +533,7 @@ export class SellPopup extends Container {
   setSmallMinHeight(height: number): void {
     this.minHSmall = Math.max(0, height)
     if (this.lastItem) {
-      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay)
+      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay)
     }
   }
 
@@ -532,19 +554,19 @@ export class SellPopup extends Container {
     this.tierBadgeT.style.fontSize = this.textSize.tier
     this.cooldownT.style.fontSize = this.textSize.cooldown
     this.priceT.style.fontSize = this.textSize.priceCorner
-    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay)
+    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay)
   }
 
   setCornerRadius(radius: number): void {
     this.cornerRadius = Math.max(0, radius)
-    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay)
+    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay)
   }
 
   setWidth(width: number): void {
     this.panelW = Math.max(POPUP_MIN_W, Math.min(this.canvasW, width))
     this.nameT.style.wordWrapWidth = this.panelW - 24
     if (this.lastItem) {
-      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay)
+      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay)
     } else {
       this.redrawPanel(POPUP_MIN_H)
       this.setAnchor(0, this.anchorY)
@@ -552,7 +574,7 @@ export class SellPopup extends Container {
   }
 
   /** 展示弹窗（需传入物品信息及出售价格） */
-  show(item: ItemDef, price: number, priceMode: 'sell' | 'buy' | 'none' = 'sell', tierOverride?: string, upgradeFromTier?: string, infoMode: ItemInfoMode = 'detailed', runtimeOverride?: ItemInfoRuntimeOverride, customDisplay?: ItemInfoCustomDisplay): void {
+  show(item: ItemDef, price: number, priceMode: 'sell' | 'buy' | 'none' = 'sell', tierOverride?: string, upgradeFromTier?: string, infoMode: ItemInfoMode = 'detailed', runtimeOverride?: ItemInfoRuntimeOverride, customDisplay?: ItemInfoCustomDisplay, enchantmentDisplay?: ItemInfoEnchantmentDisplay): void {
     this.lastItem = item
     this.lastPrice = price
     this.lastPriceMode = priceMode
@@ -561,6 +583,7 @@ export class SellPopup extends Container {
     this.lastInfoMode = infoMode
     this.lastRuntimeOverride = runtimeOverride
     this.lastCustomDisplay = customDisplay
+    this.lastEnchantmentDisplay = enchantmentDisplay
     const cfg = getGameConfig()
     const visualScale = cfg.itemVisualScale
     const size = normalizeSize(item.size)
@@ -594,7 +617,8 @@ export class SellPopup extends Container {
     this.priceT.style.fontSize = this.textSize.priceCorner
 
     const overrideName = customDisplay?.overrideName
-    this.nameT.text  = (typeof overrideName === 'string') ? overrideName.trim() : item.name_cn
+    const baseName = (typeof overrideName === 'string') ? overrideName.trim() : item.name_cn
+    this.nameT.text  = enchantmentDisplay?.titleSuffixCn ? `${baseName}（${enchantmentDisplay.titleSuffixCn}）` : baseName
     this.priceT.text = ''
     this.priceT.visible = false
     const cooldownLine = (() => {
@@ -634,29 +658,41 @@ export class SellPopup extends Container {
       })()
     const descLines = (() => {
       if (customDisplay?.lines && customDisplay.lines.length > 0) {
-        return customDisplay.lines
+        const out = [...customDisplay.lines]
+        if (enchantmentDisplay?.effectCn) out.push(`附魔：${enchantmentDisplay.effectCn}`)
+        return out
       }
       if (infoMode === 'simple') {
-        return [
+        const out = [
           formatSimpleGameplayLine(statLines, descGuideSimple),
         ]
+        if (enchantmentDisplay?.effectCn) out.push(`附魔：${enchantmentDisplay.effectCn}`)
+        return out
       }
 
       if (!inUpgradePreview) {
         if (descGuideTiered) {
-          return [applyRuntimeValueToLine(formatDescByTier(descGuideTiered, tierIndex), runtimeOverride)]
+          const out = [applyRuntimeValueToLine(formatDescByTier(descGuideTiered, tierIndex), runtimeOverride)]
+          if (enchantmentDisplay?.effectCn) out.push(`附魔：${enchantmentDisplay.effectCn}`)
+          return out
         }
         const lines = skillLinesRaw
           .map((s) => applyRuntimeValueToLine(formatDescByTier(s, tierIndex), runtimeOverride))
           .filter((line) => !isPureStatLine(line))
-        return lines.length > 0 ? lines : []
+        const out = lines.length > 0 ? lines : []
+        if (enchantmentDisplay?.effectCn) out.push(`附魔：${enchantmentDisplay.effectCn}`)
+        return out
       }
 
       if (descGuideTiered) {
-        return [formatDescArrowByTier(descGuideTiered, fromTierIndex, tierIndex)]
+        const out = [formatDescArrowByTier(descGuideTiered, fromTierIndex, tierIndex)]
+        if (enchantmentDisplay?.effectCn) out.push(`附魔：${enchantmentDisplay.effectCn}`)
+        return out
       }
 
-      return skillLinesRaw.map((s) => formatDescArrowByTier(s, fromTierIndex, tierIndex))
+      const out = skillLinesRaw.map((s) => formatDescArrowByTier(s, fromTierIndex, tierIndex))
+      if (enchantmentDisplay?.effectCn) out.push(`附魔：${enchantmentDisplay.effectCn}`)
+      return out
     })()
 
     const isSimple = infoMode === 'simple'
@@ -682,6 +718,21 @@ export class SellPopup extends Container {
     this.iconFrame.roundRect(frameX, frameY, frameW, frameH, this.cornerRadius)
     this.iconFrame.stroke({ color: tierColor, width: 4, alpha: 0.98 })
     this.iconFrame.visible = true
+
+    if (enchantmentDisplay?.icon) {
+      const badgeSize = Math.max(44, Math.round(Math.min(frameW, frameH) * 0.48))
+      const radius = Math.round(badgeSize / 2)
+      this.iconEnchantBadgeBg.clear()
+      this.iconEnchantBadgeBg.visible = false
+      this.iconEnchantBadge.x = frameX + radius + 4 - 10
+      this.iconEnchantBadge.y = frameY + frameH - radius - 4 + 10
+      const iconSize = Math.max(12, Math.round(badgeSize * 0.8))
+      this.iconEnchantBadgeSp.width = iconSize
+      this.iconEnchantBadgeSp.height = iconSize
+      this.iconEnchantBadge.visible = true
+    } else {
+      this.iconEnchantBadge.visible = false
+    }
 
     let rightX = frameX + frameW + gap
     let rightW = Math.max(120, this.panelW - rightX - pad)
@@ -868,6 +919,17 @@ export class SellPopup extends Container {
         this.iconSp.alpha   = 1
       }).catch((err) => {
         console.warn('[SellPopup] 图标加载失败', url, err)
+      })
+    }
+
+    if (enchantmentDisplay?.icon) {
+      const buffUrl = getBuffIconUrl(enchantmentDisplay.icon)
+      const expectedIcon = enchantmentDisplay.icon
+      Assets.load<Texture>(buffUrl).then((tex) => {
+        if (this.lastEnchantmentDisplay?.icon !== expectedIcon) return
+        this.iconEnchantBadgeSp.texture = tex
+      }).catch((err) => {
+        console.warn('[SellPopup] 附魔图标加载失败', buffUrl, err)
       })
     }
 

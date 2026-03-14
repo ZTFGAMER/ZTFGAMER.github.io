@@ -20,6 +20,7 @@ import {
   getInstanceQuality,
   getInstanceLevel,
   getInstanceTierStar,
+  getInstanceEnchantment,
   levelFromLegacyTierStar,
 } from './ShopInstanceRegistry'
 import {
@@ -130,12 +131,14 @@ export function placeItemToInventoryOrBattle(
     ctx.battleSystem.place(battleSlot.col, battleSlot.row, size, def.id, id)
     void ctx.battleView.addItem(id, def.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
       ctx.battleView!.setItemTier(id, visualTier)
+      ctx.battleView!.setItemEnchantment(id, getInstanceEnchantment(id))
       ctx.drag?.refreshZone(ctx.battleView!)
     })
   } else if (backpackSlot) {
     ctx.backpackSystem.place(backpackSlot.col, backpackSlot.row, size, def.id, id)
     void ctx.backpackView.addItem(id, def.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
       ctx.backpackView!.setItemTier(id, visualTier)
+      ctx.backpackView!.setItemEnchantment(id, getInstanceEnchantment(id))
       ctx.drag?.refreshZone(ctx.backpackView!)
     })
   }
@@ -178,6 +181,7 @@ export function upgradePlacedItem(
   view.removeItem(instanceId)
   void view.addItem(instanceId, defId, placed.size, placed.col, placed.row, toVisualTier(next.tier, next.star)).then(() => {
     view.setItemTier(instanceId, toVisualTier(next.tier, next.star))
+    view.setItemEnchantment(instanceId, getInstanceEnchantment(instanceId))
     ctx.drag?.refreshZone(view)
   })
   setInstanceQualityLevel(instanceId, defId, quality, nextLevel)
@@ -220,6 +224,7 @@ export function convertAndUpgradePlacedItem(
   view.removeItem(instanceId)
   void view.addItem(instanceId, picked.id, placed.size, placed.col, placed.row, toVisualTier(next.tier, next.star)).then(() => {
     view.setItemTier(instanceId, toVisualTier(next.tier, next.star))
+    view.setItemEnchantment(instanceId, getInstanceEnchantment(instanceId))
     ctx.drag?.refreshZone(view)
   })
   instanceToDefId.set(instanceId, picked.id)
@@ -317,6 +322,7 @@ export function convertPlacedItemKeepLevel(
   view.removeItem(instanceId)
   void view.addItem(instanceId, picked.id, placed.size, placed.col, placed.row, toVisualTier(tier, star)).then(() => {
     view.setItemTier(instanceId, toVisualTier(tier, star))
+    view.setItemEnchantment(instanceId, getInstanceEnchantment(instanceId))
     ctx.drag?.refreshZone(view)
   })
   instanceToDefId.set(instanceId, picked.id)
@@ -397,6 +403,7 @@ export function restoreDraggedItemToZone(
   }
   void homeView.addItem(instanceId, defId, size, originCol, originRow, toVisualTier(tier, star)).then(() => {
     homeView.setItemTier(instanceId, toVisualTier(tier, star))
+    homeView.setItemEnchantment(instanceId, getInstanceEnchantment(instanceId))
     ctx.drag?.refreshZone(homeView)
   })
 }

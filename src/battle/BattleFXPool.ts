@@ -380,7 +380,14 @@ export class BattleFXPool {
     return null
   }
 
-  spawnProjectile(from: { x: number; y: number }, to: { x: number; y: number }, color: number, onHit?: () => void, sourceItemId?: string): void {
+  spawnProjectile(
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    color: number,
+    onHit?: () => void,
+    sourceItemId?: string,
+    opts?: { forceDot?: boolean },
+  ): void {
     if (!this.fxLayer) {
       onHit?.()
       return
@@ -391,7 +398,7 @@ export class BattleFXPool {
     }
     this.activeProjectileCount += 1
 
-    const useItemSprite = true
+    const useItemSprite = opts?.forceDot ? false : true
     const sourceDef = sourceItemId ? this.getDefBySourceInstance(sourceItemId) : null
     const useSprite = useItemSprite && this.isFlyableProjectile(sourceDef)
 

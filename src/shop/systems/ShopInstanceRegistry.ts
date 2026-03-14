@@ -9,6 +9,7 @@
 // ============================================================
 
 import type { TierKey } from '@/shop/ShopManager'
+import type { ItemEnchantmentKey } from '@/common/items/ItemEnchantment'
 import {
   normalizeTierStar, parseTierName, getItemDefById,
 } from './ShopSynthesisLogic'
@@ -43,6 +44,7 @@ export const instanceToLevel = new Map<string, 1 | 2 | 3 | 4 | 5 | 6 | 7>()
 export const instanceToTier = new Map<string, TierKey>()
 export const instanceToTierStar = new Map<string, 1 | 2>()
 export const instanceToPermanentDamageBonus = new Map<string, number>()
+export const instanceToEnchantment = new Map<string, ItemEnchantmentKey>()
 
 // ============================================================
 // 工具函數（本地 shim，避免重複引用）
@@ -84,6 +86,7 @@ export function removeInstanceMeta(instanceId: string): void {
   instanceToTier.delete(instanceId)
   instanceToTierStar.delete(instanceId)
   instanceToPermanentDamageBonus.delete(instanceId)
+  instanceToEnchantment.delete(instanceId)
 }
 
 export function clearAllInstanceMaps(): void {
@@ -93,6 +96,19 @@ export function clearAllInstanceMaps(): void {
   instanceToTier.clear()
   instanceToTierStar.clear()
   instanceToPermanentDamageBonus.clear()
+  instanceToEnchantment.clear()
+}
+
+export function setInstanceEnchantment(instanceId: string, enchantment: ItemEnchantmentKey | null | undefined): void {
+  if (!enchantment) {
+    instanceToEnchantment.delete(instanceId)
+    return
+  }
+  instanceToEnchantment.set(instanceId, enchantment)
+}
+
+export function getInstanceEnchantment(instanceId: string): ItemEnchantmentKey | undefined {
+  return instanceToEnchantment.get(instanceId)
 }
 
 // ============================================================

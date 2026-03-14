@@ -34,6 +34,13 @@ import { getTierColor } from '@/config/colorPalette'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import { resolveItemTierBaseStats } from '@/common/items/ItemTierStats'
 import { normalizeSize, type ItemDef, type SkillArchetype, type SkillTier } from '@/common/items/ItemDef'
+import {
+  getEnchantmentKeyByStoneName,
+  getItemEnchantmentDisplay,
+  isEnchantmentStoneName,
+  resolveItemEnchantmentEffectCn,
+  type ItemEnchantmentKey,
+} from '@/common/items/ItemEnchantment'
 import type { ItemSizeNorm, PlacedItem } from '@/common/grid/GridSystem'
 import type { GridSystem } from '@/common/grid/GridSystem'
 import type { GridZone } from '@/common/grid/GridZone'
@@ -65,6 +72,14 @@ export type NeutralSpecialKind =
   | 'assassin_stone'
   | 'gold_morph_stone'
   | 'diamond_morph_stone'
+  | 'damage_enchant_stone'
+  | 'shield_enchant_stone'
+  | 'heal_enchant_stone'
+  | 'shiny_enchant_stone'
+  | 'haste_enchant_stone'
+  | 'slow_enchant_stone'
+  | 'freeze_enchant_stone'
+  | 'immune_enchant_stone'
   | 'skill_scroll'
   | 'shop_scroll'
   | 'event_scroll'
@@ -121,6 +136,8 @@ export interface NeutralItemPanelCallbacks {
   removeInstanceMeta: (instanceId: string) => void
   toVisualTier: (tier?: TierKey, star?: 1 | 2) => string | undefined
   instanceToDefId: Map<string, string>
+  setInstanceEnchantment: (instanceId: string, enchantment: ItemEnchantmentKey | null | undefined) => void
+  getInstanceEnchantment: (instanceId: string) => ItemEnchantmentKey | undefined
 
   // 網格工具
   isBackpackDropLocked: (col: number, row: number, size: ItemSizeNorm) => boolean
@@ -199,6 +216,14 @@ const NEUTRAL_RANDOM_CAP_BY_DAY: Record<NeutralSpecialKind, number[]> = {
   assassin_stone:     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   gold_morph_stone:   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   diamond_morph_stone:[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  damage_enchant_stone:[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  shield_enchant_stone:[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  heal_enchant_stone: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  shiny_enchant_stone:[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  haste_enchant_stone:[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  slow_enchant_stone: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  freeze_enchant_stone:[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  immune_enchant_stone:[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   skill_scroll:       [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
   shop_scroll:        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   event_scroll:       [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10],
@@ -268,6 +293,14 @@ export function getNeutralSpecialKind(item: ItemDef): NeutralSpecialKind | null 
   if (key === '刺客石') return 'assassin_stone'
   if (key === '点金石') return 'gold_morph_stone'
   if (key === '真钻石') return 'diamond_morph_stone'
+  if (key === '伤害宝石') return 'damage_enchant_stone'
+  if (key === '护盾宝石') return 'shield_enchant_stone'
+  if (key === '回复宝石') return 'heal_enchant_stone'
+  if (key === '闪亮宝石') return 'shiny_enchant_stone'
+  if (key === '加速宝石') return 'haste_enchant_stone'
+  if (key === '减速宝石') return 'slow_enchant_stone'
+  if (key === '冰冻宝石') return 'freeze_enchant_stone'
+  if (key === '免疫宝石') return 'immune_enchant_stone'
   if (key === '技能卷轴' || key === '青铜卷轴' || key === '白银卷轴' || key === '黄金卷轴') return 'skill_scroll'
   if (key === '购物卷轴') return 'shop_scroll'
   if (key === '冒险卷轴' || key === '冒险券') return 'event_scroll'
@@ -290,11 +323,20 @@ export function isNeutralTargetStone(item: ItemDef | null | undefined): boolean 
     || kind === 'assassin_stone'
     || kind === 'gold_morph_stone'
     || kind === 'diamond_morph_stone'
+    || kind === 'damage_enchant_stone'
+    || kind === 'shield_enchant_stone'
+    || kind === 'heal_enchant_stone'
+    || kind === 'shiny_enchant_stone'
+    || kind === 'haste_enchant_stone'
+    || kind === 'slow_enchant_stone'
+    || kind === 'freeze_enchant_stone'
+    || kind === 'immune_enchant_stone'
 }
 
 export function isValidNeutralStoneTarget(sourceDef: ItemDef, targetDef: ItemDef): boolean {
   if (!isNeutralTargetStone(sourceDef)) return false
   if (isNeutralItemDef(targetDef)) return false
+  if (isEnchantmentStoneName(sourceDef.name_cn)) return true
   const srcArch = toSkillArchetype(getPrimaryArchetype(targetDef.tags))
   if (srcArch !== 'warrior' && srcArch !== 'archer' && srcArch !== 'assassin') return false
   void getNeutralSpecialKind(sourceDef)
@@ -755,10 +797,20 @@ export class NeutralItemPanel extends Container {
     const targetDef = getItemDefById(targetItem.defId)
     if (!targetDef) return
     const kind = getNeutralSpecialKind(sourceDef)
-    if (kind !== 'class_shift_stone' && kind !== 'class_morph_stone') return
-    const desc = kind === 'class_shift_stone'
-      ? `拖到目标：将${targetDef.name_cn}转化为其他职业同等级物品`
-      : `拖到目标：将${targetDef.name_cn}转化为本职业其他同等级物品`
+    if (!kind) return
+    let desc = ''
+    if (kind === 'class_shift_stone' || kind === 'class_morph_stone') {
+      desc = kind === 'class_shift_stone'
+        ? `拖到目标：将${targetDef.name_cn}转化为其他职业同等级物品`
+        : `拖到目标：将${targetDef.name_cn}转化为本职业其他同等级物品`
+    } else if (isEnchantmentStoneName(sourceDef.name_cn)) {
+      const enchantKey = getEnchantmentKeyByStoneName(sourceDef.name_cn)
+      if (!enchantKey) return
+      const effect = resolveItemEnchantmentEffectCn(targetDef, enchantKey)
+      desc = `拖到目标：为${targetDef.name_cn}附加${effect}`
+    } else {
+      return
+    }
     const customDisplay = {
       overrideName: `${sourceDef.name_cn}（作用于目标）`,
       lines: [desc],
@@ -1763,6 +1815,7 @@ export class NeutralItemPanel extends Container {
       const visualTier = this.cb.getInstanceTier(instanceId) ?? tier
       const visualStar = this.cb.getInstanceTierStar(instanceId)
       view.setItemTier(instanceId, this.cb.toVisualTier(visualTier, visualStar))
+      view.setItemEnchantment(instanceId, this.cb.getInstanceEnchantment(instanceId))
       this.ctx.drag?.refreshZone(view)
     })
     this.cb.instanceToDefId.set(instanceId, nextDef.id)
@@ -1850,6 +1903,18 @@ export class NeutralItemPanel extends Container {
     }
     const targetDef = getItemDefById(placed.defId)
     if (!targetDef || !isValidNeutralStoneTarget(sourceDef, targetDef)) return false
+
+    if (isEnchantmentStoneName(sourceDef.name_cn)) {
+      const enchantKey = getEnchantmentKeyByStoneName(sourceDef.name_cn)
+      if (!enchantKey) return false
+      this.cb.setInstanceEnchantment(target.instanceId, enchantKey)
+      const targetView = target.zone === 'battle' ? this.ctx.battleView : this.ctx.backpackView
+      targetView?.setItemEnchantment(target.instanceId, enchantKey)
+      const display = getItemEnchantmentDisplay(enchantKey)
+      this.cb.showHintToast('no_gold_buy', `${sourceDef.name_cn}：${targetDef.name_cn}获得${display.nameCn}`, 0x9be5ff)
+      this.cb.refreshShopUI()
+      return true
+    }
 
     const targetArch = toSkillArchetype(getPrimaryArchetype(targetDef.tags))
     if (targetArch !== 'warrior' && targetArch !== 'archer' && targetArch !== 'assassin') return false
@@ -2120,6 +2185,14 @@ function _neutralRandomCategoryOfKind(kind: NeutralSpecialKind): NeutralRandomCa
     || kind === 'assassin_stone'
     || kind === 'gold_morph_stone'
     || kind === 'diamond_morph_stone'
+    || kind === 'damage_enchant_stone'
+    || kind === 'shield_enchant_stone'
+    || kind === 'heal_enchant_stone'
+    || kind === 'shiny_enchant_stone'
+    || kind === 'haste_enchant_stone'
+    || kind === 'slow_enchant_stone'
+    || kind === 'freeze_enchant_stone'
+    || kind === 'immune_enchant_stone'
     || kind === 'raw_stone'
   ) return 'stone'
   if (kind === 'skill_scroll' || kind === 'shop_scroll' || kind === 'event_scroll' || kind === 'blank_scroll') return 'scroll'
