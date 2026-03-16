@@ -1552,7 +1552,8 @@ export function ensureStarterClassSelection(
     ctx.starterClass = selected
     ctx.starterGranted = true
     ctx.starterBattleGuideShown = false
-    if (selected === 'hero9') {
+    if (selected === 'hero9' && !PvpContext.isActive()) {
+      // PVP 模式下血量由 PvpSession.playerHps 管理，不修改 PVE 的 lifeState
       const life = getLifeState()
       const baseMax = Math.max(1, Math.round(life.max))
       const nextMax = baseMax + 10
@@ -1560,7 +1561,7 @@ export function ensureStarterClassSelection(
     }
     callbacks.seedInitialUnlockPoolByStarterClass(selected)
     callbacks.grantHeroStartDayEffectsIfNeeded()
-    callbacks.captureAndSave()
+    callbacks.captureAndSave() // PVP 模式下 makeCaptureAndSave 内部已有守卫，不会写 localStorage
     if (ctx.classSelectOverlay?.parent) ctx.classSelectOverlay.parent.removeChild(ctx.classSelectOverlay)
     ctx.classSelectOverlay?.destroy({ children: true })
     ctx.classSelectOverlay = null

@@ -122,7 +122,16 @@ export class BattleSettlement {
   resolve(day: number, engine: CombatEngine): void {
     if (this.settlementResolved) return
     const result = engine.getResult()
-    const winner = result?.winner ?? 'draw'
+    const localWinner = result?.winner ?? 'draw'
+    // PVP 模式：优先使用 Host 权威结果，彻底消除双端不一致
+    // 若权威结果尚未到达（极端竞态），则 fallback 到本地结果
+    // 注意：必须在 recordBattleResult 之前读取，因为 recordBattleResult 会消费并清空权威结果
+    const winner = PvpContext.isActive()
+      ? (PvpContext.getAuthoritativeWinner() ?? localWinner)
+      : localWinner
+    if (PvpContext.isActive() && PvpContext.getAuthoritativeWinner() === null) {
+      console.warn('[BattleSettlement] PVP 权威结果未到达，使用本地结果:', localWinner)
+    }
     const before = getLifeState()
     const roundLifeDamage = Math.max(1, Math.min(8, Math.round(day)))
     const trophyTarget = getGameCfg().runRules?.trophyWinsToFinalVictory ?? 10
@@ -130,7 +139,7 @@ export class BattleSettlement {
     const winStreakBefore = getPlayerWinStreakState().count
     // PVP 模式：记录胜负，不修改 PVE 生命/奖杯
     if (PvpContext.isActive()) {
-      PvpContext.recordBattleResult(winner, engine.getResult()?.survivingDamage ?? 1)
+      PvpContext.recordBattleResult(localWinner, engine.getResult()?.survivingDamage ?? 1)
     }
     const lifeResult = (!PvpContext.isActive() && winner === 'enemy')
       ? applyLifeDamageWithLastStand(roundLifeDamage)

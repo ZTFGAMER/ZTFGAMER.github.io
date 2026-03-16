@@ -9,6 +9,7 @@ import type { PvpPlayer, PvpMsgToClient, PvpMsgToHost, PvpMode } from '@/pvp/Pvp
 import { getOpponentFromAlive } from '@/pvp/PvpTypes'
 import type { BattleSnapshotBundle } from '@/battle/BattleSnapshotStore'
 import { getConfig } from '@/core/DataLoader'
+import { CombatEngine } from '@/battle/CombatEngine'
 
 function getDefaultCountdownMs(): number {
   return getConfig().pvpRules?.createRoomCountdownMs ?? 120_000
@@ -34,7 +35,7 @@ export class PvpRoom {
   // 游戏是否已开始（开始后锁定房间，拒绝迟到加入）
   private gameStarted = false
   // Per-day snapshot collection (host only)
-  // 存储每位玩家当天最新提交的快照（shop1→shop2→shop3 滚动覆盖，最新优先）
+  // 存储每位玩家当天最新提交的快照（最新快照覆盖旧快照）
   private latestDaySnapshots = new Map<number, Map<number, BattleSnapshotBundle>>()
   private dayCountdownTimer: ReturnType<typeof setTimeout> | null = null
   // 已对每位玩家派发过对手快照的记录（day → Set<playerIndex>），防止重复派发
@@ -67,11 +68,15 @@ export class PvpRoom {
   private shopEnteredByDay = new Map<number, Set<number>>()
   // sync-a：已触发过倒计时的天数，防止重复广播
   private countdownStartedDays = new Set<number>()
+  // sync-a：已触发过 battle_sync_start 的天数，防止 stateCheckInterval 重复广播
+  private syncStartFiredDays = new Set<number>()
   // 周期性状态重检定时器：每 60s 重新评估所有活跃天的就绪状态
   // 对齐 relay 心跳周期（30s），兜底 relay close 通知偶发丢失的情况
   private stateCheckInterval: ReturnType<typeof setInterval> | null = null
+  // Host 权威战斗结果：day → playerIndex → 该玩家从规范视角看到的 winner
+  private authoritativeResultsByDay = new Map<number, Map<number, 'player' | 'enemy' | 'draw'>>()
 
-  pvpMode: PvpMode = 'async'
+  pvpMode: PvpMode = 'sync-a'
   // Mode A: sync-ready tracking per day
   private daySyncReadyPlayers = new Map<number, Set<number>>() // day → set of playerIndex
   onBattleSyncStart?: (day: number) => void
@@ -82,7 +87,7 @@ export class PvpRoom {
   onGameStart?: (myIndex: number, totalPlayers: number) => void
   onDayReady?: (day: number, countdownMs: number, byeOpponentMap?: Record<number, number>) => void
   onPlayerStatusUpdate?: (day: number, readyIndices: number[]) => void
-  onOpponentSnapshot?: (day: number, snapshot: BattleSnapshotBundle, opponentPlayerIndex?: number) => void
+  onOpponentSnapshot?: (day: number, snapshot: BattleSnapshotBundle, opponentPlayerIndex?: number, authoritativeWinner?: 'player' | 'enemy' | 'draw', isEnemyViewpoint?: boolean) => void
   onGameOver?: (rankings: { nickname: string; wins: number | null; index: number }[]) => void
   onError?: (msg: string) => void
   onRoundSummary?: (day: number, hpMap: Record<number, number>, newlyEliminated: number[], snapshots: Record<number, BattleSnapshotBundle>, lastStandTriggered: number[]) => void
@@ -205,7 +210,13 @@ export class PvpRoom {
         const opponentSnap = this.dispatchedOpponentSnaps.get(msg.day)?.get(player.index)
         if (opponentSnap) {
           console.log('[PvpRoom] 迟到最终快照补发 day=' + msg.day + ' → player[' + player.index + '] ' + player.nickname)
-          this.sendToPlayer(player.index, { type: 'opponent_snapshot', day: msg.day, snapshot: opponentSnap })
+          const dayResults = this.authoritativeResultsByDay.get(msg.day)
+          const authWinner: 'player' | 'enemy' | 'draw' = dayResults?.get(player.index) ?? 'draw'
+          const aliveIndices = this.dayAliveIndices.get(msg.day) ?? []
+          const oppIdx = getOpponentFromAlive(player.index, aliveIndices, msg.day - 1)
+          const canonicalP = oppIdx >= 0 ? Math.min(player.index, oppIdx) : player.index
+          const isEnemy = oppIdx >= 0 && player.index !== canonicalP
+          this.sendToPlayer(player.index, { type: 'opponent_snapshot', day: msg.day, snapshot: opponentSnap, authoritativeWinner: authWinner, isEnemyViewpoint: isEnemy })
         }
         return
       }
@@ -311,7 +322,7 @@ export class PvpRoom {
         this.onPlayerStatusUpdate?.(msg.day, msg.readyIndices)
         break
       case 'opponent_snapshot':
-        this.onOpponentSnapshot?.(msg.day, msg.snapshot, msg.opponentPlayerIndex)
+        this.onOpponentSnapshot?.(msg.day, msg.snapshot, msg.opponentPlayerIndex, msg.authoritativeWinner, msg.isEnemyViewpoint)
         break
       case 'game_over':
         this.onGameOver?.(msg.rankings)
@@ -389,9 +400,9 @@ export class PvpRoom {
     this.latestDaySnapshots.set(day, new Map())
     this.dispatchedPlayersByDay.set(day, new Set())
 
-    // sync-a：预计算轮空配对，随 day_ready 下发，客户端商店阶段即可展示对手
+    // 预计算轮空配对，随 day_ready 下发，客户端商店阶段即可展示对手
     let byeOpponentMap: Record<number, number> | undefined
-    if (this.pvpMode === 'sync-a') {
+    {
       const aliveForDay = this._players
         .filter(p => !p.isAi && !this.eliminatedSet.has(p.index))
         .map(p => p.index)
@@ -429,7 +440,6 @@ export class PvpRoom {
 
   /** 玩家进入商店时上报（host 本地调用；客户端发消息给 host） */
   notifyShopEntered(day: number): void {
-    if (this.pvpMode !== 'sync-a') return
     if (this.isHost) {
       if (!this.shopEnteredByDay.has(day)) this.shopEnteredByDay.set(day, new Set())
       this.shopEnteredByDay.get(day)!.add(this._myIndex)
@@ -485,11 +495,10 @@ export class PvpRoom {
     this.hostStoreAndMaybeDispatch(0, day, snapshot, isFinal)
   }
 
-  /** 更新快照并在 isFinal 时分发（sync-a：等全员提交后统一分发；async：立即分发） */
+  /** 更新快照并在 isFinal 时等待全员提交后在 notifySyncReady 统一分发 */
   private hostStoreAndMaybeDispatch(playerIndex: number, day: number, snapshot: BattleSnapshotBundle, isFinal: boolean): void {
     this.tryApplyHeroHpBonus(playerIndex, snapshot)
 
-    // 始终更新 latestDaySnapshots（shop1→shop2→shop3 覆盖）
     const map = this.latestDaySnapshots.get(day) ?? new Map<number, BattleSnapshotBundle>()
     this.latestDaySnapshots.set(day, map)
     map.set(playerIndex, snapshot)
@@ -497,16 +506,8 @@ export class PvpRoom {
     console.log('[PvpRoom] 收到' + (isFinal ? '最终' : '中间') + '快照 day=' + day + ' player[' + playerIndex + '] isFinal=' + isFinal)
 
     if (isFinal) {
-      // 最终快照：更新昨日存档（供后续天数的兜底）
+      // 更新昨日存档（供后续天数的兜底）；等全员 sync-ready 后统一分发
       this.playerLastSnapshots.set(playerIndex, snapshot)
-
-      if (this.pvpMode === 'sync-a') {
-        // sync-a：不立即分发，等所有存活玩家提交后在 notifySyncReady 时统一分发
-        // 确保所有人拿到的都是当日最新阵容
-      } else {
-        // async：立即分发（先提交先战斗）
-        this.hostDispatchToPlayer(playerIndex, day)
-      }
     }
   }
 
@@ -593,15 +594,24 @@ export class PvpRoom {
     if (!this.dispatchedOpponentSnaps.has(day)) this.dispatchedOpponentSnaps.set(day, new Map())
     this.dispatchedOpponentSnaps.get(day)!.set(playerIndex, opponentSnap)
 
+    // 从权威结果中取出该玩家的胜负，以及是否需要 enemy 视角
+    // 规范视角：index 较小者为 player 侧（isEnemyViewpoint=false），较大者为 enemy 侧（isEnemyViewpoint=true）
+    const dayResults = this.authoritativeResultsByDay.get(day)
+    const authoritativeWinner: 'player' | 'enemy' | 'draw' = dayResults?.get(playerIndex) ?? 'draw'
+    const canonicalPlayerIdx = resolvedOpponentIdx >= 0 ? Math.min(playerIndex, resolvedOpponentIdx) : playerIndex
+    const isEnemyViewpoint = resolvedOpponentIdx >= 0 && playerIndex !== canonicalPlayerIdx
+
     if (playerIndex === 0) {
       // Host 自身触发放最后，防止同步场景跳转影响其他逻辑
-      this.onOpponentSnapshot?.(day, opponentSnap, resolvedOpponentIdx >= 0 ? resolvedOpponentIdx : undefined)
+      this.onOpponentSnapshot?.(day, opponentSnap, resolvedOpponentIdx >= 0 ? resolvedOpponentIdx : undefined, authoritativeWinner, isEnemyViewpoint)
     } else {
       this.sendToPlayer(playerIndex, {
         type: 'opponent_snapshot',
         day,
         snapshot: opponentSnap,
         opponentPlayerIndex: resolvedOpponentIdx >= 0 ? resolvedOpponentIdx : undefined,
+        authoritativeWinner,
+        isEnemyViewpoint,
       })
     }
   }
@@ -710,17 +720,97 @@ export class PvpRoom {
     this.broadcastToClients({ type: 'room_state', players: state, maxPlayers: this._maxPlayers })
   }
 
-  /** 检查在线存活玩家是否全员 sync-ready，若是则统一分发快照并广播开战 */
+  /** 检查在线存活玩家是否全员 sync-ready，若是则统一分发快照并广播开战（每天只触发一次） */
   private tryTriggerSyncStart(day: number): void {
     if (!this.isHost) return
+    if (this.syncStartFiredDays.has(day)) return  // 幂等：每天只广播一次 battle_sync_start
     const humanPlayers = this._players.filter((p) => !p.isAi && !this.eliminatedSet.has(p.index) && p.connected)
     if (humanPlayers.length > 0 && humanPlayers.every((p) => this.daySyncReadyPlayers.get(day)?.has(p.index))) {
       console.log('[PvpRoom] 所有在线玩家 sync-ready，统一分发快照 + 广播 battle_sync_start day=' + day)
+      this.syncStartFiredDays.add(day)
+      // 先跑权威战斗，结果存入 authoritativeResultsByDay[day]，再派发快照
+      this.runAuthoritativeBattles(day)
       for (const p of humanPlayers) {
         this.hostDispatchToPlayer(p.index, day)
       }
       this.broadcastToClients({ type: 'battle_sync_start', day })
       this.onBattleSyncStart?.(day)
+    }
+  }
+
+  /**
+   * Host 对当天所有配对各跑一次 CombatEngine（规范视角 + 交错排列），
+   * 结果写入 authoritativeResultsByDay[day]。
+   * 规范视角：每对取 playerIndex 较小者为 player 侧，较大者为 enemy 侧。
+   */
+  private runAuthoritativeBattles(day: number): void {
+    const latestMap = this.latestDaySnapshots.get(day)
+    if (!latestMap) return
+
+    const aliveIndices = this._players
+      .filter(p => !p.isAi && !this.eliminatedSet.has(p.index))
+      .map(p => p.index)
+      .sort((a, b) => a - b)
+
+    const resultsMap = new Map<number, 'player' | 'enemy' | 'draw'>()
+    this.authoritativeResultsByDay.set(day, resultsMap)
+
+    const processed = new Set<string>()
+    for (const playerIdx of aliveIndices) {
+      const opponentIdx = getOpponentFromAlive(playerIdx, aliveIndices, day - 1)
+      if (opponentIdx < 0) {
+        // 轮空：直接判赢，无需运行战斗
+        resultsMap.set(playerIdx, 'player')
+        continue
+      }
+      const pairKey = Math.min(playerIdx, opponentIdx) + '-' + Math.max(playerIdx, opponentIdx)
+      if (processed.has(pairKey)) continue
+      processed.add(pairKey)
+
+      // 规范视角：index 小的为 player 侧
+      const canonicalP = Math.min(playerIdx, opponentIdx)
+      const canonicalE = Math.max(playerIdx, opponentIdx)
+      const pSnap = latestMap.get(canonicalP) ?? this.playerLastSnapshots.get(canonicalP)
+      const eSnap = latestMap.get(canonicalE) ?? this.playerLastSnapshots.get(canonicalE)
+
+      if (!pSnap || !eSnap) {
+        resultsMap.set(canonicalP, 'draw')
+        resultsMap.set(canonicalE, 'draw')
+        console.warn('[PvpRoom] 权威战斗缺少快照 day=' + day + ' p[' + canonicalP + '] vs p[' + canonicalE + ']，判平局')
+        continue
+      }
+
+      const combinedSnap: BattleSnapshotBundle = {
+        ...pSnap,
+        day,
+        pvpEnemyEntities: eSnap.entities,
+        pvpEnemySkillIds: eSnap.ownerSkillIds ?? [],
+        pvpEnemyBackpackItemCount: eSnap.playerBackpackItemCount,
+        pvpEnemyGold: eSnap.playerGold,
+        pvpEnemyTrophyWins: eSnap.playerTrophyWins,
+        pvpEnemyBattleHp: eSnap.playerBattleHp,
+        pvpEnemyHeroId: eSnap.ownerHeroId,
+      }
+
+      const engine = new CombatEngine()
+      // 不使用交错排列：Host 模拟与规范 player（index 较小者）的本地模拟完全相同
+      // 保证规范 player 的本地结果始终与权威结果一致，避免出现"本地死亡却显示胜利"的情况
+      const result = engine.runHeadless(combinedSnap, {
+        playerSkillIds: pSnap.ownerSkillIds ?? [],
+        enemySkillIds: eSnap.ownerSkillIds ?? [],
+        playerBackpackItemCount: pSnap.playerBackpackItemCount,
+        playerGold: pSnap.playerGold,
+        playerTrophyWins: pSnap.playerTrophyWins,
+        enemyBackpackItemCount: eSnap.playerBackpackItemCount,
+        enemyGold: eSnap.playerGold,
+        enemyTrophyWins: eSnap.playerTrophyWins,
+      })
+
+      // canonicalP = player 侧；canonicalE = enemy 侧（结果取反）
+      resultsMap.set(canonicalP, result.winner)
+      resultsMap.set(canonicalE, result.winner === 'player' ? 'enemy' : result.winner === 'enemy' ? 'player' : 'draw')
+      const winnerId = result.winner === 'player' ? canonicalP : result.winner === 'enemy' ? canonicalE : -1
+      console.log('[PvpRoom] 权威战斗 day=' + day + ' p[' + canonicalP + '] vs p[' + canonicalE + '] → winner=' + (winnerId >= 0 ? 'p[' + winnerId + ']' : 'draw'))
     }
   }
 
@@ -895,5 +985,6 @@ export class PvpRoom {
     this.dispatchedPlayersByDay.clear()
     this.shopEnteredByDay.clear()
     this.countdownStartedDays.clear()
+    this.syncStartFiredDays.clear()
   }
 }

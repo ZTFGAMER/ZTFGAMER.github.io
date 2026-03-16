@@ -11,7 +11,7 @@ import { Container, Graphics, Text } from 'pixi.js'
 import { PvpRoom } from '@/pvp/PvpRoom'
 import { PvpContext } from '@/pvp/PvpContext'
 import { generateRoomCode } from '@/pvp/WsConnection'
-import type { PvpSession, PvpMode } from '@/pvp/PvpTypes'
+import type { PvpSession } from '@/pvp/PvpTypes'
 import { calcTotalDays } from '@/pvp/PvpTypes'
 import { registerRoom, unregisterRoom, updateRoomPlayers, fetchRooms } from '@/pvp/RoomRegistry'
 import type { RoomInfo } from '@/pvp/RoomRegistry'
@@ -30,8 +30,7 @@ let myNickname = ''
 let roomName = ''
 let statusText: Text | null = null
 let activeInput: PixiInputHandle | null = null
-let selectedMode: PvpMode = 'async'
-let modePreSelected = false  // 从主菜单直接带入模式时为 true，跳过模式选择页
+let activeHpInput: PixiInputHandle | null = null
 let searchPollTimer: ReturnType<typeof setInterval> | null = null
 
 function getPvpRules() { return getConfig().pvpRules }
@@ -44,6 +43,7 @@ let createRoomInitialHp = getPvpRules()?.initialHp ?? 30
 interface PixiInputHandle {
   container: Container
   getValue(): string
+  setValue(val: string): void
   focus(): void
   update(dt: number): void
   destroy(): void
@@ -57,6 +57,7 @@ function createPixiInput(
   designCx: number,
   designCy: number,
   w = 420,
+  filterFn?: (raw: string) => string,
 ): PixiInputHandle {
   const H = 72
   let value = ''
@@ -149,7 +150,10 @@ function createPixiInput(
   window.addEventListener('resize', repositionHtml)
 
   hiddenEl.addEventListener('input', () => {
-    value = hiddenEl.value.slice(0, maxLen)
+    let raw = hiddenEl.value.slice(0, maxLen)
+    if (filterFn) raw = filterFn(raw)
+    value = raw
+    hiddenEl.value = value
     refreshText()
   })
   hiddenEl.addEventListener('keydown', (e) => {
@@ -170,9 +174,17 @@ function createPixiInput(
     if (focused) cursorG.visible = !cursorG.visible
   }, 520)
 
+  function setValueFn(val: string): void {
+    const filtered = filterFn ? filterFn(val.slice(0, maxLen)) : val.slice(0, maxLen)
+    value = filtered
+    hiddenEl.value = value
+    refreshText()
+  }
+
   return {
     container: con,
     getValue: () => value,
+    setValue: setValueFn,
     focus: () => { hiddenEl.focus() },
     update: (_dt: number) => { /* interval 驱动 */ },
     destroy: () => {
@@ -218,6 +230,8 @@ function makeBtn(label: string, w: number, color: number, borderColor = 0, onCli
 function clearRoot(): void {
   activeInput?.destroy()
   activeInput = null
+  activeHpInput?.destroy()
+  activeHpInput = null
   if (root) {
     root.removeChildren()
     statusText = null
@@ -274,7 +288,7 @@ function setStatus(msg: string): void {
 function drawNicknameView(): void {
   clearRoot()
   drawPageBg()
-  drawPageTitle(modePreSelected ? pvpModeLabel(selectedMode) : 'PVP 联机对战', modePreSelected ? '设置昵称后即可匹配' : '选择对战模式')
+  drawPageTitle('PVP 同步对战', '设置昵称后即可匹配')
 
   if (!root) return
 
@@ -306,7 +320,7 @@ function drawNicknameView(): void {
   // PixiJS 原生输入框（designCx=320, designCy=cardConY+30=CANVAS_H/2-60+30）
   const inp = createPixiInput('输入昵称（最多8字）', 8, (val) => {
     myNickname = val
-    modePreSelected ? drawMainView() : drawModeSelectView()
+    drawMainView()
   }, CANVAS_W / 2, CANVAS_H / 2 - 30, 400)
   inp.container.x = 0
   inp.container.y = 30
@@ -316,7 +330,7 @@ function drawNicknameView(): void {
   // 确认按钮
   const confirmBtn = makeBtn('确认', 280, 0x163a22, 0x4caf50, () => {
     const val = inp.getValue().trim()
-    if (val) { myNickname = val; modePreSelected ? drawMainView() : drawModeSelectView() }
+    if (val) { myNickname = val; drawMainView() }
   })
   confirmBtn.x = 0
   confirmBtn.y = 140
@@ -342,11 +356,6 @@ function drawNicknameView(): void {
 // ----------------------------------------------------------------
 // 搜索房间视图
 // ----------------------------------------------------------------
-function pvpModeShortLabel(mode: string): string {
-  if (mode === 'sync-a') return '同步'
-  return '异步'
-}
-
 // ----------------------------------------------------------------
 // 创建房间设置视图（填房间名后确认创建）
 // ----------------------------------------------------------------
@@ -370,27 +379,36 @@ function drawCreateRoomView(): void {
   root.addChild(inp.container)
   activeInput = inp
 
-  // 血量步进器
+  // 血量设置（可手动输入 + 步进按钮）
   const hpLabelT = makeText('初始血量', 24, 0x99aabb)
   hpLabelT.anchor.set(0.5)
   hpLabelT.x = CANVAS_W / 2
   hpLabelT.y = 436
   root.addChild(hpLabelT)
 
-  const hpCon = new Container()
-  hpCon.x = CANVAS_W / 2
-  hpCon.y = 496
+  // 手动输入框（仅允许数字，最多3位）
+  const hpInp = createPixiInput(
+    '血量',
+    3,
+    (val) => {
+      const n = parseInt(val, 10)
+      if (!isNaN(n) && n >= 1) createRoomInitialHp = Math.min(999, n)
+    },
+    CANVAS_W / 2,
+    496,
+    150,
+    (raw) => raw.replace(/\D/g, ''),
+  )
+  hpInp.setValue(String(createRoomInitialHp))
+  hpInp.container.x = CANVAS_W / 2
+  hpInp.container.y = 496
+  root.addChild(hpInp.container)
+  activeHpInput = hpInp
 
-  const hpBg = new Graphics()
-  hpBg.roundRect(-130, -30, 260, 60, 12).fill({ color: 0x111828 })
-  hpBg.roundRect(-130, -30, 260, 60, 12).stroke({ color: 0x2a3a5c, width: 1.5 })
-  hpCon.addChild(hpBg)
-
-  const hpValT = makeText(String(createRoomInitialHp), 32, 0xffd86b, true)
-  hpValT.anchor.set(0.5)
-  hpValT.x = 0
-  hpValT.y = 0
-  hpCon.addChild(hpValT)
+  // +/- 步进按钮
+  const hpBtnCon = new Container()
+  hpBtnCon.x = CANVAS_W / 2
+  hpBtnCon.y = 496
 
   function makeStepBtn(label: string, dx: number, delta: number): Container {
     const btn = new Container()
@@ -406,19 +424,24 @@ function drawCreateRoomView(): void {
     btn.eventMode = 'static'
     btn.cursor = 'pointer'
     btn.on('pointerdown', () => {
-      createRoomInitialHp = Math.max(1, createRoomInitialHp + delta)
-      hpValT.text = String(createRoomInitialHp)
+      const cur = parseInt(hpInp.getValue(), 10)
+      createRoomInitialHp = Math.max(1, Math.min(999, (isNaN(cur) ? createRoomInitialHp : cur) + delta))
+      hpInp.setValue(String(createRoomInitialHp))
     })
     btn.on('pointerover', () => { btn.alpha = 0.75 })
     btn.on('pointerout', () => { btn.alpha = 1 })
     return btn
   }
 
-  hpCon.addChild(makeStepBtn('−', -96, -1))
-  hpCon.addChild(makeStepBtn('+', 96, 1))
-  root.addChild(hpCon)
+  hpBtnCon.addChild(makeStepBtn('−', -110, -1))
+  hpBtnCon.addChild(makeStepBtn('+', 110, 1))
+  root.addChild(hpBtnCon)
 
-  const confirmBtn = makeBtn('确认创建', PANEL_W - 60, 0x163a22, 0x4caf50, handleCreateRoom)
+  const confirmBtn = makeBtn('确认创建', PANEL_W - 60, 0x163a22, 0x4caf50, () => {
+    const n = parseInt(activeHpInput?.getValue() ?? '', 10)
+    if (!isNaN(n) && n >= 1) createRoomInitialHp = Math.min(999, n)
+    handleCreateRoom()
+  })
   confirmBtn.x = CANVAS_W / 2
   confirmBtn.y = 580
   root.addChild(confirmBtn)
@@ -472,12 +495,6 @@ function drawSearchRoomsView(rooms: RoomInfo[] = [], loading = true): void {
       hostT.y = cardY + 32
       root!.addChild(hostT)
 
-      const modeT = makeText(pvpModeShortLabel(room.mode), 18, 0x5b8def)
-      modeT.anchor.set(0, 0.5)
-      modeT.x = CANVAS_W / 2 - 236
-      modeT.y = cardY + 70
-      root!.addChild(modeT)
-
       const countT = makeText(`${room.currentPlayers}/${room.maxPlayers}人`, 20, 0x99bbaa)
       countT.anchor.set(0, 0.5)
       countT.x = CANVAS_W / 2 - 236 + 100
@@ -524,85 +541,17 @@ function startSearchPoll(): void {
 }
 
 // ----------------------------------------------------------------
-// 模式选择视图
-// ----------------------------------------------------------------
-function drawModeSelectView(): void {
-  clearRoot()
-  drawPageBg()
-  drawPageTitle('选择对战模式', `昵称：${myNickname}`)
-
-  if (!root) return
-
-  const modes: { mode: PvpMode; label: string; sub: string; color: number; border: number }[] = [
-    { mode: 'async', label: '巴扎对战（伪）', sub: '野怪闯关·异步联机', color: 0x12213a, border: 0x5b8def },
-    { mode: 'sync-a', label: '同步对战', sub: '实时联机·同步对战', color: 0x1a2a12, border: 0x4caf50 },
-  ]
-
-  modes.forEach((m, i) => {
-    const y = 360 + i * 148
-    const active = m.mode === selectedMode
-    const con = new Container()
-    con.x = CANVAS_W / 2
-    con.y = y
-
-    const bg = new Graphics()
-    if (active) bg.roundRect(-250, -58, 500, 116, 18).fill({ color: m.border, alpha: 0.18 })
-    bg.roundRect(-248, -56, 496, 112, 16).fill({ color: m.color })
-    bg.roundRect(-248, -56, 496, 112, 16).stroke({ color: active ? m.border : 0x2a3a5c, width: active ? 2.5 : 1.5 })
-    con.addChild(bg)
-
-    const label = makeText(m.label, 30, active ? 0xffd86b : 0xddeeff, true)
-    label.anchor.set(0.5, 0.5)
-    label.y = -14
-    con.addChild(label)
-
-    const subT = makeText(m.sub, 18, active ? 0xaaccee : 0x445566)
-    subT.anchor.set(0.5, 0.5)
-    subT.y = 24
-    con.addChild(subT)
-
-    if (active) {
-      const checkT = makeText('✓', 26, m.border, true)
-      checkT.anchor.set(1, 0.5)
-      checkT.x = 226
-      checkT.y = 0
-      con.addChild(checkT)
-    }
-
-    con.eventMode = 'static'
-    con.cursor = 'pointer'
-    con.on('pointerdown', () => { selectedMode = m.mode; drawModeSelectView() })
-    root!.addChild(con)
-  })
-
-  const confirmBtn = makeBtn('确认 →', PANEL_W - 60, 0x163a22, 0x4caf50, drawMainView)
-  confirmBtn.x = CANVAS_W / 2
-  confirmBtn.y = CANVAS_H - 240
-  root.addChild(confirmBtn)
-
-  const backBtn = makeBtn('← 返回修改昵称', 260, 0x1c1c2e, 0x334466, drawNicknameView)
-  backBtn.x = CANVAS_W / 2
-  backBtn.y = CANVAS_H - 140
-  root.addChild(backBtn)
-}
-
-function pvpModeLabel(mode: PvpMode): string {
-  if (mode === 'sync-a') return '即时同步对战'
-  return '巴扎异步对战'
-}
-
-// ----------------------------------------------------------------
 // 主操作视图
 // ----------------------------------------------------------------
 function drawMainView(): void {
   clearRoot()
   drawPageBg()
-  drawPageTitle(pvpModeLabel(selectedMode), '创建或加入一个房间')
+  drawPageTitle('同步对战', '创建或加入一个房间')
 
   if (!root) return
 
-  // 紧凑信息行：昵称 · 模式（只读，无操作入口）
-  const infoT = makeText(`${myNickname}  ·  ${pvpModeLabel(selectedMode)}`, 18, 0x556688)
+  // 昵称信息行
+  const infoT = makeText(myNickname, 18, 0x556688)
   infoT.anchor.set(0.5)
   infoT.x = CANVAS_W / 2
   infoT.y = 228
@@ -764,7 +713,7 @@ function drawClientWaitingView(): void {
 async function handleCreateRoom(): Promise<void> {
   roomCode = generateRoomCode()
   pvpRoom = new PvpRoom()
-  pvpRoom.pvpMode = selectedMode
+  pvpRoom.pvpMode = 'sync-a'
   pvpRoom.onRoomStateChange = () => {
     drawHostWaitingView()
     updateRoomPlayers(roomCode, pvpRoom!.players.filter(p => !p.isAi).length).catch(() => {})
@@ -775,7 +724,7 @@ async function handleCreateRoom(): Promise<void> {
       myIndex, totalPlayers, players: pvpRoom!.players,
       totalDays: calcTotalDays(totalPlayers),
       currentDay: 1, wins: 0, dayResults: {},
-      pvpMode: selectedMode,
+      pvpMode: 'sync-a',
       playerHps: {},
       eliminatedPlayers: [],
       initialHp: createRoomInitialHp,
@@ -786,7 +735,7 @@ async function handleCreateRoom(): Promise<void> {
   try {
     await pvpRoom.createRoom(roomCode, myNickname, maxPlayers(), createRoomInitialHp)
     console.log('[PvpLobby] 房间已创建 code=' + roomCode)
-    registerRoom({ roomId: roomCode, nickname: myNickname, roomName: roomName || myNickname, maxPlayers: maxPlayers(), currentPlayers: 1, mode: selectedMode }).catch(() => {})
+    registerRoom({ roomId: roomCode, nickname: myNickname, roomName: roomName || myNickname, maxPlayers: maxPlayers(), currentPlayers: 1, mode: 'sync-a' }).catch(() => {})
     drawHostWaitingView()
   } catch (e) {
     setStatus(`创建房间失败：${e instanceof Error ? e.message : String(e)}`)
@@ -799,7 +748,7 @@ async function handleJoinRoom(code: string): Promise<void> {
   const upperCode = code.toUpperCase().trim()
   if (upperCode.length < 4) return
   pvpRoom = new PvpRoom()
-  pvpRoom.pvpMode = selectedMode
+  pvpRoom.pvpMode = 'sync-a'
   pvpRoom.onRoomStateChange = () => { drawClientWaitingView() }
   pvpRoom.onError = (msg) => { setStatus(`加入失败：${msg}`) }
   pvpRoom.onGameStart = (myIndex, totalPlayers) => {
@@ -807,7 +756,7 @@ async function handleJoinRoom(code: string): Promise<void> {
       myIndex, totalPlayers, players: pvpRoom!.players,
       totalDays: calcTotalDays(totalPlayers),
       currentDay: 1, wins: 0, dayResults: {},
-      pvpMode: selectedMode,
+      pvpMode: 'sync-a',
       playerHps: {},
       eliminatedPlayers: [],
       initialHp: pvpRoom!.initialHp,
@@ -834,11 +783,6 @@ function handleStartGame(): void {
 // ----------------------------------------------------------------
 // Scene 接口
 // ----------------------------------------------------------------
-/** 从主菜单预设模式后直接进入大厅（跳过模式选择页） */
-export function setPvpLobbyMode(mode: PvpMode): void {
-  selectedMode = mode
-  modePreSelected = true
-}
 
 export const PvpLobbyScene: Scene = {
   name: 'pvp-lobby',

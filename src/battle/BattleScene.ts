@@ -92,6 +92,7 @@ let battleSpeed = 1
 let battleDay = 1
 // PVP sync mode state
 let syncAStarted = false        // Mode A: true after sync_start received
+let earlyReportDone = false     // 本场结算面板已触发提前上报，防止重复调用
 let enteredSnapshot: ReturnType<typeof getBattleSnapshot> = null
 const transition = new BattleTransition()
 const settlement = new BattleSettlement()
@@ -834,7 +835,7 @@ export const BattleScene: Scene = {
     try {
       const snap = getBattleSnapshot()
       const pvpEnemyHeroId = snap?.pvpEnemyHeroId
-      const isPvpRealBattle = PvpContext.isActive() && !PvpContext.isWildRound()
+      const isPvpRealBattle = PvpContext.isActive()
       const enemyHeroId = isPvpRealBattle && pvpEnemyHeroId && (HERO_VISUAL_IDS as readonly string[]).includes(pvpEnemyHeroId)
         ? pvpEnemyHeroId as HeroVisualId
         : randomHeroVisualId()
@@ -1006,8 +1007,14 @@ export const BattleScene: Scene = {
       enemyDraftEnabled: getDebugCfg('enemyDraftEnabled'),
       enemyDraftSameArchetypeBias: getDebugCfg('enemyDraftSameArchetypeBias'),
     })
+    // PVP 模式：优先使用快照的 ownerSkillIds（与 Host 权威战斗保持完全相同的输入），
+    // 避免 skillUI.getPickedSkills()（来自 localStorage）与 ownerSkillIds（来自快照扫描）不一致
+    // 导致本地动画结果与权威结果偏差。PVE 模式仍回退到 skillUI.
+    const playerSkillIds = (PvpContext.isActive() && snapshot.ownerSkillIds != null)
+      ? snapshot.ownerSkillIds
+      : skillUI!.getPickedSkills().map((s) => s.id)
     engine.start(snapshot, {
-      playerSkillIds: skillUI!.getPickedSkills().map((s) => s.id),
+      playerSkillIds,
       enemySkillIds: snapshot.pvpEnemySkillIds ?? [],
       enemyBackpackItemCount: snapshot.pvpEnemyBackpackItemCount,
       enemyGold: snapshot.pvpEnemyGold,
@@ -1288,6 +1295,7 @@ export const BattleScene: Scene = {
     damageStats.reset()
     // PVP sync cleanup
     syncAStarted = false
+    earlyReportDone = false
     engine = null
     console.log('[BattleScene] 离开战斗场景')
   },
@@ -1376,6 +1384,14 @@ export const BattleScene: Scene = {
           } else {
             settlementRevealAtMs = null
           }
+        }
+        // PVP：结算面板首次显示时立即提前上报本轮结果，不等待按钮点击
+        if (settlement.isResolved() && PvpContext.isActive() && !earlyReportDone) {
+          earlyReportDone = true
+          PvpContext.reportBattleResultEarly(battleDay)
+          // reportBattleResultEarly 可能同步触发场景切换（如被淘汰时）导致 teardown 执行
+          // 此时 battleEndMask 已被置 null，需提前返回避免报错
+          if (!battleEndMask) return
         }
         battleEndMask.visible = settlement.isResolved()
         if (battleEndMask.visible) {

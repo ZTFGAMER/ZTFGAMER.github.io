@@ -46,34 +46,32 @@ export function setupEventBusAndPvpCallbacks(
         ctx.pendingBattleTransition = true
         ctx.pendingAdvanceToNextDay = true
         ctx.pvpReadyLocked = true
-        if (PvpContext.getPvpMode() === 'sync-a') callbacks.pvpShowWaitingPanel(stage)
+        callbacks.pvpShowWaitingPanel(stage)
         PvpContext.onPlayerReady()
       }
     })
     PvpContext.notifyShopEntered()
-    if (PvpContext.getPvpMode() === 'sync-a') {
-      ctx.pvpUrgeCooldownSet.clear()
-      PvpContext.onUrgeReceived = (fromPlayerIndex, fromNickname) => {
-        const session = PvpContext.getSession()
-        const fromPlayer = session?.players.find(p => p.index === fromPlayerIndex)
-        const name = fromPlayer?.nickname ?? fromNickname
-        callbacks.pvpShowEggSplatOverlay(name)
-      }
-      PvpContext.onBeforeBattleTransition = () => {
-        if (ctx.pvpWaitingPanel) {
-          ctx.pvpWaitingPanel.parent?.removeChild(ctx.pvpWaitingPanel)
-          ctx.pvpWaitingPanel.destroy({ children: true })
-          ctx.pvpWaitingPanel = null
-        }
-        if (ctx.pvpBackpackReturnBtn) {
-          ctx.pvpBackpackReturnBtn.parent?.removeChild(ctx.pvpBackpackReturnBtn)
-          ctx.pvpBackpackReturnBtn.destroy({ children: true })
-          ctx.pvpBackpackReturnBtn = null
-        }
-      }
-      PvpContext.onEliminatedPlayersUpdate = () => callbacks.pvpRefreshWaitingPanel()
-      PvpContext.onOpponentKnown = () => callbacks.pvpRefreshWaitingPanel()
+    ctx.pvpUrgeCooldownSet.clear()
+    PvpContext.onUrgeReceived = (fromPlayerIndex, fromNickname) => {
+      const session = PvpContext.getSession()
+      const fromPlayer = session?.players.find(p => p.index === fromPlayerIndex)
+      const name = fromPlayer?.nickname ?? fromNickname
+      callbacks.pvpShowEggSplatOverlay(name)
     }
+    PvpContext.onBeforeBattleTransition = () => {
+      if (ctx.pvpWaitingPanel) {
+        ctx.pvpWaitingPanel.parent?.removeChild(ctx.pvpWaitingPanel)
+        ctx.pvpWaitingPanel.destroy({ children: true })
+        ctx.pvpWaitingPanel = null
+      }
+      if (ctx.pvpBackpackReturnBtn) {
+        ctx.pvpBackpackReturnBtn.parent?.removeChild(ctx.pvpBackpackReturnBtn)
+        ctx.pvpBackpackReturnBtn.destroy({ children: true })
+        ctx.pvpBackpackReturnBtn = null
+      }
+    }
+    PvpContext.onEliminatedPlayersUpdate = () => callbacks.pvpRefreshWaitingPanel()
+    PvpContext.onOpponentKnown = () => callbacks.pvpRefreshWaitingPanel()
   }
 
   ctx.battlePassivePrevStats.clear()

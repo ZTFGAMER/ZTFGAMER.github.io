@@ -16,6 +16,8 @@ let fadeIn = true
 let renderedRankings: object | null = null
 /** 已渲染时的 myEliminationRank；用于检测 round_summary 确认淘汰后刷新（预判路径） */
 let renderedElimRank: number | undefined = undefined
+/** 已渲染时的存活人数；用于房主等待页面实时更新"还有 N 名玩家正在对战" */
+let renderedAliveCount: number = -1
 
 const RANK_LABELS  = ['第一名', '第二名', '第三名', '第四名']
 const RANK_COLORS  = [0xffd700, 0xc0c0c0, 0xcd7f32, 0x778899]
@@ -247,6 +249,54 @@ function buildContent(): void {
     root.addChild(summaryT)
   }
 
+  // ── 房主被淘汰但对局仍在进行：隐藏按钮，显示等待提示 ──
+  const isHostManaging = isEliminatedView && PvpContext.isHost() && !hasRealRankings
+  if (isHostManaging) {
+    const aliveCount = session
+      ? session.players.filter(p => !p.isAi && !session.eliminatedPlayers.includes(p.index)).length
+      : 0
+
+    const bannerY = CANVAS_H - 340
+    const bannerW = 540
+    const bannerH = 220
+
+    const bannerBg = new Graphics()
+    bannerBg.roundRect(CANVAS_W / 2 - bannerW / 2, bannerY, bannerW, bannerH, 16)
+      .fill({ color: 0x1a1000 })
+    bannerBg.roundRect(CANVAS_W / 2 - bannerW / 2, bannerY, bannerW, bannerH, 16)
+      .stroke({ color: 0xcc8800, width: 2, alpha: 0.5 })
+    root.addChild(bannerBg)
+
+    const aliveT = new Text({
+      text: `还有 ${aliveCount} 名玩家正在对战`,
+      style: { fill: 0xffd86b, fontSize: 26, fontWeight: 'bold', align: 'center' },
+    })
+    aliveT.anchor.set(0.5, 0)
+    aliveT.x = CANVAS_W / 2
+    aliveT.y = bannerY + 22
+    root.addChild(aliveT)
+
+    const roleT = new Text({
+      text: '你是房间管理员，正在为其他玩家\n维持房间连接，请等待对局结束',
+      style: { fill: 0xccaa66, fontSize: 22, align: 'center', lineHeight: 34 },
+    })
+    roleT.anchor.set(0.5, 0)
+    roleT.x = CANVAS_W / 2
+    roleT.y = bannerY + 64
+    root.addChild(roleT)
+
+    const warnT = new Text({
+      text: '⚠ 请勿刷新或关闭页面\n否则其他玩家的对局将被中断',
+      style: { fill: 0xff7744, fontSize: 20, fontWeight: 'bold', align: 'center', lineHeight: 30 },
+    })
+    warnT.anchor.set(0.5, 0)
+    warnT.x = CANVAS_W / 2
+    warnT.y = bannerY + 148
+    root.addChild(warnT)
+
+    return
+  }
+
   // ── 按钮 ──────────────────────────────────────────────
   const btnY = CANVAS_H - 240
 
@@ -278,6 +328,7 @@ export const PvpResultScene: Scene = {
     fadeIn = true
     renderedRankings = PvpContext.getSession()?.rankings ?? null
     renderedElimRank = PvpContext.getSession()?.myEliminationRank
+    renderedAliveCount = -1
 
     buildContent()
 
@@ -293,6 +344,7 @@ export const PvpResultScene: Scene = {
     }
     renderedRankings = null
     renderedElimRank = undefined
+    renderedAliveCount = -1
   },
 
   update(dt: number) {
@@ -317,6 +369,17 @@ export const PvpResultScene: Scene = {
       fadeAlpha = 0
       fadeIn = true
       return
+    }
+
+    // 房主等待页：检测存活人数变化（有人被淘汰时刷新提示）
+    const sess = PvpContext.getSession()
+    if (PvpContext.isHost() && sess && !sess.rankings && sess.myEliminationRank !== undefined) {
+      const currentAlive = sess.players.filter(p => !p.isAi && !sess.eliminatedPlayers.includes(p.index)).length
+      if (currentAlive !== renderedAliveCount) {
+        renderedAliveCount = currentAlive
+        buildContent()
+        return
+      }
     }
 
     if (fadeIn) {

@@ -9,15 +9,9 @@ import { getBattleSnapshot, setBattleSnapshot } from '@/battle/BattleSnapshotSto
 import { consumeBattleOutcome } from '@/battle/BattleOutcomeStore'
 import { setPvpPlayerProgressOverride } from '@/core/RunState'
 
-import { getDailyGoldForDay } from '@/shop/ShopManager'
-import type { PvpSession, PvpDayPhase } from '@/pvp/PvpTypes'
+import type { PvpSession } from '@/pvp/PvpTypes'
 import type { PvpRoom } from '@/pvp/PvpRoom'
 import type { BattleSnapshotBundle } from '@/battle/BattleSnapshotStore'
-
-// 野怪轮胜利奖励系数（相对日收入）：两次野怪各 0.5，满奖励=1× 日收入，从 pvp_rules 读取
-function getWildWinBonusRatio(): number {
-  return getConfig().pvpRules?.wildWinBonusRatio ?? 0.5
-}
 
 // ShopScene 注册：倒计时结束时自动构建并提交快照
 let autoSubmitCallback: (() => void) | null = null
@@ -41,22 +35,28 @@ let pendingSyncStartDay = 0  // battle_sync_start 比 opponent_snapshot 先到�
 // sync-a: 当前轮各玩家就绪状态
 let syncReadyIndices: number[] = []
 
-// ---------- 每天阶段状态 ----------
-// shop1 → wild1 → shop2 → wild2 → shop3 → pvp
-let currentDayPhase: PvpDayPhase = 'shop1'
-// 野怪轮胜利后待发放的额外金币（ShopScene 进入时消费）
-let pendingWildGoldBonus = 0
-
 // HP system state
 let pendingSurvivingDamage = 0
 let pendingRoundWinner: 'player' | 'enemy' | 'draw' = 'draw'
+// 提前上报后 pendingSurvivingDamage 被清零，用此变量在 onBattleComplete 时仍能预判淘汰
+let lastReportedSurvivingDamage = 0
 
 // 上局所有玩家快照（round_summary 下发，用于商店阶段查看阵容）
 let lastPlayerSnapshots: Record<number, import('@/battle/BattleSnapshotStore').BattleSnapshotBundle> = {}
 
+// Host 权威战斗结果（从 opponent_snapshot 消息获得，结算时优先使用）
+let pendingAuthoritativeWinner: 'player' | 'enemy' | 'draw' | null = null
+
 // sync-a 轮空预分配缓存：day_ready 可能早于 onBattleComplete 到达，需在 onBattleComplete 后补回
 let cachedByeOpponent: { day: number; opponentIdx: number } | undefined = undefined
 
+// 提前上报优化：结算面板显示时立即上报，避免等待玩家点击按钮才上报导致卡顿
+let preReportedDay = 0                       // 已提前上报的天数（0 = 未上报）
+let hostReadyNextDay = 0                     // host onRoundSummary 已处理的下一天（0 = 未就绪）
+let hostClickedBeforeRoundSummary = false    // host 先点击按钮但 round_summary 未到时的标志
+// round_summary 到达天数记录：防止 round_summary 比按钮点击更早到达时，onBattleComplete 使用
+// 已更新的 post-round HP/lastStand 状态做出错误的本地淘汰预判
+let lastRoundSummaryDay = 0
 
 // ----------------------------------------------------------------
 // 公开 API（ShopScene / BattleScene 调用）
@@ -95,8 +95,6 @@ export const PvpContext = {
     session = pvpSession
     if (!session.lastStandUsedPlayers) session.lastStandUsedPlayers = {}
     session.pendingLastStandReward = false
-    currentDayPhase = 'shop1'
-    pendingWildGoldBonus = 0
     // PVP 模式使用独立内存进度，从 Lv1 开始，不污染冒险模式存档
     setPvpPlayerProgressOverride({ level: 1, exp: 0 })
 
@@ -118,8 +116,6 @@ export const PvpContext = {
 
     // 注册房间回调
     pvpRoom.onDayReady = (day, countdownMs, byeOpponentMap) => {
-      // 异步PVP无倒计时：玩家手动点"准备"推进，无需自动提交
-      if (isAsyncMode()) return
       // 注意：不在此处更新 session.currentDay！
       // currentDay 由 session 初始值(1) 和 onBattleComplete 负责推进。
       countdownTotalMs = countdownMs
@@ -137,21 +133,21 @@ export const PvpContext = {
     }
 
     pvpRoom.onCountdownStart = (_day) => {
-      if (isAsyncMode()) return
       startCountdown()
     }
 
     pvpRoom.onPlayerStatusUpdate = () => { /* 不再显示玩家准备状态 */ }
 
-    pvpRoom.onOpponentSnapshot = (day, opponentSnap, opponentPlayerIndex) => {
+    pvpRoom.onOpponentSnapshot = (day, opponentSnap, opponentPlayerIndex, authoritativeWinner) => {
+      pendingAuthoritativeWinner = authoritativeWinner ?? null
       // 校验 day：只处理与当前天匹配的快照，防止乱序/残留消息导致误入战斗
       if (session && day !== session.currentDay) {
         console.warn('[PvpContext] 忽略不匹配的 opponent_snapshot day=' + day + ' (expected ' + session.currentDay + ')')
         return
       }
-      // 已在战斗中：忽略重复快照（如双击准备按钮触发二次补发）
-      if (SceneManager.currentName() === 'battle') {
-        console.warn('[PvpContext] 已在战斗中，忽略重复的 opponent_snapshot day=' + day)
+      // 只允许在商店阶段触发战斗跳转，其他场景（battle/pvp-lobby/pvp-result 等）一律忽略
+      if (SceneManager.currentName() !== 'shop') {
+        console.warn('[PvpContext] 当前不在商店，忽略 opponent_snapshot day=' + day + ' scene=' + SceneManager.currentName())
         return
       }
       // 记录 bye 轮实际对手 index 到 session（host 已解析出真实快照来源）
@@ -159,23 +155,17 @@ export const PvpContext = {
         session.currentOpponentPlayerIndex = opponentPlayerIndex
       }
 
-      if (!isAsyncMode()) {
-        // sync-a：缓存快照，等 battle_sync_start 再进入战斗场景
-        // （若 battle_sync_start 已先到，则立即应用）
-        if (pendingSyncStartDay === day) {
-          pendingSyncStartDay = 0
-          stopCountdown()
-          applyOpponentSnapshot(day, opponentSnap)
-        } else {
-          pendingOpponentSnap = opponentSnap
-          // 对手 index 已确认但还在等待 sync_start，通知 ShopScene 刷新等待面板
-          PvpContext.onOpponentKnown?.()
-        }
-        return
+      // sync-a：缓存快照，等 battle_sync_start 再进入战斗场景
+      // （若 battle_sync_start 已先到，则立即应用）
+      if (pendingSyncStartDay === day) {
+        pendingSyncStartDay = 0
+        stopCountdown()
+        applyOpponentSnapshot(day, opponentSnap)
+      } else {
+        pendingOpponentSnap = opponentSnap
+        // 对手 index 已确认但还在等待 sync_start，通知 ShopScene 刷新等待面板
+        PvpContext.onOpponentKnown?.()
       }
-
-      stopCountdown()
-      applyOpponentSnapshot(day, opponentSnap)
     }
 
     pvpRoom.onGameOver = (rankings) => {
@@ -195,7 +185,12 @@ export const PvpContext = {
       const cb = syncStartCallbacks.get(day)
       if (cb) { cb(); syncStartCallbacks.delete(day) }
 
-      if (!isAsyncMode() && session) {
+      if (session) {
+        // 忽略过期轮次的 battle_sync_start（stateCheckInterval 可能重播旧天的消息）
+        if (day !== session.currentDay) {
+          console.warn('[PvpContext] 忽略过期的 battle_sync_start day=' + day + ' (expected ' + session.currentDay + ')')
+          return
+        }
         if (pendingOpponentSnap) {
           // 正常路径：快照已缓存，立即应用并进入战斗
           const snap = pendingOpponentSnap
@@ -212,6 +207,8 @@ export const PvpContext = {
 
     pvpRoom.onRoundSummary = (day, hpMap, newlyEliminated, snapshots, lastStandTriggered) => {
       if (!session) return
+      // 记录已到达的 round_summary 天数，供 onBattleComplete 检测（防止按钮点击晚于 round_summary）
+      lastRoundSummaryDay = day
       // 更新所有玩家 HP
       Object.entries(hpMap).forEach(([idx, hp]) => {
         session!.playerHps[Number(idx)] = hp
@@ -256,6 +253,13 @@ export const PvpContext = {
           // 非 host：断开连接（host 端 handlePeerDisconnect 会标记 connected=false，eliminatedSet 已排除）
           room?.destroy()
           room = null
+        } else if (!session.rankings) {
+          // host 被淘汰但游戏未结束（≥2 人存活）：必须继续推进其他玩家的对局
+          // 若不调用 advanceToDay，其他玩家将永远收不到 day_ready，游戏卡死
+          const nextDay = day + 1
+          if (nextDay <= (getConfig().pvpRules?.maxRounds ?? 30) + 2) {
+            room.advanceToDay(nextDay)
+          }
         }
         // 若已提前（本地预判）跳转到 pvp-result，update 循环会检测 myEliminationRank 变化并刷新，无需重复 goto
         if (SceneManager.currentName() !== 'pvp-result') {
@@ -267,12 +271,30 @@ export const PvpContext = {
         console.log('[PvpContext] 本地预判淘汰有误，实际存活，继续游戏 day=' + day)
         session.predictedElimination = false
         const nextDay = day + 1
-        currentDayPhase = 'shop1'
         session.currentDay = nextDay
         if (room?.isHost) {
           room.advanceToDay(nextDay)
         }
         SceneManager.goto('shop')
+      } else if (room?.isHost) {
+        // sync-a 房主非淘汰路径：round_summary 处理完毕，推进到下一天
+        // advanceToDay 立即发出，让已进店的客户端尽早启动倒计时；
+        // 若 host 已提前进入商店（hostClickedBeforeRoundSummary），只更新数据，不重复跳转
+        if (session.rankings) return  // game_over 已处理
+        const nextDay = day + 1
+        if (nextDay > (getConfig().pvpRules?.maxRounds ?? 30) + 2) {
+          SceneManager.goto('pvp-result')
+        } else {
+          room.advanceToDay(nextDay)
+          if (hostClickedBeforeRoundSummary) {
+            // host 已在 onBattleComplete 里提前进入商店，round_summary 数据（HP/淘汰）
+            // 已在顶部静默更新，无需再次跳转
+            hostClickedBeforeRoundSummary = false
+          } else {
+            // host 尚未点击按钮：记录 nextDay，点击时消费
+            hostReadyNextDay = nextDay
+          }
+        }
       }
     }
 
@@ -301,9 +323,8 @@ export const PvpContext = {
     return true
   },
 
-  /** ShopScene 注册自动提交回调（仅 sync-a 模式有效，异步PVP忽略） */
+  /** ShopScene 注册自动提交回调 */
   registerAutoSubmit(cb: () => void): void {
-    if (isAsyncMode()) return
     autoSubmitCallback = cb
   },
 
@@ -312,7 +333,7 @@ export const PvpContext = {
     clearShopStateCallback = cb
   },
 
-  /** ShopScene phaseBtn 点击时调用（替代 beginBattleStartTransition） */
+  /** ShopScene phaseBtn 点击时调用 */
   onPlayerReady(): void {
     if (!active || !session || !room) return
     const mySnap = getBattleSnapshot()
@@ -320,43 +341,32 @@ export const PvpContext = {
       console.warn('[PvpContext] 快照为空，忽略 onPlayerReady')
       return
     }
-    console.log('[PvpContext] onPlayerReady phase=' + currentDayPhase + ' day=' + session.currentDay + ' entities=' + mySnap.entities.length)
-
-    if (!isAsyncMode()) {
-      // sync-a：提交最终快照 + 立即发 sync_ready，停留商店等所有人准备好
-      room.submitSnapshot(session.currentDay, mySnap, true)
-      room.notifySyncReady(session.currentDay)
-      stopCountdown()
-      return
-    }
-
-    // async 三阶段逻辑
-    if (currentDayPhase === 'shop1' || currentDayPhase === 'shop2') {
-      // 提交中间快照（非最终），立即开始本地野怪战
-      room.submitSnapshot(session.currentDay, mySnap, false)
-      currentDayPhase = currentDayPhase === 'shop1' ? 'wild1' : 'wild2'
-      startWildBattle()
-    } else if (currentDayPhase === 'shop3') {
-      // 提交最终快照，等待 Host 下发对手快照
-      room.submitSnapshot(session.currentDay, mySnap, true)
-      currentDayPhase = 'pvp'
-      // 等待 onOpponentSnapshot 回调触发进入战斗
-    }
+    console.log('[PvpContext] onPlayerReady day=' + session.currentDay + ' entities=' + mySnap.entities.length)
+    room.submitSnapshot(session.currentDay, mySnap, true)
+    room.notifySyncReady(session.currentDay)
+    stopCountdown()
   },
 
   /** BattleScene 结算时调用：记录本场胜负（在 deductLife 等之前） */
   recordBattleResult(winner: 'player' | 'enemy' | 'draw', survivingDamage = 0): void {
     if (!session) return
-    if (winner === 'player') session.wins++
-    session.dayResults[session.currentDay] = winner
+    // PVP 模式优先使用 Host 权威结果，忽略本地引擎结果，彻底消除双端不一致
+    const effectiveWinner = pendingAuthoritativeWinner ?? winner
+    pendingAuthoritativeWinner = null
+    if (effectiveWinner === 'player') session.wins++
+    session.dayResults[session.currentDay] = effectiveWinner
     pendingSurvivingDamage = survivingDamage
-    pendingRoundWinner = winner
+    pendingRoundWinner = effectiveWinner
   },
 
-  /** Mode A: BattleScene calls this to signal ready for sync start */
+  /** 获取当前权威结果（供 BattleSettlement 结算显示使用） */
+  getAuthoritativeWinner(): 'player' | 'enemy' | 'draw' | null {
+    return pendingAuthoritativeWinner
+  },
+
+  /** BattleScene 通知 sync-a 就绪 */
   notifyBattleSyncReady(day: number, onStart: () => void): void {
     if (!active || !room || !session) return
-    if (session.pvpMode !== 'sync-a') return
     syncStartCallbacks.set(day, onStart)
     room.notifySyncReady(day)
   },
@@ -424,41 +434,71 @@ export const PvpContext = {
       cachedByeOpponent = undefined
     }
 
-    if (isAsyncMode() && (currentDayPhase === 'wild1' || currentDayPhase === 'wild2')) {
-      // 野怪轮结束：发放奖励，进入下一个商店阶段
-      const won = pendingRoundWinner === 'player'
-      grantWildBonus(won)
+    // PVP 轮结束
+    const nextDay = session.currentDay + 1
+
+    // 上报本轮结果：若已由 reportBattleResultEarly 提前上报则跳过（幂等兜底）
+    if (preReportedDay !== session.currentDay) {
+      room?.reportRoundResult(session.currentDay, pendingRoundWinner, pendingSurvivingDamage)
       pendingSurvivingDamage = 0
-      currentDayPhase = currentDayPhase === 'wild1' ? 'shop2' : 'shop3'
-      console.log('[PvpContext] 野怪轮结束 won=' + won + ' bonus=' + pendingWildGoldBonus + ' nextPhase=' + currentDayPhase)
-      SceneManager.goto('shop')
+    }
+
+    // sync-a 房主路径
+    if (room?.isHost) {
+      if (session.rankings) return  // game_over 已处理
+      if (hostReadyNextDay > 0) {
+        // round_summary 已在提前上报后触发，直接跳转商店
+        const goDay = hostReadyNextDay
+        hostReadyNextDay = 0
+        session.currentDay = goDay
+        SceneManager.goto('shop')
+      } else {
+        // round_summary 尚未到达：先检查是否可本地预判淘汰（避免先进商店再被踢出）
+        if (pendingRoundWinner === 'enemy') {
+          const myHp = session.playerHps?.[session.myIndex] ?? session.initialHp
+          const usedLastStand = session.lastStandUsedPlayers?.[session.myIndex] === true
+          if (myHp - lastReportedSurvivingDamage <= 0 && usedLastStand) {
+            console.log('[PvpContext] 房主本地预判淘汰，等待 round_summary 确认')
+            session.predictedElimination = true
+            SceneManager.goto('pvp-result')
+            return
+          }
+        }
+        // 乐观推进，立即进商店，onRoundSummary 到达后静默更新数据
+        hostClickedBeforeRoundSummary = true
+        session.currentDay = nextDay
+        SceneManager.goto('shop')
+      }
       return
     }
 
-    // PVP 轮结束（async: currentDayPhase === 'pvp'；sync-a: currentDayPhase === 'shop1'）
-    const nextDay = session.currentDay + 1
-
-    // 上报本轮结果（HP 系统：每轮都上报，由 round_summary 决定淘汰与否）
-    // 注意：host 侧 onRoundSummary 可能在此同步触发并调用 goto('pvp-result')
-    room?.reportRoundResult(session.currentDay, pendingRoundWinner, pendingSurvivingDamage)
-    pendingSurvivingDamage = 0
-
-    // host 路径：reportRoundResult 内部可能同步触发 game_over → onGameOver → session.rankings 被填充
+    // client 路径：round_summary 可能已到达（提前上报后异步返回），rankings/eliminatedPlayers 已更新
     if (session.rankings) return
 
-    // host 侧 onRoundSummary 可能已同步更新 eliminatedPlayers，若已淘汰则不再 goto('shop')
+    // client 路径：onRoundSummary 可能已更新 eliminatedPlayers，若已淘汰则不再 goto('shop')
     if (session.eliminatedPlayers.includes(session.myIndex)) return
+
+    // round_summary 已先于按钮点击到达：session.playerHps / lastStandUsedPlayers 已是 post-round 值
+    // 直接进入下一天商店，跳过基于旧状态的本地淘汰预判，防止误触发 goto('pvp-result')
+    if (lastRoundSummaryDay >= session.currentDay) {
+      if (nextDay > (getConfig().pvpRules?.maxRounds ?? 30) + 2) {
+        SceneManager.goto('pvp-result')
+      } else {
+        session.currentDay = nextDay
+        SceneManager.goto('shop')
+      }
+      return
+    }
 
     // 非 host 客户端本地预判：若本轮负且 HP 会归零，跳过商店直接等待 round_summary 确认
     // 扣血公式与 host 一致：Math.max(1, Math.round(day))
-    if (!room?.isHost && pendingRoundWinner === 'enemy') {
+    if (pendingRoundWinner === 'enemy') {
       const myHp = session.playerHps?.[session.myIndex] ?? session.initialHp
       const damage = Math.max(1, Math.round(session.currentDay))
       const usedLastStand = session.lastStandUsedPlayers?.[session.myIndex] === true
       if (myHp - damage <= 0 && usedLastStand) {
         console.log('[PvpContext] 本地预判淘汰，等待 round_summary 确认')
         session.predictedElimination = true
-        currentDayPhase = 'shop1'
         SceneManager.goto('pvp-result')
         return
       }
@@ -468,44 +508,25 @@ export const PvpContext = {
       // 安全兜底：超过 maxRounds（PvpRoom 应更早触发 game_over）
       SceneManager.goto('pvp-result')
     } else {
-      // 重置为下一天的 Shop1 阶段
-      currentDayPhase = 'shop1'
       session.currentDay = nextDay
-
-      // 房主负责触发下一天的倒计时
-      if (room?.isHost) {
-        room.advanceToDay(nextDay)
-      }
-
       SceneManager.goto('shop')
     }
   },
 
-  /** 当前天内阶段（shop1/wild1/shop2/wild2/shop3/pvp） */
-  getCurrentDayPhase(): PvpDayPhase {
-    return currentDayPhase
-  },
-
-  /** 是否处于中间商店阶段（shop2 或 shop3）：ShopScene 据此跳过基础日收入 */
-  isMidDayShopPhase(): boolean {
-    return currentDayPhase === 'shop2' || currentDayPhase === 'shop3'
-  },
-
-  /** 是否处于野怪轮（BattleScene 据此判断不上报 HP 结果） */
-  isWildRound(): boolean {
-    return currentDayPhase === 'wild1' || currentDayPhase === 'wild2'
-  },
-
-  /** ShopScene 进入 shop2/shop3 时消费野怪奖励金币（消费后清零） */
-  consumePendingWildGoldBonus(): number {
-    const bonus = pendingWildGoldBonus
-    pendingWildGoldBonus = 0
-    return bonus
+  /** BattleScene 结算面板显示时立即调用，提前上报本轮结果，不等待按钮点击（幂等）。 */
+  reportBattleResultEarly(day: number): void {
+    if (!active || !session || !room) return
+    if (preReportedDay === day) return  // 已上报，幂等
+    preReportedDay = day
+    console.log('[PvpContext] reportBattleResultEarly day=' + day + ' winner=' + pendingRoundWinner + ' dmg=' + pendingSurvivingDamage)
+    lastReportedSurvivingDamage = pendingSurvivingDamage
+    room.reportRoundResult(day, pendingRoundWinner, pendingSurvivingDamage)
+    pendingSurvivingDamage = 0
   },
 
   /** ShopScene 进入时调用：通知 host 本玩家已到商店，所有人到齐后开始倒计时 */
   notifyShopEntered(): void {
-    if (!active || !session || !room || isAsyncMode()) return
+    if (!active || !session || !room) return
     room.notifyShopEntered(session.currentDay)
   },
 
@@ -536,48 +557,16 @@ export const PvpContext = {
     PvpContext.onRoundSummaryReceived = null
     PvpContext.onOpponentPreAssigned = null
     pendingSurvivingDamage = 0
+    lastReportedSurvivingDamage = 0
     pendingRoundWinner = 'draw'
-    currentDayPhase = 'shop1'
-    pendingWildGoldBonus = 0
+    pendingAuthoritativeWinner = null
+    preReportedDay = 0
+    hostReadyNextDay = 0
+    hostClickedBeforeRoundSummary = false
+    lastRoundSummaryDay = 0
     stopCountdown()
     lastPlayerSnapshots = {}
   },
-}
-
-// ----------------------------------------------------------------
-// 野怪轮辅助函数
-// ----------------------------------------------------------------
-
-/** 开始本地野怪战：构造不含 pvpEnemyEntities 的快照，让 BattleScene 走 PVE 路径 */
-function startWildBattle(): void {
-  const snap = getBattleSnapshot()
-  if (!snap) {
-    console.warn('[PvpContext] startWildBattle: 无快照，跳过野怪战')
-    return
-  }
-  // 排除所有 PVP 对手字段，确保 BattleScene 使用 PVE 生成路径
-  const {
-    pvpEnemyEntities: _e,
-    pvpEnemySkillIds: _s,
-    pvpEnemyBackpackItemCount: _b,
-    pvpEnemyGold: _g,
-    pvpEnemyTrophyWins: _t,
-    ...baseSnap
-  } = snap
-  setBattleSnapshot(baseSnap)
-  console.log('[PvpContext] 启动野怪战 phase=' + currentDayPhase + ' day=' + session?.currentDay)
-  SceneManager.goto('battle')
-}
-
-/** 野怪胜利奖励：累积待发放金币 */
-function grantWildBonus(won: boolean): void {
-  if (!session) return
-  if (won) {
-    const dailyGold = getDailyGoldForDay(getConfig(), session.currentDay)
-    const bonus = Math.floor(dailyGold * getWildWinBonusRatio())
-    pendingWildGoldBonus += bonus
-    console.log('[PvpContext] 野怪胜利奖励 +' + bonus + 'G (pendingTotal=' + pendingWildGoldBonus + ')')
-  }
 }
 
 // ----------------------------------------------------------------
@@ -593,7 +582,8 @@ function applyOpponentSnapshot(day: number, opponentSnap: BattleSnapshotBundle):
     console.warn('[PvpContext] 无法获取我方快照，以空阵容参战')
   }
   console.log('[PvpContext] applyOpponentSnapshot day=' + day + ' myEntities=' + (mySnap?.entities.length ?? 0) + ' opponentEntities=' + opponentSnap.entities.length)
-  // mySnap 为 null 时（未提交快照）构造空阵容快照，避免使用对手快照导致镜像战斗
+  // 始终以自己为 player、对手为 enemy 运行本地动画（自己在下方，敌人在上方）
+  // 胜负判定由 Host 权威结果决定，本地动画仅用于视觉展示
   const base: BattleSnapshotBundle = mySnap ?? {
     day,
     activeColCount: opponentSnap.activeColCount,
@@ -616,12 +606,8 @@ function applyOpponentSnapshot(day: number, opponentSnap: BattleSnapshotBundle):
 }
 
 // ----------------------------------------------------------------
-// 覆盖层 UI
+// 倒计时
 // ----------------------------------------------------------------
-
-function isAsyncMode(): boolean {
-  return session?.pvpMode === 'async'
-}
 
 function startCountdown(): void {
   stopCountdown()

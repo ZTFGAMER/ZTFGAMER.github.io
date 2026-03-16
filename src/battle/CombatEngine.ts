@@ -164,14 +164,23 @@ export class CombatEngine {
     this.state.playerHero = { id: 'hero_player', side: 'player', maxHp: playerHp, hp: playerHp, shield: 0, burn: 0, poison: 0, regen: 0 }
     this.state.enemyHero = { id: 'hero_enemy', side: 'enemy', maxHp: enemyHp, hp: enemyHp, shield: 0, burn: 0, poison: 0, regen: 0 }
 
+    const playerRunners = snapshot.entities.map((it, idx) => toRunner(it, `P-${idx}`))
     const enemyRunners = options?.enemyDisabled ? [] :
       (snapshot.pvpEnemyEntities
         ? snapshot.pvpEnemyEntities.map((it, idx) => ({ ...toRunner(it, `E-${idx}`), side: 'enemy' as const }))
         : makeEnemyRunners(this.state.day, snapshot))
-    this.state.items = [
-      ...snapshot.entities.map((it, idx) => toRunner(it, `P-${idx}`)),
-      ...enemyRunners,
-    ]
+    this.state.items = [...playerRunners, ...enemyRunners]
+
+    // PVP 规范排序：按 defId+col+row 对所有物品统一排序
+    // 双端（A 和 B 的本地模拟）使用完全相同的排序依据，消除先手优势，确保两端跑出一致的战斗结果
+    // 注意：排序 key 不含 side，保证同一物品在不同端（player/enemy 角色不同）得到相同排序位置
+    if (snapshot.pvpEnemyEntities) {
+      this.state.items.sort((a, b) => {
+        const ka = a.defId + ':' + a.col + ':' + a.row
+        const kb = b.defId + ':' + b.col + ':' + b.row
+        return ka < kb ? -1 : ka > kb ? 1 : 0
+      })
+    }
 
     this.state.playerSkillIds = new Set((options?.playerSkillIds ?? []).map((id) => `${id}`.trim()).filter(Boolean))
     this.state.enemySkillIds = new Set((options?.enemySkillIds ?? []).map((id) => `${id}`.trim()).filter(Boolean))
@@ -2153,6 +2162,27 @@ export class CombatEngine {
   private computeSurvivingDamage(_winnerSide: 'player' | 'enemy'): number {
     // 固定扣血：每次失败扣 baseDamage 点，不计算存活物品权重
     return getConfig().pvpRules?.baseDamage ?? 1
+  }
+
+  /**
+   * 同步无头运行：Host 权威结算专用。
+   * 调用 start() 后直接推进所有 tick 直至战斗结束，不依赖 Ticker/requestAnimationFrame。
+   */
+  runHeadless(snapshot: BattleSnapshotBundle, options?: CombatStartOptions): CombatResult {
+    this.start(snapshot, options)
+    // 跳过 INIT / SETUP 两个空帧
+    this.update(0)
+    this.update(0)
+    // 以 tickMs 为步长逐 tick 推进，与本地 Ticker 驱动的模拟完全一致
+    // 避免大步长跳跃导致 elapsedMs 立即超过 fatigueStartMs，使疲劳提前爆发影响结果
+    const cfg = getConfig().combatRuntime
+    const tickSec = Math.max(1, cfg.tickMs ?? 100) / 1000
+    const MAX_TICKS = 300_000  // 300k ticks × 100ms = 30000s，远超任何实际战斗时长
+    for (let i = 0; i < MAX_TICKS && !this.state.finished; i++) {
+      this.update(tickSec)
+    }
+    if (!this.state.finished) this.finishCombat()
+    return this.state.result ?? { winner: 'draw', ticks: 0, survivingDamage: 0 }
   }
 
   private finishCombat(): void {

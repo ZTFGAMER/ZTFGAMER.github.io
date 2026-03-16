@@ -286,6 +286,7 @@ function advanceStarterTutorialFlow(ctx: ShopSceneCtx = _ctx): void {
 
 function makeCaptureAndSave(ctx: ShopSceneCtx = _ctx) {
   return () => {
+    if (PvpContext.isActive()) return
     const s = captureShopState(ctx)
     if (s) saveShopStateToStorage(s)
   }
@@ -1019,7 +1020,7 @@ function addOnePlayerLevelForTest(ctx: ShopSceneCtx = _ctx): void {
   const delta = Math.max(1, expNeed - expNow)
   grantSynthesisExp(delta, undefined, ctx)
   refreshPlayerStatusUI(ctx)
-  saveShopStateToStorage(captureShopState(ctx))
+  if (!PvpContext.isActive()) saveShopStateToStorage(captureShopState(ctx))
 }
 
 
@@ -1078,6 +1079,7 @@ function makeTopAreaUICallbacks(): TopAreaUICallbacks {
     toggleHeroPassiveDetailPopup: () => toggleHeroPassiveDetailPopup(),
     pvpBuildAllPlayersLayer: () => pvpPanel?.buildPvpAllPlayersLayer(),
     pvpRefreshSideCardStates: () => pvpPanel?.refreshPvpSideCardStates(),
+    tryGrantLastStandReward: () => { tryGrantDesperateCounterReward(); ensureDailyChoiceSelection(getApp().stage) },
   }
 }
 
@@ -1468,8 +1470,10 @@ function ensureDailyChoiceSelection(_stage: Container, ctx: ShopSceneCtx = _ctx)
   if (isStarterRunTutorialEnabled(ctx) && ctx.starterTutorialStep !== 'done') return
   if (ctx.starterClass && !ctx.starterBattleGuideShown) {
     ctx.starterBattleGuideShown = true
-    const s = captureShopState(ctx)
-    if (s) saveShopStateToStorage(s)
+    if (!PvpContext.isActive()) {
+      const s = captureShopState(ctx)
+      if (s) saveShopStateToStorage(s)
+    }
   }
   if (ctx.skillDraftOverlay || ctx.eventDraftOverlay || ctx.specialShopOverlay || ctx.levelQuickRewardOverlay) return
   const hasPendingSkillDraft = !!(ctx.pendingSkillDraft && ctx.pendingSkillDraft.day === ctx.currentDay)
@@ -1606,7 +1610,7 @@ function refreshShopUI(ctx: ShopSceneCtx = _ctx): void {
   skillDraftPanel?.layoutSkillIconBar()
   grantSkill20DailyBronzeItemIfNeeded(ctx)
   checkAndPopPendingRewards()
-  saveShopStateToStorage(captureShopState(ctx))
+  if (!PvpContext.isActive()) saveShopStateToStorage(captureShopState(ctx))
 }
 type PoolCandidate = {
   item: ItemDef
@@ -1948,17 +1952,7 @@ export const ShopScene: Scene = {
       RewardSystem.restoreSavedLevelQuickDraftQueue(_ctx)
       _ctx.savedShopState = null
       if (_ctx.pendingAdvanceToNextDay || PvpContext.isActive()) {
-        if (PvpContext.isActive() && PvpContext.isMidDayShopPhase()) {
-          // PVP 中间商店阶段（shop2/shop3）：刷新卡池但不发放基础日收入
-          setDay(_ctx.currentDay)  // 同一天 → setDay 内部不触发收入逻辑
-          const wildBonus = PvpContext.consumePendingWildGoldBonus()
-          if (wildBonus > 0 && _ctx.shopManager) {
-            _ctx.shopManager.gold += wildBonus
-            console.log('[ShopScene] 野怪奖励 +' + wildBonus + 'G')
-          }
-        } else {
-          setDay(_ctx.currentDay + 1)
-        }
+        setDay(_ctx.currentDay + 1)
         applyPostBattleEffects(battleOutcome?.snapshot ?? null)
         _ctx.pendingAdvanceToNextDay = false
       }

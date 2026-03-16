@@ -66,6 +66,7 @@ export type TopAreaUICallbacks = {
   toggleHeroPassiveDetailPopup: () => void
   pvpBuildAllPlayersLayer: () => void
   pvpRefreshSideCardStates: () => void
+  tryGrantLastStandReward: () => void
 }
 
 export type ButtonRowUICallbacks = {
@@ -187,13 +188,15 @@ export function buildTopAreaUI(
   ctx.livesText.zIndex = 95
   stage.addChild(ctx.livesText)
 
-  if (PvpContext.isActive() && PvpContext.getPvpMode() === 'sync-a') {
+  if (PvpContext.isActive()) {
     callbacks.pvpBuildAllPlayersLayer()
     PvpContext.onOpponentPreAssigned = () => {
       callbacks.pvpBuildAllPlayersLayer()
     }
     PvpContext.onRoundSummaryReceived = () => {
       callbacks.pvpBuildAllPlayersLayer()
+      // round_summary 晚于 onEnter 到达时，补检绝地反击奖励（防止玩家提前进店而错过）
+      callbacks.tryGrantLastStandReward()
     }
     PvpContext.onSyncReadyUpdate = () => {
       callbacks.pvpRefreshSideCardStates()
@@ -351,7 +354,7 @@ export function buildButtonRowUI(
       ctx.pvpReadyLocked = true
       ctx.phaseBtnHandle?.setLabel('等待...')
       ctx.phaseBtnHandle?.redraw(true)
-      if (PvpContext.getPvpMode() === 'sync-a') callbacks.pvpShowWaitingPanel(stage)
+      callbacks.pvpShowWaitingPanel(stage)
       PvpContext.onPlayerReady()
       return
     }

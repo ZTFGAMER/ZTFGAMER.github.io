@@ -4,13 +4,7 @@
 
 import type { BattleSnapshotBundle } from '@/battle/BattleSnapshotStore'
 
-export type PvpMode = 'async' | 'sync-a'
-
-/**
- * 异步PVP每天内的阶段：
- * shop1 → wild1 → shop2 → wild2 → shop3 → pvp
- */
-export type PvpDayPhase = 'shop1' | 'wild1' | 'shop2' | 'wild2' | 'shop3' | 'pvp'
+export type PvpMode = 'sync-a'
 
 export interface PvpPlayer {
   peerId: string
@@ -79,7 +73,7 @@ export type PvpMsgToClient =
   | { type: 'game_start'; myIndex: number; totalPlayers: number; countdownMs: number; initialHp: number }
   | { type: 'day_ready'; day: number; countdownMs: number; byeOpponentMap?: Record<number, number> }
   | { type: 'player_status'; day: number; readyIndices: number[] }
-  | { type: 'opponent_snapshot'; day: number; snapshot: BattleSnapshotBundle; opponentPlayerIndex?: number }
+  | { type: 'opponent_snapshot'; day: number; snapshot: BattleSnapshotBundle; opponentPlayerIndex?: number; authoritativeWinner: 'player' | 'enemy' | 'draw'; isEnemyViewpoint: boolean }
   | { type: 'game_over'; rankings: { nickname: string; wins: number | null; index: number }[] }
   | { type: 'battle_sync_start'; day: number }
   | { type: 'round_summary'; day: number; hpMap: Record<number, number>; newlyEliminated: number[]; snapshots: Record<number, BattleSnapshotBundle>; lastStandTriggered: number[] }

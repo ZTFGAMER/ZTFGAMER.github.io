@@ -6,8 +6,6 @@ import type { Scene } from '@/core/SceneManager'
 import { SceneManager } from '@/core/SceneManager'
 import { getApp } from '@/core/AppContext'
 import { Container, Graphics, Text } from 'pixi.js'
-import type { PvpMode } from '@/pvp/PvpTypes'
-import { setPvpLobbyMode } from '@/pvp/PvpLobbyScene'
 import { CANVAS_W, CANVAS_H } from '@/config/layoutConstants'
 
 let root: Container | null = null
@@ -95,69 +93,16 @@ function makeBtn(
   return con
 }
 
-function makePvpModeBtn(
-  label: string,
-  subLabel: string,
-  accentColor: number,
-  bgColor: number,
-  y: number,
-  mode: PvpMode,
-): Container {
-  const con = new Container()
-  con.x = CANVAS_W / 2
-  con.y = y
-
-  const W = 480, H = 96, R = 16
-
-  const glow = new Graphics()
-  glow.roundRect(-W / 2 - 2, -H / 2 - 2, W + 4, H + 4, R + 2).fill({ color: accentColor, alpha: 0.28 })
-  con.addChild(glow)
-
-  const bg = new Graphics()
-  bg.roundRect(-W / 2, -H / 2, W, H, R).fill({ color: bgColor })
-  con.addChild(bg)
-
-  const accent = new Graphics()
-  accent.roundRect(-W / 2, -H / 2, 6, H, 0).fill({ color: accentColor })
-  con.addChild(accent)
-
-  const main = new Text({
-    text: label,
-    style: { fill: 0xffffff, fontSize: 28, fontWeight: 'bold', align: 'left' },
-  })
-  main.anchor.set(0, 0.5)
-  main.x = -W / 2 + 26
-  main.y = -10
-  con.addChild(main)
-
-  const sub = new Text({
-    text: subLabel,
-    style: { fill: 0x8899bb, fontSize: 18, align: 'left' },
-  })
-  sub.anchor.set(0, 0.5)
-  sub.x = -W / 2 + 26
-  sub.y = 20
-  con.addChild(sub)
-
-  const arrow = new Text({
-    text: '▶',
-    style: { fill: accentColor, fontSize: 22 },
-  })
-  arrow.anchor.set(1, 0.5)
-  arrow.x = W / 2 - 20
-  arrow.y = 0
-  con.addChild(arrow)
-
-  con.eventMode = 'static'
-  con.cursor = 'pointer'
-  con.on('pointerdown', () => {
-    setPvpLobbyMode(mode)
-    SceneManager.goto('pvp-lobby')
-  })
-  con.on('pointerover', () => { bg.alpha = 0.85 })
-  con.on('pointerout', () => { bg.alpha = 1 })
-
-  return con
+function makePvpBtn(y: number): Container {
+  return makeBtn(
+    '同步对战',
+    '实时联机 · 同步对战',
+    0x4caf50,
+    0x0f1f10,
+    0x4caf50,
+    y,
+    () => { SceneManager.goto('pvp-lobby') },
+  )
 }
 
 // ----------------------------------------------------------------
@@ -247,28 +192,8 @@ export const MenuScene: Scene = {
     )
     root.addChild(pveBtn)
 
-    // ── PVP 分区：分隔线 + 标签 ───────────────────────────
-    const pvpSepY = CANVAS_H * 0.54 + 96   // 冒险模式底部下方约 36px
-    const pvpSep = new Graphics()
-    pvpSep.rect(CANVAS_W / 2 - 200, pvpSepY, 400, 1).fill({ color: 0x2a3a5c, alpha: 0.8 })
-    pvpSep.rect(CANVAS_W / 2 - 20, pvpSepY - 1, 40, 3).fill({ color: 0x445577, alpha: 1 })
-    root.addChild(pvpSep)
-
-    const pvpLabel = new Text({
-      text: '联机对战',
-      style: { fill: 0x7788aa, fontSize: 20, align: 'center' },
-    })
-    pvpLabel.anchor.set(0.5, 0)
-    pvpLabel.x = CANVAS_W / 2
-    pvpLabel.y = pvpSepY + 16             // 标签顶部在分隔线下 16px
-    root.addChild(pvpLabel)
-
-    // 三个 PVP 模式按钮（标签底部约 pvpSepY+42，按钮光效顶部需留 14px 间距）
-    const pvpBtn1 = makePvpModeBtn('巴扎对战（伪）', '野怪闯关 · 异步联机', 0x5b8def, 0x12213a, pvpSepY + 106, 'async')
-    root.addChild(pvpBtn1)
-
-    const pvpBtn2 = makePvpModeBtn('同步对战', '实时联机 · 同步对战', 0x4caf50, 0x0f1f10, pvpSepY + 220, 'sync-a')
-    root.addChild(pvpBtn2)
+    const pvpBtn = makePvpBtn(CANVAS_H * 0.54 + 144)
+    root.addChild(pvpBtn)
 
     // ── 底部 ──────────────────────────────────────────────
     const ver = new Text({
