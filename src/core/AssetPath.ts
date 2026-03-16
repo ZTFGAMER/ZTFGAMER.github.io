@@ -1,4 +1,4 @@
-import { getAllItems } from '@/core/DataLoader'
+import { getAllItemsRaw } from '@/core/DataLoader'
 import { getSkillIconStemById, isSkillItemDefId } from '@/common/skills/SkillItemDefs'
 
 function getItemIconBasePath(): string {
@@ -32,13 +32,21 @@ let itemIconStemByDefId: Map<string, string> | null = null
 function getItemIconStem(defId: string): string {
   if (!itemIconStemByDefId) {
     itemIconStemByDefId = new Map()
-    for (const item of getAllItems()) {
+    for (const item of getAllItemsRaw()) {
       const stem = String(item.icon || '').trim()
       if (!stem) continue
       itemIconStemByDefId.set(item.id, stem)
     }
   }
-  return itemIconStemByDefId.get(defId) || defId
+  const hit = itemIconStemByDefId.get(defId)
+  if (hit) return hit
+  const fallback = getAllItemsRaw().find((it) => it.id === defId)
+  const fallbackStem = String(fallback?.icon || '').trim()
+  if (fallbackStem) {
+    itemIconStemByDefId.set(defId, fallbackStem)
+    return fallbackStem
+  }
+  return 'item1'
 }
 
 export function getItemIconUrl(defId: string): string {

@@ -16,7 +16,7 @@ import {
 } from 'pixi.js'
 import { getConfig as getDebugCfg, setConfig as setDebugCfg } from '@/config/debugConfig'
 import { getTopLeftControlYOffset } from '@/shop/ui/ShopSafeArea'
-import { getConfig, getRunClassItemPoolIds } from '@/core/DataLoader'
+import { getAllItemsRaw, getConfig, getRunClassItemPoolIds } from '@/core/DataLoader'
 import type { ItemDef } from '@/common/items/ItemDef'
 import type { TierKey } from '@/shop/ShopManager'
 import { parseTierName } from '../systems/ShopSynthesisLogic'
@@ -680,7 +680,7 @@ export class SettingsDebugPanel extends Container {
     type ItemTestPage = 'all' | 'warrior' | 'archer' | 'assassin' | 'neutral' | 'skill'
     let activePage: ItemTestPage = 'all'
 
-    const all = [...cb.getAllItems()].sort((a, b) => {
+    const all = [...getAllItemsRaw()].sort((a, b) => {
       const ta = parseTierName(a.starting_tier) ?? 'Bronze'
       const tb = parseTierName(b.starting_tier) ?? 'Bronze'
       const order = { Bronze: 0, Silver: 1, Gold: 2, Diamond: 3 }

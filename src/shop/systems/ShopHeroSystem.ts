@@ -1514,12 +1514,15 @@ export function ensureStarterClassSelection(
 
   const cards: Array<{ key: StarterClass; border: Graphics; pick: Text }> = []
   const showAllHeroes = getDebugCfg('gameplayStarterHeroShowAll') >= 0.5
+  const isPvp = PvpContext.isActive()
   const nextRunIndex = Math.max(1, getCurrentRunIndex() + 1)
-  const availableHeroPool = HERO_STARTER_POOL.filter((id) => {
-    const earliest = HERO_EARLIEST_RUN_BY_ID[id] ?? 1
-    return nextRunIndex >= earliest
-  })
-  const targetChoiceCount = nextRunIndex <= 1 ? 1 : 3
+  const availableHeroPool = isPvp
+    ? [...HERO_STARTER_POOL]
+    : HERO_STARTER_POOL.filter((id) => {
+      const earliest = HERO_EARLIEST_RUN_BY_ID[id] ?? 1
+      return nextRunIndex >= earliest
+    })
+  const targetChoiceCount = isPvp ? 3 : (nextRunIndex <= 1 ? 1 : 3)
   if (!showAllHeroes && (
     ctx.starterHeroChoiceOptions.length !== targetChoiceCount
     || ctx.starterHeroChoiceOptions.some((id) => !availableHeroPool.includes(id))
