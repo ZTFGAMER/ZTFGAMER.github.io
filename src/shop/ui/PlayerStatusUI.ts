@@ -178,6 +178,11 @@ export function layoutPlayerStatusPanel(ctx: ShopSceneCtx): void {
     ctx.playerStatusDailySkillStar.y = avatarY + avatarH - 38
   }
 
+  if (ctx.itemCompendiumBtn) {
+    ctx.itemCompendiumBtn.x = avatarCenterX + getDebugCfg('gameplayCompendiumBtnOffsetX')
+    ctx.itemCompendiumBtn.y = avatarY + avatarH / 2 + getDebugCfg('gameplayCompendiumBtnOffsetY')
+  }
+
   ctx.playerStatusLvText.x = avatarCenterX
   ctx.playerStatusLvText.y = getDebugCfg('shopPlayerStatusLvY')
 

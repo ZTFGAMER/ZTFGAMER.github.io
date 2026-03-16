@@ -230,6 +230,9 @@ export type SavedShopState = {
   pendingSkillDraft?: PendingSkillDraft | null
   unlockedItemIds?: string[]
   runClassItemPoolIds?: string[]
+  runSeenItemIds?: string[]
+  runPendingCompendiumDotItemIds?: string[]
+  suppressCompendiumNewDotsThisRun?: boolean
   nextQuickBuyOffer?: {
     itemId: string
     tier: TierKey
@@ -344,10 +347,13 @@ export interface ShopSceneCtx {
 
   // ---- 覆盖层 / 面板 ----
   settingsBtn:      Container | null
+  itemCompendiumBtn: Container | null
+  itemCompendiumBtnRedDot: Graphics | null
   settingsOverlay:  Container | null
   skillTestOverlay: Container | null
   eventTestOverlay: Container | null
   itemTestOverlay:  Container | null
+  itemCompendiumOverlay: Container | null
 
   pvpPlayerListOverlay:  Container | null
   pvpWaitingPanel:       Container | null
@@ -515,6 +521,9 @@ export interface ShopSceneCtx {
 
   // ---- 解锁 / 物品池 ----
   unlockedItemIds:                   Set<string>
+  runSeenItemIds:                    Set<string>
+  runPendingCompendiumDotItemIds:    Set<string>
+  suppressCompendiumNewDotsThisRun:  boolean
   neutralObtainedCountByKind:        Map<string, number>
   neutralDailyRollCountByDay:        Map<number, number>
   guaranteedNewUnlockTriggeredLevels: Set<number>
@@ -591,10 +600,13 @@ export function createShopSceneCtx(): ShopSceneCtx {
 
     // 覆盖层
     settingsBtn:      null,
+    itemCompendiumBtn: null,
+    itemCompendiumBtnRedDot: null,
     settingsOverlay:  null,
     skillTestOverlay: null,
     eventTestOverlay: null,
     itemTestOverlay:  null,
+    itemCompendiumOverlay: null,
 
     pvpPlayerListOverlay: null,
     pvpWaitingPanel:      null,
@@ -761,6 +773,9 @@ export function createShopSceneCtx(): ShopSceneCtx {
 
     // 解锁 / 物品池
     unlockedItemIds:                   new Set(),
+    runSeenItemIds:                    new Set(),
+    runPendingCompendiumDotItemIds:    new Set(),
+    suppressCompendiumNewDotsThisRun:  false,
     neutralObtainedCountByKind:        new Map(),
     neutralDailyRollCountByDay:        new Map(),
     guaranteedNewUnlockTriggeredLevels: new Set(),

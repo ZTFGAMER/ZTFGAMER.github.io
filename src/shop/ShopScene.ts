@@ -13,9 +13,11 @@ import { getConfig, getAllItems, setRunClassItemPoolIds } from '@/core/DataLoade
 import {
   clearCurrentRunState,
   consumeLastStandPendingReward,
+  getCurrentRunIndex,
   getLifeState,
   getPlayerProgressState,
   getWinTrophyState,
+  resetRunMetaAsFirstPlay,
   resetLifeState,
 } from '@/core/RunState'
 import type { ItemSizeNorm } from '@/common/grid/GridSystem'
@@ -102,6 +104,7 @@ import {
   resolveBuyPriceWithSkills,
 } from './systems/ShopSkillSystem'
 import * as SkillSystem from './systems/ShopSkillSystem'
+import { getSkillItemDefById, getSkillPickById } from '@/common/skills/SkillItemDefs'
 import {
   stopFlashEffect,
   stopBattleGuideHandAnim,
@@ -642,6 +645,11 @@ function restartRunFromBeginning(ctx: ShopSceneCtx = _ctx): void {
   window.location.reload()
 }
 
+function restartRunAsFirstPlay(ctx: ShopSceneCtx = _ctx): void {
+  resetRunMetaAsFirstPlay()
+  restartRunFromBeginning(ctx)
+}
+
 // isShopInputEnabled → 已移至 ./shop/ShopModeHelpers.ts
 // createHintToast / shouldShowToast / showHintToast → 已移至 ./shop/ShopToastSystem.ts
 
@@ -809,10 +817,30 @@ function canUseSameArchetypeDiffItemStoneSynthesis(
 
 
 function upsertPickedSkill(skillId: string, ctx: ShopSceneCtx = _ctx): void {
-  SkillSystem.upsertPickedSkill(ctx, skillId, { grantSkill20DailyBronzeItemIfNeeded: () => grantSkill20DailyBronzeItemIfNeeded() })
+  if (SkillSystem.hasOwnedSkillItem(ctx, skillId)) {
+    SkillSystem.syncPickedSkillsFromOwnedSkillItems(ctx)
+    return
+  }
+  const def = getSkillItemDefById(skillId)
+  const pick = getSkillPickById(skillId)
+  if (!def || !pick) return
+  const tier: TierKey = pick.tier === 'gold' ? 'Gold' : pick.tier === 'silver' ? 'Silver' : 'Bronze'
+  const ok = placeItemToInventoryOrBattle(def, tier, 1, ctx)
+  if (!ok) {
+    showHintToast('backpack_full_buy', `[技能物品] 添加失败：${pick.name}（空间不足）`, 0xffb27a, ctx)
+    return
+  }
+  SkillSystem.syncPickedSkillsFromOwnedSkillItems(ctx)
+  if (skillId === 'skill20') grantSkill20DailyBronzeItemIfNeeded(ctx)
 }
 
 function removePickedSkill(skillId: string, ctx: ShopSceneCtx = _ctx): void {
+  const owned = GridInventory.getAllOwnedPlacedItems(ctx)
+  for (const one of owned) {
+    if (one.item.defId !== skillId) continue
+    GridInventory.removePlacedItemById(one.item.instanceId, one.zone, ctx)
+  }
+  SkillSystem.syncPickedSkillsFromOwnedSkillItems(ctx)
   SkillSystem.removePickedSkill(ctx, skillId, { getDefaultSkillDetailMode: () => getDefaultSkillDetailMode() })
 }
 
@@ -1037,6 +1065,8 @@ function makePanelInitDeps(): PanelInitDeps {
     findFirstBattlePlace: (size) => findFirstBattlePlace(size),
     findFirstBackpackPlace: (size) => findFirstBackpackPlace(size),
     refreshSkillIconBarFn: () => skillDraftPanel?.refreshSkillIconBar(),
+    getCurrentRunIndex: () => getCurrentRunIndex(),
+    restartRunAsFirstPlay: () => restartRunAsFirstPlay(),
     openEventDraftPanel: () => { eventDraftPanel?.closeEventDraftOverlay(); eventDraftPanel?.ensureEventDraftSelection() },
     openSkillDraftPanel: (_tier) => { skillDraftPanel?.closeSkillDraftOverlay(); skillDraftPanel?.ensureSkillDraftSelection(); return true },
     openSpecialShopPanel: () => specialShopPanel?.openSpecialShopFromNeutralScroll() ?? false,
@@ -1377,6 +1407,23 @@ function refreshPlayerStatusUI(ctx: ShopSceneCtx = _ctx): void {
 // ============================================================
 function refreshShopUI(ctx: ShopSceneCtx = _ctx): void {
   if (!ctx.shopManager) return
+  if (!ctx.itemCompendiumBtn) settingsPanel?.createSettingsButton()
+  SkillSystem.syncPickedSkillsFromOwnedSkillItems(ctx)
+  const markSeen = (defId: string | null | undefined) => {
+    if (!defId) return
+    const alreadySeen = ctx.runSeenItemIds.has(defId)
+    ctx.runSeenItemIds.add(defId)
+    if (alreadySeen) return
+    const def = getItemDefById(defId)
+    if (!def) return
+    const baseTier = parseTierName(def.starting_tier) ?? 'Bronze'
+    if (baseTier === 'Bronze') return
+    if (ctx.suppressCompendiumNewDotsThisRun) return
+    ctx.runPendingCompendiumDotItemIds.add(defId)
+  }
+  // 图鉴解锁仅按“实际获得”统计：进入实例（上阵区/背包）后才记 seen
+  for (const defId of instanceToDefId.values()) markSeen(defId)
+  settingsPanel?.refreshItemCompendiumRedDot()
   syncShopOwnedTierRules()
   if (ctx.shopPanel) {
     ctx.shopPanel.update([], ctx.shopManager.gold)
@@ -1440,7 +1487,9 @@ function refreshShopUI(ctx: ShopSceneCtx = _ctx): void {
   updateMiniMap()
   refreshUpgradeHints(_ctx)
   refreshBattlePassiveStatBadges(true)
+  skillDraftPanel?.refreshSkillIconBar()
   skillDraftPanel?.layoutSkillIconBar()
+  grantSkill20DailyBronzeItemIfNeeded(ctx)
   checkAndPopPendingRewards()
   saveShopStateToStorage(captureShopState(ctx))
 }
@@ -1823,6 +1872,9 @@ export const ShopScene: Scene = {
       _ctx.skillDetailMode = getDefaultSkillDetailMode()
       _ctx.skill20GrantedDays.clear()
       _ctx.unlockedItemIds.clear()
+      _ctx.runSeenItemIds.clear()
+      _ctx.runPendingCompendiumDotItemIds.clear()
+      _ctx.suppressCompendiumNewDotsThisRun = false
       _ctx.neutralObtainedCountByKind.clear()
       _ctx.neutralRandomCategoryPool = []
       _ctx.neutralDailyRollCountByDay.clear()
@@ -1970,6 +2022,8 @@ export const ShopScene: Scene = {
     _ctx.playerStatusCon = null
     _ctx.playerStatusAvatar = null
     _ctx.playerStatusAvatarClickHit = null
+    _ctx.itemCompendiumBtn = null
+    _ctx.itemCompendiumBtnRedDot = null
     _ctx.playerStatusDailySkillStar = null
     _ctx.playerStatusLvText = null
     _ctx.playerStatusExpBg = null
@@ -2066,6 +2120,9 @@ export const ShopScene: Scene = {
     _ctx.settingsBtn     = null
     _ctx.currentDay      = 1
     _ctx.unlockedItemIds.clear()
+    _ctx.runSeenItemIds.clear()
+    _ctx.runPendingCompendiumDotItemIds.clear()
+    _ctx.suppressCompendiumNewDotsThisRun = false
     _ctx.neutralObtainedCountByKind.clear()
     _ctx.neutralRandomCategoryPool = []
     _ctx.neutralDailyRollCountByDay.clear()

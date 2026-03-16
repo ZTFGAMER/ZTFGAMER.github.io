@@ -178,6 +178,8 @@ export type PanelInitDeps = {
   findFirstBattlePlace: (size: ItemSizeNorm) => { col: number; row: number } | null
   findFirstBackpackPlace: (size: ItemSizeNorm) => { col: number; row: number } | null
   refreshSkillIconBarFn: () => void
+  getCurrentRunIndex: () => number
+  restartRunAsFirstPlay: () => void
   openEventDraftPanel: () => void
   openSkillDraftPanel: (tier?: TierKey) => boolean
   openSpecialShopPanel: () => boolean
@@ -232,6 +234,8 @@ export function initPanelInstances(
     isNeutralArchetypeKey: (arch) => isNeutralArchetypeKey(arch),
     getAllItems: () => [...getAllItems()],
     addOnePlayerLevelForTest: () => deps.addOnePlayerLevelForTest(),
+    getCurrentRunIndex: () => deps.getCurrentRunIndex(),
+    restartRunAsFirstPlay: () => deps.restartRunAsFirstPlay(),
   })
   stage.addChild(settingsPanel)
 

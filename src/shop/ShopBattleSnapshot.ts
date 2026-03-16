@@ -16,11 +16,22 @@ import { isSelectedHero } from './systems/ShopHeroSystem'
 import type { ShopSceneCtx } from './ShopSceneContext'
 import type { ItemEnchantmentKey } from '@/common/items/ItemEnchantment'
 import { resolveItemEnchantmentEffectCn } from '@/common/items/ItemEnchantment'
+import { isSkillItemDefId } from '@/common/skills/SkillItemDefs'
 
 export function buildBattleSnapshot(ctx: ShopSceneCtx, skillBarMoveStartAtMs?: number): BattleSnapshotBundle | null {
   if (!ctx.battleSystem || !ctx.battleView) return null
   const activeColCount = ctx.battleView.activeColCount
   const snap = ctx.battleSystem.exportCombatSnapshot(activeColCount)
+  const ownerSkillIdSet = new Set<string>()
+  for (const one of ctx.battleSystem.getAllItems()) {
+    if (isSkillItemDefId(one.defId)) ownerSkillIdSet.add(one.defId)
+  }
+  for (const one of ctx.backpackSystem?.getAllItems() ?? []) {
+    if (isSkillItemDefId(one.defId)) ownerSkillIdSet.add(one.defId)
+  }
+  if (ownerSkillIdSet.size <= 0) {
+    for (const one of ctx.pickedSkills) ownerSkillIdSet.add(one.id)
+  }
   const playerBackpackItemCount = ctx.backpackSystem?.getAllItems().length ?? 0
   const trophyTarget = getConfig().runRules?.trophyWinsToFinalVictory ?? 10
   const trophy = getWinTrophyState(trophyTarget)
@@ -39,10 +50,12 @@ export function buildBattleSnapshot(ctx: ShopSceneCtx, skillBarMoveStartAtMs?: n
     playerGold: Math.max(0, Math.round(ctx.shopManager?.gold ?? 0)),
     playerTrophyWins: Math.max(0, Math.round(trophy.wins)),
     playerBattleHp,
-    ownerSkillIds: ctx.pickedSkills.map((s) => s.id),
+    ownerSkillIds: Array.from(ownerSkillIdSet),
     ownerHeroId: ctx.starterClass ?? undefined,
     ownerLevel: playerLevel,
-    entities: snap.entities.map((it) => ({
+    entities: snap.entities
+      .filter((it) => !isSkillItemDefId(it.defId))
+      .map((it) => ({
       ...it,
       tier: getInstanceTier(it.instanceId) ?? 'Bronze',
       tierStar: getInstanceTierStar(it.instanceId),
@@ -51,7 +64,7 @@ export function buildBattleSnapshot(ctx: ShopSceneCtx, skillBarMoveStartAtMs?: n
       permanentDamageBonus: Math.max(0, Math.round(instanceToPermanentDamageBonus.get(it.instanceId) ?? 0)),
       enchantment: instanceToEnchantment.get(it.instanceId),
       baseStats: resolveInstanceBaseStats(it.instanceId),
-    })),
+      })),
   }
 }
 

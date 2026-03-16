@@ -25,7 +25,7 @@ import {
   levelFromLegacyTierStar,
   setInstanceQualityLevel,
 } from './ShopInstanceRegistry'
-import { getItemDefById, isNeutralItemDef, parseTierName } from './ShopSynthesisLogic'
+import { getItemDefById, getPrimaryArchetype, isNeutralItemDef, parseTierName, toSkillArchetype } from './ShopSynthesisLogic'
 import { getNeutralSpecialKind } from '../panels/NeutralItemPanel'
 import type { NeutralSpecialKind, NeutralChoiceCandidate } from '../panels/NeutralItemPanel'
 import { captureShopState, saveShopStateToStorage } from '../ShopStateStorage'
@@ -46,6 +46,7 @@ import { toVisualTier } from '../ShopMathHelpers'
 import { stopFlashEffect } from '../ui/ShopAnimationEffects'
 import { applySellButtonState } from './ShopDragSystem'
 import { getDefaultItemInfoMode } from '../ShopModeHelpers'
+import { getAllSkillItemDefs, isSkillItemDefId } from '@/common/skills/SkillItemDefs'
 
 // ---- 公共类型 ----
 
@@ -347,9 +348,9 @@ export function checkAndPopPendingRewards(ctx: ShopSceneCtx, callbacks: RewardSy
 
 function getQuickDraftWeightsByPlayerLevel(level: number): number[] {
   const rows = getGameConfig().shopRules?.levelQuickDraftLevelWeightsByPlayerLevel
-  if (!Array.isArray(rows) || rows.length <= 0) return [1, 0, 0, 0, 0, 0, 0, 0]
+  if (!Array.isArray(rows) || rows.length <= 0) return [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   const idx = Math.max(0, Math.min(rows.length - 1, Math.round(level) - 1))
-  const row = rows[idx] ?? rows[rows.length - 1] ?? [1, 0, 0, 0, 0, 0, 0, 0]
+  const row = rows[idx] ?? rows[rows.length - 1] ?? [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   return [
     Math.max(0, Number(row[0] ?? 0)),
     Math.max(0, Number(row[1] ?? 0)),
@@ -359,10 +360,15 @@ function getQuickDraftWeightsByPlayerLevel(level: number): number[] {
     Math.max(0, Number(row[5] ?? 0)),
     Math.max(0, Number(row[6] ?? 0)),
     Math.max(0, Number(row[7] ?? 0)),
+    Math.max(0, Number(row[8] ?? 0)),
+    Math.max(0, Number(row[9] ?? 0)),
+    Math.max(0, Number(row[10] ?? 0)),
   ]
 }
 
-function pickQuickDraftModeByWeights(weights: number[]): 'normal' | 'class_stone' | 'enchant_stone' {
+function pickQuickDraftModeByWeights(
+  weights: number[],
+): 'normal' | 'class_stone' | 'enchant_stone' | 'skill_bronze' | 'skill_silver' | 'skill_gold' {
   const normal = Math.max(0, Number(weights[0] ?? 0))
     + Math.max(0, Number(weights[1] ?? 0))
     + Math.max(0, Number(weights[2] ?? 0))
@@ -371,14 +377,23 @@ function pickQuickDraftModeByWeights(weights: number[]): 'normal' | 'class_stone
     + Math.max(0, Number(weights[5] ?? 0))
   const classStone = Math.max(0, Number(weights[6] ?? 0))
   const enchantStone = Math.max(0, Number(weights[7] ?? 0))
-  const total = normal + classStone + enchantStone
+  const bronzeSkill = Math.max(0, Number(weights[8] ?? 0))
+  const silverSkill = Math.max(0, Number(weights[9] ?? 0))
+  const goldSkill = Math.max(0, Number(weights[10] ?? 0))
+  const total = normal + classStone + enchantStone + bronzeSkill + silverSkill + goldSkill
   if (total <= 0) return 'normal'
   let roll = Math.random() * total
   roll -= normal
   if (roll <= 0) return 'normal'
   roll -= classStone
   if (roll <= 0) return 'class_stone'
-  return 'enchant_stone'
+  roll -= enchantStone
+  if (roll <= 0) return 'enchant_stone'
+  roll -= bronzeSkill
+  if (roll <= 0) return 'skill_bronze'
+  roll -= silverSkill
+  if (roll <= 0) return 'skill_silver'
+  return 'skill_gold'
 }
 
 function pickQuickDraftLevelByWeights(weights: number[]): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
@@ -516,6 +531,64 @@ function buildEnchantmentStoneQuickDraftCandidates(ctx: ShopSceneCtx, callbacks:
   return out
 }
 
+function skillArchetypeFromDefId(defId: string): 'warrior' | 'archer' | 'assassin' | null {
+  const def = getItemDefById(defId)
+  if (!def) return null
+  const hidden = String(def.hidden_tags ?? '').toLowerCase()
+  if (hidden.includes('skill_item/warrior')) return 'warrior'
+  if (hidden.includes('skill_item/archer')) return 'archer'
+  if (hidden.includes('skill_item/assassin')) return 'assassin'
+  const arch = toSkillArchetype(getPrimaryArchetype(def.tags))
+  if (arch === 'warrior' || arch === 'archer' || arch === 'assassin') return arch
+  return null
+}
+
+function buildSkillQuickDraftCandidates(
+  ctx: ShopSceneCtx,
+  callbacks: RewardSystemCallbacks,
+  skillTier: 'Bronze' | 'Silver' | 'Gold',
+): QuickDraftCandidate[] {
+  const byArchetype = new Map<'warrior' | 'archer' | 'assassin', QuickDraftCandidate[]>()
+  byArchetype.set('warrior', [])
+  byArchetype.set('archer', [])
+  byArchetype.set('assassin', [])
+  for (const def of getAllSkillItemDefs()) {
+    const tier = parseTierName(def.starting_tier) ?? 'Bronze'
+    if (tier !== skillTier) continue
+    const cand = buildQuickDraftCandidateByDefId(def.id, callbacks)
+    if (!cand) continue
+    const arch = skillArchetypeFromDefId(def.id)
+    if (!arch) continue
+    byArchetype.get(arch)?.push(cand)
+  }
+  const availableArchetypes = (['warrior', 'archer', 'assassin'] as const).filter((a) => (byArchetype.get(a)?.length ?? 0) > 0)
+  if (availableArchetypes.length < 2) return []
+
+  const counts: Record<'warrior' | 'archer' | 'assassin', number> = { warrior: 0, archer: 0, assassin: 0 }
+  for (const it of ctx.battleSystem?.getAllItems() ?? []) {
+    const arch = skillArchetypeFromDefId(it.defId)
+    if (!arch) continue
+    counts[arch] += 1
+  }
+  const hasAnyInBattle = counts.warrior + counts.archer + counts.assassin > 0
+  const ranked = shuffleInPlace((['warrior', 'archer', 'assassin'] as const).slice())
+    .sort((a, b) => counts[b] - counts[a])
+    .filter((a) => availableArchetypes.includes(a))
+  const targetArchetypes = hasAnyInBattle
+    ? ranked.slice(0, 2)
+    : shuffleInPlace(availableArchetypes.slice()).slice(0, 2)
+
+  if (targetArchetypes.length < 2) return []
+  const out: QuickDraftCandidate[] = []
+  for (const arch of targetArchetypes) {
+    const pool = byArchetype.get(arch) ?? []
+    if (pool.length <= 0) continue
+    const picked = pool[Math.floor(Math.random() * pool.length)]
+    if (picked) out.push(picked)
+  }
+  return out.slice(0, 2)
+}
+
 function buildQuickDraftCandidates(playerLevel: number, ctx: ShopSceneCtx, callbacks: RewardSystemCallbacks): QuickDraftCandidate[] {
   const out: QuickDraftCandidate[] = []
   const blockedDefIds = new Set<string>()
@@ -527,6 +600,18 @@ function buildQuickDraftCandidates(playerLevel: number, ctx: ShopSceneCtx, callb
   }
   if (mode === 'enchant_stone') {
     const fixed = buildEnchantmentStoneQuickDraftCandidates(ctx, callbacks)
+    if (fixed.length > 0) return fixed
+  }
+  if (mode === 'skill_bronze') {
+    const fixed = buildSkillQuickDraftCandidates(ctx, callbacks, 'Bronze')
+    if (fixed.length > 0) return fixed
+  }
+  if (mode === 'skill_silver') {
+    const fixed = buildSkillQuickDraftCandidates(ctx, callbacks, 'Silver')
+    if (fixed.length > 0) return fixed
+  }
+  if (mode === 'skill_gold') {
+    const fixed = buildSkillQuickDraftCandidates(ctx, callbacks, 'Gold')
     if (fixed.length > 0) return fixed
   }
   for (let i = 0; i < 3; i++) {
@@ -745,7 +830,8 @@ function ensureLevelQuickRewardUi(ctx: ShopSceneCtx): boolean {
       ctx.selectedSellAction = null
       const level = getInstanceTier(instanceId)
       const star = getInstanceTierStar(instanceId)
-      ctx.sellPopup.show(def, 0, 'none', toVisualTier(level, star), undefined, getDefaultItemInfoMode())
+      const infoMode = isSkillItemDefId(def.id) ? 'detailed' : getDefaultItemInfoMode()
+      ctx.sellPopup.show(def, 0, 'none', toVisualTier(level, star), undefined, infoMode)
       applySellButtonState(ctx)
     }
     ctx.levelQuickRewardView.zIndex = 18

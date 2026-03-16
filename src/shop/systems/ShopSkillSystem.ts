@@ -19,6 +19,7 @@ import { getInstanceLevel } from './ShopInstanceRegistry'
 import { BRONZE_SKILL_PICKS, getBronzeSkillById } from '@/common/skills/BronzeSkillConfig'
 import { SILVER_SKILL_PICKS, getSilverSkillById } from '@/common/skills/SilverSkillConfig'
 import { GOLD_SKILL_PICKS, getGoldSkillById } from '@/common/skills/GoldSkillConfig'
+import { getSkillPickById, isSkillItemDefId } from '@/common/skills/SkillItemDefs'
 import {
   parseTierName,
   toSkillArchetype,
@@ -34,7 +35,51 @@ import type { ShopSceneCtx, SkillPick } from '../ShopSceneContext'
 // ============================================================
 
 export function hasPickedSkill(ctx: ShopSceneCtx, skillId: string): boolean {
+  if (hasOwnedSkillItem(ctx, skillId)) return true
   return ctx.pickedSkills.some((s) => s.id === skillId)
+}
+
+export function hasOwnedSkillItem(ctx: ShopSceneCtx, skillId: string): boolean {
+  if (!isSkillItemDefId(skillId)) return false
+  const inBattle = ctx.battleSystem?.getAllItems().some((it) => it.defId === skillId) ?? false
+  if (inBattle) return true
+  return ctx.backpackSystem?.getAllItems().some((it) => it.defId === skillId) ?? false
+}
+
+export function getOwnedSkillIds(ctx: ShopSceneCtx): string[] {
+  const out: string[] = []
+  const used = new Set<string>()
+  const pushOne = (defId: string) => {
+    if (!isSkillItemDefId(defId)) return
+    if (used.has(defId)) return
+    used.add(defId)
+    out.push(defId)
+  }
+  for (const one of ctx.battleSystem?.getAllItems() ?? []) pushOne(one.defId)
+  for (const one of ctx.backpackSystem?.getAllItems() ?? []) pushOne(one.defId)
+  if (out.length <= 0) {
+    for (const one of ctx.pickedSkills) pushOne(one.id)
+  }
+  return out
+}
+
+export function syncPickedSkillsFromOwnedSkillItems(ctx: ShopSceneCtx): void {
+  const ids = getOwnedSkillIds(ctx)
+  const next: SkillPick[] = []
+  for (const id of ids) {
+    const pick = getSkillPickById(id)
+    if (!pick) continue
+    next.push({
+      id: pick.id,
+      name: pick.name,
+      archetype: pick.archetype,
+      desc: pick.desc,
+      detailDesc: pick.detailDesc,
+      tier: pick.tier,
+      icon: pick.icon,
+    })
+  }
+  ctx.pickedSkills = next
 }
 
 export function upsertPickedSkill(

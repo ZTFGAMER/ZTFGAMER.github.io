@@ -13,13 +13,13 @@
 //   - 职业工具函数（isSelectedHero / getStarterClassTag / 等）
 // ============================================================
 
-import { getAllItems, getAllItemsRaw, isRunClassItemPoolAllowed, setRunClassItemPoolIds } from '@/core/DataLoader'
-import { getLifeState, getPlayerProgressState, setLifeState } from '@/core/RunState'
+import { getAllItems, getAllItemsRaw, getConfig, isRunClassItemPoolAllowed, setRunClassItemPoolIds } from '@/core/DataLoader'
+import { getCurrentRunIndex, getLifeState, getPlayerProgressState, markRunStarted, setLifeState } from '@/core/RunState'
 import { normalizeSize, type ItemDef } from '@/common/items/ItemDef'
 import { resolveItemTierBaseStats } from '@/common/items/ItemTierStats'
 import type { TierKey } from '@/shop/ShopManager'
-import { getConfig as getDebugCfg } from '@/config/debugConfig'
-import { getItemIconUrl } from '@/core/AssetPath'
+import { getConfig as getDebugCfg, setConfig as setDebugCfg } from '@/config/debugConfig'
+import { getHeroImageUrl, getItemIconUrl } from '@/core/AssetPath'
 import { createItemStatBadges } from '@/common/ui/ItemStatBadges'
 import { getTierColor, getClassColor } from '@/config/colorPalette'
 import { calcSkill94DailyGoldBonus } from '@/common/skills/GoldSkillRules'
@@ -158,6 +158,19 @@ export const HERO_STARTER_POOL: StarterClass[] = [
   'hero6', 'hero7', 'hero8', 'hero9', 'hero10',
 ]
 
+const HERO_EARLIEST_RUN_BY_ID: Partial<Record<StarterClass, number>> = {
+  hero1: 3,
+  hero2: 1,
+  hero3: 3,
+  hero4: 3,
+  hero5: 3,
+  hero6: 3,
+  hero7: 3,
+  hero8: 2,
+  hero9: 2,
+  hero10: 2,
+}
+
 export const STARTER_CLASS_PRESETS: Record<StarterClass, {
   title: string
   subtitle: string
@@ -168,79 +181,79 @@ export const STARTER_CLASS_PRESETS: Record<StarterClass, {
     title: '剑士',
     subtitle: '稳扎稳打，\n护盾连携持续输出。',
     gifts: ['短剑', '圆盾'],
-    heroImage: '/resource/hero/warrior.png',
+    heroImage: getHeroImageUrl('warrior.png'),
   },
   archer: {
     title: '弓手',
     subtitle: '管理弹药节奏，\n打出高频远程火力。',
     gifts: ['木弓', '弹药袋'],
-    heroImage: '/resource/hero/archer.png',
+    heroImage: getHeroImageUrl('archer.png'),
   },
   assassin: {
     title: '刺客',
     subtitle: '低冷却连击，\n快速压制并终结对手。',
     gifts: ['匕首', '连发镖'],
-    heroImage: '/resource/hero/assassin.png',
+    heroImage: getHeroImageUrl('assassin.png'),
   },
   hero1: {
     title: '占卜师',
     subtitle: '不同物品合成时可以2选1（每天限1次）',
     gifts: ['短剑', '圆盾'],
-    heroImage: '/resource/hero/hero1.png',
+    heroImage: getHeroImageUrl('hero1.png'),
   },
   hero2: {
     title: '大亨',
     subtitle: '每天额外获得天数+1的金币',
     gifts: ['短剑', '圆盾'],
-    heroImage: '/resource/hero/hero2.png',
+    heroImage: getHeroImageUrl('hero2.png'),
   },
   hero3: {
     title: '魔术师',
     subtitle: '每天首次丢弃物品，获得等级-1的随机物品',
     gifts: ['短剑', '圆盾'],
-    heroImage: '/resource/hero/hero3.png',
+    heroImage: getHeroImageUrl('hero3.png'),
   },
   hero4: {
     title: '戏法师',
     subtitle: '相同物品合成时可以2选1（每天限1次）',
     gifts: ['短剑', '圆盾'],
-    heroImage: '/resource/hero/hero4.png',
+    heroImage: getHeroImageUrl('hero4.png'),
   },
   hero5: {
     title: '铁匠',
     subtitle: '每隔4天获得1颗升级石（效果：随机升级1个物品）',
     gifts: ['短剑', '圆盾'],
-    heroImage: '/resource/hero/hero5.png',
+    heroImage: getHeroImageUrl('hero5.png'),
   },
   hero6: {
     title: '冒险家',
     subtitle: '每隔2天获得1张冒险券（效果：进行1次冒险）',
     gifts: ['短剑', '圆盾'],
-    heroImage: '/resource/hero/hero6.png',
+    heroImage: getHeroImageUrl('hero6.png'),
   },
   hero7: {
     title: '指挥官',
     subtitle: '每隔3天选择1颗转职石（效果：将物品变为指定职业的物品）',
     gifts: ['短剑', '圆盾'],
-    heroImage: '/resource/hero/hero7.png',
+    heroImage: getHeroImageUrl('hero7.png'),
   },
   hero8: {
     title: '继承者',
     subtitle: '第2天获得1个黄金宝箱（效果：获得1个黄金物品）',
     gifts: ['短剑', '圆盾'],
-    heroImage: '/resource/hero/hero8.png',
+    heroImage: getHeroImageUrl('hero8.png'),
   },
   hero9: {
     title: '大胃王',
     subtitle: '初始红心额外+10',
     gifts: ['短剑', '圆盾'],
-    heroImage: '/resource/hero/hero9.png',
+    heroImage: getHeroImageUrl('hero9.png'),
   },
   hero10: {
     title: '大力士',
     subtitle: '战斗中最大生命值+30%',
     gifts: ['短剑', '圆盾'],
-    heroImage: '/resource/hero/hero10.png',
+    heroImage: getHeroImageUrl('hero10.png'),
   },
 }
 
@@ -329,6 +342,14 @@ function pickRandomUniqueItemIds(
 }
 
 function buildRunClassItemPoolIds(): string[] {
+  const runIndex = markRunStarted()
+  if (runIndex === 1) {
+    setDebugCfg('gameplayCrossSynthesisConfirm', 1)
+    setDebugCfg('gameplayShowSpeedButton', 0)
+  }
+  const fixed = buildFixedRunClassItemPoolIds(runIndex)
+  if (fixed.length > 0) return fixed
+
   const all = getAllItemsRaw().filter((it) => !isNeutralItemDef(it))
   const tierCounts = getRunClassPoolTierCounts()
   const needPerClass = RUN_POOL_TIERS.reduce((acc, tier) => acc + tierCounts[tier], 0)
@@ -354,6 +375,30 @@ function buildRunClassItemPoolIds(): string[] {
   return out
 }
 
+function buildFixedRunClassItemPoolIds(runIndex: number): string[] {
+  const cfg = getConfig().runRules?.firstRunsFixedItemPool
+  const enabledRunCount = Math.max(0, Math.round(Number(cfg?.enabledRunCount ?? 0)))
+  if (enabledRunCount <= 0 || runIndex <= 0 || runIndex > enabledRunCount) return []
+  const names = Array.isArray(cfg?.itemNamesCn) ? cfg.itemNamesCn : []
+  if (names.length <= 0) return []
+  const all = getAllItemsRaw().filter((it) => !isNeutralItemDef(it))
+  const byName = new Map<string, string>()
+  for (const it of all) {
+    const key = String(it.name_cn || '').trim()
+    if (!key || byName.has(key)) continue
+    byName.set(key, it.id)
+  }
+  const out: string[] = []
+  const used = new Set<string>()
+  for (const name of names) {
+    const id = byName.get(String(name || '').trim())
+    if (!id || used.has(id)) continue
+    used.add(id)
+    out.push(id)
+  }
+  return out
+}
+
 // ============================================================
 // 职业查询工具
 // ============================================================
@@ -370,19 +415,19 @@ export function isSelectedHero(ctx: ShopSceneCtx, id: StarterClass): boolean {
 }
 
 export function getHeroIconByStarterClass(ctx: ShopSceneCtx): string {
-  if (ctx.starterClass === 'hero1') return '/resource/hero/hero1icon.png'
-  if (ctx.starterClass === 'hero2') return '/resource/hero/hero2icon.png'
-  if (ctx.starterClass === 'hero3') return '/resource/hero/hero3icon.png'
-  if (ctx.starterClass === 'hero4') return '/resource/hero/hero4icon.png'
-  if (ctx.starterClass === 'hero5') return '/resource/hero/hero5icon.png'
-  if (ctx.starterClass === 'hero6') return '/resource/hero/hero6icon.png'
-  if (ctx.starterClass === 'hero7') return '/resource/hero/hero7icon.png'
-  if (ctx.starterClass === 'hero8') return '/resource/hero/hero8icon.png'
-  if (ctx.starterClass === 'hero9') return '/resource/hero/hero9icon.png'
-  if (ctx.starterClass === 'hero10') return '/resource/hero/hero10icon.png'
-  if (ctx.starterClass === 'archer') return '/resource/hero/archericon.png'
-  if (ctx.starterClass === 'assassin') return '/resource/hero/assassinicon.png'
-  return '/resource/hero/warrioricon.png'
+  if (ctx.starterClass === 'hero1') return getHeroImageUrl('hero1icon.png')
+  if (ctx.starterClass === 'hero2') return getHeroImageUrl('hero2icon.png')
+  if (ctx.starterClass === 'hero3') return getHeroImageUrl('hero3icon.png')
+  if (ctx.starterClass === 'hero4') return getHeroImageUrl('hero4icon.png')
+  if (ctx.starterClass === 'hero5') return getHeroImageUrl('hero5icon.png')
+  if (ctx.starterClass === 'hero6') return getHeroImageUrl('hero6icon.png')
+  if (ctx.starterClass === 'hero7') return getHeroImageUrl('hero7icon.png')
+  if (ctx.starterClass === 'hero8') return getHeroImageUrl('hero8icon.png')
+  if (ctx.starterClass === 'hero9') return getHeroImageUrl('hero9icon.png')
+  if (ctx.starterClass === 'hero10') return getHeroImageUrl('hero10icon.png')
+  if (ctx.starterClass === 'archer') return getHeroImageUrl('archericon.png')
+  if (ctx.starterClass === 'assassin') return getHeroImageUrl('assassinicon.png')
+  return getHeroImageUrl('warrioricon.png')
 }
 
 export function isStarterClassItem(ctx: ShopSceneCtx, item: ItemDef): boolean {
@@ -612,7 +657,7 @@ export function getHeroPassiveDetailData(ctx: ShopSceneCtx): { name: string; des
     return {
       name: '未选择英雄',
       desc: '暂无技能效果',
-      icon: '/resource/hero/warrioricon.png',
+      icon: getHeroImageUrl('warrioricon.png'),
     }
   }
   const preset = STARTER_CLASS_PRESETS[ctx.starterClass]
@@ -620,7 +665,7 @@ export function getHeroPassiveDetailData(ctx: ShopSceneCtx): { name: string; des
     return {
       name: '未选择英雄',
       desc: '暂无技能效果',
-      icon: '/resource/hero/warrioricon.png',
+      icon: getHeroImageUrl('warrioricon.png'),
     }
   }
   return {
@@ -993,6 +1038,7 @@ export function seedInitialUnlockPoolByStarterClass(
 ): void {
   const runClassItemPoolIds = buildRunClassItemPoolIds()
   setRunClassItemPoolIds(runClassItemPoolIds)
+  ctx.runSeenItemIds.clear()
   ctx.unlockedItemIds.clear()
   ctx.neutralObtainedCountByKind.clear()
   ctx.neutralRandomCategoryPool = []
@@ -1432,15 +1478,25 @@ export function ensureStarterClassSelection(
 
   const cards: Array<{ key: StarterClass; border: Graphics; pick: Text }> = []
   const showAllHeroes = getDebugCfg('gameplayStarterHeroShowAll') >= 0.5
-  if (!showAllHeroes && (ctx.starterHeroChoiceOptions.length !== 3 || ctx.starterHeroChoiceOptions.some((id) => !HERO_STARTER_POOL.includes(id)))) {
-    const pool = HERO_STARTER_POOL.slice()
+  const nextRunIndex = Math.max(1, getCurrentRunIndex() + 1)
+  const availableHeroPool = HERO_STARTER_POOL.filter((id) => {
+    const earliest = HERO_EARLIEST_RUN_BY_ID[id] ?? 1
+    return nextRunIndex >= earliest
+  })
+  const targetChoiceCount = nextRunIndex <= 1 ? 1 : 3
+  if (!showAllHeroes && (
+    ctx.starterHeroChoiceOptions.length !== targetChoiceCount
+    || ctx.starterHeroChoiceOptions.some((id) => !availableHeroPool.includes(id))
+  )) {
+    const pool = availableHeroPool.slice()
     for (let i = pool.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
       const t = pool[i]
       pool[i] = pool[j]!
       pool[j] = t!
     }
-    ctx.starterHeroChoiceOptions = pool.slice(0, 3)
+    const picked = pool.slice(0, Math.min(targetChoiceCount, pool.length))
+    ctx.starterHeroChoiceOptions = picked.length > 0 ? picked : ['hero2']
   }
   const order: StarterClass[] = showAllHeroes ? HERO_STARTER_POOL : ctx.starterHeroChoiceOptions
   const compact = order.length > 3
@@ -1449,7 +1505,6 @@ export function ensureStarterClassSelection(
   const cardH = compact ? 370 : 624
   const gapX = compact ? 10 : 16
   const gapY = compact ? 12 : 0
-  const cardX = (CANVAS_W - (cardW * cols + gapX * (cols - 1))) / 2
   const startY = compact ? 340 : 460
   let selected: StarterClass | null = ctx.starterClass
 
@@ -1493,7 +1548,11 @@ export function ensureStarterClassSelection(
     const con = new Container()
     const col = i % cols
     const row = Math.floor(i / cols)
-    con.x = cardX + col * (cardW + gapX)
+    const rowStart = row * cols
+    const rowCount = Math.min(cols, Math.max(0, order.length - rowStart))
+    const rowWidth = rowCount * cardW + Math.max(0, rowCount - 1) * gapX
+    const rowX = (CANVAS_W - rowWidth) / 2
+    con.x = rowX + col * (cardW + gapX)
     con.y = startY + row * (cardH + gapY)
     con.eventMode = 'static'
     con.cursor = 'pointer'

@@ -1,10 +1,11 @@
 import { getAllItems } from '@/core/DataLoader'
+import { getSkillIconStemById, isSkillItemDefId } from '@/common/skills/SkillItemDefs'
 
 function getItemIconBasePath(): string {
   const protocol = typeof window !== 'undefined' ? window.location.protocol : ''
   let base = '/resource'
-  if (protocol === 'app:') {
-    base = 'app://resource'
+  if (protocol && protocol !== 'http:' && protocol !== 'https:' && protocol !== 'file:') {
+    base = './resource'
   }
   if (protocol === 'file:') {
     const path = typeof window !== 'undefined' ? window.location.pathname : ''
@@ -16,8 +17,8 @@ function getItemIconBasePath(): string {
 function getResourceBasePath(): string {
   const protocol = typeof window !== 'undefined' ? window.location.protocol : ''
   let base = '/resource'
-  if (protocol === 'app:') {
-    base = 'app://resource'
+  if (protocol && protocol !== 'http:' && protocol !== 'https:' && protocol !== 'file:') {
+    base = './resource'
   }
   if (protocol === 'file:') {
     const path = typeof window !== 'undefined' ? window.location.pathname : ''
@@ -41,6 +42,10 @@ function getItemIconStem(defId: string): string {
 }
 
 export function getItemIconUrl(defId: string): string {
+  if (isSkillItemDefId(defId)) {
+    const stem = getSkillIconStemById(defId) ?? defId
+    return getSkillIconUrl(stem)
+  }
   return `${getItemIconBasePath()}/${getItemIconStem(defId)}.png`
 }
 
@@ -66,4 +71,8 @@ export function getEventIconUrl(fileStem: string): string {
 
 export function getBuffIconUrl(fileStem: string): string {
   return `${getResourceBasePath()}/bufficon/${fileStem}.png`
+}
+
+export function getHeroImageUrl(fileName: string): string {
+  return `${getResourceBasePath()}/hero/${fileName}`
 }

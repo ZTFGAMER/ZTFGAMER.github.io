@@ -10,7 +10,7 @@ import type { ShopSceneCtx } from './ShopSceneContext'
 // ── 显示模式：简洁 / 详细 ─────────────────────────────────────
 
 export function shouldShowSimpleDescriptions(): boolean {
-  return getDebugCfg('gameplayShowSimpleDescriptions') >= 0.5
+  return false
 }
 
 export function isSkillDraftRerollEnabled(): boolean {

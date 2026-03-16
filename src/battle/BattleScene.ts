@@ -196,7 +196,7 @@ function tickAutoFxDegrade(dtMs: number): void {
 }
 
 function shouldShowSimpleDescriptions(): boolean {
-  return getDebugCfg('gameplayShowSimpleDescriptions') >= 0.5
+  return false
 }
 
 function getDefaultItemInfoMode(): ItemInfoMode {

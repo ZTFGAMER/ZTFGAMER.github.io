@@ -10,7 +10,7 @@ import type { ItemSizeNorm } from '@/common/grid/GridSystem'
 import { GridZone } from '@/common/grid/GridZone'
 import { ShopPanelView } from '@/shop/ui/ShopPanelView'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
-import { getConfig as getGameCfg, getAllItems } from '@/core/DataLoader'
+import { getConfig as getGameCfg } from '@/core/DataLoader'
 import { getApp } from '@/core/AppContext'
 import { normalizeSize, type ItemDef } from '@/common/items/ItemDef'
 import type { TierKey } from '@/shop/ShopManager'
@@ -74,6 +74,7 @@ import {
 import { playSynthesisFlashEffect } from './ShopAnimationEffects'
 import { restoreDraggedItemToZone } from '../systems/ShopGridInventory'
 import type { ShopSceneCtx } from '../ShopSceneContext'
+import { isSkillItemDefId } from '@/common/skills/SkillItemDefs'
 
 // ---- 内联辅助 ----
 
@@ -271,7 +272,7 @@ export function buildBattleZoneUI(
     clearSelection()
     const defId = instanceToDefId.get(instanceId)
     if (!defId || !ctx.sellPopup || !ctx.shopManager) return
-    const item = getAllItems().find(i => i.id === defId)
+    const item = getItemDefById(defId)
     if (!item) return
     const tier = getInstanceTier(instanceId)
     const star = getInstanceTierStar(instanceId)
@@ -302,7 +303,7 @@ export function buildBattleZoneUI(
   }
   ctx.drag.onSpecialDrop = ({ instanceId, anchorGx, anchorGy, size, originCol, originRow, homeSystem, homeView, defId }) => {
     if (!ctx.shopManager) return false
-    const item = getAllItems().find(i => i.id === defId)
+    const item = getItemDefById(defId)
     if (!item) return false
 
     const sourceDef = getItemDefById(defId)
@@ -320,7 +321,7 @@ export function buildBattleZoneUI(
     // 普通物品：未命中任意格子候选时才丢弃；
     // 变化石/转职石：命中丢弃区时优先允许丢弃，避免"无目标时无法丢弃"。
     if ((overSellArea && !overAnyDropTarget) || forceDiscardForNeutralStone) {
-      if (sourceDef && isNeutralItemDef(sourceDef)) {
+      if (sourceDef && isNeutralItemDef(sourceDef) && !isSkillItemDefId(sourceDef.id)) {
         const ok = applyNeutralDiscardEffect(sourceDef, stage)
         if (!ok) return false
       }

@@ -19,6 +19,7 @@ import {
 import type { ItemSizeNorm, PlacedItem } from './GridSystem'
 import { getAllItems, getConfig as getGameConfig } from '@/core/DataLoader'
 import { getBuffIconUrl, getItemIconUrl, getUiImageUrl } from '@/core/AssetPath'
+import { getAllSkillItemDefs, getSkillItemDefById, isSkillItemDefId } from '@/common/skills/SkillItemDefs'
 import { getClassColor, getTierColor } from '@/config/colorPalette'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import { getItemEnchantmentDisplay, type ItemEnchantmentKey } from '@/common/items/ItemEnchantment'
@@ -106,27 +107,32 @@ const SIZE_DIMS: Record<ItemSizeNorm, [number, number]> = {
 
 let tierByDefId: Map<string, string> | null = null
 
+function getDefById(defId: string) {
+  return getAllItems().find((it) => it.id === defId) ?? getSkillItemDefById(defId)
+}
+
+function ensureTierCache(): void {
+  if (tierByDefId) return
+  tierByDefId = new Map<string, string>()
+  for (const item of getAllItems()) {
+    const tier = item.starting_tier.split('/')[0]?.trim() ?? 'Bronze'
+    tierByDefId.set(item.id, tier)
+  }
+  for (const item of getAllSkillItemDefs()) {
+    const tier = item.starting_tier.split('/')[0]?.trim() ?? 'Bronze'
+    tierByDefId.set(item.id, tier)
+  }
+}
+
 function getTier(defId: string, tierOverride?: string): string {
   if (tierOverride) return tierOverride.split('#')[0] ?? tierOverride
-  if (!tierByDefId) {
-    tierByDefId = new Map<string, string>()
-    for (const item of getAllItems()) {
-      const tier = item.starting_tier.split('/')[0]?.trim() ?? 'Bronze'
-      tierByDefId.set(item.id, tier)
-    }
-  }
-  return tierByDefId.get(defId) ?? 'Bronze'
+  ensureTierCache()
+  return tierByDefId!.get(defId) ?? 'Bronze'
 }
 
 function getBaseTier(defId: string): string {
-  if (!tierByDefId) {
-    tierByDefId = new Map<string, string>()
-    for (const item of getAllItems()) {
-      const tier = item.starting_tier.split('/')[0]?.trim() ?? 'Bronze'
-      tierByDefId.set(item.id, tier)
-    }
-  }
-  return tierByDefId.get(defId) ?? 'Bronze'
+  ensureTierCache()
+  return tierByDefId!.get(defId) ?? 'Bronze'
 }
 
 function parseTierStar(tierRaw?: string): number {
@@ -184,7 +190,10 @@ interface ItemNode {
 }
 
 function getArchetypeBadgeByDefId(defId: string): { label: string; className: '战士' | '弓手' | '刺客' | '中立'; color: number; showLevel: boolean } {
-  const item = getAllItems().find((it) => it.id === defId)
+  if (isSkillItemDefId(defId)) {
+    return { label: '技', className: '中立', color: 0x8f6bff, showLevel: false }
+  }
+  const item = getDefById(defId)
   const tags = `${item?.tags ?? ''}`
   if (tags.includes('战士')) return { label: '战', className: '战士', color: getClassColor('战士'), showLevel: true }
   if (tags.includes('弓手')) return { label: '弓', className: '弓手', color: getClassColor('弓手'), showLevel: true }
@@ -1404,7 +1413,7 @@ export class GridZone extends Container {
 
   private updateNodeStatBadges(node: ItemNode): void {
     const { pw } = SIZE_PX[node.size]
-    const itemDef = getAllItems().find((it) => it.id === node.defId)
+    const itemDef = getDefById(node.defId)
     node.statBadges.removeChildren()
     if (itemDef) {
       const tierStats = resolveItemTierBaseStats(itemDef, node.tier)
@@ -1438,7 +1447,7 @@ export class GridZone extends Container {
       node.ammoBadge.visible = false
       return
     }
-    const itemDef = getAllItems().find((it) => it.id === node.defId)
+    const itemDef = getDefById(node.defId)
     if (!itemDef) {
       node.ammoBadge.visible = false
       return

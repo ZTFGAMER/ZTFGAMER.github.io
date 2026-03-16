@@ -12,6 +12,8 @@ const PLAYER_PROGRESS_STORAGE_KEY = 'bigbazzar_player_progress_v1'
 const PLAYER_PROGRESS_STORAGE_VERSION = 1
 const LAST_STAND_STATE_STORAGE_KEY = 'bigbazzar_last_stand_state_v1'
 const LAST_STAND_STATE_STORAGE_VERSION = 1
+const PLAYER_RUN_META_STORAGE_KEY = 'bigbazzar_player_run_meta_v1'
+const PLAYER_RUN_META_STORAGE_VERSION = 1
 const DEFAULT_PLAYER_LEVEL = 1
 const DEFAULT_PLAYER_EXP = 0
 
@@ -45,6 +47,10 @@ export type PlayerProgressState = {
 export type LastStandState = {
   used: boolean
   pendingReward: boolean
+}
+
+export type PlayerRunMetaState = {
+  startedRunCount: number
 }
 
 function clampLives(current: number, max: number): LifeState {
@@ -146,6 +152,26 @@ function saveLastStandState(state: LastStandState): LastStandState {
   return normalized
 }
 
+function clampPlayerRunMeta(startedRunCount: unknown): PlayerRunMetaState {
+  const n = Number(startedRunCount)
+  return {
+    startedRunCount: Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0,
+  }
+}
+
+function savePlayerRunMetaState(state: PlayerRunMetaState): PlayerRunMetaState {
+  const normalized = clampPlayerRunMeta(state.startedRunCount)
+  try {
+    localStorage.setItem(PLAYER_RUN_META_STORAGE_KEY, JSON.stringify({
+      version: PLAYER_RUN_META_STORAGE_VERSION,
+      state: normalized,
+    }))
+  } catch {
+    // ignore
+  }
+  return normalized
+}
+
 export function getLifeState(): LifeState {
   try {
     const raw = localStorage.getItem(LIFE_STATE_STORAGE_KEY)
@@ -194,6 +220,36 @@ export function clearCurrentRunState(): void {
   } catch {
     // ignore
   }
+}
+
+export function getPlayerRunMetaState(): PlayerRunMetaState {
+  try {
+    const raw = localStorage.getItem(PLAYER_RUN_META_STORAGE_KEY)
+    if (!raw) return savePlayerRunMetaState({ startedRunCount: 0 })
+    const parsed = JSON.parse(raw) as {
+      version?: unknown
+      state?: { startedRunCount?: unknown }
+    } | null
+    if (!parsed || parsed.version !== PLAYER_RUN_META_STORAGE_VERSION || !parsed.state) {
+      return savePlayerRunMetaState({ startedRunCount: 0 })
+    }
+    return savePlayerRunMetaState(clampPlayerRunMeta(parsed.state.startedRunCount))
+  } catch {
+    return savePlayerRunMetaState({ startedRunCount: 0 })
+  }
+}
+
+export function getCurrentRunIndex(): number {
+  return getPlayerRunMetaState().startedRunCount
+}
+
+export function markRunStarted(): number {
+  const prev = getPlayerRunMetaState().startedRunCount
+  return savePlayerRunMetaState({ startedRunCount: prev + 1 }).startedRunCount
+}
+
+export function resetRunMetaAsFirstPlay(): void {
+  savePlayerRunMetaState({ startedRunCount: 0 })
 }
 
 export function getLastStandState(): LastStandState {

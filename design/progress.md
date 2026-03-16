@@ -1,5 +1,398 @@
 # 大巴扎 — 开发进度记录
 
+## 验收优化追加（2026-03-16，移除物品简版描述，统一详细信息）
+
+- 用户需求：物品描述统一使用详细信息，不再使用简版描述。
+- 已完成：
+  - `src/shop/ShopModeHelpers.ts`
+    - `shouldShowSimpleDescriptions()` 固定返回 `false`，商店内物品详情/描述统一走详细模式。
+  - `src/battle/BattleScene.ts`
+    - 战斗场景内描述模式同样固定为详细，不再在简版与详细间切换。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收商店/战斗两端物品详情是否全为详细版。
+
+## 验收优化追加（2026-03-16，首局默认设置：开启合成确认 + 关闭战斗加速按钮）
+
+- 用户需求：从头开始的第 1 局，默认开启“合成二次弹窗”，并默认关闭“战斗加速按钮”。
+- 已完成：`src/shop/systems/ShopHeroSystem.ts`
+  - 在开局建池 `buildRunClassItemPoolIds()` 中获取到 `runIndex` 后，若 `runIndex === 1`：
+    - `gameplayCrossSynthesisConfirm = 1`
+    - `gameplayShowSpeedButton = 0`
+  - 这样仅首局自动应用，后续局次不强制覆盖用户设置。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在“重置后首局”验收两个开关默认值。
+
+## 验收优化追加（2026-03-16，技能奖励详情改详细 + Lv1->Lv2经验需求调整）
+
+- 用户需求：
+  - 升级奖励中的技能物品点击时显示详细信息（非简版）；
+  - Lv1 升 Lv2 所需合成次数改为 3 次。
+- 已完成：
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 升级奖励格子点击详情时，技能物品强制使用 `detailed` 信息模式；
+    - 普通物品继续沿用默认信息模式。
+  - `data/game_config.json`
+    - `playerExpToNextLevel` 首项由 `4` 调整为 `3`（对应 Lv1->Lv2）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收技能详情显示与首级升级节奏。
+
+## 验收优化追加（2026-03-16，iOS 图标二次修复 + TF Build 102）
+
+- 用户反馈：TF 包内图标仍缺失，日志持续报 `/resource/itemicon/...` 加载失败。
+- 处理：
+  - `src/core/AssetPath.ts`
+    - 资源根路径规则改为：非 `http/https` 协议默认使用相对路径 `./resource`（仅 web 站点继续用 `/resource`）；
+    - 新增 `getHeroImageUrl(...)` 统一英雄资源 URL。
+  - `src/shop/systems/ShopHeroSystem.ts`
+    - 清理所有硬编码 `/resource/hero/...`，改为 `getHeroImageUrl(...)`。
+- 验证：
+  - `npm run build` 通过；
+  - `npm run build:ios-web` 通过；
+  - `npm run release:tf` 完整成功：
+    - `ARCHIVE SUCCEEDED`
+    - `EXPORT SUCCEEDED`
+    - `UPLOAD SUCCEEDED with no errors`
+    - Build：`102`
+    - Delivery UUID：`5aeec769-8ab6-4a98-a17f-ca59d4921084`
+- 当前阶段：等待用户在 TF Build 102 复测物品/英雄图标加载。
+
+## 验收优化追加（2026-03-16，Lv2->Lv3未出技能奖励问题修复）
+
+- 用户反馈：按配置 Lv2 升 Lv3 应出现技能奖励，但实际仍出现基础装备。
+- 原因定位：技能物品职业识别使用 `tags`，而技能物品定义为 `中立/技能`，导致无法按职业分组，技能候选构建失败并回退到普通装备池。
+- 已完成：
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - `skillArchetypeFromDefId(...)` 优先解析 `hidden_tags`（`skill_item/warrior|archer|assassin`）识别技能物品职业；
+    - 兜底保留原 `tags` 解析，兼容普通职业物品统计。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测 Lv2->Lv3 是否稳定进入技能2选1奖励。
+
+## 验收优化追加（2026-03-16，升级奖励加入技能物品2选1）
+
+- 用户需求：
+  - 升级奖励增加“技能物品获得”类型；
+  - 该类型每次给出 2 个技能物品，进行 2 选 1；
+  - 两个技能物品必须是不同职业，且优先来自上阵区数量最多的两个职业（上阵区无职业时随机）。
+- 已完成：
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 扩展升级奖励权重解析：`levelQuickDraftLevelWeightsByPlayerLevel` 支持 11 列（新增青铜/白银/黄金技能权重）；
+    - 扩展升级奖励模式选择：新增 `skill_bronze / skill_silver / skill_gold`；
+    - 新增技能奖励候选构建逻辑：
+      - 从技能物品定义中按品质筛选；
+      - 统计上阵区职业数量并选取前二职业；
+      - 生成两个不同职业的技能候选（2 选 1）。
+  - `data/game_config.json`
+    - 按提供数值将 `levelQuickDraftLevelWeightsByPlayerLevel` 更新为 40 行、11 列配置（包含转职石/附魔石/青铜技能/白银技能/黄金技能列）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实机验收升级奖励中的技能2选1是否符合“前二上阵职业”规则。
+
+## 验收优化追加（2026-03-16，修复后 TestFlight 重新打包上传）
+
+- 用户指令：直接重新打包并上传 TF。
+- 已完成：
+  - 执行 `npm run release:tf` 完整流程（build -> cap sync ios -> archive -> export -> upload）；
+  - 结果：
+    - `ARCHIVE SUCCEEDED`
+    - `EXPORT SUCCEEDED`
+    - `UPLOAD SUCCEEDED with no errors`
+  - Delivery UUID：`6f927355-80b8-4765-93d7-19ee3d8ae1c8`；
+  - 构建号：`CURRENT_PROJECT_VERSION=101`；
+  - IPA：`ios/build/export-testflight/App.ipa`。
+- 当前阶段：等待用户在 App Store Connect/TestFlight 确认 Build 101 处理状态，并复测 iOS 图标加载。
+
+## 验收优化追加（2026-03-16，iOS 包内图标丢失排查与修复）
+
+- 用户反馈：iOS 包中物品图标、英雄图标全部不显示。
+- 排查结果：
+  - 资源文件已实际打入包内：`ios/App/App/public/resource/itemicon/vanessa` 与 `ios/App/App/public/resource/hero` 均存在；
+  - 根因在 `src/core/AssetPath.ts`：`app:` 协议分支把资源前缀写成 `app://resource`，导致 iOS WebView 下资源 URL 解析异常（非 `...://localhost/resource/...`）。
+- 已完成：
+  - `src/core/AssetPath.ts`
+    - 移除 `app:` 协议的特殊前缀改写，统一使用 `/resource`（`file:` 场景仍保留相对路径兜底）；
+    - 物品图标/英雄图标/技能图标等资源路径回归同一口径。
+- 验证：
+  - `npm run build` 通过；
+  - `npm run build:ios-web` 通过；
+  - `dist-ios/resource/*` 与 `ios/App/App/public/resource/*` 资源目录存在且完整。
+- 当前阶段：等待用户在 iOS 包复测图标加载。
+
+## 验收优化追加（2026-03-16，图鉴Y偏移不生效修复）
+
+- 用户反馈：`gameplayCompendiumPanelOffsetY` 调整后图鉴位置无变化。
+- 原因定位：图鉴弹窗实际使用的 `openItemCompendiumOverlay()` 里仍是硬编码 `panel.y = CANVAS_H / 2`，未接入配置。
+- 已完成：
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 图鉴主面板 Y 改为：`CANVAS_H / 2 + 450 + getDebugCfg('gameplayCompendiumPanelOffsetY')`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收面板偏移配置实时生效。
+
+## 验收优化追加（2026-03-16，图鉴面板Y偏移改为可配置）
+
+- 用户需求：`本局物品图鉴` 面板位置的 Y 偏移支持在网页数值中配置。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增参数 `gameplayCompendiumPanelOffsetY`（图鉴面板相对屏幕中心 Y 偏移）。
+  - `data/debug_defaults.json`
+    - 新增默认值 `gameplayCompendiumPanelOffsetY: 0`。
+  - `src/debug/DebugPage.ts`
+    - 将该参数加入“玩法数值”分组，可在线调试。
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 图鉴面板位置改为读取 `getDebugCfg('gameplayCompendiumPanelOffsetY')`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户调参确认最终图鉴与详情遮挡关系。
+
+## 验收优化追加（2026-03-16，开局单英雄候选居中）
+
+- 用户需求：开局只有 1 个英雄选项时，卡片应居中显示。
+- 已完成：`src/shop/systems/ShopHeroSystem.ts`
+  - 英雄卡片布局从“固定 3 列起点”改为“按每行实际数量居中”；
+  - 当仅 1 个候选时，该行 `rowCount=1`，卡片自动居中；
+  - 同时兼容多行场景，最后一行不足列数时也会居中。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收首局 `1选1` 居中显示效果。
+
+## 验收优化追加（2026-03-16，技能物品详情追加背包生效提示）
+
+- 用户需求：技能物品在详情描述下方增加提示“（放到背包中即可生效）”。
+- 已完成：
+  - `src/common/ui/SellPopup.ts`
+    - 在详情描述行组装完成后，针对技能物品（`isSkillItemDefId(item.id)`）自动追加提示行；
+    - 增加去重保护，避免同一提示重复显示。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收技能物品详情文案位置与可读性。
+
+## 验收优化追加（2026-03-16，图鉴解锁规则补齐：初始青铜 + 异物合成随机结果）
+
+- 用户需求：
+  - 图鉴初始时所有青铜物品默认解锁；
+  - 不同物品合成随机出的结果也应解锁图鉴。
+- 已完成：
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 图鉴可见判定调整为：`青铜起始品质` 直接视为已解锁，非青铜继续走 `runSeenItemIds`。
+  - `src/shop/ShopScene.ts`
+    - `refreshShopUI(...)` 的 `runSeenItemIds` 记录去掉“仅本局固定池”限制；
+    - 补回实例层记录：遍历 `instanceToDefId.values()` 统一标记已见，确保异物合成随机结果会被解锁。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“青铜初始全亮 + 异物合成结果解锁”表现。
+
+## 验收优化追加（2026-03-16，英雄最早出现局数 + 首局1选1）
+
+- 用户需求：
+  - 英雄新增“最早出现局数”配置；
+  - 当前局数未达到阈值时不可被随机到；
+  - 首次游玩仅 `1选1`，从第二局开始恢复 `3选1`。
+- 已完成：
+  - `src/shop/systems/ShopHeroSystem.ts`
+    - 新增英雄最早出现局数字典 `HERO_EARLIEST_RUN_BY_ID`，按需求配置：
+      - `hero2=1`、`hero8/hero9/hero10=2`、其余英雄 `=3`；
+    - 英雄候选池改为按“当前将开始局数（`getCurrentRunIndex()+1`）”过滤；
+    - 候选数量规则改为：第1局 `1选1`，第2局起 `3选1`；
+    - 对缓存的 `starterHeroChoiceOptions` 增加数量与可用性校验，不合法时重抽。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收首局/次局英雄候选数量与解锁时机是否符合预期。
+
+## 验收优化追加（2026-03-16，Day1 图鉴按钮默认显示 + 仅自己随机算见过）
+
+- 用户反馈：
+  - 第一局 Day1 时“物品图鉴”按钮仍可能不显示；
+  - 图鉴“已见过”判定不应包含敌方使用，仅自己随机到才算。
+- 已完成：
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 创建图鉴按钮时立即按头像基准计算并设置坐标（同偏移配置），不依赖后续布局刷新，确保 Day1 默认可见。
+  - `src/shop/ShopScene.ts`
+    - 移除从 `instanceToDefId` 全量映射回填“已见过”的逻辑，避免敌方实例被计入；
+    - 现仅保留玩家侧随机来源（商店池/特殊商店/奖励候选等）计入见过。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收 Day1 首局按钮可见性与“仅自己随机算见过”口径。
+
+## 验收优化追加（2026-03-16，整理背包排序优先级调整）
+
+- 用户需求：整理背包时排序优先级改为“技能物品 > 中立物品 > 其他职业物品”。
+- 已完成：`src/shop/systems/ShopDragSystem.ts`
+  - `sortBackpackItemsByRule(...)` 增加分组排序：
+    - `group 0`：技能物品（`isSkillItemDefId`）；
+    - `group 1`：中立物品（`isNeutralItemDef`）；
+    - `group 2`：其他职业物品；
+  - 同组内继续沿用原有规则（职业序/等级降序/ID）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“整理”后的背包顺序是否符合预期。
+
+## 验收优化追加（2026-03-16，商店隐藏技能图标 + 技能物品可丢弃）
+
+- 用户需求：
+  - 商店里不显示技能图标，仅在战斗中显示；
+  - 技能物品可丢弃，丢弃等同于扔掉该技能。
+- 已完成：
+  - `src/shop/panels/SkillDraftPanel.ts`
+    - `refreshSkillIconBar()` 调整为商店阶段强制隐藏并清空技能图标栏，同时关闭技能详情弹窗。
+  - `src/shop/ui/ShopBattleZoneBuilder.ts`
+    - 丢弃判定中对技能物品特殊处理：不再走中立道具专用的 discard 效果拦截，允许直接丢弃；
+    - 由于技能生效已绑定“背包/上阵区持有”，丢弃后技能即时失效。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“商店无技能图标 + 技能物品可丢弃并失效”。
+
+## 验收优化追加（2026-03-16，重开后图鉴按钮丢失修复）
+
+- 用户反馈：游戏重新开始后，“物品图鉴”按钮偶发不显示。
+- 原因定位：图鉴按钮挂在玩家状态容器上，重开流程中该容器可能被重建；若按钮引用丢失而未触发按钮重建，入口会消失。
+- 已完成：
+  - `src/shop/ShopScene.ts`
+    - 在 `refreshShopUI(...)` 开始阶段增加兜底：当 `ctx.itemCompendiumBtn` 缺失时，自动调用 `settingsPanel?.createSettingsButton()` 进行重建。
+- 当前阶段：等待用户验收“重开局后图鉴按钮稳定存在”。
+
+## 验收优化追加（2026-03-16，图鉴基础框再下移150px）
+
+- 用户需求：图鉴基础框再向下移动 `150px`。
+- 已完成：
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 图鉴主面板中心 Y 由 `CANVAS_H / 2 + 300` 调整为 `CANVAS_H / 2 + 450`。
+- 当前阶段：等待用户继续验收图鉴与详情遮挡关系。
+
+## 验收优化追加（2026-03-16，设置面板顶部留白压缩）
+
+- 用户反馈：设置弹窗顶部留白过大。
+- 已完成：`src/shop/panels/SettingsDebugPanel.ts`
+  - 标题区整体上移：`title/subtitle/runText` 从 `-210/-166/-138` 调整为 `-360/-316/-284`；
+  - 控件区整体上移并保留等间距：控制项范围从 `[-90, 410]` 调整为 `[-240, 360]`（9 项等间距）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收设置弹窗顶部留白与整体纵向平衡。
+
+## 验收优化追加（2026-03-16，图鉴与点击详情整体下移150px）
+
+- 用户需求：图鉴面板与图鉴内点击后的详情面板都继续下移 `150px`。
+- 已完成：
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 图鉴主面板中心 Y：`CANVAS_H / 2 + 150` 调整为 `CANVAS_H / 2 + 300`；
+    - 图鉴点击详情 `SellPopup` 中心 Y：`220` 调整为 `370`。
+- 当前阶段：等待用户验收下移后的遮挡关系与可读性。
+
+## 验收优化追加（2026-03-16，设置面板下移 + 技能物品详情可点 + 紫色边框）
+
+- 用户需求：
+  - 设置面板整体下移 `300px`，并将面板内所有控制项按一致间隔均匀排布在框体内；
+  - 技能物品点击时应与普通物品一样可查看详情；
+  - 技能物品与中立物品区分，使用紫色边框。
+- 已完成：
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 设置面板中心位置由 `y=418` 调整为 `y=718`（整体下移 300px）；
+    - 将 9 个控制项（4 个开关行 + 4 个测试按钮 + 关闭按钮）改为统一步进的等距布局，全部落在框体内。
+  - `src/shop/ui/ShopUIBuilders.ts` + `src/shop/ui/ShopBattleZoneBuilder.ts`
+    - 物品点击/拖拽详情读取改为走 `getItemDefById(...)`，覆盖技能物品定义，修复“技能物品点击无详情”。
+  - `src/common/grid/GridZone.ts`
+    - 技能物品识别后返回独立样式：标签 `技`、不显示等级、边框色 `0x8f6bff`（紫色）。
+  - `src/common/ui/SellPopup.ts`
+    - 技能物品详情边框色同步改为紫色，和普通中立物品视觉区分。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“设置面板位置/间距 + 技能物品可点详情 + 紫色边框”最终视觉与交互。
+
+## 验收优化追加（2026-03-16，图鉴标题/内容/关闭按钮内收并统一间距）
+
+- 用户反馈：标题、内容区、关闭按钮需要全部位于同一框体内，且上下间隔风格一致。
+- 已完成：
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 图鉴面板保持下移基准（`+150px`）；
+    - 标题从框外移入框内顶部（`y=-244`）；
+    - 三行内容整体上移并压缩行距（`rowTop=-184`，`rowGap=108`），与上下留白统一；
+    - 关闭按钮从框外移入框内底部（`y=236`）；
+    - 空态提示文本位置微调到框内视觉中心。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“框内三段式布局（标题-内容-按钮）”的间距是否符合预期。
+
+## 验收优化追加（2026-03-16，技能物品化 + 测试分页）
+
+- 用户需求：
+  - 技能改为“物品形态”，技能品质即物品品质；
+  - 和中立物品一致，不显示等级；
+  - 只要技能物品在背包或上阵区就生效；
+  - 在“物品测试”中新增技能物品分页便于测试；
+  - 技能物品图标使用技能图标。
+- 已完成：
+  - `src/common/skills/SkillItemDefs.ts`
+    - 新增“技能物品定义层”：将青铜/白银/黄金技能统一映射为可放置物品定义；
+    - 统一输出技能物品列表、按 ID 查询、技能图标 stem 查询。
+  - `src/shop/systems/ShopSkillSystem.ts` + `src/shop/ShopScene.ts`
+    - 技能激活判定改为“背包 + 上阵区”是否持有技能物品；
+    - 新增技能持有同步：从已放置技能物品回填 `pickedSkills`（用于技能栏 UI）；
+    - 技能选择/测试里的加减技能改为“加减技能物品实例”；
+    - `skill20` 每日赠送逻辑保持生效，并在 UI 刷新阶段自动检查。
+  - `src/shop/ShopBattleSnapshot.ts`
+    - 战斗快照 `ownerSkillIds` 改为从背包/上阵区技能物品汇总；
+    - 过滤技能物品，不让其进入战斗实体队列。
+  - `src/core/AssetPath.ts`
+    - 技能物品 ID 走技能图标路径（`resource/skills/*.png`）。
+  - `src/common/grid/GridZone.ts`
+    - 网格渲染层补充技能物品定义识别，确保技能物品显示口径正确（含“中立式不显示等级”）。
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - “物品测试”新增 `技能` 分页；
+    - 技能分页行内展示技能图标；
+    - 技能物品测试添加改为单次添加（不走全等级展开）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“技能物品放背包/上阵即生效 + 技能分页测试 + 图标显示”是否符合预期。
+
+## 验收优化追加（2026-03-16，图鉴继续缩高并下移）
+
+- 用户需求：在上次基础上再缩小 `300px`，并整体向下移动 `150px`。
+- 已完成：
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 图鉴面板高度由 `880` 调整为 `580`（再缩小 `300px`）；
+    - 图鉴面板纵向位置在原基准上增加 `+150px` 下移。
+- 当前阶段：等待用户验收新高度与下移后可视区域是否符合预期。
+
+## 验收优化追加（2026-03-16，图鉴面板高度收缩）
+
+- 用户需求：图鉴界面高度再缩小 `200px`。
+- 已完成：
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 图鉴面板高度由 `1080` 调整为 `880`（直接收缩 `200px`）。
+- 当前阶段：等待用户验收缩高后的留白与点击区域体验。
+
+## 验收优化追加（2026-03-16，图鉴面板位置与问号详情修正）
+
+- 用户反馈：
+  - 图鉴整体应偏屏幕下半区，点击物品后的详情应出现在上方；
+  - 图鉴副标题需要移除；
+  - 点击问号时不应显示伤害/间隔/弹药等真实数值；
+  - 图鉴中查看详情后，不应污染商店外部详情面板位置。
+- 已完成：
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 图鉴面板锚点下移到屏幕下半区（约 `62%` 高度）；
+    - 删除图鉴副标题文案；
+    - 图鉴详情弹窗改为 `setCenterY(220)`，确保出现在上方区域；
+    - 问号详情增加 `suppressStats + hideTierBadge`，隐藏所有战斗数值与品质信息；
+    - 关闭图鉴时恢复 `SellPopup` 默认底部锚点，避免影响商店外部详情位置。
+  - `src/shop/panels/SettingsDebugPanel.ts` + `src/shop/ShopMathHelpers.ts`
+    - 复用 `getItemInfoPanelBottomAnchorByBattle` 计算恢复位置，并兼容技能栏可见时的上移规则。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收图鉴位置、问号详情隐藏效果与外部详情位置恢复是否符合预期。
+
+## 验收优化追加（2026-03-16，本局物品图鉴 + 头像上方入口）
+
+- 用户需求：
+  - 为“每局固定职业池”增加图鉴系统，展示本局全部可用非中立物品；
+  - 图鉴按职业分三行（战士/弓手/刺客），每行从左到右按品质排列，布局接近背包格子风格；
+  - 局内未随机到过的物品显示问号；点击格子可看详情，详情表现与现有物品详情一致；
+  - 图鉴为全屏遮罩，点击面板外关闭；
+  - 图鉴按钮固定显示在玩家头像上方附近，且可配置与头像的 XY 偏移。
+- 已完成：
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 新增图鉴全屏遮罩：`openItemCompendiumOverlay/closeItemCompendiumOverlay`；
+    - 图鉴按三职业分行、按品质分段列展示，未见物品显示 `?`；
+    - 点击格子复用 `SellPopup` 展示详情（已见显示真实详情，未见显示问号态详情）；
+    - 新增“物品图鉴”入口按钮，挂在玩家状态容器上（非设置面板内按钮），可随头像移动。
+  - `src/shop/ShopScene.ts`
+    - 在 `refreshShopUI` 中汇总本局随机曝光来源并更新 `runSeenItemIds`（商店池/特殊商店/奖励候选/已上场实例等）；
+    - 新局与场景退出时补充清理 `runSeenItemIds` 与图鉴按钮引用。
+  - `src/shop/ShopSceneContext.ts` + `src/shop/ShopStateStorage.ts` + `src/shop/systems/ShopHeroSystem.ts`
+    - 上下文新增 `itemCompendiumBtn/itemCompendiumOverlay/runSeenItemIds`；
+    - 存档新增 `runSeenItemIds` 序列化与恢复；
+    - 开局重建固定池时清空已见记录。
+  - `src/shop/ui/PlayerStatusUI.ts`
+    - 图鉴按钮位置接入头像相对偏移布局，保证与玩家头像始终固定偏移。
+  - `src/config/debugConfig.ts` + `src/debug/DebugPage.ts` + `data/debug_defaults.json`
+    - 新增可配参数：`gameplayCompendiumBtnOffsetX/Y`，并放入“玩法数值”分组。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收图鉴入口位置、未见问号逻辑与点击详情展示是否符合预期。
+
 ## 验收优化追加（2026-03-14，控制类状态飞行特效统一圆点）
 
 - 用户需求：物品对其他物品施加 `加速/减速/冰冻` 时，飞行表现统一使用圆点，不再使用物品图标或 `_a` 变体图标。
@@ -283,6 +676,138 @@
   - `weights[6]` 单独对应职业石分支，`weights[7]` 单独对应附魔石分支；
   - 职业石分支恢复 `item64/item66/item65` 三选一池；
   - 附魔石分支保持 `item70~item77` 二选一（并保留伪随机袋防短期重复）。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-10，升级奖励权重表数值对齐）
+
+- 用户需求：按最新提供的 1~40 级权重表更新 `lv2~lv7 / 转职石 / 附魔石` 概率。
+- 已完成：`data/game_config.json`
+  - 更新 `shopRules.levelQuickDraftLevelWeightsByPlayerLevel` 为最新 40 行数值；
+  - 关键差异：Lv5/Lv8/Lv14/Lv18 调整为转职石或指定档位，保持与新表一致。
+- 当前阶段：等待用户验收升级奖励选牌分布是否符合表格预期。
+
+### 验收补充（同阶段-11，前若干局固定装备池 + 从头开始）
+
+- 用户需求：
+  - 玩家第一次游玩（可扩展为前若干局）固定 15 件装备池；
+  - 本地记录当前是第几局；
+  - 设置面板增加“从头开始”按钮，点击后视为第一次游玩。
+- 已完成：
+  - `data/game_config.json`
+    - 在 `run_rules` 增加 `firstRunsFixedItemPool` 配置：
+      - `enabledRunCount: 1`
+      - `itemNamesCn`: 指定 15 件固定装备（回旋镖、黄金袖箭、匕首、连发镖、切割镰刀、手弩、黄金弩机、弹药袋、木弓、超级手雷、长盾、尖刺金盾、短剑、圆盾、皇家佩剑）。
+  - `src/core/RunState.ts`
+    - 新增本地游玩局数状态存储：`startedRunCount`；
+    - 新增 `getCurrentRunIndex()/markRunStarted()/resetRunMetaAsFirstPlay()`。
+  - `src/shop/systems/ShopHeroSystem.ts`
+    - 开局确认职业时记录“新开一局”；
+    - 生成局内随机池前优先检查 `firstRunsFixedItemPool`，若命中前 N 局则直接使用固定 15 件装备池。
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 设置页新增“当前游玩局数：第N局”显示；
+    - 新增“从头开始”按钮，触发后重置游玩局数并重启新档流程。
+  - `src/shop/ShopPanelInitializer.ts` + `src/shop/ShopScene.ts`
+    - 接入设置页新增回调（读取局数、从头开始重置）。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-12，技能物品详情边框与品质角标）
+
+- 用户需求：
+  - 技能物品边框仅在“按职业着色”时体现紫色；
+  - 详情面板边框应按品质色显示；
+  - 详情名称后品质角标仅显示品质（青铜/白银/黄金/钻石），不显示等级。
+- 已完成：`src/common/ui/SellPopup.ts`
+  - 详情边框颜色改为始终按物品品质（`getTierColor(baseTier)`）；
+  - 移除技能物品详情固定紫边特判；
+  - 品质角标文本改为品质名（不带 `Lv`）；
+  - 升级预览场景中仅当品质变化时显示 `A->B`。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-13，详情品质角标按物品类型分流）
+
+- 用户澄清：
+  - 职业物品：继续显示“品质+等级”（原逻辑）；
+  - 技能物品与中立物品：只显示品质；
+  - 目前技能/中立详情不显示品质框需修复。
+- 已完成：`src/common/ui/SellPopup.ts`
+  - 详情角标文案改为按物品类型分流：
+    - 职业物品：`青铜LvX/白银LvX/黄金LvX/钻石LvX`；
+    - 技能/中立：`青铜/白银/黄金/钻石`；
+  - 详情品质角标不再因中立标签被隐藏（恢复技能/中立可见）；
+  - 详情边框颜色按当前品质 tier 显示。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-14，品质角标颜色与文本统一按初始品质）
+
+- 用户反馈：示例“木弓 青铜Lv2”文本正确，但角标颜色错误显示为银色。
+- 已修正：`src/common/ui/SellPopup.ts`
+  - 详情品质角标颜色改为使用 `baseTier`（初始最低品质）；
+  - 技能/中立品质文本也统一按 `baseTier` 显示。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-15，图鉴解锁改为“实际获得”）
+
+- 用户需求：图鉴不应因“候选出现”而解锁，改为仅“实际获得”才解锁。
+- 已完成：`src/shop/ShopScene.ts`
+  - 移除以下来源的 `runSeenItemIds` 标记：
+    - 商店池展示
+    - 特殊商店候选
+    - 升级奖励候选
+    - 英雄周期奖励候选
+  - 保留“实例拥有”来源：仅当物品进入实例（上阵/背包）时才记 seen。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-16，职业石转化候选数量与等级约束修正）
+
+- 用户反馈：
+  - 战士石/弓手石/刺客石可选目标不足 3 时不应直接失败，应按实际数量展示（2选1/1选1）；
+  - Lv1 物品也应可被职业石转化；
+  - Lv2 转化不应出现黄金（黄金最低 Lv4）。
+- 已修正：`src/shop/panels/NeutralItemPanel.ts`
+  - 移除职业石最低等级 2 的限制（改为 Lv1 可转化）；
+  - 职业石/转职石/变化石候选加入等级合法性过滤：候选物品需满足 `getAllowedLevelsByStartingTier(...).includes(targetLevel)`；
+  - 黄金石/钻石石直转候选同样加入等级合法性过滤；
+  - 转化候选最低数量判定从 `>=3` 改为 `>=1`，可按实际数量展示。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-17，图鉴新解锁红点）
+
+- 用户需求：
+  - 新解锁物品（排除初始青铜）时，图鉴按钮显示红点；
+  - 图鉴内对应物品显示红点；
+  - 关闭图鉴界面时清空所有红点，直到新的解锁再次出现。
+- 已完成：
+  - `src/shop/ShopSceneContext.ts`
+    - 新增 `runPendingCompendiumDotItemIds`（待提醒红点物品集）与 `itemCompendiumBtnRedDot` 引用；
+    - `SavedShopState` 新增 `runPendingCompendiumDotItemIds` 持久化字段。
+  - `src/shop/ShopStateStorage.ts`
+    - 存档/读档同步持久化待提醒红点集合。
+  - `src/shop/ShopScene.ts`
+    - 实际获得物品首次进入 `runSeenItemIds` 时，若初始品质非青铜则加入待提醒红点集合；
+    - 每次 `refreshShopUI` 同步刷新图鉴按钮红点；
+    - 新局初始化/退出时清理红点集合。
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 图鉴按钮新增红点显示；
+    - 图鉴网格内对应物品显示红点；
+    - 关闭图鉴界面时清空所有红点并保存。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-18，图鉴红点逐项清除与本局免提示开关）
+
+- 用户需求：
+  - 在图鉴里点击有红点的物品时，仅清除该物品红点；
+  - 图鉴界面增加勾选“本局内不再提示图鉴新物品”，默认关闭；
+  - 开启后本局不再显示新物品红点提示。
+- 已完成：
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 图鉴面板新增开关（默认关）；
+    - 点击带红点物品时即时清除该物品红点并保存；
+    - 图鉴按钮红点可见性改为受“免提示开关”控制。
+  - `src/shop/ShopScene.ts`
+    - 新解锁加入红点前增加开关判断：开关开启时不再累计新红点；
+    - 新局初始化/场景退出重置开关为默认关闭。
+  - `src/shop/ShopSceneContext.ts` + `src/shop/ShopStateStorage.ts`
+    - 新增并持久化 `suppressCompendiumNewDotsThisRun` 状态。
 - 验证：`npm run build` 通过。
 
 ## 验收优化追加（2026-03-13，英雄随机候选与升级快捷三选一口径统一）

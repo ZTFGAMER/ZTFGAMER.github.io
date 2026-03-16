@@ -13,7 +13,7 @@ import { Container, Graphics, Sprite, Text, Texture, Rectangle, type FederatedPo
 import { GridSystem } from '@/common/grid/GridSystem'
 import { GridZone } from '@/common/grid/GridZone'
 import type { ItemDef } from '@/common/items/ItemDef'
-import { getAllItems, getConfig as getGameCfg } from '@/core/DataLoader'
+import { getConfig as getGameCfg } from '@/core/DataLoader'
 import { getConfig as getDebugCfg, onConfigChange as onDebugCfgChange } from '@/config/debugConfig'
 import { SellPopup } from '@/common/ui/SellPopup'
 import { CANVAS_W, CANVAS_H, BTN_RADIUS } from '@/config/layoutConstants'
@@ -50,6 +50,7 @@ import type { ShopDragDeps } from '../systems/ShopDragSystem'
 import { isNeutralTargetStone } from '../panels/NeutralItemPanel'
 import { refreshBackpackSynthesisGuideArrows, clearBackpackSynthesisGuideArrows } from '../systems/ShopSynthesisController'
 import { refreshLevelQuickRewardLayout } from '../systems/ShopRewardSystem'
+import { getItemDefById } from '../systems/ShopSynthesisLogic'
 import {
   applyLayoutFromDebug,
   applyTextSizesFromDebug,
@@ -367,7 +368,7 @@ export function buildButtonRowUI(
   const selectGridItem = (instanceId: string, system: GridSystem, view: GridZone, kind: 'battle' | 'backpack') => {
     const defId = instanceToDefId.get(instanceId)
     if (!defId || !ctx.sellPopup || !ctx.shopManager) return
-    const item = getAllItems().find(i => i.id === defId)
+    const item = getItemDefById(defId)
     if (!item) return
     ctx.battleView?.setSelected(kind === 'battle' ? instanceId : null)
     ctx.backpackView?.setSelected(kind === 'backpack' ? instanceId : null)

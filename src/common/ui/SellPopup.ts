@@ -13,6 +13,7 @@ import { normalizeSize } from '@/common/items/ItemDef'
 import { CELL_SIZE } from '@/common/grid/GridZone'
 import { getBuffIconUrl, getItemIconUrl } from '@/core/AssetPath'
 import { getTierColor } from '@/config/colorPalette'
+import { isSkillItemDefId } from '@/common/skills/SkillItemDefs'
 
 const DEFAULT_POPUP_W = 400
 const POPUP_MIN_H = 240
@@ -92,7 +93,15 @@ function startTierScoreFromItem(item: ItemDef): number {
   return 1
 }
 
-function formatTierLabel(baseTierRaw: string, rawTier: string): string {
+function formatTierQualityLabel(baseTierRaw: string): string {
+  const baseTier = parseTierName(baseTierRaw) || 'Bronze'
+  if (baseTier === 'Bronze') return '青铜'
+  if (baseTier === 'Silver') return '白银'
+  if (baseTier === 'Gold') return '黄金'
+  return '钻石'
+}
+
+function formatTierLabelWithLevel(baseTierRaw: string, rawTier: string): string {
   const baseTier = parseTierName(baseTierRaw) || 'Bronze'
   const level = Math.max(1, Math.min(7, tierScoreFromRaw(rawTier)))
   if (baseTier === 'Bronze') return `青铜Lv${level}`
@@ -601,8 +610,12 @@ export class SellPopup extends Container {
     const tier = parseTierName(tierRaw) || 'Bronze'
     const baseTier = parseTierName(item.starting_tier || 'Bronze') || 'Bronze'
     const tierColor = getTierColor(baseTier)
-    const tierLabel = formatTierLabel(baseTier, tierRaw)
-    const fromTierLabel = formatTierLabel(baseTier, upgradeFromTier ?? tierRaw)
+    const isClassItem = !isSkillItemDefId(item.id) && /战士|弓手|刺客/.test(String(item.tags || ''))
+    const tierLabel = isClassItem ? formatTierLabelWithLevel(baseTier, tierRaw) : formatTierQualityLabel(baseTier)
+    const fromTierBase = parseTierName(upgradeFromTier ?? tierRaw) || baseTier
+    const fromTierLabel = isClassItem
+      ? formatTierLabelWithLevel(baseTier, upgradeFromTier ?? tierRaw)
+      : formatTierQualityLabel(fromTierBase)
     const startScore = startTierScoreFromItem(item)
     const tierIndex = Math.max(0, tierScoreFromRaw(tierRaw) - startScore)
     const fromTier = parseTierName(upgradeFromTier ?? tierRaw) || tier
@@ -694,6 +707,10 @@ export class SellPopup extends Container {
       if (enchantmentDisplay?.effectCn) out.push(`附魔：${enchantmentDisplay.effectCn}`)
       return out
     })()
+    if (isSkillItemDefId(item.id)) {
+      const skillActiveHint = '（放到背包中即可生效）'
+      if (!descLines.includes(skillActiveHint)) descLines.push(skillActiveHint)
+    }
 
     const isSimple = infoMode === 'simple'
 
@@ -748,7 +765,7 @@ export class SellPopup extends Container {
     this.nameT.y = top
     this.nameT.visible = !isSimple && !customDisplay?.hideName
 
-    this.tierBadgeT.text = inUpgradePreview ? `${fromTierLabel}->${tierLabel}` : tierLabel
+    this.tierBadgeT.text = inUpgradePreview && fromTierLabel !== tierLabel ? `${fromTierLabel}->${tierLabel}` : tierLabel
     const badgePadX = 10
     const badgePadY = 4
     const badgeW = this.tierBadgeT.width + badgePadX * 2
@@ -767,9 +784,8 @@ export class SellPopup extends Container {
       this.tierBadgeBg.fill({ color: tierColor, alpha: 0.92 })
       this.tierBadgeBg.stroke({ color: 0xffffff, width: 1, alpha: 0.5 })
     }
-    const isNeutral = String(item.tags || '').includes('中立')
     const forceWhiteDesc = item.name_cn === '原石' || item.name_cn === '空白卷轴'
-    const showTierBadge = !isSimple && !customDisplay?.hideTierBadge && !isNeutral
+    const showTierBadge = !isSimple && !customDisplay?.hideTierBadge
     this.tierBadgeBg.visible = showTierBadge
     this.tierBadgeT.visible = showTierBadge
 

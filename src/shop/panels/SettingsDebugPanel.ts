@@ -11,18 +11,21 @@
 // ============================================================
 
 import {
-  Container, Graphics, Text, Rectangle,
+  Assets, Container, Graphics, Text, Rectangle, Sprite, Texture,
   type FederatedPointerEvent,
 } from 'pixi.js'
 import { getConfig as getDebugCfg, setConfig as setDebugCfg } from '@/config/debugConfig'
-import { getConfig } from '@/core/DataLoader'
+import { getConfig, getRunClassItemPoolIds } from '@/core/DataLoader'
 import type { ItemDef } from '@/common/items/ItemDef'
 import type { TierKey } from '@/shop/ShopManager'
 import { parseTierName } from '../systems/ShopSynthesisLogic'
+import { getItemIconUrl, getSkillIconUrl } from '@/core/AssetPath'
 import { BRONZE_SKILL_PICKS } from '@/common/skills/BronzeSkillConfig'
 import { SILVER_SKILL_PICKS } from '@/common/skills/SilverSkillConfig'
 import { GOLD_SKILL_PICKS } from '@/common/skills/GoldSkillConfig'
+import { getAllSkillItemDefs, getSkillIconStemById, isSkillItemDefId } from '@/common/skills/SkillItemDefs'
 import type { ShopSceneCtx, ToastReason, EventChoice } from '../ShopSceneContext'
+import { getItemInfoPanelBottomAnchorByBattle } from '../ShopMathHelpers'
 
 import { CANVAS_W, CANVAS_H } from '@/config/layoutConstants'
 
@@ -51,6 +54,8 @@ export interface SettingsDebugCallbacks {
   isNeutralArchetypeKey: (arch: string) => boolean
   getAllItems: () => ItemDef[]
   addOnePlayerLevelForTest: () => void
+  getCurrentRunIndex: () => number
+  restartRunAsFirstPlay: () => void
 }
 
 // ============================================================
@@ -94,10 +99,36 @@ export class SettingsDebugPanel extends Container {
     ctx.itemTestOverlay = null
   }
 
+  closeItemCompendiumOverlay(): void {
+    const ctx = this.ctx
+    if (ctx.sellPopup) {
+      ctx.sellPopup.hide()
+      let panelBottomY = getItemInfoPanelBottomAnchorByBattle(ctx)
+      if (ctx.skillIconBarCon?.visible) panelBottomY = Math.min(panelBottomY, ctx.skillIconBarCon.y - 44)
+      ctx.sellPopup.setBottomAnchor(panelBottomY)
+    }
+    if (!ctx.itemCompendiumOverlay) return
+    if (ctx.itemCompendiumOverlay.parent) ctx.itemCompendiumOverlay.parent.removeChild(ctx.itemCompendiumOverlay)
+    ctx.itemCompendiumOverlay.destroy({ children: true })
+    ctx.itemCompendiumOverlay = null
+    if (ctx.runPendingCompendiumDotItemIds.size > 0) {
+      ctx.runPendingCompendiumDotItemIds.clear()
+      this.refreshItemCompendiumRedDot()
+      this.cb.captureAndSave()
+    }
+  }
+
+  refreshItemCompendiumRedDot(): void {
+    const dot = this.ctx.itemCompendiumBtnRedDot
+    if (!dot) return
+    dot.visible = !this.ctx.suppressCompendiumNewDotsThisRun && this.ctx.runPendingCompendiumDotItemIds.size > 0
+  }
+
   closeSettingsOverlay(): void {
     this.closeSkillTestOverlay()
     this.closeEventTestOverlay()
     this.closeItemTestOverlay()
+    this.closeItemCompendiumOverlay()
     const ctx = this.ctx
     if (!ctx.settingsOverlay) return
     if (ctx.settingsOverlay.parent) ctx.settingsOverlay.parent.removeChild(ctx.settingsOverlay)
@@ -182,6 +213,7 @@ export class SettingsDebugPanel extends Container {
 
   private addAllPossibleLevelsForTest(def: ItemDef): boolean {
     const cb = this.cb
+    if (isSkillItemDefId(def.id)) return this.addMinLevelForTest(def)
     const quality = parseTierName(def.starting_tier) ?? 'Bronze'
     const range = cb.getQualityLevelRange(quality)
     let okCount = 0
@@ -206,6 +238,17 @@ export class SettingsDebugPanel extends Container {
 
   private addMinLevelForTest(def: ItemDef): boolean {
     const cb = this.cb
+    if (isSkillItemDefId(def.id)) {
+      const ok = cb.placeItemToInventoryOrBattle(def, parseTierName(def.starting_tier) ?? 'Bronze', 1)
+      if (!ok) {
+        cb.showHintToast('backpack_full_buy', `[测试] 添加失败：${def.name_cn}（空间不足）`, 0xffb27a)
+        return false
+      }
+      cb.showHintToast('no_gold_buy', `[测试] 已添加技能物品：${def.name_cn}`, 0x9be5ff)
+      cb.refreshShopUI()
+      cb.captureAndSave()
+      return true
+    }
     const quality = parseTierName(def.starting_tier) ?? 'Bronze'
     const range = cb.getQualityLevelRange(quality)
     const legacy = cb.levelToTierStar(range.min)
@@ -242,7 +285,7 @@ export class SettingsDebugPanel extends Container {
 
     const panel = new Container()
     panel.x = CANVAS_W / 2
-    panel.y = CANVAS_H / 2
+    panel.y = Math.round(CANVAS_H * 0.62) + 150
     panel.eventMode = 'static'
     panel.on('pointerdown', (e) => e.stopPropagation())
     overlay.addChild(panel)
@@ -425,7 +468,7 @@ export class SettingsDebugPanel extends Container {
 
     const panel = new Container()
     panel.x = CANVAS_W / 2
-    panel.y = CANVAS_H / 2
+    panel.y = CANVAS_H / 2 + 450
     panel.eventMode = 'static'
     panel.on('pointerdown', (e) => e.stopPropagation())
     overlay.addChild(panel)
@@ -594,7 +637,7 @@ export class SettingsDebugPanel extends Container {
 
     const panel = new Container()
     panel.x = CANVAS_W / 2
-    panel.y = CANVAS_H / 2
+    panel.y = CANVAS_H / 2 + getDebugCfg('gameplayCompendiumPanelOffsetY')
     panel.eventMode = 'static'
     panel.on('pointerdown', (e) => e.stopPropagation())
     overlay.addChild(panel)
@@ -633,7 +676,7 @@ export class SettingsDebugPanel extends Container {
       () => listBottomY,
     )
 
-    type ItemTestPage = 'all' | 'warrior' | 'archer' | 'assassin' | 'neutral'
+    type ItemTestPage = 'all' | 'warrior' | 'archer' | 'assassin' | 'neutral' | 'skill'
     let activePage: ItemTestPage = 'all'
 
     const all = [...cb.getAllItems()].sort((a, b) => {
@@ -651,14 +694,18 @@ export class SettingsDebugPanel extends Container {
       { key: 'archer', label: '弓手' },
       { key: 'assassin', label: '刺客' },
       { key: 'neutral', label: '中立' },
+      { key: 'skill', label: '技能' },
     ]
 
     const pageBtnByKey = new Map<ItemTestPage, { bg: Graphics; text: Text }>()
     const pageCon = new Container()
     pageCon.y = -352
     panel.addChild(pageCon)
+    const tabStep = pageTabs.length > 5 ? 96 : 108
+    const tabW = pageTabs.length > 5 ? 88 : 100
 
     const getPageItems = (): ItemDef[] => {
+      if (activePage === 'skill') return getAllSkillItemDefs()
       if (activePage === 'all') return all
       return all.filter((def) => {
         const arch = cb.getPrimaryArchetype(def.tags)
@@ -689,9 +736,26 @@ export class SettingsDebugPanel extends Container {
           text: `${def.name_cn}（${tier}）`,
           style: { fontSize: 16, fill: 0xe0ebff, fontFamily: 'Arial', fontWeight: 'bold' },
         })
-        label.x = -248
+        label.x = activePage === 'skill' ? -204 : -248
         label.y = y - label.height / 2
         listCon.addChild(label)
+
+        if (activePage === 'skill' && isSkillItemDefId(def.id)) {
+          const icon = new Sprite(Texture.WHITE)
+          icon.x = -248
+          icon.y = y - 14
+          icon.width = 28
+          icon.height = 28
+          icon.alpha = 0
+          listCon.addChild(icon)
+          const stem = getSkillIconStemById(def.id) ?? def.id
+          void Assets.load<Texture>(getSkillIconUrl(stem)).then((tex) => {
+            icon.texture = tex
+            icon.alpha = 1
+          }).catch(() => {
+            icon.destroy()
+          })
+        }
 
         const minBtn = new Container()
         minBtn.x = 136
@@ -744,17 +808,17 @@ export class SettingsDebugPanel extends Container {
         if (!view) continue
         const selected = row.key === activePage
         view.bg.clear()
-        view.bg.roundRect(-50, -17, 100, 34, 12)
+        view.bg.roundRect(-tabW / 2, -17, tabW, 34, 12)
         view.bg.fill({ color: selected ? 0x7cc6ff : 0x2a4068, alpha: 0.96 })
         view.bg.stroke({ color: selected ? 0xe9f6ff : 0x9ec2ff, width: selected ? 3 : 2, alpha: 0.95 })
         view.text.style.fill = selected ? 0x0f1c33 : 0xeaf3ff
       }
     }
 
-    const totalW = pageTabs.length * 108 - 8
+    const totalW = pageTabs.length * tabStep - (tabStep - tabW)
     pageTabs.forEach((row, idx) => {
       const btn = new Container()
-      btn.x = -totalW / 2 + idx * 108 + 50
+      btn.x = -totalW / 2 + idx * tabStep + tabW / 2
       btn.y = 0
       btn.eventMode = 'static'
       btn.cursor = 'pointer'
@@ -804,6 +868,284 @@ export class SettingsDebugPanel extends Container {
     ctx.itemTestOverlay = overlay
   }
 
+  openItemCompendiumOverlay(): void {
+    this.closeItemCompendiumOverlay()
+    const stage = this.stage
+    const ctx = this.ctx
+    const cb = this.cb
+    const overlay = new Container()
+    overlay.zIndex = 7460
+    overlay.eventMode = 'static'
+    overlay.hitArea = new Rectangle(0, 0, CANVAS_W, CANVAS_H)
+
+    const mask = new Graphics()
+    mask.rect(0, 0, CANVAS_W, CANVAS_H)
+    mask.fill({ color: 0x020409, alpha: 0.75 })
+    overlay.addChild(mask)
+
+    const panel = new Container()
+    panel.x = CANVAS_W / 2
+    panel.y = CANVAS_H / 2 + 450 + getDebugCfg('gameplayCompendiumPanelOffsetY')
+    panel.eventMode = 'static'
+    panel.on('pointerdown', (e) => e.stopPropagation())
+    overlay.addChild(panel)
+
+    const panelW = 620
+    const panelH = 580
+    const panelBg = new Graphics()
+    panelBg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 24)
+    panelBg.fill({ color: 0x13213a, alpha: 0.98 })
+    panelBg.stroke({ color: 0x9ec2ff, width: 3, alpha: 0.95 })
+    panel.addChild(panelBg)
+
+    const title = new Text({
+      text: '本局物品图鉴',
+      style: { fontSize: 38, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    title.anchor.set(0.5)
+    title.y = -244
+    panel.addChild(title)
+
+    const all = cb.getAllItems()
+    const byId = new Map(all.map((it) => [it.id, it] as const))
+    const runPoolIds = getRunClassItemPoolIds()
+    const runPoolItems = runPoolIds
+      .map((id) => byId.get(id))
+      .filter((it): it is ItemDef => !!it)
+
+    const tierOrder: Record<string, number> = { Bronze: 0, Silver: 1, Gold: 2, Diamond: 3 }
+    const archetypeRows: Array<{ key: '战士' | '弓手' | '刺客'; label: string }> = [
+      { key: '战士', label: '战士' },
+      { key: '弓手', label: '弓手' },
+      { key: '刺客', label: '刺客' },
+    ]
+    const tierDefs = [
+      { key: 'Bronze', count: Math.max(0, Math.round(getDebugCfg('gameplayRunClassPoolBronzeCount'))) },
+      { key: 'Silver', count: Math.max(0, Math.round(getDebugCfg('gameplayRunClassPoolSilverCount'))) },
+      { key: 'Gold', count: Math.max(0, Math.round(getDebugCfg('gameplayRunClassPoolGoldCount'))) },
+      { key: 'Diamond', count: Math.max(0, Math.round(getDebugCfg('gameplayRunClassPoolDiamondCount'))) },
+    ] as const
+    const totalCols = Math.max(1, tierDefs.reduce((sum, one) => sum + one.count, 0))
+
+    const cellSize = Math.max(70, Math.min(92, Math.floor((panelW - 168 - (totalCols - 1) * 10) / totalCols)))
+    const cellGap = 10
+    const leftLabelW = 86
+    const gridLeft = -panelW / 2 + 24 + leftLabelW
+    const rowGap = 108
+    const rowTop = -184
+
+    const seenSet = ctx.runSeenItemIds
+    const pendingDotSet = ctx.runPendingCompendiumDotItemIds
+
+    const suppressRow = new Container()
+    suppressRow.x = 0
+    suppressRow.y = 188
+    suppressRow.eventMode = 'static'
+    const suppressLabel = new Text({
+      text: '本局内不再提示图鉴新物品',
+      style: { fontSize: 22, fill: 0xd7e6ff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    suppressLabel.anchor.set(0.5, 0.5)
+    suppressLabel.x = -40
+    const suppressToggle = new Container()
+    suppressToggle.x = 224
+    suppressToggle.y = 0
+    suppressToggle.eventMode = 'static'
+    suppressToggle.cursor = 'pointer'
+    const suppressBg = new Graphics()
+    const suppressTick = new Text({
+      text: '✓',
+      style: { fontSize: 24, fill: 0x0f2444, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    suppressTick.anchor.set(0.5)
+    const redrawSuppress = () => {
+      const on = !!ctx.suppressCompendiumNewDotsThisRun
+      suppressBg.clear()
+      suppressBg.roundRect(-18, -18, 36, 36, 8)
+      suppressBg.fill({ color: on ? 0x7fdd9b : 0xa6b7d0, alpha: 0.98 })
+      suppressBg.stroke({ color: 0x0e1b32, width: 2, alpha: 0.95 })
+      suppressTick.visible = on
+    }
+    redrawSuppress()
+    suppressToggle.on('pointerdown', (e) => {
+      e.stopPropagation()
+      const next = !ctx.suppressCompendiumNewDotsThisRun
+      ctx.suppressCompendiumNewDotsThisRun = next
+      if (next && pendingDotSet.size > 0) pendingDotSet.clear()
+      redrawSuppress()
+      this.refreshItemCompendiumRedDot()
+      this.cb.captureAndSave()
+    })
+    suppressToggle.addChild(suppressBg, suppressTick)
+    suppressRow.addChild(suppressLabel, suppressToggle)
+    panel.addChild(suppressRow)
+
+    const showItemDetail = (item: ItemDef, seen: boolean): void => {
+      if (!ctx.sellPopup) return
+      const tier = parseTierName(item.starting_tier) ?? 'Bronze'
+      ctx.sellPopup.setCenterY(370)
+      this.stage.addChild(ctx.sellPopup)
+      if (seen) {
+        ctx.sellPopup.show(item, 0, 'none', tier)
+        return
+      }
+      ctx.sellPopup.show(item, 0, 'none', tier, undefined, 'detailed', undefined, {
+        overrideName: '？？？',
+        lines: ['本局尚未随机到该物品'],
+        suppressStats: true,
+        hideTierBadge: true,
+        useQuestionIcon: true,
+      })
+    }
+
+    for (let r = 0; r < archetypeRows.length; r++) {
+      const row = archetypeRows[r]!
+      const rowY = rowTop + r * rowGap
+      const rowLabel = new Text({
+        text: row.label,
+        style: { fontSize: 28, fill: 0xe6efff, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      rowLabel.anchor.set(0.5)
+      rowLabel.x = gridLeft - 38
+      rowLabel.y = rowY + cellSize / 2
+      panel.addChild(rowLabel)
+
+      const classItems = runPoolItems
+        .filter((it) => cb.getPrimaryArchetype(it.tags) === row.key)
+        .sort((a, b) => {
+          const ta = parseTierName(a.starting_tier) ?? 'Bronze'
+          const tb = parseTierName(b.starting_tier) ?? 'Bronze'
+          const diff = (tierOrder[ta] ?? 0) - (tierOrder[tb] ?? 0)
+          if (diff !== 0) return diff
+          return a.name_cn.localeCompare(b.name_cn, 'zh-Hans-CN')
+        })
+
+      const slots: Array<{ item: ItemDef | null; tier: string }> = []
+      for (const one of tierDefs) {
+        const inTier = classItems.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === one.key)
+        for (let i = 0; i < one.count; i++) {
+          slots.push({ item: inTier[i] ?? null, tier: one.key })
+        }
+      }
+
+      for (let c = 0; c < slots.length; c++) {
+        const slot = slots[c]!
+        const x = gridLeft + c * (cellSize + cellGap)
+        const y = rowY
+        const cell = new Container()
+        cell.x = x
+        cell.y = y
+        cell.eventMode = 'static'
+        cell.cursor = slot.item ? 'pointer' : 'default'
+        cell.hitArea = new Rectangle(0, 0, cellSize, cellSize)
+
+        const borderColor = slot.tier === 'Bronze'
+          ? 0x6e4f2f
+          : slot.tier === 'Silver'
+            ? 0x8da0bf
+            : slot.tier === 'Gold'
+              ? 0xb7913e
+              : 0x3f79c9
+        const seen = !!(slot.item && ((parseTierName(slot.item.starting_tier) ?? 'Bronze') === 'Bronze' || seenSet.has(slot.item.id)))
+
+        const bg = new Graphics()
+        bg.roundRect(0, 0, cellSize, cellSize, 14)
+        bg.fill({ color: seen ? 0x1f304f : 0x1a2338, alpha: 0.96 })
+        bg.stroke({ color: borderColor, width: 3, alpha: 0.95 })
+        cell.addChild(bg)
+
+        if (slot.item && seen) {
+          const sp = new Sprite(Texture.WHITE)
+          const inset = 6
+          sp.x = inset
+          sp.y = inset
+          sp.width = cellSize - inset * 2
+          sp.height = cellSize - inset * 2
+          sp.alpha = 0
+          cell.addChild(sp)
+          void Assets.load<Texture>(getItemIconUrl(slot.item.id)).then((tex) => {
+            sp.texture = tex
+            sp.alpha = 1
+          }).catch(() => {})
+
+          if (pendingDotSet.has(slot.item.id)) {
+            const dot = new Graphics()
+            dot.circle(0, 0, 7)
+            dot.fill({ color: 0xff5a63, alpha: 0.98 })
+            dot.circle(0, 0, 7)
+            dot.stroke({ color: 0xffd8dc, width: 2, alpha: 0.95 })
+            dot.x = cellSize - 11
+            dot.y = 11
+            cell.addChild(dot)
+
+            cell.on('pointerdown', () => {
+              if (!pendingDotSet.has(slot.item!.id)) return
+              pendingDotSet.delete(slot.item!.id)
+              dot.visible = false
+              this.refreshItemCompendiumRedDot()
+              this.cb.captureAndSave()
+            })
+          }
+        } else {
+          const q = new Text({
+            text: '?',
+            style: { fontSize: 48, fill: 0xc8d6f2, fontFamily: 'Arial', fontWeight: 'bold' },
+          })
+          q.anchor.set(0.5)
+          q.x = cellSize / 2
+          q.y = cellSize / 2
+          cell.addChild(q)
+        }
+
+        cell.on('pointerdown', (e) => {
+          e.stopPropagation()
+          if (!slot.item) return
+          showItemDetail(slot.item, seen)
+        })
+
+        panel.addChild(cell)
+      }
+    }
+
+    if (runPoolItems.length <= 0) {
+      const emptyHint = new Text({
+        text: '本局固定物品池尚未生成\n请先开始新局并完成开局职业选择',
+        style: {
+          fontSize: 24,
+          fill: 0xb6c8e8,
+          fontFamily: 'Arial',
+          align: 'center',
+          lineHeight: 36,
+        },
+      })
+      emptyHint.anchor.set(0.5)
+      emptyHint.y = -12
+      panel.addChild(emptyHint)
+    }
+
+    const closeBtn = new Container()
+    closeBtn.x = 0
+    closeBtn.y = 236
+    closeBtn.eventMode = 'static'
+    closeBtn.cursor = 'pointer'
+    const closeBg = new Graphics()
+    closeBg.roundRect(-122, -30, 244, 60, 18)
+    closeBg.fill({ color: 0x2d446c, alpha: 0.96 })
+    closeBg.stroke({ color: 0xa7c6ff, width: 3, alpha: 0.95 })
+    const closeText = new Text({ text: '关闭', style: { fontSize: 28, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' } })
+    closeText.anchor.set(0.5)
+    closeBtn.on('pointerdown', (e) => {
+      e.stopPropagation()
+      this.closeItemCompendiumOverlay()
+    })
+    closeBtn.addChild(closeBg, closeText)
+    panel.addChild(closeBtn)
+
+    overlay.on('pointerdown', () => this.closeItemCompendiumOverlay())
+    stage.addChild(overlay)
+    ctx.itemCompendiumOverlay = overlay
+  }
+
   // ============================================================
   // openSettingsOverlay
   // ============================================================
@@ -825,7 +1167,7 @@ export class SettingsDebugPanel extends Container {
 
     const panel = new Container()
     panel.x = CANVAS_W / 2
-    panel.y = 418
+    panel.y = 718
     panel.eventMode = 'static'
     panel.on('pointerdown', (e) => e.stopPropagation())
     overlay.addChild(panel)
@@ -848,7 +1190,7 @@ export class SettingsDebugPanel extends Container {
       style: { fontSize: 40, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' },
     })
     title.anchor.set(0.5)
-    title.y = -210
+    title.y = -360
     panel.addChild(title)
 
     const subtitle = new Text({
@@ -856,8 +1198,16 @@ export class SettingsDebugPanel extends Container {
       style: { fontSize: 18, fill: 0xa8bddf, fontFamily: 'Arial', fontWeight: 'bold' },
     })
     subtitle.anchor.set(0.5)
-    subtitle.y = -166
+    subtitle.y = -316
     panel.addChild(subtitle)
+
+    const runText = new Text({
+      text: `当前游玩局数：第${Math.max(1, cb.getCurrentRunIndex())}局`,
+      style: { fontSize: 18, fill: 0xb9d4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    runText.anchor.set(0.5)
+    runText.y = -284
+    panel.addChild(runText)
 
     type ToggleRow = {
       key: 'gameplayCrossSynthesisConfirm' | 'gameplayShowSpeedButton' | 'gameplayBattleZoneNoSynthesis' | 'gameplaySameArchetypeDiffItemStoneSynthesis'
@@ -918,15 +1268,20 @@ export class SettingsDebugPanel extends Container {
       panel.addChild(btn)
     }
 
-    const controlBaseY = -118
-    const controlGapY = 92
+    const controlCount = rows.length + 5
+    const controlStartY = -240
+    const controlEndY = 360
+    const controlGapY = controlCount > 1
+      ? (controlEndY - controlStartY) / (controlCount - 1)
+      : 0
+    const controlYAt = (index: number): number => controlStartY + controlGapY * index
     rows.forEach((row, idx) => {
-      drawRow(controlBaseY + controlGapY * idx, row)
+      drawRow(controlYAt(idx), row)
     })
 
     const testBtn = new Container()
     testBtn.x = 0
-    testBtn.y = controlBaseY + controlGapY * rows.length
+    testBtn.y = controlYAt(rows.length)
     testBtn.eventMode = 'static'
     testBtn.cursor = 'pointer'
     const testBg = new Graphics()
@@ -947,7 +1302,7 @@ export class SettingsDebugPanel extends Container {
 
     const eventTestBtn = new Container()
     eventTestBtn.x = 0
-    eventTestBtn.y = controlBaseY + controlGapY * (rows.length + 1)
+    eventTestBtn.y = controlYAt(rows.length + 1)
     eventTestBtn.eventMode = 'static'
     eventTestBtn.cursor = 'pointer'
     const eventTestBg = new Graphics()
@@ -968,7 +1323,7 @@ export class SettingsDebugPanel extends Container {
 
     const itemTestBtn = new Container()
     itemTestBtn.x = 0
-    itemTestBtn.y = controlBaseY + controlGapY * (rows.length + 2)
+    itemTestBtn.y = controlYAt(rows.length + 2)
     itemTestBtn.eventMode = 'static'
     itemTestBtn.cursor = 'pointer'
     const itemTestBg = new Graphics()
@@ -989,7 +1344,7 @@ export class SettingsDebugPanel extends Container {
 
     const addLevelBtn = new Container()
     addLevelBtn.x = 0
-    addLevelBtn.y = controlBaseY + controlGapY * (rows.length + 3)
+    addLevelBtn.y = controlYAt(rows.length + 3)
     addLevelBtn.eventMode = 'static'
     addLevelBtn.cursor = 'pointer'
     const addLevelBg = new Graphics()
@@ -1008,9 +1363,30 @@ export class SettingsDebugPanel extends Container {
     addLevelBtn.addChild(addLevelBg, addLevelText)
     panel.addChild(addLevelBtn)
 
+    const restartAsFirstBtn = new Container()
+    restartAsFirstBtn.x = 0
+    restartAsFirstBtn.y = controlYAt(rows.length + 4)
+    restartAsFirstBtn.eventMode = 'static'
+    restartAsFirstBtn.cursor = 'pointer'
+    const restartAsFirstBg = new Graphics()
+    restartAsFirstBg.roundRect(-172, -28, 344, 56, 16)
+    restartAsFirstBg.fill({ color: 0x9a3d4d, alpha: 0.96 })
+    restartAsFirstBg.stroke({ color: 0xffc4cd, width: 3, alpha: 0.95 })
+    const restartAsFirstText = new Text({
+      text: '从头开始',
+      style: { fontSize: 26, fill: 0xfff2f5, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    restartAsFirstText.anchor.set(0.5)
+    restartAsFirstBtn.on('pointerdown', (e) => {
+      e.stopPropagation()
+      cb.restartRunAsFirstPlay()
+    })
+    restartAsFirstBtn.addChild(restartAsFirstBg, restartAsFirstText)
+    panel.addChild(restartAsFirstBtn)
+
     const closeBtn = new Container()
     closeBtn.x = 0
-    closeBtn.y = controlBaseY + controlGapY * (rows.length + 4)
+    closeBtn.y = controlYAt(rows.length + 5)
     closeBtn.eventMode = 'static'
     closeBtn.cursor = 'pointer'
     const closeBg = new Graphics()
@@ -1038,46 +1414,103 @@ export class SettingsDebugPanel extends Container {
   createSettingsButton(): void {
     const ctx = this.ctx
     const stage = this.stage
-    if (ctx.settingsBtn) return
+    if (ctx.settingsBtn && ctx.itemCompendiumBtn) return
     const cfg = getConfig()
-    const con = new Container()
-    con.x = 16
-    con.y = 82
-    con.zIndex = 7050
-    con.eventMode = 'static'
-    con.cursor = 'pointer'
+    if (!ctx.settingsBtn) {
+      const con = new Container()
+      con.x = 16
+      con.y = 82
+      con.zIndex = 7050
+      con.eventMode = 'static'
+      con.cursor = 'pointer'
 
-    const label = new Text({
-      text: '设置',
-      style: {
-        fontSize: cfg.textSizes.refreshCost,
-        fill: 0xffe8a3,
-        fontFamily: 'Arial',
-        fontWeight: 'bold',
-      },
-    })
-    const padX = 18
-    const padY = 10
-    const w = label.width + padX * 2
-    const h = label.height + padY * 2
+      const label = new Text({
+        text: '设置',
+        style: {
+          fontSize: cfg.textSizes.refreshCost,
+          fill: 0xffe8a3,
+          fontFamily: 'Arial',
+          fontWeight: 'bold',
+        },
+      })
+      const padX = 18
+      const padY = 10
+      const w = label.width + padX * 2
+      const h = label.height + padY * 2
 
-    const bg = new Graphics()
-    bg.roundRect(0, 0, w, h, 14)
-    bg.fill({ color: 0x1f2940, alpha: 0.88 })
-    bg.stroke({ color: 0xffd25a, width: 2, alpha: 0.95 })
-    con.addChild(bg)
+      const bg = new Graphics()
+      bg.roundRect(0, 0, w, h, 14)
+      bg.fill({ color: 0x1f2940, alpha: 0.88 })
+      bg.stroke({ color: 0xffd25a, width: 2, alpha: 0.95 })
+      con.addChild(bg)
 
-    label.x = padX
-    label.y = padY
-    con.addChild(label)
-    con.hitArea = new Rectangle(0, 0, w, h)
+      label.x = padX
+      label.y = padY
+      con.addChild(label)
+      con.hitArea = new Rectangle(0, 0, w, h)
 
-    con.on('pointerdown', (e) => {
-      e.stopPropagation()
-      if (ctx.settingsOverlay) this.closeSettingsOverlay()
-      else this.openSettingsOverlay()
-    })
-    stage.addChild(con)
-    ctx.settingsBtn = con
+      con.on('pointerdown', (e) => {
+        e.stopPropagation()
+        if (ctx.settingsOverlay) this.closeSettingsOverlay()
+        else this.openSettingsOverlay()
+      })
+      stage.addChild(con)
+      ctx.settingsBtn = con
+    }
+
+    if (!ctx.itemCompendiumBtn && ctx.playerStatusCon) {
+      const btn = new Container()
+      btn.zIndex = 120
+      btn.eventMode = 'static'
+      btn.cursor = 'pointer'
+
+      const bg = new Graphics()
+      const text = new Text({
+        text: '物品图鉴',
+        style: {
+          fontSize: 20,
+          fill: 0xf6fbff,
+          fontFamily: 'Arial',
+          fontWeight: 'bold',
+          stroke: { color: 0x0f172b, width: 2 },
+        },
+      })
+      text.anchor.set(0.5)
+      const w = Math.max(124, Math.ceil(text.width + 24))
+      const h = 44
+      bg.roundRect(-w / 2, -h / 2, w, h, 14)
+      bg.fill({ color: 0x294e85, alpha: 0.94 })
+      bg.stroke({ color: 0xb9d9ff, width: 2, alpha: 0.95 })
+      btn.hitArea = new Rectangle(-w / 2, -h / 2, w, h)
+
+      btn.on('pointerdown', (e) => {
+        e.stopPropagation()
+        if (ctx.itemCompendiumOverlay) this.closeItemCompendiumOverlay()
+        else this.openItemCompendiumOverlay()
+      })
+
+      const avatarX = 260
+      const avatarY = 10
+      const avatarW = 120
+      const avatarH = 120
+      const avatarCenterX = avatarX + avatarW / 2
+      btn.x = avatarCenterX + getDebugCfg('gameplayCompendiumBtnOffsetX')
+      btn.y = avatarY + avatarH / 2 + getDebugCfg('gameplayCompendiumBtnOffsetY')
+
+      btn.addChild(bg, text)
+      const redDot = new Graphics()
+      redDot.circle(0, 0, 8)
+      redDot.fill({ color: 0xff4d58, alpha: 0.98 })
+      redDot.circle(0, 0, 8)
+      redDot.stroke({ color: 0xffd5da, width: 2, alpha: 0.95 })
+      redDot.x = w / 2 - 10
+      redDot.y = -h / 2 + 10
+      redDot.visible = false
+      btn.addChild(redDot)
+      ctx.playerStatusCon.addChild(btn)
+      ctx.itemCompendiumBtn = btn
+      ctx.itemCompendiumBtnRedDot = redDot
+      this.refreshItemCompendiumRedDot()
+    }
   }
 }

@@ -200,6 +200,9 @@ const GAMEPLAY_KEYS = [
   'gameplayRunClassPoolSilverCount',
   'gameplayRunClassPoolGoldCount',
   'gameplayRunClassPoolDiamondCount',
+  'gameplayCompendiumBtnOffsetX',
+  'gameplayCompendiumBtnOffsetY',
+  'gameplayCompendiumPanelOffsetY',
 ]
 const GAMEPLAY_CHECKBOX_KEYS = [
   'gameplayGrantAllClassItems',

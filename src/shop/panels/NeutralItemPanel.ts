@@ -1890,9 +1890,6 @@ export class NeutralItemPanel extends Container {
     if (!placed) return false
     const targetLevel = this.cb.getInstanceLevel(target.instanceId)
     const minLevelByKind: Partial<Record<NeutralSpecialKind, number>> = {
-      warrior_stone: 2,
-      archer_stone: 2,
-      assassin_stone: 2,
       gold_morph_stone: 4,
       diamond_morph_stone: 6,
     }
@@ -1941,6 +1938,7 @@ export class NeutralItemPanel extends Container {
           .filter((it) => normalizeSize(it.size) === placed.size)
           .filter((it) => it.id !== placed.defId)
           .filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === targetTier)
+          .filter((it) => getAllowedLevelsByStartingTier(parseTierName(it.starting_tier) ?? 'Bronze').includes(targetLevel))
         return _pickRandomElements(filteredDirect, 3).map((one) => ({ item: one, tier: displayTier, star: displayStar }))
       }
 
@@ -1966,6 +1964,7 @@ export class NeutralItemPanel extends Container {
         .filter((it) => normalizeSize(it.size) === placed.size)
         .filter((it) => !usedIds.has(it.id))
         .filter(passKindFilter)
+        .filter((it) => getAllowedLevelsByStartingTier(parseTierName(it.starting_tier) ?? 'Bronze').includes(targetLevel))
 
       for (let attempt = 0; attempt < 120 && picks.length < 3; attempt++) {
         if (remaining.length <= 0) break
@@ -1984,7 +1983,7 @@ export class NeutralItemPanel extends Container {
     }
 
     const choices = buildChoices()
-    if (choices.length < 3) {
+    if (choices.length < 1) {
       this.cb.showHintToast('no_gold_buy', `${sourceDef.name_cn}：该目标当前无法转化`, 0xffb27a)
       return false
     }

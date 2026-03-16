@@ -129,6 +129,10 @@ export interface GameConfig {
     playerExpToNextLevel?: number[]
     playerMaxLifeByLevel?: number[]
     playerRoundDamageByLevel?: number[]
+    firstRunsFixedItemPool?: {
+      enabledRunCount?: number
+      itemNamesCn?: string[]
+    }
   }
   skillSystem?: {
     dailyDraftPlan?: Array<{

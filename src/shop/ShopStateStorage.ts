@@ -142,6 +142,9 @@ export function captureShopState(ctx: ShopSceneCtx): SavedShopState | null {
     pendingSkillDraft: ctx.pendingSkillDraft,
     unlockedItemIds: Array.from(ctx.unlockedItemIds),
     runClassItemPoolIds: getRunClassItemPoolIds(),
+    runSeenItemIds: Array.from(ctx.runSeenItemIds),
+    runPendingCompendiumDotItemIds: Array.from(ctx.runPendingCompendiumDotItemIds),
+    suppressCompendiumNewDotsThisRun: ctx.suppressCompendiumNewDotsThisRun,
     nextQuickBuyOffer: ctx.nextQuickBuyOffer,
     guaranteedNewUnlockTriggeredLevels: Array.from(ctx.guaranteedNewUnlockTriggeredLevels),
     skill20GrantedDays: Array.from(ctx.skill20GrantedDays),
@@ -232,6 +235,17 @@ export function applySavedShopState(
     ? state.runClassItemPoolIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
     : []
   setRunClassItemPoolIds(savedRunPoolIds.length > 0 ? savedRunPoolIds : null)
+  ctx.runSeenItemIds.clear()
+  const savedSeenIds = Array.isArray(state.runSeenItemIds)
+    ? state.runSeenItemIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+    : []
+  for (const id of savedSeenIds) ctx.runSeenItemIds.add(id)
+  ctx.runPendingCompendiumDotItemIds.clear()
+  const savedPendingDots = Array.isArray(state.runPendingCompendiumDotItemIds)
+    ? state.runPendingCompendiumDotItemIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+    : []
+  for (const id of savedPendingDots) ctx.runPendingCompendiumDotItemIds.add(id)
+  ctx.suppressCompendiumNewDotsThisRun = Boolean(state.suppressCompendiumNewDotsThisRun)
   const all = getAllItems()
   const byId = new Map(all.map((it) => [it.id, it] as const))
 

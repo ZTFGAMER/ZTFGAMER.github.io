@@ -11,6 +11,7 @@
 
 import { getConfig, getAllItems } from '@/core/DataLoader'
 import type { ItemDef, SkillArchetype } from '@/common/items/ItemDef'
+import { getSkillItemDefById } from '@/common/skills/SkillItemDefs'
 import type { TierKey } from '@/shop/ShopManager'
 
 // ============================================================
@@ -27,7 +28,7 @@ export const NEUTRAL_TAG_CN = '中立'
 // ============================================================
 
 export function getItemDefById(defId: string): ItemDef | undefined {
-  return getAllItems().find((it) => it.id === defId)
+  return getAllItems().find((it) => it.id === defId) ?? getSkillItemDefById(defId) ?? undefined
 }
 
 /** 從 tags 字符串中提取主要 archetype 標識（取第一個 | 的第一個 / 段） */

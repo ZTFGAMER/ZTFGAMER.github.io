@@ -28,7 +28,9 @@ import {
   nextTierLevel,
   tierStarLevelIndex,
   canUseLv7MorphSynthesis,
+  isNeutralItemDef,
 } from './ShopSynthesisLogic'
+import { isSkillItemDefId } from '@/common/skills/SkillItemDefs'
 import { isShopInputEnabled, getDefaultItemInfoMode, resetInfoModeSelection } from '../ShopModeHelpers'
 import { canPlaceInVisibleCols, toVisualTier, hasAnyPlaceInVisibleCols } from '../ShopMathHelpers'
 import { CANVAS_W, BTN_RADIUS } from '@/config/layoutConstants'
@@ -196,7 +198,16 @@ export function sortBackpackItemsByRule(ctx: ShopSceneCtx, deps: ShopDragDeps): 
   const items = ctx.backpackSystem.getAllItems()
   if (items.length <= 1) { showHintToast('backpack_full_buy' as ToastReason, '背包已整理', 0x9be5ff, ctx); return }
 
+  const getBackpackSortGroup = (defId: string): number => {
+    if (isSkillItemDefId(defId)) return 0
+    const def = getItemDefById(defId)
+    if (def && isNeutralItemDef(def)) return 1
+    return 2
+  }
+
   const sorted = [...items].sort((a, b) => {
+    const groupCmp = getBackpackSortGroup(a.defId) - getBackpackSortGroup(b.defId)
+    if (groupCmp !== 0) return groupCmp
     const archCmp = getArchetypeSortOrder(a.defId) - getArchetypeSortOrder(b.defId)
     if (archCmp !== 0) return archCmp
     const aLv = tierStarLevelIndex(instanceToTier.get(a.instanceId) ?? 'Bronze', getInstanceTierStar(a.instanceId)) + 1

@@ -91,66 +91,10 @@ export class SkillDraftPanel extends Container {
       stage.addChild(ctx.skillIconBarCon)
     }
     const con = ctx.skillIconBarCon
-    // 关闭技能三选一时，仍允许显示"已持有技能"（例如测试面板手动添加）
+    // 用户要求：商店阶段不显示技能图标栏（仅战斗中显示）
     con.removeChildren().forEach((c) => c.destroy({ children: true }))
-    if (ctx.pickedSkills.length <= 0) {
-      con.visible = false
-      return
-    }
-
-    const gap = -30
-    const iconSize = 128
-    const rowW = ctx.pickedSkills.length * iconSize + Math.max(0, ctx.pickedSkills.length - 1) * gap
-
-    for (let i = 0; i < ctx.pickedSkills.length; i++) {
-      const s = ctx.pickedSkills[i]!
-      const cell = new Container()
-      cell.eventMode = 'static'
-      cell.cursor = 'pointer'
-      const x = -rowW / 2 + i * (iconSize + gap) + iconSize / 2
-      const hit = new Graphics()
-      hit.roundRect(x - iconSize / 2, -iconSize / 2, iconSize, iconSize, 14)
-      hit.fill({ color: 0x000000, alpha: 0.001 })
-      cell.addChild(hit)
-
-      const letter = new Text({
-        text: s.name.slice(0, 1),
-        style: { fontSize: 24, fill: 0xf5f7ff, fontFamily: 'Arial', fontWeight: 'bold' },
-      })
-      letter.anchor.set(0.5)
-      letter.x = x
-      letter.y = 0
-      cell.addChild(letter)
-      this._mountSkillIconSprite(cell, s.id, s.icon, x, 0, iconSize, letter)
-
-      cell.on('pointerdown', (e: FederatedPointerEvent) => {
-        e.stopPropagation()
-        if (ctx.skillDetailSkillId === s.id) {
-          if (this.cb.shouldShowSimpleDescriptions()) {
-            ctx.skillDetailMode = ctx.skillDetailMode === 'simple' ? 'detailed' : 'simple'
-          } else {
-            ctx.skillDetailMode = 'detailed'
-          }
-          this.showSkillDetailPopup(s)
-        } else {
-          ctx.currentSelection = { kind: 'none' }
-          ctx.selectedSellAction = null
-          this.cb.resetInfoModeSelection()
-          ctx.shopPanel?.setSelectedSlot(-1)
-          ctx.battleView?.setSelected(null)
-          ctx.backpackView?.setSelected(null)
-          ctx.sellPopup?.hide()
-          this.cb.applySellButtonState()
-          ctx.skillDetailMode = this.cb.getDefaultSkillDetailMode()
-          this.showSkillDetailPopup(s)
-        }
-      })
-
-      con.addChild(cell)
-    }
-
-    con.visible = true
-    this.layoutSkillIconBar()
+    con.visible = false
+    this.hideSkillDetailPopup()
   }
 
   // ============================================================
