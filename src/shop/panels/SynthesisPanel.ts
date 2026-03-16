@@ -20,7 +20,7 @@ import {
   Assets, Texture, Rectangle, Ticker,
   type FederatedPointerEvent,
 } from 'pixi.js'
-import { getAllItems } from '@/core/DataLoader'
+import { getAllItems, getRunClassItemPoolIds } from '@/core/DataLoader'
 import { getItemIconUrl } from '@/core/AssetPath'
 import { getTierColor } from '@/config/colorPalette'
 import { getConfig as getDebugCfg, setConfig as setDebugCfg } from '@/config/debugConfig'
@@ -98,7 +98,7 @@ export function getCrossIdEvolvePool(
   sourceDef: ItemDef,
   targetSize: ItemSizeNorm,
   resultTier: TierKey,
-  minStartingTier: TierKey,
+  _minStartingTier: TierKey,
 ): {
   basePool: ItemDef[]
   sameArchPool: ItemDef[]
@@ -107,8 +107,7 @@ export function getCrossIdEvolvePool(
   const basePool = getAllItems().filter((it) =>
     normalizeSize(it.size) === targetSize
     && !isNeutralItemDef(it)
-    && parseAvailableTiersLocal(it.available_tiers).includes(resultTier)
-    && compareTierLocal(parseTierName(it.starting_tier) ?? 'Bronze', minStartingTier) >= 0
+    && compareTierLocal(parseTierName(it.starting_tier) ?? 'Bronze', resultTier) <= 0
   )
   const sourceArch = getPrimaryArchetype(sourceDef.tags)
   if (!sourceArch) {
@@ -156,16 +155,6 @@ function compareTierLocal(a: TierKey, b: TierKey): number {
 
 function maxTierLocal(a: TierKey, b: TierKey): TierKey {
   return compareTierLocal(a, b) >= 0 ? a : b
-}
-
-function parseAvailableTiersLocal(raw: string): TierKey[] {
-  const s = (raw || '').trim()
-  if (!s) return ['Bronze', 'Silver', 'Gold', 'Diamond']
-  const out = s
-    .split('/')
-    .map((v) => parseTierName(v.trim()))
-    .filter((v): v is TierKey => !!v)
-  return out.length > 0 ? out : ['Bronze', 'Silver', 'Gold', 'Diamond']
 }
 
 function synthesisLevelLabel(tier: TierKey, star: 1 | 2): string {
@@ -236,7 +225,7 @@ export class SynthesisPanel extends Container {
     if (callbacks.canUseSameArchetypeDiffItemStoneSynthesis(sourceDefId, targetItem.defId, sourceTier, sourceStar, targetTier, targetStar)) {
       const customDisplay: ItemInfoCustomDisplay = {
         hideName: true,
-        lines: ['升级为 +1 级其他非中立职业物品（同等级桶随机）'],
+        lines: ['升级为 +1 级非中立职业物品（同等级桶随机）'],
         suppressStats: true,
         hideTierBadge: true,
         centerRichLineInFrame: true,
@@ -270,6 +259,7 @@ export class SynthesisPanel extends Container {
     frameTier: TierKey,
     badgeTier: TierKey,
     badgeStar: 1 | 2,
+    showAsUnknown = false,
   ): Container {
     const con = new Container()
     const cardScale = 0.76
@@ -289,29 +279,40 @@ export class SynthesisPanel extends Container {
     frame.stroke({ color: getTierColor(frameTier), width: borderW, alpha: 0.98 })
     con.addChild(frame)
 
-    const icon = new Sprite(Texture.WHITE)
     const baseCellInner = Math.max(1, CELL_SIZE - spriteInset * 2)
     const spriteSide = Math.max(1, Math.min(frameW, baseCellInner))
-    icon.width = spriteSide
-    icon.height = spriteSide
-    icon.x = frameInset + (frameW - spriteSide) / 2
-    icon.y = frameInset + (frameH - spriteSide) / 2
-    icon.alpha = 0
-    con.addChild(icon)
+    if (showAsUnknown) {
+      const q = new Text({
+        text: '?',
+        style: { fontSize: 72, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      q.anchor.set(0.5)
+      q.x = frameInset + frameW / 2
+      q.y = frameInset + frameH / 2
+      con.addChild(q)
+    } else {
+      const icon = new Sprite(Texture.WHITE)
+      icon.width = spriteSide
+      icon.height = spriteSide
+      icon.x = frameInset + (frameW - spriteSide) / 2
+      icon.y = frameInset + (frameH - spriteSide) / 2
+      icon.alpha = 0
+      con.addChild(icon)
 
-    void Assets.load<Texture>(getItemIconUrl(item.id)).then((tex) => {
-      const sw = Math.max(1, tex.width)
-      const sh = Math.max(1, tex.height)
-      const scale = Math.min(spriteSide / sw, spriteSide / sh)
-      icon.texture = tex
-      icon.width = Math.max(1, Math.round(sw * scale))
-      icon.height = Math.max(1, Math.round(sh * scale))
-      icon.x = frameInset + (frameW - icon.width) / 2
-      icon.y = frameInset + (frameH - icon.height) / 2
-      icon.alpha = 1
-    }).catch(() => {
-      // ignore runtime missing icon
-    })
+      void Assets.load<Texture>(getItemIconUrl(item.id)).then((tex) => {
+        const sw = Math.max(1, tex.width)
+        const sh = Math.max(1, tex.height)
+        const scale = Math.min(spriteSide / sw, spriteSide / sh)
+        icon.texture = tex
+        icon.width = Math.max(1, Math.round(sw * scale))
+        icon.height = Math.max(1, Math.round(sh * scale))
+        icon.x = frameInset + (frameW - icon.width) / 2
+        icon.y = frameInset + (frameH - icon.height) / 2
+        icon.alpha = 1
+      }).catch(() => {
+        // ignore runtime missing icon
+      })
+    }
 
     const badges = createItemStatBadges(
       item,
@@ -326,6 +327,12 @@ export class SynthesisPanel extends Container {
     con.addChild(badges)
     con.scale.set(cardScale)
     return con
+  }
+
+  private isCompendiumUnlocked(def: ItemDef): boolean {
+    const baseTier = parseTierName(def.starting_tier) ?? 'Bronze'
+    if (baseTier === 'Bronze') return true
+    return this.ctx.runSeenItemIds.has(def.id)
   }
 
   // ----------------------------------------------------------
@@ -380,15 +387,20 @@ export class SynthesisPanel extends Container {
     }
 
     const minStartingTier = getCrossSynthesisMinStartingTier(sourcePreview.def, targetPreview.def)
-    const forceSynthesisActive = !!(ctx.dayEventState.forceSynthesisArchetype && ctx.dayEventState.forceSynthesisRemaining > 0)
-    const preferOtherArchetype = shouldCrossSynthesisPreferOtherArchetype(sourcePreview.def, targetPreview.def) && !forceSynthesisActive
-    const candidates = getCrossIdPreviewCandidates(
+    const preferOtherArchetype = false
+    const runPoolSet = new Set(getRunClassItemPoolIds())
+    const candidatesRaw = getCrossIdPreviewCandidates(
       sourcePreview.def,
       normalizeSize(targetPreview.def.size),
       resultTier,
       minStartingTier,
       preferOtherArchetype,
     )
+    const candidates = candidatesRaw.filter((it) => {
+      if (it.id === sourcePreview.def.id || it.id === targetPreview.def.id) return false
+      if (runPoolSet.size > 0 && !runPoolSet.has(it.id)) return false
+      return true
+    })
     ctx.crossSynthesisConfirmAction = onConfirm
 
     const overlay = new Container()
@@ -456,7 +468,13 @@ export class SynthesisPanel extends Container {
     const resultCenterX = 166
     const arrowCenterX = Math.round((inputBCenterX + resultCenterX) / 2)
 
-    const sourceCardA = this.createCrossSynthesisPreviewCard(sourcePreview.def, sourcePreview.tier, sourcePreview.tier, sourcePreview.star)
+    const sourceCardA = this.createCrossSynthesisPreviewCard(
+      sourcePreview.def,
+      sourcePreview.tier,
+      sourcePreview.tier,
+      sourcePreview.star,
+      !this.isCompendiumUnlocked(sourcePreview.def),
+    )
     sourceCardA.x = inputACenterX - previewCardVisualSize / 2
     sourceCardA.y = flowCenterY - previewCardVisualSize / 2
     viewport.addChild(sourceCardA)
@@ -470,7 +488,13 @@ export class SynthesisPanel extends Container {
     plusText.y = flowCenterY
     viewport.addChild(plusText)
 
-    const sourceCardB = this.createCrossSynthesisPreviewCard(targetPreview.def, targetPreview.tier, targetPreview.tier, targetPreview.star)
+    const sourceCardB = this.createCrossSynthesisPreviewCard(
+      targetPreview.def,
+      targetPreview.tier,
+      targetPreview.tier,
+      targetPreview.star,
+      !this.isCompendiumUnlocked(targetPreview.def),
+    )
     sourceCardB.x = inputBCenterX - previewCardVisualSize / 2
     sourceCardB.y = flowCenterY - previewCardVisualSize / 2
     viewport.addChild(sourceCardB)
@@ -509,7 +533,7 @@ export class SynthesisPanel extends Container {
     const cardBaseY = -previewCardVisualSize / 2
     const resultCards = resultPool.map((def) => {
       const displayTier = parseTierName(def.starting_tier) ?? 'Bronze'
-      const card = this.createCrossSynthesisPreviewCard(def, displayTier, resultTier, resultStar)
+      const card = this.createCrossSynthesisPreviewCard(def, displayTier, resultTier, resultStar, !this.isCompendiumUnlocked(def))
       card.x = -previewCardVisualSize / 2
       card.y = cardBaseY
       resultTrack.addChild(card)

@@ -11,6 +11,7 @@ import { GridZone } from '@/common/grid/GridZone'
 import { CELL_SIZE, CELL_HEIGHT } from '@/common/grid/GridZone'
 import type { ItemDef } from '@/common/items/ItemDef'
 import type { TierKey } from '@/shop/ShopManager'
+import { getRunClassItemPoolIds } from '@/core/DataLoader'
 import {
   TIER_ORDER,
   nextTierLevel,
@@ -33,7 +34,6 @@ import {
 import {
   pickCrossIdEvolveCandidates,
   getCrossSynthesisMinStartingTier,
-  shouldCrossSynthesisPreferOtherArchetype,
 } from '../panels/SynthesisPanel'
 import { hasPickedSkill } from './ShopSkillSystem'
 import { shouldTriggerSkill48ExtraUpgrade } from '@/common/skills/GoldSkillRules'
@@ -414,24 +414,39 @@ export function synthesizeTarget(
   if (!sourceDef) return null
   const targetDef = getItemDefById(targetItem.defId)
   if (!targetDef) return null
+  const runPoolSet = new Set(getRunClassItemPoolIds())
 
   const isSameIdSynthesis = defId === targetItem.defId
   const forceSynthesisActive = !!(ctx.dayEventState.forceSynthesisArchetype && ctx.dayEventState.forceSynthesisRemaining > 0)
   const minStartingTier = getCrossSynthesisMinStartingTier(sourceDef, targetDef)
-  const preferOtherArchetype = shouldCrossSynthesisPreferOtherArchetype(sourceDef, targetDef) && !forceSynthesisActive
   let guaranteeNewUnlock = shouldGuaranteeNewUnlock(upgradeTo.tier, upgradeTo.star)
   let resultLevel = tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1
+  const resultTierIndex = (tier: TierKey): number => Math.max(0, TIER_ORDER.indexOf(tier))
+  const filterByResultTierCeiling = (list: ItemDef[], targetTierKey: TierKey): ItemDef[] => {
+    const maxIdx = resultTierIndex(targetTierKey)
+    return list.filter((it) => {
+      const startTier = parseTierName(it.starting_tier) ?? 'Bronze'
+      return resultTierIndex(startTier) <= maxIdx
+    })
+  }
+  const filterCrossSynthesisPool = (list: ItemDef[]): ItemDef[] => {
+    let out = list.filter((it) => it.id !== sourceDef.id && it.id !== targetDef.id)
+    if (runPoolSet.size > 0) out = out.filter((it) => runPoolSet.has(it.id))
+    return out
+  }
   const buildCandidates = (targetTierKey: TierKey) => {
-    const all = pickCrossIdEvolveCandidates(sourceDef, targetItem.size, targetTierKey, minStartingTier, preferOtherArchetype)
+    const allRaw = pickCrossIdEvolveCandidates(sourceDef, targetItem.size, targetTierKey, 'Bronze', false)
+    const allByTier = filterByResultTierCeiling(allRaw, targetTierKey)
+    const all = isSameIdSynthesis ? allByTier : filterCrossSynthesisPool(allByTier)
     if (forceSynthesisActive) {
       const forced = all.filter((it) => toSkillArchetype(getPrimaryArchetype(it.tags)) === ctx.dayEventState.forceSynthesisArchetype)
       if (forced.length > 0) return forced
       if (all.length > 0) return all
-      return [sourceDef]
+      return isSameIdSynthesis ? [sourceDef] : []
     }
     if (ctx.dayEventState.allSynthesisRandom) {
       if (all.length > 0) return all
-      return [sourceDef]
+      return isSameIdSynthesis ? [sourceDef] : []
     }
     if (isSameIdSynthesis) return [sourceDef]
     return all

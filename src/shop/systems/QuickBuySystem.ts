@@ -67,6 +67,7 @@ export type RollNextQuickBuyOfferCallbacks = {
   getInstanceTier: (instanceId: string) => TierKey | undefined
   getInstanceTierMap: () => Map<string, TierKey>
   getInstanceTierStar: (instanceId: string) => 1 | 2
+  getStarterTutorialForcedOffer?: () => PoolCandidate | null
 }
 
 export type PickForcedLowLevelCallbacks = {
@@ -510,6 +511,16 @@ export function rollNextQuickBuyOffer(
   force: boolean,
   callbacks: RollNextQuickBuyOfferCallbacks,
 ): PoolCandidate | null {
+  const tutorialForced = callbacks.getStarterTutorialForcedOffer?.()
+  if (tutorialForced) {
+    ctx.nextQuickBuyOffer = {
+      itemId: tutorialForced.item.id,
+      tier: tutorialForced.tier,
+      star: tutorialForced.star,
+      price: tutorialForced.price,
+    }
+    return tutorialForced
+  }
   const bronzeOnly = getDebugCfg('gameplayBaseBuyBronzeOnly') >= 0.5
   if (!bronzeOnly) {
     const forcedLowLevelPair = pickForcedLowLevelPairCandidate(ctx, ctx.currentDay, {

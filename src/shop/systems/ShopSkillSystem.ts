@@ -501,6 +501,7 @@ export type BuyRandomBronzeCallbacks = {
   recordNeutralItemObtained: (itemId: string) => void
   updateNeutralPseudoRandomCounterOnPurchase: (item: ItemDef) => void
   unlockItemToPool: (itemId: string) => void
+  onQuickBuyPurchased?: (item: ItemDef) => void
 }
 
 function pickBronzeOnlyLowLevelOddTarget(
@@ -703,6 +704,7 @@ export function buyRandomBronzeToBoardOrBackpack(ctx: ShopSceneCtx, deps: BuyRan
   deps.recordNeutralItemObtained(itemForced.id)
   deps.updateNeutralPseudoRandomCounterOnPurchase(itemForced)
   deps.unlockItemToPool(itemForced.id)
+  deps.onQuickBuyPurchased?.(itemForced)
   deps.rollNextQuickBuyOffer(true)
   deps.refreshShopUI()
 }

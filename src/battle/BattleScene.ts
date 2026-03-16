@@ -20,6 +20,7 @@ import { EventBus } from '@/core/EventBus'
 import { SellPopup, type ItemInfoEnchantmentDisplay, type ItemInfoMode, type ItemInfoRuntimeOverride } from '@/common/ui/SellPopup'
 import { getItemEnchantmentDisplay, resolveItemEnchantmentEffectCn } from '@/common/items/ItemEnchantment'
 import { getBattleEffectColor, getBattleFloatTextColor, getBattleOrbColor } from '@/config/colorPalette'
+import { getHeroImageUrl } from '@/core/AssetPath'
 import { BattlePortraitFX } from './BattlePortraitFX'
 import { BattleSkillUI } from './BattleSkillUI'
 import { BattleDamageStats } from './BattleDamageStats'
@@ -123,6 +124,9 @@ let monitorSampleElapsedMs = 0
 let monitorHighStreak = 0
 let monitorRecoverStreak = 0
 let autoFxDegradeLevel = 0
+const isMobileBattleRuntime = /Mobi|Android|iPhone|iPad/i.test(
+  typeof navigator !== 'undefined' ? navigator.userAgent : '',
+)
 
 function readUsedHeapMb(): number {
   const mem = (performance as Performance & { memory?: { usedJSHeapSize?: number } }).memory
@@ -135,7 +139,10 @@ function tickAutoFxDegrade(dtMs: number): void {
   if (!engine) return
   const runtimeCfg = getGameCfg().combatRuntime
   monitorSampleElapsedMs += dtMs
-  const sampleEveryMs = Math.max(100, Math.round(runtimeCfg.memoryMonitorSampleMs))
+  const sampleEveryMs = Math.max(
+    100,
+    Math.round(runtimeCfg.memoryMonitorSampleMs * (isMobileBattleRuntime ? 0.6 : 1)),
+  )
   if (monitorSampleElapsedMs < sampleEveryMs) return
   monitorSampleElapsedMs = 0
 
@@ -156,12 +163,19 @@ function tickAutoFxDegrade(dtMs: number): void {
   )
   const heapMb = readUsedHeapMb()
 
-  const isHigh = pendingRatio >= runtimeCfg.memoryMonitorHighPendingRatio
-    || fxRatio >= runtimeCfg.memoryMonitorHighFxRatio
-    || (heapMb > 0 && heapMb >= runtimeCfg.memoryMonitorHighHeapMb)
-  const canRecoverByHeap = heapMb <= 0 || heapMb <= runtimeCfg.memoryMonitorRecoverHeapMb
-  const isRecover = pendingRatio <= runtimeCfg.memoryMonitorRecoverPendingRatio
-    && fxRatio <= runtimeCfg.memoryMonitorRecoverFxRatio
+  const highPendingRatio = runtimeCfg.memoryMonitorHighPendingRatio * (isMobileBattleRuntime ? 0.85 : 1)
+  const recoverPendingRatio = runtimeCfg.memoryMonitorRecoverPendingRatio * (isMobileBattleRuntime ? 0.85 : 1)
+  const highFxRatio = runtimeCfg.memoryMonitorHighFxRatio * (isMobileBattleRuntime ? 0.85 : 1)
+  const recoverFxRatio = runtimeCfg.memoryMonitorRecoverFxRatio * (isMobileBattleRuntime ? 0.85 : 1)
+  const highHeapMb = runtimeCfg.memoryMonitorHighHeapMb * (isMobileBattleRuntime ? 0.8 : 1)
+  const recoverHeapMb = runtimeCfg.memoryMonitorRecoverHeapMb * (isMobileBattleRuntime ? 0.8 : 1)
+
+  const isHigh = pendingRatio >= highPendingRatio
+    || fxRatio >= highFxRatio
+    || (heapMb > 0 && heapMb >= highHeapMb)
+  const canRecoverByHeap = heapMb <= 0 || heapMb <= recoverHeapMb
+  const isRecover = pendingRatio <= recoverPendingRatio
+    && fxRatio <= recoverFxRatio
     && canRecoverByHeap
 
   if (isHigh) {
@@ -175,8 +189,14 @@ function tickAutoFxDegrade(dtMs: number): void {
     monitorRecoverStreak = 0
   }
 
-  const escalateSamples = Math.max(1, Math.round(runtimeCfg.memoryMonitorEscalateSamples))
-  const recoverSamples = Math.max(1, Math.round(runtimeCfg.memoryMonitorRecoverSamples))
+  const escalateSamples = Math.max(
+    1,
+    Math.round(runtimeCfg.memoryMonitorEscalateSamples + (isMobileBattleRuntime ? -1 : 0)),
+  )
+  const recoverSamples = Math.max(
+    1,
+    Math.round(runtimeCfg.memoryMonitorRecoverSamples + (isMobileBattleRuntime ? 1 : 0)),
+  )
 
   if (monitorHighStreak >= escalateSamples && autoFxDegradeLevel < 2) {
     autoFxDegradeLevel += 1
@@ -792,7 +812,7 @@ export const BattleScene: Scene = {
       const enemyHeroId = isPvpRealBattle && pvpEnemyHeroId && (HERO_VISUAL_IDS as readonly string[]).includes(pvpEnemyHeroId)
         ? pvpEnemyHeroId as HeroVisualId
         : randomHeroVisualId()
-      const tex = await Assets.load<Texture>(`/resource/hero/${enemyHeroId}.png`)
+      const tex = await Assets.load<Texture>(getHeroImageUrl(`${enemyHeroId}.png`))
       if (portraitFX.enemyBossSprite) {
         portraitFX.enemyBossSprite.texture = tex
       }
@@ -816,9 +836,9 @@ export const BattleScene: Scene = {
         : readPlayerHeroVisualId()
       let tex: Texture
       try {
-        tex = await Assets.load<Texture>(`/resource/hero/${playerHeroId}b.png`)
+        tex = await Assets.load<Texture>(getHeroImageUrl(`${playerHeroId}b.png`))
       } catch {
-        tex = await Assets.load<Texture>(`/resource/hero/${playerHeroId}.png`)
+        tex = await Assets.load<Texture>(getHeroImageUrl(`${playerHeroId}.png`))
       }
       if (portraitFX.playerHeroSprite) portraitFX.playerHeroSprite.texture = tex
       if (portraitFX.playerHeroFlashSprite) portraitFX.playerHeroFlashSprite.texture = tex

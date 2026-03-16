@@ -1,5 +1,269 @@
 # 大巴扎 — 开发进度记录
 
+## 验收优化追加（2026-03-16，临时屏蔽新手流程）
+
+- 用户需求：屏蔽新手部分。
+- 已完成：`src/shop/ShopScene.ts`
+  - 首局分步新手引导总开关 `isStarterRunTutorialEnabled(...)` 临时改为始终 `false`；
+  - 旧版新手合成教学弹窗入口在 `ensureDailyChoiceSelection(...)` 中直接跳过并标记为已展示。
+- 效果：进入商店后不再出现任何新手引导/教学页面，直接走正常流程。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认是否长期保留该屏蔽策略。
+
+## 验收优化追加（2026-03-16，首局分步新手引导流程落地）
+
+- 用户需求：首局加入分步引导流程（非强制）：
+  - 前两次购买固定短剑，并有小手提示购买；
+  - 拥有两把短剑后引导拖拽合成，说明“相同物品合成升级”；
+  - 再购买短剑+圆盾，并引导异物合成，说明“同颜色不同物品随机升级”；
+  - 完成后回归正常流程。
+- 已完成：
+  - `src/shop/ShopSceneContext.ts`
+    - 新增首局引导状态字段：步骤、短剑/圆盾购买计数、提示去重标记；
+    - 存档类型同步扩展。
+  - `src/shop/ShopStateStorage.ts`
+    - 新增引导状态的保存/恢复。
+  - `src/shop/systems/QuickBuySystem.ts`
+    - 增加可选回调 `getStarterTutorialForcedOffer`，支持首局教程阶段强制下一次购买候选。
+  - `src/shop/systems/ShopSkillSystem.ts`
+    - 快速购买成功后新增回调 `onQuickBuyPurchased`，用于教程计数推进。
+  - `src/shop/ShopScene.ts`
+    - 实现首局教程状态机：
+      - `buy_dagger_1 -> buy_dagger_2 -> synth_same -> buy_dagger_3 -> buy_shield_1 -> synth_cross -> done`；
+      - 购买阶段强制候选：短剑/圆盾；
+      - 通过背包/上阵区实例等级检测合成阶段完成；
+      - 每阶段弹出一次提示文案，购买阶段显示小手指引；
+      - 教程未完成时阻断旧版新手教学弹窗分支，避免流程冲突。
+  - `src/shop/systems/ShopHeroSystem.ts`
+    - 新开局重置教程状态字段。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户首局实机验收（购买顺序、两次合成触发、完成后恢复正常随机购买）。
+
+## 验收优化追加（2026-03-16，首局默认关闭合成二次弹窗）
+
+- 用户需求：默认首局关闭“合成二次弹窗”。
+- 已完成：
+  - `src/shop/systems/ShopHeroSystem.ts`
+    - 首局默认设置由 `gameplayCrossSynthesisConfirm = 1` 调整为 `0`；
+    - 保持 `gameplayShowSpeedButton = 0` 逻辑不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在“重置后首局”验收默认开关状态。
+
+## 验收优化追加（2026-03-16，相同物品合成取消二次确认）
+
+- 用户需求：相同物品合成时不应弹出“合成二次弹窗”。
+- 已完成：
+  - `src/shop/systems/ShopDragSystem.ts`
+    - 商店物品拖拽触发同物品合成时，改为直接执行 `runSameIdSynthesis()`，不再进入确认弹窗流程。
+  - `src/shop/ui/ShopBattleZoneBuilder.ts`
+    - 战斗区/背包区拖拽物品触发同物品合成时，同样改为直接执行，不弹二次确认。
+- 影响范围：
+  - `gameplayCrossSynthesisConfirm` 现仅作用于“不同物品（异物）合成”；
+  - 相同物品合成统一直达（仍保留英雄被动/特殊分支逻辑）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“同物品无弹窗、异物仍可弹窗”行为。
+
+## 验收优化追加（2026-03-16，升级奖励选牌数值重置）
+
+- 用户需求：按最新表更新 `levelQuickDraftLevelWeightsByPlayerLevel`。
+- 已完成：
+  - `data/game_config.json`
+    - 升级奖励 40 行权重表已按你提供的新版本覆盖；
+    - 行列结构保持 11 列（lv2~lv7 / 转职石 / 附魔石 / 青铜技能 / 白银技能 / 黄金技能）；
+    - 当前版本中三列技能权重均为 `0`（仅保留装备/转职石/附魔石分支）。
+- 校验：
+  - 已脚本校验 40 行完整；
+  - 已确认技能三列全为 0，关键行（Lv2、Lv5、Lv40）与给定表一致。
+- 当前阶段：等待用户验收升级奖励出牌分布是否符合预期。
+
+## 验收优化追加（2026-03-16，新手合成教学弹窗恢复）
+
+- 用户反馈：新手引导教学页不再出现。
+- 原因定位：`ensureDailyChoiceSelection(...)` 里缺少对 `showStarterSynthesisGuide(...)` 的触发分支，导致仅保留了技能/事件选择逻辑。
+- 已完成：`src/shop/ShopScene.ts`
+  - 在 `ensureDailyChoiceSelection(...)` 中恢复触发：当 `starterClass` 已选且 `starterBattleGuideShown=false` 时，优先弹出新手合成教学页；
+  - 关闭教学后继续走当日选择流程（技能/事件等）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测首局教学页展示。
+
+## 验收优化追加（2026-03-16，PVE 敌人禁用技能）
+
+- 用户需求：PVE 模式中的敌人不再拥有技能。
+- 已完成：
+  - `src/battle/CombatEngine.ts`
+    - 在战斗初始化时按模式处理敌方技能：
+      - PVE（非 `pvpEnemyEntities`）强制清空 `enemySkillIds`；
+      - PVP 仍沿用对手快照传入的 `enemySkillIds`。
+    - 同时移除 PVE 场景下敌方随机技能注入链路。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收 PVE 敌方技能栏为空且不再触发敌方技能效果。
+
+## 验收优化追加（2026-03-16，移动端恢复武器飞行表现）
+
+- 用户反馈：移动端全圆点弹道观感差，希望恢复武器飞行图标表现。
+- 已完成：
+  - `src/battle/BattleFXPool.ts`
+    - 取消“移动端默认强制圆点”逻辑；
+    - 恢复默认投射物图标飞行（仅在显式 `forceDot` 的状态效果里继续走圆点）。
+- 验证：`npm run build` 通过。
+- 当前阶段：在保留武器飞行表现的前提下，继续依赖并发上限 + 自动降级来控制战斗卡死风险。
+
+## 验收优化追加（2026-03-16，随机升级允许本职业结果）
+
+- 用户反馈：随机升级中几乎拿不到本职业其他物品。
+- 原因定位：
+  - 同职异物合成转化分支（`NeutralItemPanel`）使用 `rule='other'`，候选池硬性排除了本职业；
+  - 占卜师异物合成改写（`ShopHeroSystem`）也硬性过滤 `arch !== currentArch`。
+- 已完成：
+  - `src/shop/panels/NeutralItemPanel.ts`
+    - `rule='other'` 分支不再排除本职业，改为允许所有非中立职业进入候选池；
+  - `src/shop/systems/ShopHeroSystem.ts`
+    - 占卜师异物合成候选移除“必须异职业”限制，仅保留尺寸一致和排除当前同 ID。
+  - `src/shop/panels/SynthesisPanel.ts`
+    - 悬浮信息文案同步为“非中立职业物品（同等级桶随机）”；
+    - 二次弹窗预览不再强制偏向异职业。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测随机升级是否可出现本职业其他物品。
+
+## 验收优化追加（2026-03-16，战斗卡死继续优化：移动端降载与更早自动降级）
+
+- 用户需求：在已做内存优化基础上继续针对“战斗卡死重开”做主程建议项落地。
+- 已完成：
+  - `src/battle/BattleFXPool.ts`
+    - 移动端特效上限降载：投射物/飘字/总活跃特效上限统一乘 `0.7`；
+    - 移动端投射物表现统一为圆点（禁用物品图标弹道），降低战斗中纹理加载与切换压力。
+  - `src/battle/BattleScene.ts`
+    - 自动降级监控在移动端改为“更早触发、更慢恢复”：
+      - 采样间隔缩短到 `0.6x`；
+      - 高负载阈值下调到 `0.85x`（pending/fx/heap）；
+      - 升级降级所需样本数 `-1`，恢复样本数 `+1`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在手机端复测连续战斗卡死频次；若仍有重开，再做“进入战斗前主动释放商店相关纹理”与“状态徽章降频”。
+
+## 验收优化追加（2026-03-16，PVP 统一物品池 + 忽略前若干局固定池）
+
+- 用户需求：
+  - PVP 内同一局所有玩家应使用一致的“每局职业物品池”；
+  - PVP 不应受“前若干局固定池（firstRunsFixedItemPool）”影响。
+- 已完成：`src/shop/systems/ShopHeroSystem.ts`
+  - 在 `buildRunClassItemPoolIds()` 中接入 PVP 分支：
+    - PVP 时不再调用 `markRunStarted()`，避免本地游玩局数影响对战；
+    - PVP 时跳过 `buildFixedRunClassItemPoolIds(...)`，彻底禁用首局固定池干扰。
+  - 新增确定性随机链路（FNV-1a + xorshift32）：
+    - 基于 PVP 会话公共信息（模式、人数、初始血量、按 index 排序的玩家昵称）生成种子；
+    - 用同一 seed 驱动职业池抽取，确保同局各客户端抽样结果一致。
+  - 将 `pickRandomUniqueItemIds(...)` 扩展为可注入随机源，PVP 走种子随机，PVE 保持 `Math.random` 行为不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在多人 PVP 实机复测“同局同池”与“不受前若干局固定池影响”是否符合预期。
+
+## 验收优化追加（2026-03-16，异物合成品质范围修正 + 未解锁问号预览）
+
+- 用户反馈：
+  - 合成二次弹窗结果池出现了最低品质为黄金/钻石的物品；
+  - 需求是“向下包含”：Lv1=青铜，Lv2/Lv3=青铜+白银，Lv4/Lv5=青铜+白银+黄金，Lv6/Lv7=全部品质；
+  - 未在本局图鉴解锁的物品，在二次弹窗中应显示问号。
+- 已完成：`src/shop/panels/SynthesisPanel.ts`
+  - `getCrossIdEvolvePool(...)` 改为按 `resultTier` 做起始品质上限过滤（`starting_tier <= resultTier`），实现上述向下包含规则；
+  - 合成二次弹窗候选结果追加“本局可用池 + 排除参与合成的两个物品”过滤，和实际结果池保持一致；
+  - 新增图鉴解锁判定（与图鉴规则一致：青铜默认解锁，其他看 `runSeenItemIds`），未解锁项在预览卡中显示 `?`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“品质范围”与“问号预览”是否符合预期。
+
+## 验收优化追加（2026-03-16，手机顶部按钮下移 + iOS 状态栏处理）
+
+- 用户需求：
+  - `重新开始`、`设置` 按钮在手机上往下移动，避免顶部难点按；
+  - 希望去掉手机顶部时间/电量等状态栏显示。
+- 已完成：
+  - `src/shop/ui/ShopSafeArea.ts`
+    - 新增顶部安全区工具：读取 `env(safe-area-inset-top)`，并在触屏设备提供最小下移量。
+  - `src/shop/ui/ShopUIBuilders.ts`
+    - `重新开始` 按钮 Y 改为 `16 + getTopLeftControlYOffset()`。
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - `设置` 按钮 Y 改为 `82 + getTopLeftControlYOffset()`。
+  - `index.html`
+    - `viewport` 增加 `viewport-fit=cover`；
+    - 新增 `apple-mobile-web-app-status-bar-style=black-translucent`，配合移动端安全区口径。
+  - `ios/App/App/Info.plist`
+    - `UIViewControllerBasedStatusBarAppearance` 改为 `false`；
+    - 新增 `UIStatusBarHidden=true`，在 iOS 原生壳内隐藏状态栏。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在手机实机（尤其 iPhone 刘海屏）验收顶部按钮可点击性与状态栏隐藏效果。
+
+## 验收优化追加（2026-03-16，Lv3异物合成候选池再次修正）
+
+- 用户反馈：游戏内实测 Lv3 仍只出最低品质白银物品。
+- 原因定位：跨物品候选池在 `getCrossIdEvolvePool(...)` 仍受 `available_tiers` 限制，导致大量青铜起始物品被排除。
+- 已完成：
+  - `src/shop/panels/SynthesisPanel.ts`
+    - `getCrossIdEvolvePool(...)` 移除 `available_tiers` 对跨物品候选池的过滤；
+    - 保留尺寸/中立排除/起始品质门槛过滤，确保候选池覆盖“青铜起始 + 白银起始”（Lv3场景）。
+  - 与此前 `ShopSynthesisController` 改动叠加后：
+    - 异物合成按“本局可用池 + 排除两件参与物品 + 结果品质上限”生效，最终再按品质桶概率抽取。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户再次复测 Lv3 异物合成是否出现青铜起始物品。
+
+## 验收优化追加（2026-03-16，战斗卡死专项：移动端FX降载）
+
+- 用户反馈：手机端战斗更容易卡死，怀疑战斗期特效与纹理压力过高。
+- 已完成：
+  - `src/battle/BattleFXPool.ts`
+    - 移动端战斗特效并发上限统一乘以 `0.7`（投射物/飘字/总活跃特效）；
+    - 移动端投射物视觉强制使用圆点弹道，不再使用物品图标弹道（减少战斗中纹理加载与切换压力）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在移动端高压战斗场景复测卡死频次是否下降。
+
+## 验收优化追加（2026-03-16，Lv3异物合成候选池含青铜+白银）
+
+- 用户反馈：随机到 Lv3 时只会出“最低品质=白银”的物品；期望“最低品质=青铜或白银”都可参与，再按品质桶概率随机。
+- 已完成：`src/shop/systems/ShopSynthesisController.ts`
+  - 异物合成候选构建改为：
+    - 先取同尺寸、可升到目标品质的全候选（不再用 `minStartingTier` 抬高下限）；
+    - 再加“结果品质上限”过滤：`starting_tier <= resultTier`；
+    - 对异物合成继续应用“排除参与合成的两个物品 + 本局可用池”规则。
+  - 对 Lv3（白银）而言，候选池现在会包含“青铜起始 + 白银起始”物品。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测 Lv3 异物合成的品质分布是否符合预期。
+
+## 验收优化追加（2026-03-16，移动端卡死重开内存优化）
+
+- 用户反馈：手机端经常卡死重开，怀疑大图与大量图标加载导致内存压力。
+- 排查结论：
+  - 背景图分辨率高（约 1536~1568 x 2744~2752），GPU 纹理解码后占用显著；
+  - 物品图标加载虽单张不大，但长期运行下纹理缓存叠加会提高峰值内存风险。
+- 已完成：
+  - `src/main.ts`
+    - 移动端渲染分辨率上限由 `2` 下调到 `1.5`，降低渲染缓冲区占用；
+    - 开启并强化纹理 GC：`textureGCActive=true`，移动端 `textureGCMaxIdle=120`、`textureGCCheckCountMax=300`（桌面保留更宽松阈值）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在中低端机上复测“长时间游玩/多局切换”稳定性，确认是否显著减少重开。
+
+## 验收优化追加（2026-03-16，同职业异物合成结果池改为本局可用全池）
+
+- 用户需求：同职业异物合成时，结果应从“本局可用物品”中选取，且排除参与合成的两个物品，不再限制为本职业。
+- 已完成：`src/shop/systems/ShopSynthesisController.ts`
+  - 异物合成候选池改为：
+    - 先按尺寸/可升品质/起始品质门槛筛选；
+    - 再限定到 `getRunClassItemPoolIds()`（本局可用池）；
+    - 排除 `sourceDef` 与 `targetDef` 两个合成参与物品；
+    - 取消“偏向异职业池”分流逻辑，统一从全本局可用池抽取。
+  - 同物品合成逻辑保持不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收同职业异物合成结果分布是否符合预期。
+
+## 验收优化追加（2026-03-16，合成二次弹窗覆盖同物品合成）
+
+- 用户反馈：已开启“合成二次弹窗”，但实际合成时未弹出。
+- 原因定位：当前实现只对“异物合成（不同物品）”弹确认，同物品合成直接执行，所以看起来像开关无效。
+- 已完成：
+  - `src/shop/systems/ShopDragSystem.ts`
+    - 商店拖拽购买合成时，同物品合成也接入二次确认逻辑。
+  - `src/shop/ui/ShopBattleZoneBuilder.ts`
+    - 场上拖拽合成时，同物品合成同样接入二次确认；
+    - 取消确认时恢复到原位置并刷新 UI。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“同物品合成/异物合成”均会弹出二次确认。
+
 ## 验收优化追加（2026-03-16，移除物品简版描述，统一详细信息）
 
 - 用户需求：物品描述统一使用详细信息，不再使用简版描述。
@@ -808,6 +1072,56 @@
     - 新局初始化/场景退出重置开关为默认关闭。
   - `src/shop/ShopSceneContext.ts` + `src/shop/ShopStateStorage.ts`
     - 新增并持久化 `suppressCompendiumNewDotsThisRun` 状态。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-19，移动端打包英雄立绘丢失修复）
+
+- 用户反馈：手机打包后战斗中不同英雄图片缺失（未正确打进包/路径失效）。
+- 根因：
+  - `BattleScene` / `PvpPanel` 里仍存在硬编码绝对路径 `"/resource/hero/..."`；
+  - iOS/本地包（`file:`/子目录）下绝对路径会失效，导致资源加载失败。
+- 已修复：
+  - `src/battle/BattleScene.ts`
+  - `src/shop/panels/PvpPanel.ts`
+  - 统一改为 `getHeroImageUrl(...)` 生成 hero 资源路径，与现有打包路径策略一致。
+- 验证：`npm run build` 通过。
+
+### 验收补充（同阶段-20，Capacitor 资源路径与 iOS 同步）
+
+- 用户反馈：iOS 模拟器战斗中敌方立绘仍缺失，出现白色占位。
+- 根因补充：
+  - `capacitor://localhost` 场景下，资源基路径使用 `./resource` 存在相对路径歧义（可能解析到 `/assets/resource`）；
+  - 导致英雄图片请求失败并回退白色占位。
+- 已修复：
+  - `src/core/AssetPath.ts`：非 `file:` 场景统一使用绝对基路径 `/resource`；
+  - 保留 `file:` 场景（dist-ios）特殊相对路径逻辑。
+  - 结合上一补丁，`BattleScene`/`PvpPanel` 全部英雄资源加载统一走 `getHeroImageUrl(...)`。
+- 打包同步：
+  - 已执行 `npm run build && npx cap sync ios`，最新资源已复制到 `ios/App/App/public`。
+
+### 验收补充（同阶段-21，capacitor://localhost 图标全丢失回归修复）
+
+- 用户反馈：iOS 模拟器中所有图标/立绘均丢失，日志显示请求路径为 `/resource/...` 并加载失败。
+- 根因：
+  - 在 `capacitor://localhost` 协议下将资源基路径强制为绝对 `/resource`，导致该协议场景资源解析失败。
+- 已修复：
+  - `src/core/AssetPath.ts`
+    - 对 `capacitor:` 等非 http/https/file 协议恢复使用相对 `./resource`；
+    - `file:` 继续走 iOS 本地包特殊规则；
+    - http/https 保持 `/resource`。
+- 已重新打包并同步：
+  - `npm run build && npx cap sync ios` 完成。
+
+### 验收补充（同阶段-22，初始合成规则弹窗可隐藏）
+
+- 用户需求：初始的“合成规则”弹窗支持隐藏。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增 `gameplayShowStarterSynthesisGuide`（显示初始合成规则弹窗），默认 `0`（隐藏）。
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 设置页新增开关“初始合成规则弹窗”。
+  - `src/shop/ShopScene.ts`
+    - 日常选择流程中接入该开关：关闭时自动跳过该引导并标记为已展示，避免重复弹出。
 - 验证：`npm run build` 通过。
 
 ## 验收优化追加（2026-03-13，英雄随机候选与升级快捷三选一口径统一）

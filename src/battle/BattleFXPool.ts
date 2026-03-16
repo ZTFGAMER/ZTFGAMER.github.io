@@ -131,6 +131,9 @@ function drawStatusBadge(
 const ITEM_BY_ID = new Map(getAllItems().map((it) => [it.id, it] as const))
 
 export class BattleFXPool {
+  private readonly isMobileRuntime = /Mobi|Android|iPhone|iPad/i.test(
+    typeof navigator !== 'undefined' ? navigator.userAgent : '',
+  )
   private fxLayer: Container | null = null
   private playerZone: GridZone | null = null
   private enemyZone: GridZone | null = null
@@ -273,10 +276,11 @@ export class BattleFXPool {
       ? runtime.fxDegradeActiveScaleL2
       : (this.fxDegradeLevel === 1 ? runtime.fxDegradeActiveScaleL1 : 1)
 
+    const mobileScale = this.isMobileRuntime ? 0.7 : 1
     return {
-      maxProjectiles: Math.max(1, Math.round(FX_MAX_PROJECTILES * Math.max(0.1, projectileScale))),
-      maxFloatingNumbers: Math.max(1, Math.round(FX_MAX_FLOATING_NUMBERS * Math.max(0.1, floatingScale))),
-      maxActiveTotal: Math.max(1, Math.round(FX_MAX_ACTIVE_TOTAL * Math.max(0.1, activeScale))),
+      maxProjectiles: Math.max(1, Math.round(FX_MAX_PROJECTILES * Math.max(0.1, projectileScale) * mobileScale)),
+      maxFloatingNumbers: Math.max(1, Math.round(FX_MAX_FLOATING_NUMBERS * Math.max(0.1, floatingScale) * mobileScale)),
+      maxActiveTotal: Math.max(1, Math.round(FX_MAX_ACTIVE_TOTAL * Math.max(0.1, activeScale) * mobileScale)),
     }
   }
 

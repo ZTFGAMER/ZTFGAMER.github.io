@@ -49,7 +49,7 @@ import {
   applySavedShopState,
   type ApplySavedShopStateCallbacks,
 } from './ShopStateStorage'
-import { createShopSceneCtx, type ShopSceneCtx, type StarterClass } from './ShopSceneContext'
+import { createShopSceneCtx, type ShopSceneCtx, type StarterClass, type StarterTutorialStep } from './ShopSceneContext'
 import {
   nextId,
   instanceToDefId,
@@ -108,7 +108,8 @@ import { getSkillItemDefById, getSkillPickById } from '@/common/skills/SkillItem
 import {
   stopFlashEffect,
   stopBattleGuideHandAnim,
-  stopUnlockRevealPlayback
+  stopUnlockRevealPlayback,
+  showBuyGuideHand,
 } from './ui/ShopAnimationEffects'
 import { CANVAS_W } from '@/config/layoutConstants'
 import { getShopUiColor, getClassColor } from '@/config/colorPalette'
@@ -175,6 +176,112 @@ const _ctx: ShopSceneCtx = createShopSceneCtx()
 
 function getItemDefByCn(nameCn: string): ItemDef | null {
   return getAllItems().find((it) => it.name_cn === nameCn) ?? null
+}
+
+function isStarterRunTutorialEnabled(ctx: ShopSceneCtx = _ctx): boolean {
+  void ctx
+  return false
+}
+
+function getStarterTutorialDefIds(ctx: ShopSceneCtx = _ctx): { daggerId: string | null; shieldId: string | null } {
+  const daggerId = getItemDefByCn('短剑')?.id ?? null
+  const shieldId = getItemDefByCn('圆盾')?.id ?? null
+  void ctx
+  return { daggerId, shieldId }
+}
+
+function getStarterTutorialForcedOffer(ctx: ShopSceneCtx = _ctx): PoolCandidate | null {
+  if (!ctx.shopManager) return null
+  if (!isStarterRunTutorialEnabled(ctx)) return null
+  const { daggerId, shieldId } = getStarterTutorialDefIds(ctx)
+  const step = ctx.starterTutorialStep
+  const forcedId = (step === 'buy_dagger_1' || step === 'buy_dagger_2' || step === 'buy_dagger_3')
+    ? daggerId
+    : step === 'buy_shield_1'
+      ? shieldId
+      : null
+  if (!forcedId) return null
+  const item = getItemDefById(forcedId)
+  if (!item) return null
+  return {
+    item,
+    level: 1,
+    tier: 'Bronze',
+    star: 1,
+    price: ctx.shopManager.getItemPrice(item, 'Bronze'),
+  }
+}
+
+function markStarterTutorialQuickBuyItem(item: ItemDef, ctx: ShopSceneCtx = _ctx): void {
+  if (!isStarterRunTutorialEnabled(ctx)) return
+  const { daggerId, shieldId } = getStarterTutorialDefIds(ctx)
+  if (!daggerId || !shieldId) return
+  if (item.id === daggerId) ctx.starterTutorialDaggerBuyCount = Math.max(0, ctx.starterTutorialDaggerBuyCount) + 1
+  if (item.id === shieldId) ctx.starterTutorialShieldBuyCount = Math.max(0, ctx.starterTutorialShieldBuyCount) + 1
+}
+
+function getStarterTutorialOwnedState(ctx: ShopSceneCtx = _ctx): { hasLv2Dagger: boolean; hasLv2NonDaggerShield: boolean } {
+  const { daggerId, shieldId } = getStarterTutorialDefIds(ctx)
+  if (!daggerId || !shieldId) return { hasLv2Dagger: false, hasLv2NonDaggerShield: false }
+  const owned = GridInventory.getAllOwnedPlacedItems(ctx)
+  let hasLv2Dagger = false
+  let hasLv2NonDaggerShield = false
+  for (const one of owned) {
+    const lv = getInstanceLevel(one.item.instanceId)
+    if (one.item.defId === daggerId && lv >= 2) hasLv2Dagger = true
+    if (lv >= 2 && one.item.defId !== daggerId && one.item.defId !== shieldId) hasLv2NonDaggerShield = true
+  }
+  return { hasLv2Dagger, hasLv2NonDaggerShield }
+}
+
+function showStarterTutorialHint(step: StarterTutorialStep, ctx: ShopSceneCtx = _ctx): void {
+  if (ctx.starterTutorialHintStep === step) return
+  ctx.starterTutorialHintStep = step
+  if (step === 'buy_dagger_1' || step === 'buy_dagger_2') {
+    showHintToast('no_gold_buy', '新手引导：先购买短剑', 0x9be5ff, ctx)
+    showBuyGuideHand(ctx)
+    return
+  }
+  if (step === 'synth_same') {
+    showHintToast('no_gold_buy', '新手引导：拖动两把短剑重叠，合成后会升级', 0x9be5ff, ctx)
+    return
+  }
+  if (step === 'buy_dagger_3') {
+    showHintToast('no_gold_buy', '新手引导：再购买1把短剑', 0x9be5ff, ctx)
+    showBuyGuideHand(ctx)
+    return
+  }
+  if (step === 'buy_shield_1') {
+    showHintToast('no_gold_buy', '新手引导：再购买1个圆盾', 0x9be5ff, ctx)
+    showBuyGuideHand(ctx)
+    return
+  }
+  if (step === 'synth_cross') {
+    showHintToast('no_gold_buy', '新手引导：拖动短剑与圆盾合成，同颜色不同物品会随机升级', 0x9be5ff, ctx)
+    return
+  }
+  if (step === 'done') {
+    showHintToast('no_gold_buy', '新手引导完成，接下来按正常流程游玩', 0x9be5ff, ctx)
+  }
+}
+
+function advanceStarterTutorialFlow(ctx: ShopSceneCtx = _ctx): void {
+  if (!isStarterRunTutorialEnabled(ctx)) return
+  const step = ctx.starterTutorialStep
+  const { hasLv2Dagger, hasLv2NonDaggerShield } = getStarterTutorialOwnedState(ctx)
+  let next: StarterTutorialStep = step
+  if (step === 'buy_dagger_1' && ctx.starterTutorialDaggerBuyCount >= 1) next = 'buy_dagger_2'
+  else if (step === 'buy_dagger_2' && ctx.starterTutorialDaggerBuyCount >= 2) next = 'synth_same'
+  else if (step === 'synth_same' && hasLv2Dagger) next = 'buy_dagger_3'
+  else if (step === 'buy_dagger_3' && ctx.starterTutorialDaggerBuyCount >= 3) next = 'buy_shield_1'
+  else if (step === 'buy_shield_1' && ctx.starterTutorialShieldBuyCount >= 1) next = 'synth_cross'
+  else if (step === 'synth_cross' && hasLv2NonDaggerShield) next = 'done'
+  if (next !== step) {
+    ctx.starterTutorialStep = next
+    ctx.starterTutorialHintStep = null
+    if (next === 'done') ctx.starterBattleGuideShown = true
+  }
+  showStarterTutorialHint(ctx.starterTutorialStep, ctx)
 }
 
 function makeCaptureAndSave(ctx: ShopSceneCtx = _ctx) {
@@ -383,6 +490,7 @@ function makeQuickBuyCallbacks(ctx: ShopSceneCtx = _ctx) {
     getInstanceTier: (instanceId: string) => getInstanceTier(instanceId),
     getInstanceTierMap: () => instanceToTier,
     getInstanceTierStar: (instanceId: string) => getInstanceTierStar(instanceId),
+    getStarterTutorialForcedOffer: () => getStarterTutorialForcedOffer(ctx),
   }
 }
 
@@ -1357,6 +1465,12 @@ void ensureSpecialShopSelection
 function ensureDailyChoiceSelection(_stage: Container, ctx: ShopSceneCtx = _ctx): void {
   if (ctx.classSelectOverlay) return
   if (ctx.starterGuideOverlay) return
+  if (isStarterRunTutorialEnabled(ctx) && ctx.starterTutorialStep !== 'done') return
+  if (ctx.starterClass && !ctx.starterBattleGuideShown) {
+    ctx.starterBattleGuideShown = true
+    const s = captureShopState(ctx)
+    if (s) saveShopStateToStorage(s)
+  }
   if (ctx.skillDraftOverlay || ctx.eventDraftOverlay || ctx.specialShopOverlay || ctx.levelQuickRewardOverlay) return
   const hasPendingSkillDraft = !!(ctx.pendingSkillDraft && ctx.pendingSkillDraft.day === ctx.currentDay)
   if (hasPendingSkillDraft) {
@@ -1408,6 +1522,7 @@ function refreshPlayerStatusUI(ctx: ShopSceneCtx = _ctx): void {
 function refreshShopUI(ctx: ShopSceneCtx = _ctx): void {
   if (!ctx.shopManager) return
   if (!ctx.itemCompendiumBtn) settingsPanel?.createSettingsButton()
+  advanceStarterTutorialFlow(ctx)
   SkillSystem.syncPickedSkillsFromOwnedSkillItems(ctx)
   const markSeen = (defId: string | null | undefined) => {
     if (!defId) return
@@ -1546,6 +1661,7 @@ function buyRandomBronzeToBoardOrBackpack(ctx: ShopSceneCtx = _ctx): void {
     recordNeutralItemObtained: (itemId) => recordNeutralItemObtained(itemId),
     updateNeutralPseudoRandomCounterOnPurchase: (item) => updateNeutralPseudoRandomCounterOnPurchase(item),
     unlockItemToPool: (itemId) => unlockItemToPool(itemId),
+    onQuickBuyPurchased: (item) => markStarterTutorialQuickBuyItem(item, ctx),
   })
 }
 

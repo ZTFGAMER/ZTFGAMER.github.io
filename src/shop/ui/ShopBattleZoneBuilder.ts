@@ -496,24 +496,49 @@ export function buildBattleZoneUI(
           return true
         }
 
-        if (tryRunHeroSameItemSynthesisChoice(
-          stage,
-          defId,
-          fromTier,
-          fromStar,
-          synthTarget,
-          () => {
-            removeInstanceMeta(instanceId)
-            return true
-          },
-        )) {
-          return true
-        }
-        const synth = synthesizeTarget(defId, fromTier, fromStar, synthTarget.instanceId, synthTarget.zone, instanceId)
-        if (synth) {
-          removeInstanceMeta(instanceId)
-          playSynthesisFlashEffect(ctx, stage, synth)
-          refreshShopUI()
+        if (targetItem) {
+          const targetDef = getItemDefById(targetItem.defId)
+          const upgradeTo = nextTierLevel(fromTier, fromStar)
+          if (!targetDef || !upgradeTo) return false
+          const restoreDragToHome = () => {
+            restoreDraggedItemToZone(
+              instanceId,
+              defId,
+              size,
+              fromTier,
+              fromStar,
+              originCol,
+              originRow,
+              homeSystem,
+              homeView,
+              ctx,
+            )
+            refreshShopUI()
+          }
+          const runSameIdSynthesis = () => {
+            if (tryRunHeroSameItemSynthesisChoice(
+              stage,
+              defId,
+              fromTier,
+              fromStar,
+              synthTarget,
+              () => {
+                removeInstanceMeta(instanceId)
+                return true
+              },
+            )) {
+              return
+            }
+            const synth = synthesizeTarget(defId, fromTier, fromStar, synthTarget.instanceId, synthTarget.zone, instanceId)
+            if (synth) {
+              removeInstanceMeta(instanceId)
+              playSynthesisFlashEffect(ctx, stage, synth)
+              refreshShopUI()
+              return
+            }
+            restoreDragToHome()
+          }
+          runSameIdSynthesis()
           return true
         }
       }

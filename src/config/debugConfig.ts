@@ -1010,6 +1010,15 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     step: 1,
     unit: '',
   },
+  gameplayShowStarterSynthesisGuide: {
+    labelCn:      '显示初始合成规则弹窗',
+    description:  '1=首局显示合成规则引导弹窗；0=隐藏',
+    defaultValue: 0,
+    min:  0,
+    max:  1,
+    step: 1,
+    unit: '',
+  },
   gameplayBattleZoneNoSynthesis: {
     labelCn:      '上阵区禁止合成',
     description:  '1=上阵区仅挤出/换位且拖拽时背包显示合成箭头；0=关闭该逻辑',

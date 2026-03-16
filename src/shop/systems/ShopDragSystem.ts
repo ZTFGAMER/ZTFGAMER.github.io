@@ -485,20 +485,33 @@ export async function onShopDragEnd(e: FederatedPointerEvent, stage: Container, 
       resetDrag(ctx, deps); return
     }
 
-    if (deps.tryRunHeroSameItemSynthesisChoice(slot.item.id, slot.tier, 1, synthTarget, () => {
-      const ret = tryBuyShopSlotWithSkill(slot, ctx, deps.purchaseCallbacks)
-      if (!ret.ok) { showHintToast('no_gold_buy' as ToastReason, '金币不足，无法购买', 0xff8f8f, ctx); return false }
-      markShopPurchaseDone(ctx); return true
-    })) { resetDrag(ctx, deps); return }
+    if (targetItem) {
+      const targetDef = getItemDefById(targetItem.defId)
+      const upgradeTo = nextTierLevel(slot.tier, 1)
+      if (!targetDef || !upgradeTo) { resetDrag(ctx, deps); return }
+      const runSameIdSynthesis = () => {
+        if (deps.tryRunHeroSameItemSynthesisChoice(slot.item.id, slot.tier, 1, synthTarget, () => {
+          const ret = tryBuyShopSlotWithSkill(slot, ctx, deps.purchaseCallbacks)
+          if (!ret.ok) { showHintToast('no_gold_buy' as ToastReason, '金币不足，无法购买', 0xff8f8f, ctx); return false }
+          markShopPurchaseDone(ctx); return true
+        })) return
 
-    if (!tryBuyShopSlotWithSkill(slot, ctx, deps.purchaseCallbacks).ok) {
-      showHintToast('no_gold_buy' as ToastReason, '金币不足，无法购买', 0xff8f8f, ctx); resetDrag(ctx, deps); return
+        if (!tryBuyShopSlotWithSkill(slot, ctx, deps.purchaseCallbacks).ok) {
+          showHintToast('no_gold_buy' as ToastReason, '金币不足，无法购买', 0xff8f8f, ctx)
+          deps.refreshShopUI()
+          return
+        }
+        markShopPurchaseDone(ctx)
+        const synth = deps.synthesizeTarget(slot.item.id, slot.tier, 1, synthTarget.instanceId, synthTarget.zone)
+        if (!synth) { showHintToast('backpack_full_buy' as ToastReason, '合成目标无效', 0xff8f8f, ctx); deps.refreshShopUI(); return }
+        playSynthesisFlashEffect(ctx, stage, synth)
+        deps.refreshShopUI()
+      }
+      runSameIdSynthesis()
+      resetDrag(ctx, deps); return
     }
-    markShopPurchaseDone(ctx)
-    const synth = deps.synthesizeTarget(slot.item.id, slot.tier, 1, synthTarget.instanceId, synthTarget.zone)
-    if (!synth) { showHintToast('backpack_full_buy' as ToastReason, '合成目标无效', 0xff8f8f, ctx); deps.refreshShopUI(); resetDrag(ctx, deps); return }
-    playSynthesisFlashEffect(ctx, stage, synth)
-    deps.refreshShopUI(); resetDrag(ctx, deps); return
+
+    resetDrag(ctx, deps); return
   }
 
   if (!overBattleArea && !bpCell && !onBpBtn) { resetDrag(ctx, deps); return }

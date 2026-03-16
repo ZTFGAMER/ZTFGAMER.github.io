@@ -15,6 +15,7 @@ import {
   type FederatedPointerEvent,
 } from 'pixi.js'
 import { getConfig as getDebugCfg, setConfig as setDebugCfg } from '@/config/debugConfig'
+import { getTopLeftControlYOffset } from '@/shop/ui/ShopSafeArea'
 import { getConfig, getRunClassItemPoolIds } from '@/core/DataLoader'
 import type { ItemDef } from '@/common/items/ItemDef'
 import type { TierKey } from '@/shop/ShopManager'
@@ -1210,12 +1211,13 @@ export class SettingsDebugPanel extends Container {
     panel.addChild(runText)
 
     type ToggleRow = {
-      key: 'gameplayCrossSynthesisConfirm' | 'gameplayShowSpeedButton' | 'gameplayBattleZoneNoSynthesis' | 'gameplaySameArchetypeDiffItemStoneSynthesis'
+      key: 'gameplayCrossSynthesisConfirm' | 'gameplayShowStarterSynthesisGuide' | 'gameplayShowSpeedButton' | 'gameplayBattleZoneNoSynthesis' | 'gameplaySameArchetypeDiffItemStoneSynthesis'
       label: string
     }
     const rows: ToggleRow[] = [
       { key: 'gameplayBattleZoneNoSynthesis', label: '上阵区禁止合成' },
       { key: 'gameplayCrossSynthesisConfirm', label: '合成二次弹窗' },
+      { key: 'gameplayShowStarterSynthesisGuide', label: '初始合成规则弹窗' },
       { key: 'gameplaySameArchetypeDiffItemStoneSynthesis', label: '同职异物合成选转化' },
       { key: 'gameplayShowSpeedButton', label: '战斗加速按钮' },
     ]
@@ -1419,7 +1421,7 @@ export class SettingsDebugPanel extends Container {
     if (!ctx.settingsBtn) {
       const con = new Container()
       con.x = 16
-      con.y = 82
+      con.y = 82 + getTopLeftControlYOffset()
       con.zIndex = 7050
       con.eventMode = 'static'
       con.cursor = 'pointer'

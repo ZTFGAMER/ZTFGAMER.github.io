@@ -56,6 +56,7 @@ import {
   applyTextSizesFromDebug,
   layoutDayDebugControls,
 } from './ShopDebugLayout'
+import { getTopLeftControlYOffset } from './ShopSafeArea'
 import type { DebugLayoutCallbacks } from './ShopDebugLayout'
 
 // ---- 公共类型 ----
@@ -113,7 +114,7 @@ export function buildTopAreaUI(
   restartBg.stroke({ color: 0xffd25a, width: 2, alpha: 0.95 })
   restartLabel.x = restartPadX; restartLabel.y = restartPadY
   const restartCon = new Container()
-  restartCon.x = 16; restartCon.y = 16
+  restartCon.x = 16; restartCon.y = 16 + getTopLeftControlYOffset()
   restartCon.eventMode = 'static'; restartCon.cursor = 'pointer'
   restartCon.hitArea = new Rectangle(0, 0, restartW, restartH)
   restartCon.addChild(restartBg, restartLabel)

@@ -9,7 +9,7 @@ import {
 } from 'pixi.js'
 import { PvpContext } from '@/pvp/PvpContext'
 import { getOpponentFromAlive, type PvpPlayer } from '@/pvp/PvpTypes'
-import { getItemIconUrl } from '@/core/AssetPath'
+import { getHeroImageUrl, getItemIconUrl } from '@/core/AssetPath'
 import { getApp } from '@/core/AppContext'
 import type { ShopSceneCtx } from '../ShopSceneContext'
 import { CANVAS_W, CANVAS_H } from '@/config/layoutConstants'
@@ -200,7 +200,7 @@ export class PvpPanel extends Container {
       rowCon.addChild(avatarSpr)
       const heroId = snapshots[player.index]?.ownerHeroId
       if (heroId) {
-        void Assets.load<Texture>(`/resource/hero/${heroId}icon.png`).then((tex) => {
+        void Assets.load<Texture>(getHeroImageUrl(`${heroId}icon.png`)).then((tex) => {
           if (!avatarSpr.destroyed) avatarSpr.texture = tex
         }).catch(() => { /* 静默忽略缺失贴图 */ })
       }
@@ -839,7 +839,7 @@ export class PvpPanel extends Container {
 
       const oppLevel = sess.playerLevels?.[oppIdx]
 
-      void Assets.load<Texture>(`/resource/hero/${oppHeroId}.png`).then((tex) => {
+      void Assets.load<Texture>(getHeroImageUrl(`${oppHeroId}.png`)).then((tex) => {
         if (version !== this.pvpAllPlayersLayerVersion || !PvpContext.isActive()) return
         const maxW = 310
         if (tex.width > maxW) oppSprite.scale.set(maxW / tex.width)
@@ -1006,7 +1006,7 @@ export class PvpPanel extends Container {
         },
       })
 
-      void Assets.load<Texture>(`/resource/hero/${heroId}.png`).then((tex) => {
+      void Assets.load<Texture>(getHeroImageUrl(`${heroId}.png`)).then((tex) => {
         if (!portrait.destroyed && version === this.pvpAllPlayersLayerVersion) {
           portrait.texture = tex
           const scale = Math.min(SIDE_CARD_W / tex.width, dynPortraitH / tex.height)

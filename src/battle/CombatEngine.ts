@@ -175,11 +175,9 @@ export class CombatEngine {
 
     this.state.playerSkillIds = new Set((options?.playerSkillIds ?? []).map((id) => `${id}`.trim()).filter(Boolean))
     this.state.enemySkillIds = new Set((options?.enemySkillIds ?? []).map((id) => `${id}`.trim()).filter(Boolean))
-    // PVP 模式（pvpEnemyEntities 存在）时不随机生成敌方技能，使用对手传来的 pvpEnemySkillIds（可能为空）
+    // PVE 模式不启用敌方技能；PVP 继续使用对手快照传入技能（可能为空）
     const isPvpBattle = !!snapshot.pvpEnemyEntities
-    if (!options?.enemyDisabled && this.state.enemySkillIds.size <= 0 && !isPvpBattle) {
-      this.state.enemySkillIds = this.skillSystem.rollEnemySkillIds(snapshot)
-    }
+    if (!isPvpBattle) this.state.enemySkillIds.clear()
     this.state.skillEnemyHalfTriggered = false
     this.state.skillPlayerHalfTriggered = false
     this.state.skillEnemySelfHalfTriggered = false

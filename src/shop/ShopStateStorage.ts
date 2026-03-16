@@ -137,6 +137,10 @@ export function captureShopState(ctx: ShopSceneCtx): SavedShopState | null {
     starterClass: ctx.starterClass,
     starterGranted: ctx.starterGranted,
     starterBattleGuideShown: ctx.starterBattleGuideShown,
+    starterTutorialStep: ctx.starterTutorialStep,
+    starterTutorialDaggerBuyCount: ctx.starterTutorialDaggerBuyCount,
+    starterTutorialShieldBuyCount: ctx.starterTutorialShieldBuyCount,
+    starterTutorialHintStep: ctx.starterTutorialHintStep,
     pickedSkills: ctx.pickedSkills,
     draftedSkillDays: ctx.draftedSkillDays,
     pendingSkillDraft: ctx.pendingSkillDraft,
@@ -256,6 +260,10 @@ export function applySavedShopState(
   ctx.starterClass = state.starterClass ?? null
   ctx.starterGranted = state.starterGranted ?? false
   ctx.starterBattleGuideShown = state.starterBattleGuideShown ?? false
+  ctx.starterTutorialStep = state.starterTutorialStep ?? 'buy_dagger_1'
+  ctx.starterTutorialDaggerBuyCount = Math.max(0, Math.round(Number(state.starterTutorialDaggerBuyCount ?? 0) || 0))
+  ctx.starterTutorialShieldBuyCount = Math.max(0, Math.round(Number(state.starterTutorialShieldBuyCount ?? 0) || 0))
+  ctx.starterTutorialHintStep = state.starterTutorialHintStep ?? null
   ctx.hasBoughtOnce = state.hasBoughtOnce
     ?? ((state.battleItems?.length ?? 0) + (state.backpackItems?.length ?? 0) > 0)
   ctx.pickedSkills = Array.isArray(state.pickedSkills) ? state.pickedSkills : []

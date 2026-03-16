@@ -214,6 +214,15 @@ export type SavedPlacedItem = {
   enchantment?: ItemEnchantmentKey
 }
 
+export type StarterTutorialStep =
+  | 'buy_dagger_1'
+  | 'buy_dagger_2'
+  | 'synth_same'
+  | 'buy_dagger_3'
+  | 'buy_shield_1'
+  | 'synth_cross'
+  | 'done'
+
 export type SavedShopState = {
   day: number
   gold: number
@@ -225,6 +234,10 @@ export type SavedShopState = {
   starterClass?: StarterClass | null
   starterGranted?: boolean
   starterBattleGuideShown?: boolean
+  starterTutorialStep?: StarterTutorialStep
+  starterTutorialDaggerBuyCount?: number
+  starterTutorialShieldBuyCount?: number
+  starterTutorialHintStep?: StarterTutorialStep | null
   pickedSkills?: SkillPick[]
   draftedSkillDays?: number[]
   pendingSkillDraft?: PendingSkillDraft | null
@@ -478,6 +491,10 @@ export interface ShopSceneCtx {
   starterHeroChoiceOptions:  StarterClass[]
   starterGranted:            boolean
   starterBattleGuideShown:   boolean
+  starterTutorialStep:       StarterTutorialStep
+  starterTutorialDaggerBuyCount: number
+  starterTutorialShieldBuyCount: number
+  starterTutorialHintStep:   StarterTutorialStep | null
   hasBoughtOnce:             boolean
 
   // ---- 技能系统 ----
@@ -730,6 +747,10 @@ export function createShopSceneCtx(): ShopSceneCtx {
     starterHeroChoiceOptions: [],
     starterGranted:           false,
     starterBattleGuideShown:  false,
+    starterTutorialStep:      'buy_dagger_1',
+    starterTutorialDaggerBuyCount: 0,
+    starterTutorialShieldBuyCount: 0,
+    starterTutorialHintStep:  null,
     hasBoughtOnce:            false,
 
     // 技能

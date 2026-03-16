@@ -33,13 +33,13 @@ import {
   isNeutralItemDef,
   getItemDefById,
   getPrimaryArchetype,
-  toSkillArchetype,
 } from './ShopSynthesisLogic'
 import type { ShopSceneCtx, StarterClass, PendingHeroPeriodicReward } from '../ShopSceneContext'
 import type { NeutralChoiceCandidate } from '../panels/NeutralItemPanel'
 import { clampPlayerLevel, getPlayerMaxLifeByLevel } from '../ui/PlayerStatusUI'
 import { getItemInfoPanelBottomAnchorByBattle } from '../ShopMathHelpers'
 import { getAllowedLevelsByStartingTier, levelToTierStar, pickQualityByPseudoRandomBag } from './QuickBuySystem'
+import { PvpContext } from '@/pvp/PvpContext'
 
 // ============================================================
 // 本地常量
@@ -322,11 +322,12 @@ function pickRandomUniqueItemIds(
   pool: ItemDef[],
   count: number,
   used: Set<string>,
+  random: () => number = Math.random,
 ): string[] {
   const out: string[] = []
   const cands = pool.filter((it) => !used.has(it.id))
   for (let i = cands.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
+    const j = Math.floor(random() * (i + 1))
     const t = cands[i]
     cands[i] = cands[j]!
     cands[j] = t!
@@ -341,14 +342,46 @@ function pickRandomUniqueItemIds(
   return out
 }
 
+function hashSeed32(input: string): number {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return hash >>> 0
+}
+
+function createSeededRandom(seed: number): () => number {
+  let state = (seed >>> 0) || 0x6d2b79f5
+  return () => {
+    state ^= state << 13
+    state ^= state >>> 17
+    state ^= state << 5
+    return ((state >>> 0) / 0x100000000)
+  }
+}
+
+function createPvpRunPoolRandom(): () => number {
+  const session = PvpContext.getSession()
+  if (!PvpContext.isActive() || !session) return Math.random
+  const playerSig = [...session.players]
+    .sort((a, b) => a.index - b.index)
+    .map((p) => `${p.index}:${p.nickname}`)
+    .join('|')
+  const seedInput = `pvp_run_pool|mode=${session.pvpMode}|total=${session.totalPlayers}|hp=${session.initialHp}|players=${playerSig}`
+  return createSeededRandom(hashSeed32(seedInput))
+}
+
 function buildRunClassItemPoolIds(): string[] {
-  const runIndex = markRunStarted()
-  if (runIndex === 1) {
-    setDebugCfg('gameplayCrossSynthesisConfirm', 1)
+  const isPvp = PvpContext.isActive()
+  const runIndex = isPvp ? 0 : markRunStarted()
+  if (!isPvp && runIndex === 1) {
+    setDebugCfg('gameplayCrossSynthesisConfirm', 0)
     setDebugCfg('gameplayShowSpeedButton', 0)
   }
-  const fixed = buildFixedRunClassItemPoolIds(runIndex)
+  const fixed = isPvp ? [] : buildFixedRunClassItemPoolIds(runIndex)
   if (fixed.length > 0) return fixed
+  const random = isPvp ? createPvpRunPoolRandom() : Math.random
 
   const all = getAllItemsRaw().filter((it) => !isNeutralItemDef(it))
   const tierCounts = getRunClassPoolTierCounts()
@@ -363,14 +396,14 @@ function buildRunClassItemPoolIds(): string[] {
       const count = tierCounts[tier]
       if (count <= 0) continue
       const tierPool = classItems.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === tier)
-      out.push(...pickRandomUniqueItemIds(tierPool, count, used))
+      out.push(...pickRandomUniqueItemIds(tierPool, count, used, random))
     }
     const classPicked = out.filter((id) => {
       const hit = classItems.find((it) => it.id === id)
       return !!hit
     }).length
     const needFallback = Math.max(0, needPerClass - classPicked)
-    if (needFallback > 0) out.push(...pickRandomUniqueItemIds(classItems, needFallback, used))
+    if (needFallback > 0) out.push(...pickRandomUniqueItemIds(classItems, needFallback, used, random))
   }
   return out
 }
@@ -594,13 +627,12 @@ export function tryRunHeroCrossSynthesisReroll(
   const currentDefId = current.defId
   const currentDef = getItemDefById(currentDefId)
   if (!currentDef) return false
-  const currentArch = toSkillArchetype(getPrimaryArchetype(currentDef.tags))
   const targetSize = synth.targetSize
   const pool = collectHeroQuickDraftCandidatesByLevel(targetLevel, callbacks)
     .filter((one) => {
       if (normalizeSize(one.item.size) !== targetSize) return false
       if (one.item.id === currentDefId) return false
-      return toSkillArchetype(getPrimaryArchetype(one.item.tags)) !== currentArch
+      return true
     })
   const altPicks: HeroQuickDraftCandidate[] = []
   const blockedDefIds = new Set<string>()
@@ -1061,6 +1093,10 @@ export function seedInitialUnlockPoolByStarterClass(
   ctx.heroCommanderMedalGrantedDays.clear()
   ctx.heroHeirGoldEquipGrantedDays.clear()
   ctx.heroTycoonGoldGrantedDays.clear()
+  ctx.starterTutorialStep = 'buy_dagger_1'
+  ctx.starterTutorialDaggerBuyCount = 0
+  ctx.starterTutorialShieldBuyCount = 0
+  ctx.starterTutorialHintStep = null
   for (const id of runClassItemPoolIds) ctx.unlockedItemIds.add(id)
   callbacks.syncUnlockPoolToManager()
 }
