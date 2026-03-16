@@ -247,8 +247,11 @@ export class CombatEngine {
       }
 
       this.state.tickAccumulatorMs += deltaMs
-      while (this.state.tickAccumulatorMs >= cfg.tickMs) {
+      const maxTicksPerFrame = Math.max(1, Math.round(cfg.maxTicksPerFrame || 1))
+      let ticksProcessedThisFrame = 0
+      while (this.state.tickAccumulatorMs >= cfg.tickMs && ticksProcessedThisFrame < maxTicksPerFrame) {
         this.state.tickAccumulatorMs -= cfg.tickMs
+        ticksProcessedThisFrame += 1
         this.stepOneTick(cfg.tickMs)
         if (this.shouldResolve()) {
           this.state.phase = 'RESOLVE'

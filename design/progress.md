@@ -1,5 +1,37 @@
 # 大巴扎 — 开发进度记录
 
+## 验收优化追加（2026-03-16，战斗卡死止血一期：补帧截断 + 视觉配额）
+
+- 方案确认：已根据主程 Notebook 结论先落第一阶段（不改玩法结算）：
+  - 逻辑层：限制单帧最大补 Tick，避免掉帧后同帧多 Tick 洪峰；
+  - 表现层：战斗事件先入视觉队列，按每帧配额消费，队列超限丢弃视觉任务（逻辑不丢）。
+- 已完成：
+  - `data/game_config.json`
+    - `combat_runtime` 新增：
+      - `maxTicksPerFrame: 10`
+      - `visualFxQueueMax: 64`
+      - `visualFxConsumePerFrame: 8`
+  - `src/common/items/ItemDef.ts` + `src/core/DataLoader.ts`
+    - 补充新字段类型与配置校验，确保运行时读取安全。
+  - `src/battle/CombatEngine.ts`
+    - `update(...)` 追帧循环加入 `maxTicksPerFrame` 硬截断。
+  - `src/battle/BattleScene.ts`
+    - 新增视觉任务队列 `visualFxQueue`；
+    - `item_destroy / take_damage / gain_shield / heal / status_apply` 子弹与飘字改为入队；
+    - 每帧按 `visualFxConsumePerFrame` 消费；队列满则统计丢弃；
+    - 将“窗口内视觉丢弃量”纳入自动降级高压判定。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在移动端高压局复测“同帧子弹洪峰”与卡死频次；若仍偏高，推进二期（catch-up 事件聚合 + isCatchUp 视觉降级）。
+
+## 验收优化追加（2026-03-16，战斗逻辑 Tick 调整为 0.25 秒）
+
+- 用户需求：将战斗逻辑 tick 改为每 `0.25s` 一次。
+- 已完成：`data/game_config.json`
+  - `combatRuntime.tickMs` 从 `100` 调整为 `250`。
+- 影响说明：逻辑结算频率从 `10Hz` 降为 `4Hz`，同等条件下单秒逻辑事件生成密度下降。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实机复测战斗流畅度与数值手感（尤其是DOT、连发、状态跳变节奏）。
+
 ## 验收优化追加（2026-03-16，PVP 物品图标 UUID 404 修复）
 
 - 用户反馈：PVP 中部分物品按 UUID 路径加载图标，出现 `.../vanessa/<uuid>.png 404`。

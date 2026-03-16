@@ -356,6 +356,9 @@ export interface GameConfig {
     maxPendingItemFires: number
     maxPendingChargePulses: number
     maxPendingAmmoRefills: number
+    maxTicksPerFrame: number
+    visualFxQueueMax: number
+    visualFxConsumePerFrame: number
     fxDegradeProjectileScaleL1: number
     fxDegradeProjectileScaleL2: number
     fxDegradeFloatingScaleL1: number

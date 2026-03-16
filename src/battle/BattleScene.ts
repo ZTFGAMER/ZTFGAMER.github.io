@@ -124,9 +124,32 @@ let monitorSampleElapsedMs = 0
 let monitorHighStreak = 0
 let monitorRecoverStreak = 0
 let autoFxDegradeLevel = 0
+let visualFxQueue: Array<() => void> = []
+let visualFxDroppedCount = 0
 const isMobileBattleRuntime = /Mobi|Android|iPhone|iPad/i.test(
   typeof navigator !== 'undefined' ? navigator.userAgent : '',
 )
+
+function enqueueVisualFx(task: (() => void) | null | undefined): void {
+  if (!task) return
+  const runtimeCfg = getGameCfg().combatRuntime
+  const queueMax = Math.max(1, Math.round(runtimeCfg.visualFxQueueMax || 1))
+  if (visualFxQueue.length >= queueMax) {
+    visualFxDroppedCount += 1
+    return
+  }
+  visualFxQueue.push(task)
+}
+
+function consumeVisualFxQueue(): void {
+  const runtimeCfg = getGameCfg().combatRuntime
+  const budget = Math.max(1, Math.round(runtimeCfg.visualFxConsumePerFrame || 1))
+  for (let i = 0; i < budget; i++) {
+    const one = visualFxQueue.shift()
+    if (!one) break
+    one()
+  }
+}
 
 function readUsedHeapMb(): number {
   const mem = (performance as Performance & { memory?: { usedJSHeapSize?: number } }).memory
@@ -162,6 +185,8 @@ function tickAutoFxDegrade(dtMs: number): void {
     fxStats.activeFx / Math.max(1, fxLimits.maxActiveTotal),
   )
   const heapMb = readUsedHeapMb()
+  const droppedVisualInWindow = visualFxDroppedCount
+  visualFxDroppedCount = 0
 
   const highPendingRatio = runtimeCfg.memoryMonitorHighPendingRatio * (isMobileBattleRuntime ? 0.85 : 1)
   const recoverPendingRatio = runtimeCfg.memoryMonitorRecoverPendingRatio * (isMobileBattleRuntime ? 0.85 : 1)
@@ -173,6 +198,7 @@ function tickAutoFxDegrade(dtMs: number): void {
   const isHigh = pendingRatio >= highPendingRatio
     || fxRatio >= highFxRatio
     || (heapMb > 0 && heapMb >= highHeapMb)
+    || droppedVisualInWindow >= Math.max(4, Math.round(runtimeCfg.visualFxConsumePerFrame))
   const canRecoverByHeap = heapMb <= 0 || heapMb <= recoverHeapMb
   const isRecover = pendingRatio <= recoverPendingRatio
     && fxRatio <= recoverFxRatio
@@ -1029,9 +1055,11 @@ export const BattleScene: Scene = {
       const from = fxPool.getItemCenterById(e.sourceItemId, e.sourceSide) ?? getHeroBarCenter(e.sourceSide)
       const to = fxPool.getItemCenterById(e.targetItemId, e.targetSide) ?? getHeroBarCenter(e.targetSide)
       const destroyOrbColor = getBattleOrbColor('hp')
-      fxPool.spawnProjectile(from, to, destroyOrbColor, () => {
-        fxPool.tryPulseItem(e.targetItemId, e.targetSide)
-      }, e.sourceItemId)
+      enqueueVisualFx(() => {
+        fxPool.spawnProjectile(from, to, destroyOrbColor, () => {
+          fxPool.tryPulseItem(e.targetItemId, e.targetSide)
+        }, e.sourceItemId)
+      })
     })
     offDamageEvent = EventBus.on('battle:take_damage', (e) => {
       if (engine) {
@@ -1071,17 +1099,21 @@ export const BattleScene: Scene = {
       const playDamageVisual = () => {
         if (e.sourceItemId.startsWith('status_') || isFatigueDamage) {
           if (enemyAttackToPlayer) portraitFX.triggerPlayerHit()
-          fxPool.spawnFloatingNumber(fxPool.offsetFloatingNumberTarget(side, to), `-${damageShown}`, textColor, textSize)
+          enqueueVisualFx(() => {
+            fxPool.spawnFloatingNumber(fxPool.offsetFloatingNumberTarget(side, to), `-${damageShown}`, textColor, textSize)
+          })
           return
         }
-        fxPool.spawnProjectile(from, projectileTarget, bulletColor, () => {
-          if (side === 'enemy') {
-            portraitFX.triggerEnemyHit()
-          } else if (enemyAttackToPlayer) {
-            portraitFX.triggerPlayerHit()
-          }
-          fxPool.spawnFloatingNumber(floatingTarget, `-${damageShown}`, textColor, textSize)
-        }, e.sourceItemId)
+        enqueueVisualFx(() => {
+          fxPool.spawnProjectile(from, projectileTarget, bulletColor, () => {
+            if (side === 'enemy') {
+              portraitFX.triggerEnemyHit()
+            } else if (enemyAttackToPlayer) {
+              portraitFX.triggerPlayerHit()
+            }
+            fxPool.spawnFloatingNumber(floatingTarget, `-${damageShown}`, textColor, textSize)
+          }, e.sourceItemId)
+        })
       }
 
       if (e.sourceItemId.startsWith('status_') || isFatigueDamage) {
@@ -1105,12 +1137,14 @@ export const BattleScene: Scene = {
       const shieldOrbColor = getBattleOrbColor('shield')
       const textSize = getDebugCfg('battleTextFontSizeDamage')
       const floatingTarget = fxPool.offsetFloatingNumberTarget(side, projectileTarget)
-      fxPool.spawnProjectile(from, projectileTarget, shieldOrbColor, () => {
-        if (side === 'enemy') {
-          portraitFX.triggerEnemyHit()
-        }
-        fxPool.spawnFloatingNumber(floatingTarget, `+${e.amount}`, shieldColor, textSize)
-      }, e.sourceItemId)
+      enqueueVisualFx(() => {
+        fxPool.spawnProjectile(from, projectileTarget, shieldOrbColor, () => {
+          if (side === 'enemy') {
+            portraitFX.triggerEnemyHit()
+          }
+          fxPool.spawnFloatingNumber(floatingTarget, `+${e.amount}`, shieldColor, textSize)
+        }, e.sourceItemId)
+      })
     })
     offHealEvent = EventBus.on('battle:heal', (e) => {
       const side = e.targetSide ?? (e.targetId === 'hero_enemy' ? 'enemy' : 'player')
@@ -1120,16 +1154,20 @@ export const BattleScene: Scene = {
       const textSize = getDebugCfg('battleTextFontSizeDamage')
       const floatingTarget = fxPool.offsetFloatingNumberTarget(side, projectileTarget)
       if (e.sourceItemId.startsWith('status_')) {
-        fxPool.spawnFloatingNumber(fxPool.offsetFloatingNumberTarget(side, to), `+${e.amount}`, getBattleFloatTextColor('regen'), textSize)
+        enqueueVisualFx(() => {
+          fxPool.spawnFloatingNumber(fxPool.offsetFloatingNumberTarget(side, to), `+${e.amount}`, getBattleFloatTextColor('regen'), textSize)
+        })
       } else {
         const regenColor = getBattleFloatTextColor('regen')
         const regenOrbColor = getBattleOrbColor('regen')
-        fxPool.spawnProjectile(from, projectileTarget, regenOrbColor, () => {
-          if (side === 'enemy') {
-            portraitFX.triggerEnemyHit()
-          }
-          fxPool.spawnFloatingNumber(floatingTarget, `+${e.amount}`, regenColor, textSize)
-        }, e.sourceItemId)
+        enqueueVisualFx(() => {
+          fxPool.spawnProjectile(from, projectileTarget, regenOrbColor, () => {
+            if (side === 'enemy') {
+              portraitFX.triggerEnemyHit()
+            }
+            fxPool.spawnFloatingNumber(floatingTarget, `+${e.amount}`, regenColor, textSize)
+          }, e.sourceItemId)
+        })
       }
     })
     offStatusApplyEvent = EventBus.on('battle:status_apply', (e) => {
@@ -1159,10 +1197,12 @@ export const BattleScene: Scene = {
                 : e.status === 'haste' ? getBattleOrbColor('haste')
                   : getBattleOrbColor('regen')
       const forceDot = e.status === 'freeze' || e.status === 'slow' || e.status === 'haste'
-      fxPool.spawnProjectile(from, to, color, () => {
-        if (targetIsHero && targetSide === 'enemy') portraitFX.triggerEnemyHit()
-        if (targetIsHero && targetSide === 'player') portraitFX.triggerPlayerHit()
-      }, e.sourceItemId, { forceDot })
+      enqueueVisualFx(() => {
+        fxPool.spawnProjectile(from, to, color, () => {
+          if (targetIsHero && targetSide === 'enemy') portraitFX.triggerEnemyHit()
+          if (targetIsHero && targetSide === 'player') portraitFX.triggerPlayerHit()
+        }, e.sourceItemId, { forceDot })
+      })
     })
     offStatusRemoveEvent = EventBus.on('battle:status_remove', () => {})
     offFatigueStartEvent = EventBus.on('battle:fatigue_start', () => {
@@ -1238,6 +1278,8 @@ export const BattleScene: Scene = {
     enteredSnapshot = null
     battleSpeed = 1
     fxPool.reset()
+    visualFxQueue = []
+    visualFxDroppedCount = 0
     monitorSampleElapsedMs = 0
     monitorHighStreak = 0
     monitorRecoverStreak = 0
@@ -1265,6 +1307,7 @@ export const BattleScene: Scene = {
     if (introDone && syncAStarted) {
       engine.update(simDt)
     }
+    consumeVisualFxQueue()
     const pendingDamageImpactFx = fxPool.hasPendingDamageImpactPresentation()
     enemyPresentationVisible = !engine.isFinished() || pendingDamageImpactFx
     enemyZone.visible = enemyPresentationVisible

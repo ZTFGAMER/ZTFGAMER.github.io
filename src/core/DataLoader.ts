@@ -38,6 +38,7 @@ function validateCombatRuntime(v: unknown): void {
     'burnTickMs', 'poisonTickMs', 'regenTickMs',
     'burnShieldFactor', 'burnDecayPct', 'healCleansePct',
     'maxPendingHits', 'maxPendingItemFires', 'maxPendingChargePulses', 'maxPendingAmmoRefills',
+    'maxTicksPerFrame', 'visualFxQueueMax', 'visualFxConsumePerFrame',
     'fxDegradeProjectileScaleL1', 'fxDegradeProjectileScaleL2',
     'fxDegradeFloatingScaleL1', 'fxDegradeFloatingScaleL2',
     'fxDegradeActiveScaleL1', 'fxDegradeActiveScaleL2',

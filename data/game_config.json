@@ -406,7 +406,7 @@
     "desc": "战斗运行时参数",
     "desc_en": "Combat runtime parameters",
     "value": {
-      "tickMs": 100,
+      "tickMs": 250,
       "fatigueStartMs": 30000,
       "fatigueTickMs": 100,
       "fatigueBaseValue": 1,
@@ -423,6 +423,9 @@
       "maxPendingItemFires": 600,
       "maxPendingChargePulses": 1200,
       "maxPendingAmmoRefills": 600,
+      "maxTicksPerFrame": 10,
+      "visualFxQueueMax": 64,
+      "visualFxConsumePerFrame": 8,
       "fxDegradeProjectileScaleL1": 0.7,
       "fxDegradeProjectileScaleL2": 0.5,
       "fxDegradeFloatingScaleL1": 0.7,
