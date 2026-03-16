@@ -125,14 +125,39 @@ let monitorSampleElapsedMs = 0
 let monitorHighStreak = 0
 let monitorRecoverStreak = 0
 let autoFxDegradeLevel = 0
-let visualFxQueue: Array<() => void> = []
+type QueuedFxTask = {
+  run: () => void
+  mergeKey?: string
+  mergeWith?: (incoming: QueuedFxTask) => void
+}
+let visualFxQueue: QueuedFxTask[] = []
+let visualFxMergeMap = new Map<string, QueuedFxTask>()
 let visualFxDroppedCount = 0
+const visualFrameSeenTicks = new Set<number>()
+let visualFrameHasCatchUp = false
 const isMobileBattleRuntime = /Mobi|Android|iPhone|iPad/i.test(
   typeof navigator !== 'undefined' ? navigator.userAgent : '',
 )
 
-function enqueueVisualFx(task: (() => void) | null | undefined): void {
+function markVisualEventTick(): boolean {
+  const tick = engine?.getDebugState().tickIndex ?? -1
+  if (tick < 0) return visualFrameHasCatchUp
+  if (!visualFrameSeenTicks.has(tick)) {
+    if (visualFrameSeenTicks.size > 0) visualFrameHasCatchUp = true
+    visualFrameSeenTicks.add(tick)
+  }
+  return visualFrameHasCatchUp
+}
+
+function enqueueVisualFx(task: QueuedFxTask | null | undefined): void {
   if (!task) return
+  if (task.mergeKey) {
+    const existing = visualFxMergeMap.get(task.mergeKey)
+    if (existing && existing.mergeWith) {
+      existing.mergeWith(task)
+      return
+    }
+  }
   const runtimeCfg = getGameCfg().combatRuntime
   const queueMax = Math.max(1, Math.round(runtimeCfg.visualFxQueueMax || 1))
   if (visualFxQueue.length >= queueMax) {
@@ -140,6 +165,7 @@ function enqueueVisualFx(task: (() => void) | null | undefined): void {
     return
   }
   visualFxQueue.push(task)
+  if (task.mergeKey) visualFxMergeMap.set(task.mergeKey, task)
 }
 
 function consumeVisualFxQueue(): void {
@@ -148,7 +174,8 @@ function consumeVisualFxQueue(): void {
   for (let i = 0; i < budget; i++) {
     const one = visualFxQueue.shift()
     if (!one) break
-    one()
+    if (one.mergeKey && visualFxMergeMap.get(one.mergeKey) === one) visualFxMergeMap.delete(one.mergeKey)
+    one.run()
   }
 }
 
@@ -1058,17 +1085,22 @@ export const BattleScene: Scene = {
       fxPool.tryPulseItem(e.sourceItemId, e.side)
     })
     offItemDestroyEvent = EventBus.on('battle:item_destroy', (e) => {
+      const catchUp = markVisualEventTick()
       fxPool.tryPulseItem(e.sourceItemId, e.sourceSide)
       const from = fxPool.getItemCenterById(e.sourceItemId, e.sourceSide) ?? getHeroBarCenter(e.sourceSide)
       const to = fxPool.getItemCenterById(e.targetItemId, e.targetSide) ?? getHeroBarCenter(e.targetSide)
       const destroyOrbColor = getBattleOrbColor('hp')
-      enqueueVisualFx(() => {
-        fxPool.spawnProjectile(from, to, destroyOrbColor, () => {
-          fxPool.tryPulseItem(e.targetItemId, e.targetSide)
-        }, e.sourceItemId)
+      enqueueVisualFx({
+        run: () => {
+          fxPool.spawnProjectile(from, to, destroyOrbColor, () => {
+            fxPool.tryPulseItem(e.targetItemId, e.targetSide)
+          }, e.sourceItemId)
+        },
+        mergeKey: catchUp ? `destroy|${e.sourceItemId}|${e.targetItemId}` : undefined,
       })
     })
     offDamageEvent = EventBus.on('battle:take_damage', (e) => {
+      const catchUp = markVisualEventTick()
       if (engine) {
         const boardNow = engine.getBoardState()
         drawHeroBars(boardNow.player, boardNow.enemy)
@@ -1106,21 +1138,37 @@ export const BattleScene: Scene = {
       const playDamageVisual = () => {
         if (e.sourceItemId.startsWith('status_') || isFatigueDamage) {
           if (enemyAttackToPlayer) portraitFX.triggerPlayerHit()
-          enqueueVisualFx(() => {
-            fxPool.spawnFloatingNumber(fxPool.offsetFloatingNumberTarget(side, to), `-${damageShown}`, textColor, textSize)
-          })
+          const task = {
+            amount: Math.max(0, Math.round(damageShown)),
+            run: () => {
+              fxPool.spawnFloatingNumber(fxPool.offsetFloatingNumberTarget(side, to), `-${task.amount}`, textColor, textSize)
+            },
+            mergeKey: catchUp ? `damage_status|${side}|${e.targetId}|${e.type}` : undefined,
+            mergeWith: (incoming: QueuedFxTask) => {
+              task.amount += (incoming as QueuedFxTask & { amount?: number }).amount ?? 0
+            },
+          }
+          enqueueVisualFx(task)
           return
         }
-        enqueueVisualFx(() => {
-          fxPool.spawnProjectile(from, projectileTarget, bulletColor, () => {
-            if (side === 'enemy') {
-              portraitFX.triggerEnemyHit()
-            } else if (enemyAttackToPlayer) {
-              portraitFX.triggerPlayerHit()
-            }
-            fxPool.spawnFloatingNumber(floatingTarget, `-${damageShown}`, textColor, textSize)
-          }, e.sourceItemId)
-        })
+        const task = {
+          amount: Math.max(0, Math.round(damageShown)),
+          run: () => {
+            fxPool.spawnProjectile(from, projectileTarget, bulletColor, () => {
+              if (side === 'enemy') {
+                portraitFX.triggerEnemyHit()
+              } else if (enemyAttackToPlayer) {
+                portraitFX.triggerPlayerHit()
+              }
+              fxPool.spawnFloatingNumber(floatingTarget, `-${task.amount}`, textColor, textSize)
+            }, e.sourceItemId)
+          },
+          mergeKey: catchUp ? `damage|${side}|${e.targetId}|${e.sourceItemId}|${e.type}` : undefined,
+          mergeWith: (incoming: QueuedFxTask) => {
+            task.amount += (incoming as QueuedFxTask & { amount?: number }).amount ?? 0
+          },
+        }
+        enqueueVisualFx(task)
       }
 
       if (e.sourceItemId.startsWith('status_') || isFatigueDamage) {
@@ -1133,6 +1181,7 @@ export const BattleScene: Scene = {
       }
     })
     offShieldEvent = EventBus.on('battle:gain_shield', (e) => {
+      const catchUp = markVisualEventTick()
       const side = e.targetSide ?? (e.targetId === 'hero_enemy' ? 'enemy' : 'player')
       if (e.sourceItemId && !e.sourceItemId.startsWith('status_')) {
         damageStats.addShield(e.sourceItemId, side, e.amount, engine)
@@ -1144,16 +1193,25 @@ export const BattleScene: Scene = {
       const shieldOrbColor = getBattleOrbColor('shield')
       const textSize = getDebugCfg('battleTextFontSizeDamage')
       const floatingTarget = fxPool.offsetFloatingNumberTarget(side, projectileTarget)
-      enqueueVisualFx(() => {
-        fxPool.spawnProjectile(from, projectileTarget, shieldOrbColor, () => {
-          if (side === 'enemy') {
-            portraitFX.triggerEnemyHit()
-          }
-          fxPool.spawnFloatingNumber(floatingTarget, `+${e.amount}`, shieldColor, textSize)
-        }, e.sourceItemId)
-      })
+      const task = {
+        amount: Math.max(0, Math.round(e.amount)),
+        run: () => {
+          fxPool.spawnProjectile(from, projectileTarget, shieldOrbColor, () => {
+            if (side === 'enemy') {
+              portraitFX.triggerEnemyHit()
+            }
+            fxPool.spawnFloatingNumber(floatingTarget, `+${task.amount}`, shieldColor, textSize)
+          }, e.sourceItemId)
+        },
+        mergeKey: catchUp ? `shield|${side}|${e.targetId}|${e.sourceItemId}` : undefined,
+        mergeWith: (incoming: QueuedFxTask) => {
+          task.amount += (incoming as QueuedFxTask & { amount?: number }).amount ?? 0
+        },
+      }
+      enqueueVisualFx(task)
     })
     offHealEvent = EventBus.on('battle:heal', (e) => {
+      const catchUp = markVisualEventTick()
       const side = e.targetSide ?? (e.targetId === 'hero_enemy' ? 'enemy' : 'player')
       const from = e.sourceItemId.startsWith('status_') ? getHeroBarCenter(side) : (fxPool.getItemCenterById(e.sourceItemId, side) ?? getHeroBarCenter(side))
       const to = getHeroBarCenter(side)
@@ -1161,23 +1219,40 @@ export const BattleScene: Scene = {
       const textSize = getDebugCfg('battleTextFontSizeDamage')
       const floatingTarget = fxPool.offsetFloatingNumberTarget(side, projectileTarget)
       if (e.sourceItemId.startsWith('status_')) {
-        enqueueVisualFx(() => {
-          fxPool.spawnFloatingNumber(fxPool.offsetFloatingNumberTarget(side, to), `+${e.amount}`, getBattleFloatTextColor('regen'), textSize)
-        })
+        const task = {
+          amount: Math.max(0, Math.round(e.amount)),
+          run: () => {
+            fxPool.spawnFloatingNumber(fxPool.offsetFloatingNumberTarget(side, to), `+${task.amount}`, getBattleFloatTextColor('regen'), textSize)
+          },
+          mergeKey: catchUp ? `heal_status|${side}|${e.targetId}` : undefined,
+          mergeWith: (incoming: QueuedFxTask) => {
+            task.amount += (incoming as QueuedFxTask & { amount?: number }).amount ?? 0
+          },
+        }
+        enqueueVisualFx(task)
       } else {
         const regenColor = getBattleFloatTextColor('regen')
         const regenOrbColor = getBattleOrbColor('regen')
-        enqueueVisualFx(() => {
-          fxPool.spawnProjectile(from, projectileTarget, regenOrbColor, () => {
-            if (side === 'enemy') {
-              portraitFX.triggerEnemyHit()
-            }
-            fxPool.spawnFloatingNumber(floatingTarget, `+${e.amount}`, regenColor, textSize)
-          }, e.sourceItemId)
-        })
+        const task = {
+          amount: Math.max(0, Math.round(e.amount)),
+          run: () => {
+            fxPool.spawnProjectile(from, projectileTarget, regenOrbColor, () => {
+              if (side === 'enemy') {
+                portraitFX.triggerEnemyHit()
+              }
+              fxPool.spawnFloatingNumber(floatingTarget, `+${task.amount}`, regenColor, textSize)
+            }, e.sourceItemId)
+          },
+          mergeKey: catchUp ? `heal|${side}|${e.targetId}|${e.sourceItemId}` : undefined,
+          mergeWith: (incoming: QueuedFxTask) => {
+            task.amount += (incoming as QueuedFxTask & { amount?: number }).amount ?? 0
+          },
+        }
+        enqueueVisualFx(task)
       }
     })
     offStatusApplyEvent = EventBus.on('battle:status_apply', (e) => {
+      const catchUp = markVisualEventTick()
       fxPool.tryPulseItem(e.sourceItemId, e.sourceSide === 'player' || e.sourceSide === 'enemy' ? e.sourceSide : undefined)
       const fromResolved = e.sourceSide === 'player' || e.sourceSide === 'enemy'
         ? fxPool.getItemCenterById(e.sourceItemId, e.sourceSide)
@@ -1204,11 +1279,14 @@ export const BattleScene: Scene = {
                 : e.status === 'haste' ? getBattleOrbColor('haste')
                   : getBattleOrbColor('regen')
       const forceDot = e.status === 'freeze' || e.status === 'slow' || e.status === 'haste'
-      enqueueVisualFx(() => {
-        fxPool.spawnProjectile(from, to, color, () => {
-          if (targetIsHero && targetSide === 'enemy') portraitFX.triggerEnemyHit()
-          if (targetIsHero && targetSide === 'player') portraitFX.triggerPlayerHit()
-        }, e.sourceItemId, { forceDot })
+      enqueueVisualFx({
+        run: () => {
+          fxPool.spawnProjectile(from, to, color, () => {
+            if (targetIsHero && targetSide === 'enemy') portraitFX.triggerEnemyHit()
+            if (targetIsHero && targetSide === 'player') portraitFX.triggerPlayerHit()
+          }, e.sourceItemId, { forceDot })
+        },
+        mergeKey: catchUp ? `status|${e.status}|${targetSide}|${e.targetId}|${e.sourceItemId}` : undefined,
       })
     })
     offStatusRemoveEvent = EventBus.on('battle:status_remove', () => {})
@@ -1286,7 +1364,10 @@ export const BattleScene: Scene = {
     battleSpeed = 1
     fxPool.reset()
     visualFxQueue = []
+    visualFxMergeMap.clear()
     visualFxDroppedCount = 0
+    visualFrameSeenTicks.clear()
+    visualFrameHasCatchUp = false
     monitorSampleElapsedMs = 0
     monitorHighStreak = 0
     monitorRecoverStreak = 0
@@ -1308,6 +1389,8 @@ export const BattleScene: Scene = {
     const speed = isPvpSpeedupDisabled() ? 1 : Math.max(1, battleSpeed)
     const simDt = dt * speed
     const dtMs = simDt * 1000
+    visualFrameSeenTicks.clear()
+    visualFrameHasCatchUp = false
     battlePresentationMs += dtMs
     tickAutoFxDegrade(dtMs)
     skillUI?.tickIntro(dtMs, playerZone)

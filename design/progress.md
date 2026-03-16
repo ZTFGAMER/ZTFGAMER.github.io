@@ -1,5 +1,22 @@
 # 大巴扎 — 开发进度记录
 
+## 验收优化追加（2026-03-16，战斗卡死止血二期：catch-up 识别 + 同帧聚合）
+
+- 方案确认：按主程 Notebook 二期建议，推进“追帧事件降峰”而不改变数值结算。
+- 已完成：
+  - `src/battle/BattleScene.ts`
+    - 新增 `markVisualEventTick()`：当同一渲染帧内出现多个不同逻辑 tick 事件时，判定为 catch-up 帧；
+    - 视觉队列从纯函数改为可合并任务结构（`mergeKey/mergeWith`）；
+    - 在 catch-up 帧下，对以下事件按“同目标同来源同类型”做聚合：
+      - `battle:take_damage`（伤害累加后单次展示）
+      - `battle:gain_shield`（护盾累加后单次展示）
+      - `battle:heal`（治疗累加后单次展示）
+      - `battle:status_apply` / `battle:item_destroy`（同 key 合并重复视觉触发）
+    - 每帧开始重置 catch-up 识别窗口；场景退出时补充清理聚合索引。
+- 预期效果：同帧多 tick 时，视觉事件数量明显下降，减少“子弹洪峰 + 飘字风暴”导致的卡顿。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在移动端高压战斗复测，确认卡死频次与突刺帧是否继续下降。
+
 ## 验收优化追加（2026-03-16，战斗卡死止血一期：补帧截断 + 视觉配额）
 
 - 方案确认：已根据主程 Notebook 结论先落第一阶段（不改玩法结算）：
