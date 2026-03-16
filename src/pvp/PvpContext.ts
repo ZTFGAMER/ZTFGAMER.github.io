@@ -222,8 +222,6 @@ export const PvpContext = {
       })
       // 存储上局快照
       lastPlayerSnapshots = snapshots ?? {}
-      // 通知 ShopScene 快照已就绪（解决 round_summary 晚于 onEnter 的竞态）
-      PvpContext.onRoundSummaryReceived?.()
       // 标记淘汰
       newlyEliminated.forEach((idx) => {
         if (!session!.eliminatedPlayers.includes(idx)) {
@@ -238,6 +236,9 @@ export const PvpContext = {
       if ((lastStandTriggered ?? []).includes(session.myIndex)) {
         session.pendingLastStandReward = true
       }
+      // 通知 ShopScene 快照已就绪（解决 round_summary 晚于 onEnter 的竞态）
+      // 必须在 pendingLastStandReward 设置之后调用，否则 tryGrantLastStandReward 读不到最新标记
+      PvpContext.onRoundSummaryReceived?.()
       console.log('[PvpContext] round_summary day=' + day + ' hpMap=' + JSON.stringify(hpMap) + ' eliminated=' + JSON.stringify(newlyEliminated))
       // 通知等待面板刷新（eliminatedPlayers 已更新）
       if (newlyEliminated.length > 0) PvpContext.onEliminatedPlayersUpdate?.()
@@ -457,7 +458,11 @@ export const PvpContext = {
         if (pendingRoundWinner === 'enemy') {
           const myHp = session.playerHps?.[session.myIndex] ?? session.initialHp
           const usedLastStand = session.lastStandUsedPlayers?.[session.myIndex] === true
-          if (myHp - lastReportedSurvivingDamage <= 0 && usedLastStand) {
+          if (myHp - lastReportedSurvivingDamage <= 0 && !usedLastStand) {
+            // 本地预判绝地反击触发：立即设置奖励，进店时直接发放，无需等 round_summary
+            console.log('[PvpContext] 房主本地预判绝地反击，立即设置奖励')
+            session.pendingLastStandReward = true
+          } else if (myHp - lastReportedSurvivingDamage <= 0 && usedLastStand) {
             console.log('[PvpContext] 房主本地预判淘汰，等待 round_summary 确认')
             session.predictedElimination = true
             SceneManager.goto('pvp-result')
@@ -496,7 +501,11 @@ export const PvpContext = {
       const myHp = session.playerHps?.[session.myIndex] ?? session.initialHp
       const damage = Math.max(1, Math.round(session.currentDay))
       const usedLastStand = session.lastStandUsedPlayers?.[session.myIndex] === true
-      if (myHp - damage <= 0 && usedLastStand) {
+      if (myHp - damage <= 0 && !usedLastStand) {
+        // 本地预判绝地反击触发：立即设置奖励，进店时直接发放，无需等 round_summary
+        console.log('[PvpContext] 本地预判绝地反击，立即设置奖励')
+        session.pendingLastStandReward = true
+      } else if (myHp - damage <= 0 && usedLastStand) {
         console.log('[PvpContext] 本地预判淘汰，等待 round_summary 确认')
         session.predictedElimination = true
         SceneManager.goto('pvp-result')
