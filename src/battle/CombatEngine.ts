@@ -27,6 +27,8 @@ export class CombatEngine {
   private skillSystem: SkillTriggerSystem = new SkillTriggerSystem(this.state, this as unknown as ICombatEngineBase)
   private itemSystem: ItemTriggerSystem = new ItemTriggerSystem(this.state, this as unknown as IItemTriggerEngineBase)
   private queueOverflowWarned = new Set<string>()
+  private runtimeStateCacheTick = -1
+  private runtimeStateCache: CombatItemRuntimeState[] | null = null
   // ── 技能/英雄辅助（CombatEngine 内部使用，与 SkillTriggerSystem 共享逻辑）
   private hasPlayerSkill(id: string): boolean { return this.state.playerSkillIds.has(id) }
   private hasEnemySkill(id: string): boolean { return this.state.enemySkillIds.has(id) }
@@ -356,7 +358,10 @@ export class CombatEngine {
   }
 
   getRuntimeState(): CombatItemRuntimeState[] {
-    return this.state.items.map((it) => ({
+    if (this.runtimeStateCache && this.runtimeStateCacheTick === this.state.tickIndex) {
+      return this.runtimeStateCache
+    }
+    const runtimeState = this.state.items.map((it) => ({
       ...(() => {
         const skillMul = this.skillDamageMultiplier(it)
         const baseDamageRaw = Math.max(0, it.baseStats.damage + this.runtimeGlobalDamageBonus(it))
@@ -515,6 +520,9 @@ export class CombatEngine {
         }
       })(),
     }))
+    this.runtimeStateCacheTick = this.state.tickIndex
+    this.runtimeStateCache = runtimeState
+    return runtimeState
   }
 
   private reset(): void {
@@ -561,6 +569,8 @@ export class CombatEngine {
     this.state.enemyBackpackItemCount = 0
     this.state.enemyGoldAtBattleStart = 0
     this.state.enemyTrophyWinsAtBattleStart = 0
+    this.runtimeStateCacheTick = -1
+    this.runtimeStateCache = null
   }
 
   private getQueueLimit(name: 'pendingHits' | 'pendingItemFires' | 'pendingChargePulses' | 'pendingAmmoRefills'): number {

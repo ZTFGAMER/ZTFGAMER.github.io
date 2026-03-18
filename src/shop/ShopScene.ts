@@ -167,6 +167,7 @@ import * as PanelInit from './ShopPanelInitializer'
 import type { PanelInitDeps } from './ShopPanelInitializer'
 import * as BattleZoneBuilder from './ui/ShopBattleZoneBuilder'
 import type { BattleZoneUICallbacks } from './ui/ShopBattleZoneBuilder'
+import { getTopLeftControlYOffset } from './ui/ShopSafeArea'
 
 // ---- 場景共享狀態上下文 ----
 const _ctx: ShopSceneCtx = createShopSceneCtx()
@@ -174,6 +175,7 @@ let fpsHudText: Text | null = null
 let fpsSampleElapsedMs = 0
 let fpsSampleFrames = 0
 let fpsShown = 0
+let topSafeYOffset = 0
 
 function updateFpsHud(dt: number): void {
   if (!fpsHudText) return
@@ -187,7 +189,7 @@ function updateFpsHud(dt: number): void {
   }
   fpsHudText.text = `FPS ${fpsShown}`
   fpsHudText.x = CANVAS_W - fpsHudText.width - 10
-  fpsHudText.y = 8
+  fpsHudText.y = 8 + topSafeYOffset
 }
 
 // ---- HeroSystem 本地 shim 包裝（轉發 _ctx + callbacks）----
@@ -1546,6 +1548,7 @@ function refreshPlayerStatusUI(ctx: ShopSceneCtx = _ctx): void {
 // ============================================================
 function refreshShopUI(ctx: ShopSceneCtx = _ctx): void {
   if (!ctx.shopManager) return
+  topSafeYOffset = getTopLeftControlYOffset()
   if (!ctx.itemCompendiumBtn) settingsPanel?.createSettingsButton()
   advanceStarterTutorialFlow(ctx)
   SkillSystem.syncPickedSkillsFromOwnedSkillItems(ctx)
@@ -1588,7 +1591,7 @@ function refreshShopUI(ctx: ShopSceneCtx = _ctx): void {
       ctx.livesText.style.fill = lives.current <= 1 ? 0xff6a6a : 0xffd4d4
     }
     ctx.livesText.x = CANVAS_W - ctx.livesText.width - 18
-    ctx.livesText.y = 48
+    ctx.livesText.y = 46 + topSafeYOffset
   }
   if (ctx.trophyText) {
     if (PvpContext.isActive()) {
@@ -1601,7 +1604,7 @@ function refreshShopUI(ctx: ShopSceneCtx = _ctx): void {
       ctx.trophyText.text = `🏆 ${trophy.wins}/${trophy.target}`
       ctx.trophyText.style.fill = trophy.wins >= trophy.target ? 0xffde79 : 0xffe8b4
       ctx.trophyText.x = CANVAS_W - ctx.trophyText.width - 18
-      ctx.trophyText.y = (ctx.livesText?.y ?? 18) + (ctx.livesText?.height ?? 0) + 6
+      ctx.trophyText.y = (ctx.livesText?.y ?? (16 + topSafeYOffset)) + (ctx.livesText?.height ?? 0) + 6
     }
   }
   if (ctx.refreshCostText) {
@@ -2034,6 +2037,7 @@ export const ShopScene: Scene = {
     ensureStarterClassSelection(stage)
     ensureDailyChoiceSelection(stage)
 
+    topSafeYOffset = getTopLeftControlYOffset()
     fpsSampleElapsedMs = 0
     fpsSampleFrames = 0
     fpsShown = 0

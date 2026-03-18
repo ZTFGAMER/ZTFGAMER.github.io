@@ -22,6 +22,7 @@ import {
   getBackpackRowsByDay,
 } from '../ShopMathHelpers'
 import { layoutPlayerStatusPanel } from './PlayerStatusUI'
+import { getTopLeftControlYOffset } from './ShopSafeArea'
 
 // ---- 布局常量 ----
 const AREA_LABEL_LEFT_X = 0
@@ -178,6 +179,7 @@ export function applyAreaLabelLeftAlign(ctx: ShopSceneCtx): void {
 }
 
 export function applyLayoutFromDebug(ctx: ShopSceneCtx, callbacks: DebugLayoutCallbacks): void {
+  const topSafeYOffset = getTopLeftControlYOffset()
   const s = getBattleItemScale(ctx)
   const shopScale = getShopItemScale()
 
@@ -234,11 +236,11 @@ export function applyLayoutFromDebug(ctx: ShopSceneCtx, callbacks: DebugLayoutCa
   }
   if (ctx.dayDebugCon) {
     ctx.dayDebugCon.x = CANVAS_W / 2
-    ctx.dayDebugCon.y = getDebugCfg('dayDebugY')
+    ctx.dayDebugCon.y = getDebugCfg('dayDebugY') + topSafeYOffset
   }
   if (ctx.livesText) {
     ctx.livesText.x = CANVAS_W - ctx.livesText.width - 18
-    ctx.livesText.y = 18
+    ctx.livesText.y = 46 + topSafeYOffset
   }
   layoutPlayerStatusPanel(ctx)
   if (ctx.miniMapCon) {

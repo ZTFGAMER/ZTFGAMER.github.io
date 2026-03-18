@@ -7,6 +7,7 @@ import { CELL_SIZE, CELL_HEIGHT, type GridZone } from '@/common/grid/GridZone'
 import type { ItemDef } from '@/common/items/ItemDef'
 import type { ItemSizeNorm } from '@/common/items/ItemDef'
 import type { CombatEngine } from './CombatEngine'
+import type { CombatItemRuntimeState } from './CombatTypes'
 
 export type BattleFxPerfStats = {
   activeFx: number
@@ -213,9 +214,10 @@ export class BattleFXPool {
 
   private isFlyableProjectile(def: ItemDef | null): boolean {
     if (!def) return false
+    if ((def.attack_variants ?? []).length > 0) return true
+    if (def.icon) return true
     const style = def.attack_style ?? ''
-    if (!style || style.includes('不飞行')) return false
-    return style.includes('飞行')
+    return style.includes('飞行') && !style.includes('不飞行')
   }
 
   private collectProjectileIconUrls(def: ItemDef, sourceItemId?: string): string[] {
@@ -236,7 +238,9 @@ export class BattleFXPool {
         if (i !== idx) out.push(getItemIconUrlByName(stems[i]!))
       }
     }
-    out.push(getItemIconUrl(def.id))
+    if (def.icon) {
+      out.push(getItemIconUrl(def.id))
+    }
     return Array.from(new Set(out))
   }
 
@@ -316,10 +320,10 @@ export class BattleFXPool {
     }
   }
 
-  private acquireProjectileDot(from: { x: number; y: number }, color: number): Graphics {
+  private acquireProjectileDot(from: { x: number; y: number }, color: number, radius: number): Graphics {
     const dot = this.projectileDotPool.pop() ?? new Graphics()
     dot.clear()
-    dot.circle(0, 0, 5)
+    dot.circle(0, 0, Math.max(3, radius))
     dot.fill({ color, alpha: 0.95 })
     dot.x = from.x
     dot.y = from.y
@@ -416,6 +420,7 @@ export class BattleFXPool {
     const useSprite = useItemSprite && this.isFlyableProjectile(sourceDef)
 
     let visual: Graphics | Sprite
+    let visualIsSprite = false
     let recycle: (() => void) | null = null
     let spinRadPerSec = 0
     let spinDir = -1
@@ -423,15 +428,16 @@ export class BattleFXPool {
     let forceLinearFlight = false
     const travelDx = to.x - from.x
     const travelDy = to.y - from.y
+    const sourceSide = sourceItemId ? this.resolveItemSide(sourceItemId) : null
+    const sourceItemScale = sourceSide === 'enemy' ? getDebugCfg('enemyAreaScale') : getDebugCfg('battleItemScale')
+    const px = Math.max(8, Math.round(getDebugCfg('battleProjectileItemSizePx') * Math.max(0.25, sourceItemScale)))
     if (useSprite && sourceDef) {
       const sprite = this.acquireProjectileSprite(from)
-      const sourceSide = sourceItemId ? this.resolveItemSide(sourceItemId) : null
-      const sourceItemScale = sourceSide === 'enemy' ? getDebugCfg('enemyAreaScale') : getDebugCfg('battleItemScale')
-      const px = Math.max(8, Math.round(getDebugCfg('battleProjectileItemSizePx') * Math.max(0.25, sourceItemScale)))
       sprite.width = px
       sprite.height = px
       this.fxLayer.addChild(sprite)
       visual = sprite
+      visualIsSprite = true
       recycle = () => this.releaseProjectileSprite(sprite)
       const useId = this.projectileUseCursor++
       ;(sprite as Sprite & { __fxUseId?: number }).__fxUseId = useId
@@ -450,12 +456,17 @@ export class BattleFXPool {
       const loadEpoch = this.textureLoadEpoch
       ;(async () => {
         const tex = await this.resolveProjectileTexture(urls, loadEpoch)
-        if (tex && (sprite as Sprite & { __fxUseId?: number }).__fxUseId === useId) sprite.texture = tex
+        if (tex && (sprite as Sprite & { __fxUseId?: number }).__fxUseId === useId) {
+          sprite.texture = tex
+          sprite.width = px
+          sprite.height = px
+        }
       })()
     } else {
-      const dot = this.acquireProjectileDot(from, color)
+      const dot = this.acquireProjectileDot(from, color, px * 0.34)
       this.fxLayer.addChild(dot)
       visual = dot
+      visualIsSprite = false
       recycle = () => this.releaseProjectileDot(dot)
     }
 
@@ -491,7 +502,13 @@ export class BattleFXPool {
       const k = p <= peakT
         ? lerp(scaleStart, scalePeak, p / peakT)
         : lerp(scalePeak, scaleEnd, (p - peakT) / (1 - peakT))
-      visual.scale.set(k)
+      if (visualIsSprite) {
+        const sprite = visual as Sprite
+        sprite.width = px * k
+        sprite.height = px * k
+      } else {
+        visual.scale.set(k)
+      }
       if (spinRadPerSec > 0) {
         visual.rotation += spinRadPerSec * spinDir * (dtMs / 1000)
       } else if (lockFacingRad !== null) {
@@ -706,12 +723,12 @@ export class BattleFXPool {
     enemyStatusLayer: Container,
     playerFreezeOverlay: Graphics,
     enemyFreezeOverlay: Graphics,
+    runtimeByIdOverride?: Map<string, CombatItemRuntimeState>,
   ): void {
     const board = engine.getBoardState()
-    const runtime = engine.getRuntimeState()
     const playerItems = board.items.filter((it) => it.side === 'player')
     const enemyItems = board.items.filter((it) => it.side === 'enemy')
-    const runtimeById = new Map(runtime.map((it) => [it.id, it]))
+    const runtimeById = runtimeByIdOverride ?? new Map(engine.getRuntimeState().map((it) => [it.id, it]))
     this.updateZoneStatusFx(playerZone, 'player', playerItems, runtimeById, playerFreezeOverlay, playerStatusLayer)
     this.updateZoneStatusFx(enemyZone, 'enemy', enemyItems, runtimeById, enemyFreezeOverlay, enemyStatusLayer)
   }

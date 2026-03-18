@@ -236,9 +236,9 @@ export function buildButtonRowUI(
   ): CircleBtnHandle {
     const g = new Graphics()
     const txt = new Text({ text: label, style: { fontSize: mainFontSize, fill: 0xeebbbb, fontFamily: 'Arial', fontWeight: 'bold' } })
-    txt.name = 'btn-main'
+    txt.label = 'btn-main'
     const sub = new Text({ text: '', style: { fontSize: cfg.textSizes.sellButtonSubPrice, fill: 0xffd700, fontFamily: 'Arial', fontWeight: 'bold' } })
-    sub.name = 'sell-price'; sub.visible = false
+    sub.label = 'sell-price'; sub.visible = false
     let curCx = cx, curCy = cy, curActive = false
     const container = new Container()
     container.addChild(g, txt, sub); container.eventMode = 'static'; container.cursor = 'pointer'
@@ -267,9 +267,9 @@ export function buildButtonRowUI(
   ): CircleBtnHandle {
     const g = new Graphics()
     const txt = new Text({ text: label, style: { fontSize: mainFontSize, fill: 0x1a1a2a, fontFamily: 'Arial', fontWeight: 'bold' } })
-    txt.name = 'btn-main'
+    txt.label = 'btn-main'
     const sub = new Text({ text: '', style: { fontSize: cfg.textSizes.sellButtonSubPrice, fill: 0xffd700, fontFamily: 'Arial', fontWeight: 'bold' } })
-    sub.name = 'sell-price'; sub.visible = false
+    sub.label = 'sell-price'; sub.visible = false
     let curCx = cx, curCy = cy, curActive = true
     const container = new Container()
     container.addChild(g, txt, sub); container.eventMode = 'static'; container.cursor = 'pointer'
@@ -483,7 +483,7 @@ export function buildButtonRowUI(
 
   ctx.dayDebugCon = new Container()
   ctx.dayDebugCon.x = CANVAS_W / 2
-  ctx.dayDebugCon.y = getDebugCfg('dayDebugY')
+  ctx.dayDebugCon.y = getDebugCfg('dayDebugY') + getTopLeftControlYOffset()
 
   const prevDayBtn = new Text({ text: '◀', style: { fontSize: cfg.textSizes.dayDebugArrow, fill: 0x888888 } })
   prevDayBtn.eventMode = 'static'; prevDayBtn.cursor = 'pointer'

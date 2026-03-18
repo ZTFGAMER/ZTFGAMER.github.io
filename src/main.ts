@@ -21,6 +21,12 @@ import { normalizeSize } from '@/common/items/ItemDef'
 import { CANVAS_W as BASE_W, CANVAS_H as BASE_H } from '@/config/layoutConstants'
 import { EventBus, type SceneName } from '@/core/EventBus'
 import { PerfReporter, resolvePerfReporterConfig } from '@/perf/PerfReporter'
+import { markAssetUrlLoaded } from '@/core/AssetRuntimeTracker'
+import {
+  isMobileImageDownscaleBypassed,
+  loadImageTextureDownscaled,
+  markMobileImageDownscaleBypass,
+} from '@/core/MobileImageDownscaleCache'
 
 type SoakTestOptions = {
   rounds: number
@@ -54,6 +60,7 @@ let soakBattleEndTimer: number | null = null
 let soakPollTimer: number | null = null
 let soakState: SoakTestStats | null = null
 let perfReporter: PerfReporter | null = null
+let originalAssetsLoad: typeof Assets.load | null = null
 
 const DEFAULT_SOAK_OPTIONS: SoakTestOptions = {
   rounds: 20,
@@ -323,6 +330,51 @@ function getSoakStats(): SoakTestStats | null {
   return soakState ? { ...soakState } : null
 }
 
+function shouldDownscaleImageUrl(url: string): boolean {
+  const clean = url.split('?')[0]?.split('#')[0] ?? url
+  if (!clean.includes('/resource/')) return false
+  if (/_a\d*\.(png|jpg|jpeg|webp)$/i.test(clean)) return false
+  return /\.(png|jpg|jpeg|webp)$/i.test(clean)
+}
+
+function installMobileGlobalImageDownscale(scale: number): void {
+  if (originalAssetsLoad) return
+  const fixedScale = Math.max(0.1, Math.min(1, scale))
+  if (fixedScale >= 1) return
+
+  originalAssetsLoad = Assets.load.bind(Assets) as typeof Assets.load
+  const patchedLoad = (async (...args: unknown[]) => {
+    const urlOrUrls = args[0]
+    if (typeof urlOrUrls !== 'string') {
+      return (originalAssetsLoad as (...inner: unknown[]) => Promise<unknown>)(...args)
+    }
+    if (isMobileImageDownscaleBypassed(urlOrUrls)) {
+      return (originalAssetsLoad as (...inner: unknown[]) => Promise<unknown>)(...args)
+    }
+    if (!shouldDownscaleImageUrl(urlOrUrls)) {
+      const out = await (originalAssetsLoad as (...inner: unknown[]) => Promise<unknown>)(...args)
+      markAssetUrlLoaded(urlOrUrls)
+      return out
+    }
+    try {
+      const out = await loadImageTextureDownscaled(urlOrUrls, fixedScale)
+      markAssetUrlLoaded(urlOrUrls)
+      return out
+    } catch (err) {
+      markMobileImageDownscaleBypass(urlOrUrls)
+      if (!(err instanceof Event && err.type === 'error')) {
+        console.warn(`[main] downscale failed for ${urlOrUrls}, fallback Assets.load`, err)
+      }
+      const out = await (originalAssetsLoad as (...inner: unknown[]) => Promise<unknown>)(...args)
+      markAssetUrlLoaded(urlOrUrls)
+      return out
+    }
+  }) as typeof Assets.load
+
+  Assets.load = patchedLoad
+  console.log(`[main] Mobile global image downscale enabled, scale=${fixedScale.toFixed(2)}`)
+}
+
 // 移动端：将背景图缩放到设计分辨率，避免超大纹理（如 1568×2744=16MB）撑爆 Android WebView GPU 内存
 async function loadBgTexture(url: string, downscale: boolean): Promise<Texture> {
   if (!downscale) return Assets.load<Texture>(url)
@@ -431,6 +483,10 @@ async function bootstrap(): Promise<void> {
   // 2. 初始化 PixiJS Application（WebGPU 优先，不支持时自动回退 WebGL）
   // 移动端限制 DPR，减少渲染缓冲区与纹理占用
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+  const mobileImageDownscaleCfg = getConfig().runRules?.mobileImageDownscale
+  if (isMobile && (mobileImageDownscaleCfg?.enabled ?? false)) {
+    installMobileGlobalImageDownscale(Math.max(0.1, Math.min(1, mobileImageDownscaleCfg?.scale ?? 1)))
+  }
   const resolution = isMobile ? Math.min(window.devicePixelRatio || 1, 1.5) : (window.devicePixelRatio || 1)
   const app = new Application()
   await app.init({

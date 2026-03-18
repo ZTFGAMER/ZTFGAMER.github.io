@@ -1,0 +1,16 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "OpenCode/Claude: 查看今天历史对话",
+      "type": "shell",
+      "command": "python3 \"${workspaceFolder}/scripts/export_claude_today_history.py\" --workspace-root \"${workspaceFolder}\" && code \"$HOME/.claude/today-history.md\"",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    }
+  ]
+}

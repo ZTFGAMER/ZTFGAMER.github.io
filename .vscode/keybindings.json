@@ -1,0 +1,8 @@
+[
+  {
+    "key": "cmd+alt+h",
+    "command": "workbench.action.tasks.runTask",
+    "args": "OpenCode/Claude: 查看今天历史对话",
+    "when": "workspaceFolderCount > 0"
+  }
+]

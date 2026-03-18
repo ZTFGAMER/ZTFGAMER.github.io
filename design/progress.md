@@ -1,5 +1,286 @@
 # 大巴扎 — 开发进度记录
 
+## 验收优化追加（2026-03-18，缓存收口：每次战斗前强制资源重载）
+
+- 用户要求：优先做“1）缓存收口”，并保证每次进入战斗都重新加载资源。
+- 已完成实现：
+  - `src/core/MobileImageDownscaleCache.ts`（新增）
+    - 抽离并集中管理移动端 downscale 运行时缓存（`downscaledTextureCache` / `downscaleBypassUrls`）。
+    - 提供 `clearMobileImageDownscaleRuntimeCache()` 供战斗前统一清空。
+  - `src/main.ts`
+    - 改为使用新模块中的 downscale 缓存读写接口，保持原有加载逻辑不变。
+  - `src/core/AssetRuntimeTracker.ts`
+    - 新增 `getLoadedAssetUrls()` 与 `clearLoadedAssetUrls()`，支持批量清理追踪状态。
+  - `src/battle/BattleScene.ts`
+    - 将入场清理升级为 `purgeMobileBattleAssetCacheIfEnabled()`：
+      - 在移动端战斗进入前，除原有 item icon 外，额外读取并清理运行时追踪到的已加载资源；
+      - 执行 `Assets.unload(...)` 卸载 Pixi 可见缓存；
+      - 同步清空 downscale 运行时缓存；
+      - 最后重置资源追踪集合，确保下一场按需重新加载。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户真机复测 Day10（跨天进入 vs 重启直接进入）帧率差是否缩小；若仍有明显差值，再做第 2 步（后期特效吞吐分级）。
+
+## 验收修正（2026-03-18，战斗开场缓存告警仍出现 + 子弹仍偏小）
+
+- 用户复测反馈：
+  - 战斗开场仍报 `BattleScene.ts:81 [Assets] ... was not found in the Cache`；
+  - 部分物品子弹仍偏小。
+- 根因补充：
+  - 仅靠运行时 URL 追踪并不足以保证 Pixi 当前 cache 仍持有该 key（可能已被其他路径回收/替换 key 形态），直接 `Assets.unload(url)` 仍会触发 miss warning；
+  - 仍有一部分物品因弹道判定走 dot 回退，视觉尺寸会小于贴图弹道。
+- 已完成修正：
+  - `src/battle/BattleScene.ts`
+    - 新增 `hasAssetInPixiCache(url)`，在执行 `Assets.unload(url)` 前同时校验 `Assets.cache.has(...)`；
+    - 兼容三种 key 形态检查：原始相对路径、绝对 URL、pathname，避免 cache-miss warning。
+  - `src/battle/BattleFXPool.ts`
+    - 弹道贴图判定进一步放宽：只要有 `attack_variants` 或 `icon` 就优先走 sprite 弹道，不再被 `attack_style` 的“飞行/不飞行”文案阻断；
+    - dot 回退半径从 `px*0.22` 提升到 `px*0.34`，兜底视觉不再过小。
+- 差异补充定位（回旋镖正常、匕首仍偏小）：
+  - `回旋镖(item11)` 无 `attack_variants`，直接使用 `item11.png`，透明边距占比正常；
+  - `藏刃匕首(item36)` 配置了 `attack_variants: [item36_a]`，而 `item36_a.png` 有效像素宽度仅约画布的 `28.9%`，同等 `sprite.width/height` 下会显著显小。
+  - 代码原先会优先尝试 `attack_variants`，导致匕首优先命中细长变体。
+- 已追加修正：
+  - `src/battle/BattleFXPool.ts`
+    - 对 `直线飞行/不飞行` 弹道改为“优先基础 icon，再尝试 variants”，先保证体感尺寸一致性。
+- 进一步根因确认（用户追问 `_a` 与非 `_a`）：
+  - 是的，`_a` 资源当前不走全局 downscale，基础 icon 会走 downscale；
+  - 但真正导致“看起来缩小一倍”的主因是：投射物飞行过程中统一执行了 `visual.scale.set(k)`，覆盖了先前基于 `px` 设定的 `sprite.width/height`；
+  - 覆盖后实际尺寸受纹理原始像素影响，downscale 后的非 `_a` 纹理会更小，形成你看到的差异。
+- 已完成修正（生效于所有 sprite 子弹）：
+  - `src/battle/BattleFXPool.ts`
+    - 子弹飞行曲线缩放改为“按目标像素 `px*k` 直接写 `sprite.width/height`”，不再用 `scale.set(k)` 覆盖基础尺寸；
+    - dot 弹道仍保留 `scale.set(k)`，不影响现有圆点表现。
+- 回归修正（2026-03-18，木弓等 `_a` 轨迹未命中）：
+  - 问题原因：上一轮把“基础 icon 优先”放宽到了 `直线飞行`，导致木弓等原本依赖 `_a` 变体的武器先命中基础 icon；
+  - 已修正：`src/battle/BattleFXPool.ts`
+    - `collectProjectileIconUrls(...)` 改为仅对“匕首类（`name_cn` 含 `匕首`）”走基础 icon 优先；
+    - 其它武器恢复 variants 优先（如木弓继续优先 `item4_a`）。
+- 验收口径调整（2026-03-18，用户要求完全按配置）：
+  - 用户明确要求“匕首类也不做基础 icon 优先，全部按配置走”；
+  - 已修正：`src/battle/BattleFXPool.ts`
+    - 移除“匕首类基础 icon 优先”特判；
+    - 投射物 URL 解析恢复统一规则：优先 `attack_variants`（或 `icon_a/icon_a2` 回退），最后再回退基础 icon。
+- 当前阶段：等待用户复测上述两项是否消失；若仍有个别物品偏小，下一轮将对具体 `item.id` 做强制 sprite 白名单。
+
+## 验收修正（2026-03-18，缓存告警仍刷屏 + 匕首类子弹偏小）
+
+- 用户反馈：
+  - 进战斗时仍持续刷 `[Assets] Asset id ... was not found in the Cache`；
+  - `TextureGCSystem.run` 弃用告警仍出现；
+  - 匕首等非回旋镖子弹仍偏小。
+- 根因定位：
+  - `Assets.get(url)` 未命中时会触发 Pixi warning，导致“检查缓存是否存在”也会刷屏；
+  - 手动 GC 路径仍可能触发弃用提示；
+  - 非 `飞行` 文案但具备投射图标的物品走了 dot 弹道，视觉比贴图弹道小。
+- 已完成修正：
+  - `src/core/AssetRuntimeTracker.ts`（新增）：运行时资源 URL 追踪集合（加载/卸载标记）。
+  - `src/main.ts`：全局 `Assets.load` 成功后标记 URL（下采样成功与回退成功均标记）。
+  - `src/battle/BattleScene.ts`：战斗入场清理图标缓存改为基于追踪集合，不再调用 `Assets.get` 探测；卸载后同步移除标记。
+  - `src/battle/BattleFXPool.ts`：放宽贴图弹道判定（除明确 `不飞行` 外，有 `attack_variants` 或 `icon` 即优先贴图弹道）。
+  - `data/game_config.json`：`forceTextureGcOnBattleEnter/Exit` 均改为 `false`，避免 `TextureGCSystem.run` 弃用日志。
+- 验证：
+  - `npm run build` 通过；
+  - `npm run release:tf` 上传成功（`EXPORT SUCCEEDED` / `Upload succeeded`）；
+  - TestFlight 构建号：`CURRENT_PROJECT_VERSION=112`（`111 -> 112`）。
+- 当前阶段：等待用户用 112 包复测“告警是否清零 + 匕首/飞刀等子弹尺寸一致性 + L1/L2 触发频率”。
+
+## 验收优化追加（2026-03-18，战斗运行时重复计算减负：Runtime缓存 + 状态层复用）
+
+- 用户需求：落地两项优化
+  - 1) 战斗运行时 `getRuntimeState()` 做缓存，避免同帧重复重算；
+  - 2) 状态层刷新复用 BattleScene 已算出的 runtime，避免 BattleFXPool 再次拉取并构建。
+- 已完成：
+  - `src/battle/CombatEngine.ts`
+    - 新增 `runtimeStateCacheTick/runtimeStateCache`；
+    - `getRuntimeState()` 改为“同 tick 命中缓存直接返回，否则重算并回填缓存”；
+    - `reset()` 时清空 runtime 缓存，避免跨局污染。
+  - `src/battle/BattleFXPool.ts`
+    - `updateStatusFx(...)` 新增可选参数 `runtimeByIdOverride`；
+    - 有 override 时直接复用，不再内部 `engine.getRuntimeState()` 二次计算。
+  - `src/battle/BattleScene.ts`
+    - 调用 `fxPool.updateStatusFx(...)` 时传入本帧已构建的 `runtimeByIdScratch`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户真机复测“中后期天数进入战斗时的基线 FPS 与稳定性”；若仍偏低，下一轮优先做事件/特效吞吐分级与更细的热区统计。
+
+## 问题定位（2026-03-18，移动端后期天数战斗FPS下降原因分析）
+
+- 用户反馈：首日战斗基本 60 FPS，后续天数战斗帧率逐步下降；商店仍稳定 60 FPS。
+- 代码级结论（本轮仅分析未改代码）：
+  - 更像“战斗逻辑/表现计算量随天数增长”而不是“单纯图片过度加载”。
+  - 战斗每帧会执行 `engine.getRuntimeState()` 并做大量运行时计算；该函数包含多段技能文案正则解析与按物品遍历/过滤逻辑，后期敌我物品数与效果复杂度提升后成本明显上升。
+  - 战斗事件（伤害/护盾/治疗/状态）会持续入视觉队列并生成投射物/飘字；后期高品质与多段触发使事件密度更高，移动端更易掉帧。
+  - Day 模板本身也从前期少物品（如 Day1 2件）提升到中后期 4件左右，叠加技能触发链后会放大上述 CPU/GPU 压力。
+  - 图片不是主因：战斗物品图标只在挂载时加载，且已存在移动端入场清理与 textureGC；但投射物贴图的全局缓存仍可能带来次要内存压力。
+- 当前阶段：已向用户回传“主因优先级判断 + 代码依据 + 下一步优化方向（先减每帧计算，再控特效密度，再看贴图缓存）”。
+
+## 验收修正（2026-03-18，战斗入场缓存告警刷屏 + 子弹尺寸不一致）
+
+- 用户反馈：
+  - 战斗入场出现大量 `[Assets] Asset id ... was not found in the Cache` 告警；
+  - `TextureGCSystem.run` 与 `Container.name` 出现 Pixi 弃用告警；
+  - 部分子弹视觉尺寸仍不一致。
+- 已完成修正：
+  - `src/battle/BattleScene.ts`
+    - 仅对已在缓存中的图标执行 `Assets.unload`，避免“not found in Cache”告警刷屏；
+    - GC 调用优先改为 `renderer.gc.run()`（保留旧字段兜底），规避 `TextureGCSystem.run` 弃用告警。
+  - `src/battle/BattleFXPool.ts`
+    - 点状子弹半径改为按 `battleProjectileItemSizePx` 派生（不再固定 5px），让非贴图弹道与贴图弹道视觉尺寸更一致。
+  - `src/shop/ui/ShopUIBuilders.ts`
+    - `Container.name` 写法替换为 `label`，消除对应弃用告警。
+- 验证：
+  - `npm run build` 通过；
+  - `npm run release:tf` 已上传成功（`EXPORT SUCCEEDED` / `Upload succeeded`）；
+  - TestFlight 构建号：`CURRENT_PROJECT_VERSION=111`（`110 -> 111`）。
+- 当前阶段：等待用户复测日志噪声与“各类子弹尺寸一致性”，再决定是否继续收窄 downscale 作用范围。
+
+## 验收修正（2026-03-18，子弹缩小与 downscale 报错噪音）
+
+- 用户反馈：
+  - 战斗日志出现大量 `[main] downscale failed ... fallback Assets.load`；
+  - 飞行子弹视觉明显缩小。
+- 原因定位：
+  - 子弹贴图 URL 里存在一批 `_a/_a2` 候选回退资源，部分天然不存在；全局 downscale 对这些 URL 逐个 `Image` 尝试触发报错噪音；
+  - 子弹 Sprite 在贴图异步替换后未重设 `width/height`，导致显示尺寸受新贴图原始像素影响。
+- 已完成修正：
+  - `src/main.ts`
+    - 下采样白名单剔除 `_a*` 变体贴图（避免对候选投射物资源重复探测）；
+    - 新增 `downscaleBypassUrls`，首次下采样失败后该 URL 直接走原始 `Assets.load`，不再重复触发；
+    - 对普通网络错误不再刷屏，仅保留非预期异常告警。
+  - `src/battle/BattleFXPool.ts`
+    - 子弹贴图异步加载成功后，立即重设 `sprite.width/sprite.height = px`，锁定视觉尺寸。
+- 验证：
+  - `npm run build` 通过；
+  - `npm run release:tf` 已上传成功（`EXPORT SUCCEEDED` / `Upload succeeded`）；
+  - TestFlight 构建号：`CURRENT_PROJECT_VERSION=110`（`109 -> 110`）。
+- 当前阶段：等待用户真机复测“子弹尺寸恢复 + 控制台告警大幅减少 + 多局 FPS 曲线”。
+
+## 验收优化追加（2026-03-18，移动端战斗卡顿排查：全局贴图半分辨率试验 + 战斗前缓存回收）
+
+- 用户反馈：手机端商店约 60 FPS，但战斗多局后逐步下降（首局约 40、后续约 30、再到 20+），重启后恢复；希望验证“贴图体积 + 回收策略”方向。
+- 结论判断（本轮实现前提）：
+  - 症状更像“贴图缓存逐步变大导致的长期压力”而非单局对象创建峰值；
+  - 因重启可恢复，优先做两项低风险验证：`全局贴图降分辨率` + `战斗入场前主动回收图标缓存`。
+- 已完成：
+  - `data/game_config.json`（`run_rules` 新增）
+    - `mobileImageDownscale.enabled=true`、`mobileImageDownscale.scale=0.5`；
+    - `battleCacheCleanup.enabled=true`；
+    - `purgeItemIconsOnBattleEnter=true`；
+    - `forceTextureGcOnBattleEnter=true`、`forceTextureGcOnBattleExit=true`。
+  - `src/main.ts`
+    - 新增移动端全局图片加载降采样钩子（仅 `resource` 下图片资源），按配置统一缩放到 0.5；
+    - 保留失败回退 `Assets.load`，避免单图异常阻断流程。
+  - `src/battle/BattleScene.ts`
+    - 进战斗前按配置清理物品图标缓存（`Assets.unload`，基于全物品图标 URL 集合）；
+    - 战斗进出场按配置触发一次 renderer `textureGC.run()`。
+  - `src/common/items/ItemDef.ts`
+    - 补齐上述 `runRules` 新配置的类型定义。
+- 验证：
+  - `npm run build` 通过；
+  - `npm run release:tf` 已完成并上传成功：`** EXPORT SUCCEEDED **`、`Upload succeeded.`；
+  - TestFlight 构建号：`CURRENT_PROJECT_VERSION=109`（`108 -> 109`）。
+- 当前阶段：等待用户真机验收“连续多局战斗 FPS 曲线是否明显改善”；若仍下降，下一轮将补充按场景细分的贴图白名单与更精细的缓存保留策略。
+
+## 验收优化追加（2026-03-18，红心/奖杯整体再下移30px）
+
+- 用户需求：在已接入顶部安全区偏移的基础上，右上角红心与奖杯再整体下移 `30px`。
+- 已完成：
+  - `src/shop/ShopScene.ts`
+    - 红心基线从 `16 + topSafeYOffset` 调整为 `46 + topSafeYOffset`；
+    - 奖杯仍基于红心位置顺排，随红心同步整体下移。
+  - `src/shop/ui/ShopDebugLayout.ts`
+    - 调试重排口径同步改为 `46 + topSafeYOffset`，避免重排后回到旧位置。
+- 验证：本次为 HUD 位置微调，未改动战斗/商店逻辑。
+- 当前阶段：等待用户实机验收右上角状态区纵向位置。
+
+## 验收优化追加（2026-03-18，顶部UI统一接入安全区下移策略）
+
+- 用户需求：`Day`、商店 `FPS`、红心、奖杯、战斗 `FPS` 均按左上控件同口径走顶部安全区（灵动岛/刘海）下移策略。
+- 已完成：
+  - `src/shop/ui/ShopSafeArea.ts` 现有 `getTopLeftControlYOffset()` 复用到上述 HUD。
+  - `src/shop/ShopScene.ts`
+    - 商店 FPS 右上 Y 改为 `8 + topSafeYOffset`；
+    - 红心 Y 改为 `16 + topSafeYOffset`，奖杯相对红心继续顺排；
+    - 刷新 UI 时同步读取安全区偏移，避免位置回退。
+  - `src/shop/ui/ShopUIBuilders.ts`
+    - Day 容器初始 Y 改为 `dayDebugY + getTopLeftControlYOffset()`。
+  - `src/shop/ui/ShopDebugLayout.ts`
+    - 调试重排时 Day/红心统一带安全区偏移，保证重排后口径一致。
+  - `src/battle/BattleScene.ts`
+    - 战斗 FPS 右上 Y 改为 `8 + topSafeYOffset`（进场读取一次安全区偏移）。
+- 验证：本次为 HUD 布局口径统一，未改战斗/商店逻辑。
+- 当前阶段：等待用户实机验收 iPhone（含灵动岛机型）顶部遮挡与间距观感；如需可再加每次窗口尺寸变化时的偏移重采样。
+
+## 工具优化（2026-03-18，VSCode 快捷键触发历史对话脚本）
+
+- 用户需求：给“查看今天历史对话”的脚本加一个 VSCode 快捷键，减少手动打开任务面板步骤。
+- 已完成：
+  - `.vscode/keybindings.json`（新增）
+    - 绑定 `cmd+alt+h` 到任务命令 `workbench.action.tasks.runTask`；
+    - 参数固定为任务名 `OpenCode/Claude: 查看今天历史对话`，可一键执行现有导出并打开文件流程。
+- 验证：快捷键将直接触发现有任务，无需改动脚本本身。
+- 当前阶段：等待用户验收快捷键是否顺手；如与本机已有键位冲突，可按用户习惯改为其他组合。
+
+## 工具优化（2026-03-18，按 Session 分组 + 仅当前仓库）
+
+- 用户需求：历史对话按 `session` 分组显示，并且仅展示当前仓库会话。
+- 已完成：
+  - `scripts/export_claude_today_history.py`
+    - 新增 `--workspace-root` 参数（默认当前目录）；
+    - OpenCode/Codex：从 `session.directory` 过滤到当前仓库，再导出当天 `user/assistant` 文本；
+    - Claude：按 `project` 路径过滤到当前仓库；
+    - 输出结构改为按 `session_id` 分组，并显示 session 标题；
+    - 对超长消息做单行裁剪，降低 Markdown 可读性噪声。
+  - `.vscode/tasks.json`
+    - 任务命令追加 `--workspace-root "${workspaceFolder}"`，确保“只看当前仓库”稳定生效。
+- 验证：执行脚本后 `~/.claude/today-history.md` 已按 session 分组，且仅包含当前仓库相关记录。
+- 当前阶段：等待用户验收“分组方式与过滤范围”是否符合预期；如需可再加“隐藏 vision internal 会话”选项。
+
+## 工具修正（2026-03-18，历史对话支持 OpenCode/Codex）
+
+- 用户反馈：VSCode 任务执行后显示“今天无记录”，但当前实际使用的是 Codex 对话。
+- 原因定位：原脚本仅读取 `~/.claude/history.jsonl`（Claude 提问历史），不包含 OpenCode/Codex 的 SQLite 会话数据。
+- 已完成：
+  - `scripts/export_claude_today_history.py`
+    - 新增 OpenCode 数据源读取：`~/.local/share/opencode/opencode.db`；
+    - 按当天筛选 `message/part`，导出 `user/assistant` 的 `text` 内容；
+    - 输出结构改为双分区：`OpenCode / Codex` + `Claude Prompt History`。
+  - `.vscode/tasks.json`
+    - 任务名更新为 `OpenCode/Claude: 查看今天历史对话`（命令不变，仍一键导出并打开）。
+- 验证：执行 `python3 scripts/export_claude_today_history.py` 成功，`~/.claude/today-history.md` 已出现 Codex 当天记录。
+- 当前阶段：等待用户验收“是否满足 Codex 对话查看需求（是否需要再增加按会话分组/过滤长文本）”。
+
+## 工具优化（2026-03-18，VSCode 一键查看 Claude 当天历史对话）
+
+- 用户需求：希望在 VSCode 内直接查看“今天的历史对话”。
+- 已完成：
+  - `scripts/export_claude_today_history.py`（新增）
+    - 从 `~/.claude/history.jsonl` 读取记录；
+    - 按“当天日期”筛选并导出为 `~/.claude/today-history.md`；
+    - 输出含时间、`sessionId`、项目路径与消息文本。
+  - `.vscode/tasks.json`（新增）
+    - 新增任务：`Claude: 查看今天历史对话`；
+    - 执行脚本后自动用 VSCode 打开 `~/.claude/today-history.md`。
+- 验证：本地执行 `python3 scripts/export_claude_today_history.py` 成功生成 `~/.claude/today-history.md`。
+- 当前阶段：等待用户验收“一键任务是否符合使用习惯（命名/输出格式/是否自动打开文件）”。
+
+## 交付执行（2026-03-18，Git 同步 + TestFlight 上传 + Android 打包）
+
+- 用户指令：同步 Git，并产出 TF 包与 Android 包。
+- 已完成：
+  - Git：`main` 已执行 `git pull --rebase`，结果 `Already up to date.`（当前与 `origin/main` 同步）。
+  - iOS TestFlight：执行 `npm run release:tf` 成功。
+    - 关键结果：`** EXPORT SUCCEEDED **`、`Upload succeeded.`
+    - 构建号：`CURRENT_PROJECT_VERSION=108`
+    - 产物：`ios/build/export-testflight/App.ipa`
+  - Android：执行 `npm run build:android-web` + `npm run android:sync` + `./gradlew assembleRelease` + `./gradlew bundleRelease`。
+    - 初次失败：`错误: 无效的源发行版：21`
+    - 处理：将 `android/app/capacitor.build.gradle` 的 Java 编译目标临时切换到 `VERSION_17` 后重试成功。
+    - 产物：
+      - APK：`android/app/build/outputs/apk/release/app-release.apk`
+      - AAB：`android/app/build/outputs/bundle/release/app-release.aab`
+- 当前阶段：等待用户验收 Git 同步状态与三端打包产物。
+- 风险/待办：`android/app/capacitor.build.gradle` 为 Capacitor 生成文件，后续再次 `cap sync` 可能回写 `VERSION_21`；需在环境侧统一 JDK 21 或在生成链路里固化 Java 17 口径。
+
 ## 验收优化追加（2026-03-18，设置内补回“重新开始”并保留“清除所有游玩数据”）
 
 - 用户反馈：设置里缺少“重新开始”按钮。

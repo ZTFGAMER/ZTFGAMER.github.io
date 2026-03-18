@@ -126,6 +126,16 @@ export interface GameConfig {
   runRules?: {
     trophyWinsToFinalVictory?: number
     muteLogsInMobileRelease?: boolean
+    mobileImageDownscale?: {
+      enabled?: boolean
+      scale?: number
+    }
+    battleCacheCleanup?: {
+      enabled?: boolean
+      purgeItemIconsOnBattleEnter?: boolean
+      forceTextureGcOnBattleEnter?: boolean
+      forceTextureGcOnBattleExit?: boolean
+    }
     perfReporter?: {
       enabled?: boolean
       endpoint?: string

@@ -20,7 +20,7 @@ import { EventBus } from '@/core/EventBus'
 import { SellPopup, type ItemInfoEnchantmentDisplay, type ItemInfoMode, type ItemInfoRuntimeOverride } from '@/common/ui/SellPopup'
 import { getItemEnchantmentDisplay, resolveItemEnchantmentEffectCn } from '@/common/items/ItemEnchantment'
 import { getBattleEffectColor, getBattleFloatTextColor, getBattleOrbColor } from '@/config/colorPalette'
-import { getHeroImageUrl } from '@/core/AssetPath'
+import { getHeroImageUrl, getItemIconUrl } from '@/core/AssetPath'
 import { BattlePortraitFX } from './BattlePortraitFX'
 import { BattleSkillUI } from './BattleSkillUI'
 import { BattleDamageStats } from './BattleDamageStats'
@@ -29,9 +29,14 @@ import { BattleTransition } from './BattleTransition'
 import { BattleSettlement } from './BattleSettlement'
 import { CANVAS_W, CANVAS_H } from '@/config/layoutConstants'
 import { getAdjustedBattleZoneY, getAdjustedBattleZoneYInBattleOffset } from '@/shop/ShopMathHelpers'
+import { getTopLeftControlYOffset } from '@/shop/ui/ShopSafeArea'
+import { clearLoadedAssetUrls, getLoadedAssetUrls, hasAssetUrlLoaded, markAssetUrlUnloaded } from '@/core/AssetRuntimeTracker'
+import { clearMobileImageDownscaleRuntimeCache } from '@/core/MobileImageDownscaleCache'
 
 const HERO_VISUAL_IDS = ['hero1', 'hero2', 'hero3', 'hero4', 'hero5', 'hero6', 'hero7', 'hero8', 'hero9', 'hero10'] as const
 type HeroVisualId = typeof HERO_VISUAL_IDS[number]
+
+const IS_MOBILE_DEVICE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
 
 function randomHeroVisualId(): HeroVisualId {
   return HERO_VISUAL_IDS[Math.floor(Math.random() * HERO_VISUAL_IDS.length)]!
@@ -48,6 +53,58 @@ function readPlayerHeroVisualId(): HeroVisualId {
   } catch {
     return randomHeroVisualId()
   }
+}
+
+function runRendererTextureGcNow(): void {
+  const renderer = getApp().renderer as unknown as { gc?: { run?: () => void }; textureGC?: { run?: () => void } }
+  if (renderer.gc?.run) {
+    renderer.gc.run()
+    return
+  }
+  renderer.textureGC?.run?.()
+}
+
+function hasAssetInPixiCache(url: string): boolean {
+  if (!url) return false
+  if (Assets.cache.has(url)) return true
+  try {
+    const absolute = new URL(url, window.location.href).toString()
+    if (Assets.cache.has(absolute)) return true
+    const pathname = new URL(absolute).pathname
+    if (Assets.cache.has(pathname)) return true
+  } catch {
+    return false
+  }
+  return false
+}
+
+async function purgeMobileBattleAssetCacheIfEnabled(): Promise<void> {
+  const cfg = getGameCfg().runRules?.battleCacheCleanup
+  if (!IS_MOBILE_DEVICE) return
+  if (!(cfg?.enabled ?? false)) return
+  if (!(cfg?.purgeItemIconsOnBattleEnter ?? false)) return
+
+  const urls = new Set<string>()
+  for (const it of getAllItems()) {
+    urls.add(getItemIconUrl(it.id))
+  }
+  if (urls.size <= 0) return
+
+  const trackedUrls = new Set<string>(getLoadedAssetUrls())
+  for (const url of urls) trackedUrls.add(url)
+
+  const loadedUrls = Array.from(trackedUrls).filter((url) => hasAssetUrlLoaded(url) && hasAssetInPixiCache(url))
+
+  clearMobileImageDownscaleRuntimeCache()
+
+  if (loadedUrls.length > 0) {
+    const jobs = loadedUrls.map((url) => Assets.unload(url).then(() => {
+      markAssetUrlUnloaded(url)
+    }).catch(() => undefined))
+    await Promise.all(jobs)
+  }
+  clearLoadedAssetUrls()
+  console.log(`[BattleScene] mobile battle assets purged: ${loadedUrls.length}, downscale cache reset`)
 }
 
 let root: Container | null = null
@@ -132,6 +189,7 @@ let fpsHudText: Text | null = null
 let fpsSampleElapsedMs = 0
 let fpsSampleFrames = 0
 let fpsShown = 0
+let topSafeYOffset = 0
 
 function updateFpsHud(dt: number): void {
   if (!fpsHudText) return
@@ -145,7 +203,7 @@ function updateFpsHud(dt: number): void {
   }
   fpsHudText.text = `FPS ${fpsShown}`
   fpsHudText.x = CANVAS_W - fpsHudText.width - 10
-  fpsHudText.y = 8
+  fpsHudText.y = 8 + topSafeYOffset
 }
 type QueuedFxTask = {
   run: () => void
@@ -834,6 +892,9 @@ export const BattleScene: Scene = {
       return
     }
     enteredSnapshot = snapshot
+    const cleanupCfg = getGameCfg().runRules?.battleCacheCleanup
+    await purgeMobileBattleAssetCacheIfEnabled()
+    if (cleanupCfg?.enabled && cleanupCfg?.forceTextureGcOnBattleEnter) runRendererTextureGcNow()
     battleDay = Math.max(1, snapshot.day)
     settlementRevealAtMs = null
     battlePresentationMs = 0
@@ -1057,6 +1118,7 @@ export const BattleScene: Scene = {
     fpsSampleElapsedMs = 0
     fpsSampleFrames = 0
     fpsShown = 0
+    topSafeYOffset = getTopLeftControlYOffset()
     fpsHudText = new Text({
       text: 'FPS 0',
       style: {
@@ -1471,6 +1533,8 @@ export const BattleScene: Scene = {
     enteredSnapshot = null
     battleSpeed = 1
     fxPool.reset()
+    const cleanupCfg = getGameCfg().runRules?.battleCacheCleanup
+    if (cleanupCfg?.enabled && cleanupCfg?.forceTextureGcOnBattleExit) runRendererTextureGcNow()
     visualFxQueue = []
     visualFxMergeMap.clear()
     visualFxDroppedCount = 0
@@ -1595,7 +1659,16 @@ export const BattleScene: Scene = {
     drawCooldownOverlay(playerZone, playerCdOverlay, playerItemsScratch, runtimeChargePercentByIdScratch)
     drawCooldownOverlay(enemyZone, enemyCdOverlay, enemyItemsScratch, runtimeChargePercentByIdScratch)
     if (tickChanged || pulseActive) {
-      fxPool.updateStatusFx(playerZone, enemyZone, engine, playerStatusLayer, enemyStatusLayer, playerFreezeOverlay, enemyFreezeOverlay)
+      fxPool.updateStatusFx(
+        playerZone,
+        enemyZone,
+        engine,
+        playerStatusLayer,
+        enemyStatusLayer,
+        playerFreezeOverlay,
+        enemyFreezeOverlay,
+        runtimeByIdScratch,
+      )
     }
     updateRuntimeStatBadges(playerZone, playerItemsScratch, runtimeByIdScratch, runtimeAmmoReloadMsByIdScratch)
     updateRuntimeStatBadges(enemyZone, enemyItemsScratch, runtimeByIdScratch, runtimeAmmoReloadMsByIdScratch)

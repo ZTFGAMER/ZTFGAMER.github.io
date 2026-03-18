@@ -1498,6 +1498,16 @@
     "value": {
       "trophyWinsToFinalVictory": 10,
       "muteLogsInMobileRelease": true,
+      "mobileImageDownscale": {
+        "enabled": true,
+        "scale": 0.5
+      },
+      "battleCacheCleanup": {
+        "enabled": true,
+        "purgeItemIconsOnBattleEnter": true,
+        "forceTextureGcOnBattleEnter": false,
+        "forceTextureGcOnBattleExit": false
+      },
       "perfReporter": {
         "enabled": false,
         "endpoint": "https://peer.kkopttarr.com/perf/ingest",
