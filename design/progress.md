@@ -1,5 +1,40 @@
 # 大巴扎 — 开发进度记录
 
+## 验收优化追加（2026-03-18，iOS卡顿治理 P0/P1/P2 一次落地）
+
+- 用户指令：按 Notebook 指导直接完成 `P0/P1/P2` 卡顿治理改造。
+- 已完成：
+  - `P0`（防御性降级 + Device Lost）
+    - `src/core/AppContext.ts`
+      - 新增渲染运行时标志：`webgpuFallbackAdapter`、`webgpuDeviceLostCount`、`forceLowFx`、`lastDeviceLostReason`。
+    - `src/main.ts`
+      - 启动时探测 WebGPU fallback adapter（含 `adapter.info/requestAdapterInfo` 兼容路径）；
+      - 命中 fallback 时写入全局 `forceLowFx`；
+      - 监听 WebGPU `device.lost`，累计计数、打点 `gpu_device_lost` 并强制低特效模式。
+    - `src/battle/BattleScene.ts`
+      - 进战斗读取渲染标志；fallback / deviceLost 场景直接把 `autoFxDegradeLevel` 锁到 `L2`。
+  - `P1`（批次预算守护 + 低风险降载）
+    - `src/battle/BattleScene.ts`
+      - 视觉队列消费改为“按帧时长自适应预算”：`>24ms` 每帧仅消费 `1`，`>16ms` 降为 `50%`，其余走基准预算。
+    - `src/battle/BattleFXPool.ts`
+      - 新增 `attemptedProjectiles/attemptedFloatingNumbers` 统计，与既有 dropped 计数组合用于 drop-rate 验收。
+  - `P2`（可量化验收指标）
+    - `src/perf/PerfReporter.ts`
+      - 新增长任务监控（`PerformanceObserver longtask`，`>50ms` 计数与总时长）；
+      - 新增掉帧率（`dt>34ms`）、战斗特效 drop-rate（基于 attempted/dropped delta）；
+      - 新增分级状态 `ok/warning/critical` 与事件：`perf:ok/perf:warning/perf:critical`；
+      - 采样点新增字段：`longTaskCount/longTaskTotalMs/longTasksPerMinute/frameDropCount/frameDropRate/battleDropRate/perfLevel`。
+    - `src/common/items/ItemDef.ts` + `data/game_config.json`
+      - `run_rules.perfReporter` 扩展验收阈值配置：
+        - `warn/criticalFrameMsP95`
+        - `warn/criticalLongTasksPerMinute`
+        - `warn/criticalFrameDropRate`
+        - `warn/criticalBattleDropRate`
+  - 战斗运行时参数按 Notebook 口径做了更激进降载：
+    - `data/game_config.json`：`fxDegrade*Scale`、`memoryMonitor*Ratio`、`memoryMonitorEscalateSamples`、`visualFxQueueMax` 已同步下调。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户真机验收（iOS Safari/WKWebView，20~30 分钟长局），重点观察 `frameMsP95`、`longTasksPerMinute`、`frameDropRate`、`battleDropRate` 是否进入 warning 以下。
+
 ## 真机采集回合（2026-03-18，首轮结果）
 
 - 用户已完成一轮手工复测：
