@@ -50,6 +50,17 @@
   - 用户必须使用带 `perf=1&perfEndpoint&perfToken` 的完整链接进入线上站点；
   - 先进行 30 秒短测，确认采集端出现新 session 数据后再跑完整 A/B 用例。
 
+## 采集链路修复（2026-03-18，Worker CORS Header 白名单）
+
+- 现象：用户多轮真机测试后，D1 仅有 smoke-test 数据，未收到手机实测上报。
+- 根因：Worker 的 CORS 允许头缺少 `X-Perf-Schema`，而前端 `PerfReporter` 请求固定携带该头，导致浏览器预检拦截。
+- 已修复：
+  - `perf-ingest-worker/src/index.ts`
+    - `Access-Control-Allow-Headers` 从 `Content-Type,Authorization` 扩展为 `Content-Type,Authorization,X-Perf-Schema`。
+  - Worker 已重新部署（Version ID: `205fdf4e-5b07-4f0e-a7a3-c990ac501d8a`）。
+  - 已通过预检验证：OPTIONS 请求携带 `authorization,content-type,x-perf-schema` 返回 204 且放行。
+- 下一步：请用户再跑 1 分钟短测，确认 D1 出现新 session 后进入完整 A/B 测试与归因分析。
+
 ## 验收优化追加（2026-03-18，线上真机性能上报链路已落地）
 
 - 用户诉求：尽量由 Claude 执行，仅保留必要的人机操作；在 `https://ztfgamer.github.io/` 上可上传性能数据定位卡顿。
