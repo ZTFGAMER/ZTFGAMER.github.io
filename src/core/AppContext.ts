@@ -21,6 +21,20 @@ export type StageLayout = {
 
 let _layout: StageLayout | null = null
 
+export type RenderRuntimeFlags = {
+  webgpuFallbackAdapter: boolean
+  webgpuDeviceLostCount: number
+  forceLowFx: boolean
+  lastDeviceLostReason: string
+}
+
+let _renderRuntimeFlags: RenderRuntimeFlags = {
+  webgpuFallbackAdapter: false,
+  webgpuDeviceLostCount: 0,
+  forceLowFx: false,
+  lastDeviceLostReason: '',
+}
+
 export function setApp(app: Application): void {
   _app = app
 }
@@ -40,4 +54,15 @@ export function getStageLayout(): StageLayout {
     throw new Error('[AppContext] StageLayout not initialized. Call setStageLayout() first.')
   }
   return _layout
+}
+
+export function getRenderRuntimeFlags(): RenderRuntimeFlags {
+  return { ..._renderRuntimeFlags }
+}
+
+export function setRenderRuntimeFlags(next: Partial<RenderRuntimeFlags>): void {
+  _renderRuntimeFlags = {
+    ..._renderRuntimeFlags,
+    ...next,
+  }
 }

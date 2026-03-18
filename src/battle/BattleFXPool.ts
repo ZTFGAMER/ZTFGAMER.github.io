@@ -2,7 +2,7 @@ import { Assets, Container, Graphics, Sprite, Texture, Text } from 'pixi.js'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import { getBattleOrbColor } from '@/config/colorPalette'
 import { getItemIconUrl, getItemIconUrlByName } from '@/core/AssetPath'
-import { getAllItems, getConfig as getGameCfg } from '@/core/DataLoader'
+import { getAllItemsRaw, getConfig as getGameCfg } from '@/core/DataLoader'
 import { CELL_SIZE, CELL_HEIGHT, type GridZone } from '@/common/grid/GridZone'
 import type { ItemDef } from '@/common/items/ItemDef'
 import type { ItemSizeNorm } from '@/common/items/ItemDef'
@@ -13,6 +13,8 @@ export type BattleFxPerfStats = {
   activeFx: number
   activeProjectiles: number
   activeFloatingNumbers: number
+  attemptedProjectiles: number
+  attemptedFloatingNumbers: number
   droppedProjectiles: number
   droppedFloatingNumbers: number
   pooledProjectileSprites: number
@@ -129,7 +131,7 @@ function drawStatusBadge(
   badge.text.visible = true
 }
 
-const ITEM_BY_ID = new Map(getAllItems().map((it) => [it.id, it] as const))
+const ITEM_BY_ID = new Map(getAllItemsRaw().map((it) => [it.id, it] as const))
 
 export class BattleFXPool {
   private readonly isMobileRuntime = /Mobi|Android|iPhone|iPad/i.test(
@@ -147,6 +149,8 @@ export class BattleFXPool {
   private activeProjectileCount = 0
   private activeFloatingNumberCount = 0
   private pendingDelayedDamageVisualCount = 0
+  private attemptedProjectileCount = 0
+  private attemptedFloatingNumberCount = 0
   private droppedProjectileCount = 0
   private droppedFloatingNumberCount = 0
   private fxDegradeLevel = 0
@@ -158,6 +162,7 @@ export class BattleFXPool {
 
   private pulseStates = new Map<string, PulseState>()
   private pulseDedupAtMs = new Map<string, number>()
+  private sourceDefIdByInstanceId = new Map<string, string>()
   private projectileVariantCursor = new Map<string, number>()
   private projectileTextureCache = new Map<string, Texture>()
   private projectileMissingUrls = new Set<string>()
@@ -175,6 +180,12 @@ export class BattleFXPool {
     this.playerZone = playerZone
     this.enemyZone = enemyZone
     this.engine = engine
+    this.sourceDefIdByInstanceId.clear()
+    if (engine) {
+      for (const it of engine.getBoardState().items) {
+        this.sourceDefIdByInstanceId.set(it.id, it.defId)
+      }
+    }
   }
 
   private resolveItemSide(sourceItemId: string, preferred?: 'player' | 'enemy'): 'player' | 'enemy' | null {
@@ -205,10 +216,18 @@ export class BattleFXPool {
   }
 
   private getDefBySourceInstance(sourceItemId: string): ItemDef | null {
+    if (ITEM_BY_ID.has(sourceItemId)) {
+      return ITEM_BY_ID.get(sourceItemId) ?? null
+    }
+    const cachedDefId = this.sourceDefIdByInstanceId.get(sourceItemId)
+    if (cachedDefId) {
+      return ITEM_BY_ID.get(cachedDefId) ?? null
+    }
     if (!this.engine) return null
     const board = this.engine.getBoardState()
     const hit = board.items.find((it) => it.id === sourceItemId)
     if (!hit) return null
+    this.sourceDefIdByInstanceId.set(sourceItemId, hit.defId)
     return ITEM_BY_ID.get(hit.defId) ?? null
   }
 
@@ -405,6 +424,7 @@ export class BattleFXPool {
     sourceItemId?: string,
     opts?: { forceDot?: boolean },
   ): void {
+    this.attemptedProjectileCount += 1
     if (!this.fxLayer) {
       onHit?.()
       return
@@ -526,6 +546,7 @@ export class BattleFXPool {
   }
 
   spawnFloatingNumber(to: { x: number; y: number }, text: string, color: number, fontSize?: number): void {
+    this.attemptedFloatingNumberCount += 1
     if (!this.fxLayer) return
     if (!this.canSpawnFloatingNumberFx()) return
     this.activeFloatingNumberCount += 1
@@ -638,10 +659,15 @@ export class BattleFXPool {
   cancelPulse(itemId: string): void {
     const st = this.pulseStates.get(itemId)
     if (!st) return
-    if (st.flash.parent) st.flash.parent.removeChild(st.flash)
-    st.flash.clear()
-    if (this.pulseFlashPool.length < FX_POOL_MAX_PULSE_FLASHES) this.pulseFlashPool.push(st.flash)
-    else st.flash.destroy()
+    const flash = st.flash as Graphics | null | undefined
+    if (!flash || (flash as Graphics & { destroyed?: boolean }).destroyed) {
+      this.pulseStates.delete(itemId)
+      return
+    }
+    if (flash.parent) flash.parent.removeChild(flash)
+    flash.clear()
+    if (this.pulseFlashPool.length < FX_POOL_MAX_PULSE_FLASHES) this.pulseFlashPool.push(flash)
+    else flash.destroy()
     this.pulseStates.delete(itemId)
   }
 
@@ -829,6 +855,8 @@ export class BattleFXPool {
       activeFx: this.activeFx.length,
       activeProjectiles: this.activeProjectileCount,
       activeFloatingNumbers: this.activeFloatingNumberCount,
+      attemptedProjectiles: this.attemptedProjectileCount,
+      attemptedFloatingNumbers: this.attemptedFloatingNumberCount,
       droppedProjectiles: this.droppedProjectileCount,
       droppedFloatingNumbers: this.droppedFloatingNumberCount,
       pooledProjectileSprites: this.projectileSpritePool.length,
@@ -853,6 +881,8 @@ export class BattleFXPool {
     this.activeProjectileCount = 0
     this.activeFloatingNumberCount = 0
     this.pendingDelayedDamageVisualCount = 0
+    this.attemptedProjectileCount = 0
+    this.attemptedFloatingNumberCount = 0
     this.droppedProjectileCount = 0
     this.droppedFloatingNumberCount = 0
     this.fxDegradeLevel = 0

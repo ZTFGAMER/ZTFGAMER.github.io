@@ -1,5 +1,97 @@
 # 大巴扎 — 开发进度记录
 
+## 真机采集回合（2026-03-18，首轮结果）
+
+- 用户已完成一轮手工复测：
+  - 从第1关打到第4关降到约 30 FPS；
+  - 刷新后重打第4关约 40 FPS。
+- 线上采集端状态检查：
+  - Worker / D1 服务可用（healthz 正常，ingest/query 烟测可用）；
+  - 当前数据库仅有 smoke-test 样本，未收到本轮手机实测上报点。
+- 初步判断：
+  - 业务复测现象已再次证明“跨局/跨流程累积负担 + 后期基线负担”并存；
+  - 但本轮缺少手机上报原始点位，暂无法用 battle 指标（droppedFx/longFrame/p95）做定量归因。
+- 下一步（最小用户操作）：
+  - 用户必须使用带 `perf=1&perfEndpoint&perfToken` 的完整链接进入线上站点；
+  - 先进行 30 秒短测，确认采集端出现新 session 数据后再跑完整 A/B 用例。
+
+## 验收优化追加（2026-03-18，线上真机性能上报链路已落地）
+
+- 用户诉求：尽量由 Claude 执行，仅保留必要的人机操作；在 `https://ztfgamer.github.io/` 上可上传性能数据定位卡顿。
+- 已完成（Claude 执行）：
+  - 使用现有 `perf-ingest-worker` 项目完成 Cloudflare Worker 采集端实现：
+    - `POST /perf/ingest`：Bearer 鉴权、入库 D1、每次请求自动清理 24h 之前数据；
+    - `GET /perf/query`：按时间/scene/sessionId 查询；
+    - `GET /healthz`：健康检查。
+  - 新增 D1 schema 文件并已远端执行建表：`perf-ingest-worker/schema.sql`。
+  - 已创建并绑定 D1：`perfdb`（binding `DB`）。
+  - 已部署成功：`https://perf-ingest-worker.ztf8938.workers.dev`。
+  - 已完成烟测：ingest/query 均返回成功。
+- 本轮必要用户操作最小化：
+  - 手机端仅需打开带 `perf=1` + `perfEndpoint` + `perfToken` 的链接并按脚本游玩。
+- 当前阶段：等待用户手机实测 A/B 两组后回传 query 数据，进入性能归因分析。
+
+## 验收修正（2026-03-18，测试手动添加“非本局池”物品无法使用）
+
+- 用户需求：通过“物品测试（手动添加）”加入的物品，即使不在本局随机池，也应可正常使用。
+- 根因定位：
+  - 多处 `defId -> ItemDef` 查找仅走 `getAllItems()`（受本局池过滤）；
+  - 调试面板可从 `getAllItemsRaw()` 添加到场上，导致战斗/快照/渲染侧找不到定义并退化为不可用或异常表现。
+- 已完成修正（统一增加 raw 回退）：
+  - `src/shop/systems/ShopSynthesisLogic.ts`
+    - `getItemDefById` 改为：先 `getAllItems()`，再 `getAllItemsRaw()`，再技能物品。
+  - `src/battle/CombatHelpers.ts`
+    - `findItemDef` 增加 `getAllItemsRaw()` 回退，确保战斗逻辑可解析测试物品。
+  - `src/shop/ShopBattleSnapshot.ts`
+    - `resolveInstanceBaseStats` 的 `def` 查找增加 `getAllItemsRaw()` 回退。
+  - `src/common/grid/GridZone.ts`
+    - `getDefById` 增加 `getAllItemsRaw()` 回退，避免格子渲染侧缺定义。
+  - `src/battle/BattleFXPool.ts`
+    - `ITEM_BY_ID` 改为基于 `getAllItemsRaw()` 构建，确保测试物品也能命中贴图弹道。
+- 当前阶段：等待用户复测“测试手动添加的非池内物品”在商店战斗中的触发、伤害与弹道表现是否全部恢复正常。
+
+## 验收修正（2026-03-18，炸药桶仍显示红球）
+
+- 用户反馈：炸药桶（`item42`）飞行弹道仍是红球，而不是自身图标。
+- 根因补充：
+  - 弹道贴图解析依赖 `sourceItemId -> defId`；
+  - 当伤害视觉延迟到物品已从战斗 board 移除后，按实例 id 回查会失败，导致 `getDefBySourceInstance` 返回空并回退 dot 红球。
+- 已完成修正：
+  - `src/battle/BattleFXPool.ts`
+    - 新增 `sourceDefIdByInstanceId` 缓存；
+    - `setContext(...)` 时预热缓存（把当前 board 的 `instanceId/defId` 全量记住）；
+    - `getDefBySourceInstance(...)` 优先命中缓存，再查实时 board，并在命中时回填缓存。
+  - 结果：即使来源物品在视觉播放前已被移除，也能按历史映射正确找到 `item42`，继续走贴图弹道。
+- 当前阶段：等待用户复测炸药桶弹道是否恢复为 `item42` 图标。
+
+## 验收修正（2026-03-18，火药桶子弹红球 + cancelPulse 空指针）
+
+- 用户反馈：
+  - 火药桶本应飞 `item42`，实际显示为红球；
+  - 报错：`Cannot read properties of null (reading 'clear')`，堆栈指向 `BattleFXPool.cancelPulse`。
+- 根因定位：
+  - `cancelPulse` 在边界时序下可能拿到已失效/已销毁的 `flash` 对象，直接 `clear()` 会触发空指针；
+  - 部分事件源 `sourceItemId` 可能直接传 `defId`（如 `item42`）而非实例 id，导致 `getDefBySourceInstance` 命不中战场实例并回退到 dot 红球。
+- 已完成修正：
+  - `src/battle/BattleFXPool.ts`
+    - `cancelPulse` 增加 `flash` 空值/销毁态保护，异常时直接清理状态并返回；
+    - `getDefBySourceInstance` 增加对 `sourceItemId` 直接作为 `defId` 的识别（`ITEM_BY_ID.has(sourceItemId)`），保证可解析到 `item42` 并走贴图弹道。
+- 当前阶段：等待用户复测火药桶是否恢复 `item42` 贴图飞行，且 battle update 不再抛 `cancelPulse` 异常。
+
+## 打包执行（2026-03-18，按指令打 TF + Android）
+
+- 已完成：
+  - TestFlight：执行 `npm run release:tf` 成功，日志包含 `EXPORT SUCCEEDED`、`Upload succeeded`，构建号 `CURRENT_PROJECT_VERSION=116`；
+  - Android：执行 `npm run build` + `npm run android:sync` + `./gradlew assembleRelease` + `./gradlew bundleRelease` 成功。
+- 产物位置：
+  - APK：`android/app/build/outputs/apk/release/app-release.apk`
+  - AAB：`android/app/build/outputs/bundle/release/app-release.aab`
+- 过程问题与处理：
+  - 首次 Android release 构建失败：`无效的源发行版：21`；
+  - 已将 `android/app/capacitor.build.gradle` 的 `sourceCompatibility/targetCompatibility` 临时切换为 `VERSION_17` 后重试通过。
+- 待办/技术债：
+  - `android/app/capacitor.build.gradle` 为 Capacitor 生成文件，再次 `cap sync android` 可能回写到 `VERSION_21`，后续需在环境侧统一 JDK 21 或在生成链路固化 Java 版本策略。
+
 ## 验收优化追加（2026-03-18，缓存收口：每次战斗前强制资源重载）
 
 - 用户要求：优先做“1）缓存收口”，并保证每次进入战斗都重新加载资源。

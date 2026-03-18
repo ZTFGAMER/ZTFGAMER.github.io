@@ -10,12 +10,22 @@ type PerfReporterConfig = {
   maxPoints: number
   maxEvents: number
   autoFlushOnSceneChange: boolean
+  warnFrameMsP95: number
+  criticalFrameMsP95: number
+  warnLongTasksPerMinute: number
+  criticalLongTasksPerMinute: number
+  warnFrameDropRate: number
+  criticalFrameDropRate: number
+  warnBattleDropRate: number
+  criticalBattleDropRate: number
 }
 
 type PerfBattleSnapshot = {
   activeFx: number
   activeProjectiles: number
   activeFloatingNumbers: number
+  attemptedProjectiles: number
+  attemptedFloatingNumbers: number
   droppedProjectiles: number
   droppedFloatingNumbers: number
 }
@@ -27,6 +37,13 @@ type PerfSamplePoint = {
   frameMsAvg: number
   frameMsP95: number
   longFrameCount: number
+  longTaskCount: number
+  longTaskTotalMs: number
+  longTasksPerMinute: number
+  frameDropCount: number
+  frameDropRate: number
+  battleDropRate: number | null
+  perfLevel: 'ok' | 'warning' | 'critical'
   heapMb: number | null
   renderer: 'webgpu' | 'webgl' | 'unknown'
   battle?: PerfBattleSnapshot

@@ -3,7 +3,7 @@
 // ============================================================
 
 import type { ItemDef, SkillArchetype } from '@/common/items/ItemDef'
-import { getAllItems, getConfig } from '@/core/DataLoader'
+import { getAllItems, getAllItemsRaw, getConfig } from '@/core/DataLoader'
 import { BRONZE_SKILL_PICKS } from '@/common/skills/BronzeSkillConfig'
 import { SILVER_SKILL_PICKS } from '@/common/skills/SilverSkillConfig'
 import { GOLD_SKILL_PICKS } from '@/common/skills/GoldSkillConfig'
@@ -270,7 +270,9 @@ export function parseControlSpecsFromDef(def: ItemDef, cr: ReturnType<typeof get
 // ── 从 CombatEngine 类提取的纯工具函数 ───────────────────────
 
 export function findItemDef(defId: string): ItemDef | null {
-  return getAllItems().find((it) => it.id === defId) ?? null
+  return getAllItems().find((it) => it.id === defId)
+    ?? getAllItemsRaw().find((it) => it.id === defId)
+    ?? null
 }
 
 export function isNeutralItemDef(def: ItemDef): boolean {

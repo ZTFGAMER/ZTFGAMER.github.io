@@ -2,7 +2,7 @@
 // ShopBattleSnapshot — 战斗快照构建逻辑
 // ============================================================
 
-import { getConfig, getAllItems } from '@/core/DataLoader'
+import { getConfig, getAllItems, getAllItemsRaw } from '@/core/DataLoader'
 import { getWinTrophyState, getPlayerProgressState } from '@/core/RunState'
 import { resolveItemTierBaseStats } from '@/common/items/ItemTierStats'
 import type { BattleSnapshotBundle } from '@/battle/BattleSnapshotStore'
@@ -71,7 +71,7 @@ export function buildBattleSnapshot(ctx: ShopSceneCtx, skillBarMoveStartAtMs?: n
 export function resolveInstanceBaseStats(instanceId: string): BattleSnapshotBundle['entities'][number]['baseStats'] {
   const defId = instanceToDefId.get(instanceId)
   if (!defId) return undefined
-  const def = getAllItems().find((it) => it.id === defId)
+  const def = getAllItems().find((it) => it.id === defId) ?? getAllItemsRaw().find((it) => it.id === defId)
   if (!def) return undefined
   const level = getInstanceLevel(instanceId)
   const legacy = levelToTierStar(level)

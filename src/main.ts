@@ -11,7 +11,7 @@ import { MenuScene }    from '@/menu/MenuScene'
 import { PvpLobbyScene } from '@/pvp/PvpLobbyScene'
 import { PvpResultScene } from '@/pvp/PvpResultScene'
 import { validateData, getAllItems, getConfig } from '@/core/DataLoader'
-import { setApp, setStageLayout } from '@/core/AppContext'
+import { setApp, setStageLayout, setRenderRuntimeFlags } from '@/core/AppContext'
 import { clearStoredConfig } from '@/config/debugConfig'
 import { PhaseManager, type GamePhase } from '@/core/PhaseManager'
 import { Rectangle } from 'pixi.js'
@@ -61,6 +61,56 @@ let soakPollTimer: number | null = null
 let soakState: SoakTestStats | null = null
 let perfReporter: PerfReporter | null = null
 let originalAssetsLoad: typeof Assets.load | null = null
+let webgpuDeviceLostCount = 0
+
+async function detectWebGpuFallbackAdapter(): Promise<boolean> {
+  if (typeof navigator === 'undefined') return false
+  const gpu = (navigator as Navigator & { gpu?: { requestAdapter?: () => Promise<unknown> } }).gpu
+  if (!gpu || typeof gpu.requestAdapter !== 'function') return false
+  try {
+    const adapter = await gpu.requestAdapter()
+    if (!adapter || typeof adapter !== 'object') return false
+    const adapterObj = adapter as {
+      info?: { isFallbackAdapter?: boolean }
+      requestAdapterInfo?: () => Promise<{ isFallbackAdapter?: boolean }>
+    }
+    if (adapterObj.info && typeof adapterObj.info.isFallbackAdapter === 'boolean') {
+      return adapterObj.info.isFallbackAdapter === true
+    }
+    if (typeof adapterObj.requestAdapterInfo === 'function') {
+      const info = await adapterObj.requestAdapterInfo()
+      return info?.isFallbackAdapter === true
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
+function bindWebGpuDeviceLostGuard(app: Application): void {
+  const rendererAny = app.renderer as unknown as {
+    gpu?: { device?: { lost?: Promise<{ reason?: unknown; message?: unknown }> } }
+    device?: { lost?: Promise<{ reason?: unknown; message?: unknown }> }
+  }
+  const lostPromise = rendererAny.gpu?.device?.lost ?? rendererAny.device?.lost
+  if (!lostPromise || typeof lostPromise.then !== 'function') return
+  void lostPromise.then((info) => {
+    const reason = String(info?.reason ?? 'unknown')
+    const message = String(info?.message ?? '')
+    webgpuDeviceLostCount += 1
+    setRenderRuntimeFlags({
+      webgpuDeviceLostCount,
+      forceLowFx: true,
+      lastDeviceLostReason: reason,
+    })
+    perfReporter?.markEvent('gpu_device_lost', {
+      reason,
+      message,
+      count: webgpuDeviceLostCount,
+    })
+    console.warn(`[Renderer] GPU device lost reason=${reason} count=${webgpuDeviceLostCount} message=${message}`)
+  })
+}
 
 const DEFAULT_SOAK_OPTIONS: SoakTestOptions = {
   rounds: 20,
@@ -487,6 +537,14 @@ async function bootstrap(): Promise<void> {
   if (isMobile && (mobileImageDownscaleCfg?.enabled ?? false)) {
     installMobileGlobalImageDownscale(Math.max(0.1, Math.min(1, mobileImageDownscaleCfg?.scale ?? 1)))
   }
+  const webgpuFallbackAdapter = await detectWebGpuFallbackAdapter()
+  webgpuDeviceLostCount = 0
+  setRenderRuntimeFlags({
+    webgpuFallbackAdapter,
+    forceLowFx: webgpuFallbackAdapter,
+    webgpuDeviceLostCount: 0,
+    lastDeviceLostReason: '',
+  })
   const resolution = isMobile ? Math.min(window.devicePixelRatio || 1, 1.5) : (window.devicePixelRatio || 1)
   const app = new Application()
   await app.init({
@@ -502,6 +560,10 @@ async function bootstrap(): Promise<void> {
     textureGCCheckCountMax: isMobile ? 300 : 600,
   })
   console.log(`[Renderer] ${app.renderer.type === 0 ? 'WebGL' : 'WebGPU'} | DPR=${window.devicePixelRatio} resolution=${resolution} | canvas=${app.renderer.width}x${app.renderer.height} | antialias=${!isMobile}`)
+  if (webgpuFallbackAdapter) {
+    console.warn('[Renderer] Detected WebGPU fallback adapter, forcing low FX mode for battle runtime')
+  }
+  bindWebGpuDeviceLostGuard(app)
   setApp(app)
 
   const perfCfg = resolvePerfReporterConfig(getConfig().runRules?.perfReporter)

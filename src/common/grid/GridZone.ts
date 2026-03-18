@@ -17,7 +17,7 @@ import {
   type DestroyOptions,
 } from 'pixi.js'
 import type { ItemSizeNorm, PlacedItem } from './GridSystem'
-import { getAllItems, getConfig as getGameConfig } from '@/core/DataLoader'
+import { getAllItems, getAllItemsRaw, getConfig as getGameConfig } from '@/core/DataLoader'
 import { getBuffIconUrl, getItemIconUrl, getUiImageUrl } from '@/core/AssetPath'
 import { getAllSkillItemDefs, getSkillItemDefById, isSkillItemDefId } from '@/common/skills/SkillItemDefs'
 import { getClassColor, getTierColor } from '@/config/colorPalette'
@@ -108,7 +108,9 @@ const SIZE_DIMS: Record<ItemSizeNorm, [number, number]> = {
 let tierByDefId: Map<string, string> | null = null
 
 function getDefById(defId: string) {
-  return getAllItems().find((it) => it.id === defId) ?? getSkillItemDefById(defId)
+  return getAllItems().find((it) => it.id === defId)
+    ?? getAllItemsRaw().find((it) => it.id === defId)
+    ?? getSkillItemDefById(defId)
 }
 
 function ensureTierCache(): void {
