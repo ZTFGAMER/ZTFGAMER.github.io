@@ -1,5 +1,22 @@
 # 大巴扎 — 开发进度记录
 
+## 交付执行（2026-03-18，同步Git + TestFlight + Android打包）
+
+- 用户指令：同步 Git，并产出 TF 包与 Android 包。
+- 已完成：
+  - Git 同步：已提交并推送 `main`。
+    - commit: `8405456`
+    - message: `整合战斗表现迭代并修复左上按钮对齐`
+  - iOS TestFlight：执行 `npm run release:tf` 成功。
+    - 上传结果：`Upload succeeded`
+    - 本次构建号：`CURRENT_PROJECT_VERSION=107`
+    - 产物：`ios/build/export-testflight/App.ipa`
+  - Android：执行 `npx cap sync android` + `./gradlew assembleRelease` + `./gradlew bundleRelease` 成功。
+    - APK：`android/app/build/outputs/apk/release/app-release.apk`
+    - AAB：`android/app/build/outputs/bundle/release/app-release.aab`
+- 处理记录：本机 JDK 非 21，初次 Android 构建失败（`无效的源发行版：21`）；通过将 Android 编译目标降为 Java 17 后完成打包。
+- 当前阶段：等待用户验收三端交付产物是否符合发布预期。
+
 ## 验收优化追加（2026-03-18，图鉴按钮与设置按钮同层级独立排布）
 
 - 用户需求：`物品图鉴` 与 `设置` 保持同层级与同对齐逻辑，不受其他内容影响；再统一调整三按钮位置。
