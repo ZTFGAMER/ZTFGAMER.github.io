@@ -373,6 +373,14 @@ export class PerfReporter {
 
 export function resolvePerfReporterConfig(raw: unknown): PerfReporterConfig {
   const obj = (raw && typeof raw === 'object') ? (raw as Record<string, unknown>) : {}
+  const warnFrameMsP95 = Math.max(8, Number(obj.warnFrameMsP95) || 12)
+  const criticalFrameMsP95 = Math.max(warnFrameMsP95, Number(obj.criticalFrameMsP95) || 16)
+  const warnLongTasksPerMinute = Math.max(0, Number(obj.warnLongTasksPerMinute) || 2)
+  const criticalLongTasksPerMinute = Math.max(warnLongTasksPerMinute, Number(obj.criticalLongTasksPerMinute) || 6)
+  const warnFrameDropRate = Math.max(0, Math.min(1, Number(obj.warnFrameDropRate) || 0.15))
+  const criticalFrameDropRate = Math.max(warnFrameDropRate, Math.min(1, Number(obj.criticalFrameDropRate) || 0.3))
+  const warnBattleDropRate = Math.max(0, Math.min(1, Number(obj.warnBattleDropRate) || 0.05))
+  const criticalBattleDropRate = Math.max(warnBattleDropRate, Math.min(1, Number(obj.criticalBattleDropRate) || 0.1))
   return {
     enabled: obj.enabled === true,
     endpoint: typeof obj.endpoint === 'string' ? obj.endpoint.trim() : '',
@@ -383,13 +391,13 @@ export function resolvePerfReporterConfig(raw: unknown): PerfReporterConfig {
     maxPoints: clampInt(Number(obj.maxPoints), 100, 12000),
     maxEvents: clampInt(Number(obj.maxEvents), 50, 5000),
     autoFlushOnSceneChange: obj.autoFlushOnSceneChange !== false,
-    warnFrameMsP95: Math.max(8, Number(obj.warnFrameMsP95) || 12),
-    criticalFrameMsP95: Math.max(10, Number(obj.criticalFrameMsP95) || 16),
-    warnLongTasksPerMinute: Math.max(0, Number(obj.warnLongTasksPerMinute) || 2),
-    criticalLongTasksPerMinute: Math.max(0, Number(obj.criticalLongTasksPerMinute) || 6),
-    warnFrameDropRate: Math.max(0, Math.min(1, Number(obj.warnFrameDropRate) || 0.15)),
-    criticalFrameDropRate: Math.max(0, Math.min(1, Number(obj.criticalFrameDropRate) || 0.3)),
-    warnBattleDropRate: Math.max(0, Math.min(1, Number(obj.warnBattleDropRate) || 0.05)),
-    criticalBattleDropRate: Math.max(0, Math.min(1, Number(obj.criticalBattleDropRate) || 0.1)),
+    warnFrameMsP95,
+    criticalFrameMsP95,
+    warnLongTasksPerMinute,
+    criticalLongTasksPerMinute,
+    warnFrameDropRate,
+    criticalFrameDropRate,
+    warnBattleDropRate,
+    criticalBattleDropRate,
   }
 }
