@@ -1,5 +1,38 @@
 # 大巴扎 — 开发进度记录
 
+## 交付执行（2026-03-18，git同步 + TF包 + Android包）
+
+- 用户指令：同步 git，并连续执行 iOS TestFlight 打包上传与 Android 打包。
+- 已完成：
+  - Git 同步：提交并推送 `de28d5a`（战斗等级徽标与弹道贴图预热优化）。
+  - iOS TF：执行 `npm run release:tf` 成功；`ARCHIVE SUCCEEDED`、`EXPORT SUCCEEDED`、`UPLOAD SUCCEEDED`；构建号 `117 -> 118`。
+  - Android：执行 `npm run build:android-web` + `npm run android:sync` + `./gradlew bundleRelease`（JDK21）成功。
+    - 产物：`android/app/build/outputs/bundle/release/app-release.aab`。
+- 备注：
+  - Android 侧最初失败原因为本机默认 Java 17（报错 `无效的源发行版：21`），已切换 `openjdk@21` 重新打包通过。
+  - `@capacitor/core@8.2.0` 与 `@capacitor/android@8.1.0` 存在版本警告，当前不阻塞打包，后续可统一到同版本。
+- 当前阶段：等待用户在 TestFlight 与 Play Console 侧验收处理状态。
+
+## 文档补充（2026-03-18，增加线上工具与真机测试实操细节）
+
+- 用户要求：在帧率复盘文档中补充“具体用了什么网站/地址/如何真机测试”。
+- 已完成：更新 `design/mobile_fps_debug_summary.md`，新增：
+  - 线上游戏地址、Worker 地址、ingest/query 接口；
+  - 真机测试 URL 参数示例（`perf=1/perfEndpoint/perfToken/v`）；
+  - 实际执行的真机回归脚本（Day10 冷启动对照 + Day1->Day10 连续推进）；
+  - 查询命令样例（curl）与关键分析指标。
+- 当前阶段：等待用户审阅文档内容，如需可再追加“截图版操作步骤”。
+
+## 文档沉淀（2026-03-18，手机帧率排查复盘）
+
+- 用户要求：将本轮手机帧率调试过程、步骤与思路整理成可分享文档。
+- 已完成：新增复盘文档 `design/mobile_fps_debug_summary.md`，包含：
+  - 问题背景与现象分层；
+  - 按时间线的排查-修复步骤（含数据驱动归因）；
+  - 关键方法论与可复用模板；
+  - 最终有效修复清单与后续建议。
+- 当前阶段：等待用户审阅文档并决定是否同步 git。
+
 ## 战斗等级徽标隐藏（2026-03-18，按用户反馈直接收敛展示）
 
 - 用户反馈：战斗内敌我等级数字与背景框位置调节不稳定，要求直接隐藏该元素。
