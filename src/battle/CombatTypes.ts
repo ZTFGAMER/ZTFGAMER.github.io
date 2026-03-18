@@ -49,6 +49,7 @@ export interface CombatItemRunner {
     executeCount: number
     ammoMax: number
     ammoCurrent: number
+    ammoAutoReloadRemainingMs: number
     modifiers: {
       freezeMs: number
       slowMs: number
@@ -74,6 +75,7 @@ export interface CombatItemRuntimeState {
   tempDamageBonus: number
   ammoMax: number
   ammoCurrent: number
+  ammoAutoReloadRemainingMs: number
   freezeMs: number
   slowMs: number
   hasteMs: number

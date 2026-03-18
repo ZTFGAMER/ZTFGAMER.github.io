@@ -57,6 +57,7 @@ function makeRunner(input: RunnerInput): CombatItemRunner {
       executeCount: 0,
       ammoMax: 0,
       ammoCurrent: 0,
+      ammoAutoReloadRemainingMs: 0,
       ...(input.runtime ?? {}),
       modifiers: {
         freezeMs: 0,

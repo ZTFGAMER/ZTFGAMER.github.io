@@ -1785,7 +1785,7 @@ export class NeutralItemPanel extends Container {
       .filter((it) => {
         const arch = toSkillArchetype(getPrimaryArchetype(it.tags))
         if (arch !== 'warrior' && arch !== 'archer' && arch !== 'assassin') return false
-        return rule === 'same' ? arch === srcArch : true
+        return rule === 'same' ? arch === srcArch : arch !== srcArch
       })
   }
 

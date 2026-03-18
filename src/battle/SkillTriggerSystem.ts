@@ -86,8 +86,9 @@ export class SkillTriggerSystem {
       .sort((a, b) => (a.col - b.col) || a.id.localeCompare(b.id))
   }
 
-  minReducedCdMsFor(item: CombatItemRunner): number {
-    return this.hasSkill(item.side, 'skill40') ? 100 : MIN_REDUCED_CD_MS
+  minReducedCdMsFor(_item: CombatItemRunner): number {
+    const baseMin = Math.max(1000, MIN_REDUCED_CD_MS)
+    return baseMin
   }
 
   scaleShieldGain(side: 'player' | 'enemy', amount: number): number {
@@ -736,6 +737,7 @@ export class SkillTriggerSystem {
         (s) => /(?:武器|物品)伤害\+\d+(?:[\/|]\d+)*/.test(s)
           && !/相邻/.test(s)
           && !/所有刺客物品/.test(s)
+          && !/弹药物品.*双倍/.test(s)
           && !/其他武器攻击时该(?:武器|物品)伤害\+/.test(s),
       )
       if (allWeaponDamageLine) {
@@ -820,15 +822,15 @@ export class SkillTriggerSystem {
         }
       }
 
-      const phantomLine = lines.find((s) => /弹药物品伤害\+\d+(?:[\/|]\d+)*/.test(s) && /弹药消耗翻倍/.test(s))
+      const phantomLine = lines.find((s) => /物品伤害\+\d+(?:[\/|]\d+)*/.test(s) && /弹药物品.*双倍/.test(s))
       if (phantomLine) {
         const v = Math.round(tierValueFromLine(phantomLine, tIdx))
         if (v > 0) {
           for (const ally of this.state.items) {
             if (ally.side !== owner.side) continue
-            if (!isAmmoItem(ally)) continue
             if (!isDamageBonusEligible(ally)) continue
-            ally.baseStats.damage += v
+            const gain = isAmmoItem(ally) ? v * 2 : v
+            ally.baseStats.damage += gain
           }
         }
       }

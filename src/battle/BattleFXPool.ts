@@ -160,6 +160,8 @@ export class BattleFXPool {
   private projectileVariantCursor = new Map<string, number>()
   private projectileTextureCache = new Map<string, Texture>()
   private projectileMissingUrls = new Set<string>()
+  private transientProjectileTextureUrls = new Set<string>()
+  private textureLoadEpoch = 0
   private statusFxByKey = new Map<string, StatusFx>()
 
   setContext(
@@ -367,14 +369,21 @@ export class BattleFXPool {
     }
   }
 
-  private async resolveProjectileTexture(urls: string[]): Promise<Texture | null> {
-    for (const url of urls) {
+  private async resolveProjectileTexture(urls: string[], loadEpoch: number): Promise<Texture | null> {
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i]!
       if (this.projectileMissingUrls.has(url)) continue
       const cached = this.projectileTextureCache.get(url)
       if (cached) return cached
       try {
         const tex = await Assets.load<Texture>(url)
+        if (loadEpoch !== this.textureLoadEpoch) {
+          return null
+        }
         this.projectileTextureCache.set(url, tex)
+        if (i < urls.length - 1) {
+          this.transientProjectileTextureUrls.add(url)
+        }
         return tex
       } catch {
         this.projectileMissingUrls.add(url)
@@ -438,8 +447,9 @@ export class BattleFXPool {
       }
 
       const urls = this.collectProjectileIconUrls(sourceDef, sourceItemId)
+      const loadEpoch = this.textureLoadEpoch
       ;(async () => {
-        const tex = await this.resolveProjectileTexture(urls)
+        const tex = await this.resolveProjectileTexture(urls, loadEpoch)
         if (tex && (sprite as Sprite & { __fxUseId?: number }).__fxUseId === useId) sprite.texture = tex
       })()
     } else {
@@ -717,7 +727,6 @@ export class BattleFXPool {
     const haste = makeStatusBadge()
     const slow = makeStatusBadge()
     const freeze = makeStatusBadge()
-
     root.addChild(haste.box, haste.text)
     root.addChild(slow.box, slow.text)
     root.addChild(freeze.box, freeze.text)
@@ -777,7 +786,6 @@ export class BattleFXPool {
       drawStatusBadge(fx.haste, hasteMs > 0 ? formatStatusSec(hasteMs) : '', getBattleOrbColor('haste'), cx, hasteY, fontSize)
       drawStatusBadge(fx.slow, slowMs > 0 ? formatStatusSec(slowMs) : '', getBattleOrbColor('slow'), cx, slowY, fontSize)
       drawStatusBadge(fx.freeze, freezeMs > 0 ? formatStatusSec(freezeMs) : '', getBattleOrbColor('freeze'), cx, freezeY, fontSize)
-
       if (freezeMs > 0) {
         const r = Math.max(4, getDebugCfg('gridItemCornerRadius') - 1)
         const sx = cx + (x - cx) * scale
@@ -814,6 +822,17 @@ export class BattleFXPool {
   }
 
   reset(): void {
+    this.textureLoadEpoch += 1
+    this.transientProjectileTextureUrls.clear()
+
+    if (this.fxLayer) {
+      const children = this.fxLayer.children.slice()
+      for (const child of children) {
+        this.fxLayer.removeChild(child)
+        child.destroy({ children: true })
+      }
+    }
+
     this.activeProjectileCount = 0
     this.activeFloatingNumberCount = 0
     this.pendingDelayedDamageVisualCount = 0

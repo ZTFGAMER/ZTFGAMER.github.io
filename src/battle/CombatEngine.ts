@@ -12,7 +12,7 @@ import type {
 import { createCombatState } from './CombatTypes'
 import {
   DEBUG_SHIELD_CHARGE, HERO_MAX_HP_CAP, HERO_SHIELD_CAP, ITEM_DAMAGE_CAP,
-  pickTierSeriesValue, makeSeededRng, tierIndexFromRaw, parseControlSpecsFromDef, rv,
+  pickTierSeriesValue, makeSeededRng, tierIndexFromRaw, tierScoreFromRaw, parseControlSpecsFromDef, rv,
   findItemDef, skillLines, tierValueFromLine, isAdjacentByFootprint, isShieldItem, isAmmoItem,
   isDamageBonusEligible, itemArchetype, hasLine, isItemDestroyImmune,
   seedFrom,
@@ -412,13 +412,7 @@ export class CombatEngine {
           const emptyAmmoBurstLine = lines.find((s) => /弹药耗尽时造成\d+(?:[\/|]\d+)*倍伤害/.test(s))
           if (emptyAmmoBurstLine && it.runtime.ammoMax > 0 && it.runtime.ammoCurrent > 0) {
             const emptyAmmoBurstMul = Math.max(1, tierValueFromLine(emptyAmmoBurstLine, tIdx))
-            const phantomCount = this.state.items.filter((other) => {
-              if (other.side !== it.side) return false
-              if (other.id === it.id) return false
-              const otherDef = findItemDef(other.defId)
-              return skillLines(otherDef).some((line) => /弹药物品伤害\+\d+(?:[\/|]\d+)*，弹药消耗翻倍/.test(line))
-            }).length
-            const ammoSpendPerUse = 1 + phantomCount
+            const ammoSpendPerUse = 1
             const willEmptyAmmoThisUse = it.runtime.ammoCurrent - ammoSpendPerUse <= 0
             if (willEmptyAmmoThisUse && emptyAmmoBurstMul > 1) {
               runtimeDamage = Math.max(0, Math.round(runtimeDamage * emptyAmmoBurstMul))
@@ -499,6 +493,7 @@ export class CombatEngine {
           tempDamageBonus: it.runtime.tempDamageBonus,
           ammoMax: it.runtime.ammoMax,
           ammoCurrent: it.runtime.ammoCurrent,
+          ammoAutoReloadRemainingMs: Math.max(0, it.runtime.ammoAutoReloadRemainingMs),
           freezeMs: it.runtime.modifiers.freezeMs,
           slowMs: it.runtime.modifiers.slowMs,
           hasteMs: it.runtime.modifiers.hasteMs,
@@ -842,6 +837,16 @@ export class CombatEngine {
     }
   }
 
+  scheduleChargePulses(
+    source: CombatItemRunner,
+    target: CombatItemRunner,
+    times: number,
+    gainMs: number,
+    intervalTick: number,
+  ): void {
+    this.scheduleRepeatedChargePulses(source, target, times, gainMs, intervalTick)
+  }
+
   enqueueExtraTriggeredUse(source: CombatItemRunner): void {
     const nextTick = this.state.tickIndex + 1
     this.pushPendingItemFire({
@@ -875,6 +880,9 @@ export class CombatEngine {
     if (beforeCurrent >= beforeMax) return 0
     target.runtime.ammoCurrent = Math.min(beforeMax, beforeCurrent + gain)
     const actualGained = Math.max(0, target.runtime.ammoCurrent - beforeCurrent)
+    if (actualGained > 0 && target.runtime.ammoCurrent > 0) {
+      target.runtime.ammoAutoReloadRemainingMs = 0
+    }
     if (actualGained > 0) this.skillSystem.applyOnAmmoRefilledDamageGrowth(target, actualGained)
     return actualGained
   }
@@ -1005,13 +1013,38 @@ export class CombatEngine {
       if (item.runtime.modifiers.hasteMs > 0) gain *= 1 + hasteFactor
 
       const effectiveCooldown = this.effectiveCooldownMs(item)
+      const needsAmmo = item.runtime.ammoMax > 0
+      const hasAmmo = item.runtime.ammoCurrent > 0
+      if (!needsAmmo || hasAmmo) item.runtime.ammoAutoReloadRemainingMs = 0
       item.runtime.currentChargeMs += gain
       if (item.runtime.currentChargeMs >= effectiveCooldown) {
-        const needsAmmo = item.runtime.ammoMax > 0
-        const hasAmmo = item.runtime.ammoCurrent > 0
         if (needsAmmo && !hasAmmo) {
-          // 弹药武器无弹时：停在“已充能完成”状态，等待补弹后立刻可发射
+          // 弹药武器无弹时：停在“已充能完成”状态。
+          // 新增容错：进入自动装填倒计时，结束后补1发并立即触发。
           item.runtime.currentChargeMs = effectiveCooldown
+          const reloadMsCfg = Math.max(0, Math.round(getConfig().combatRuntime.ammoAutoReloadMs))
+          if (reloadMsCfg <= 0) {
+            item.runtime.ammoAutoReloadRemainingMs = 0
+            continue
+          }
+          if (item.runtime.ammoAutoReloadRemainingMs <= 0 || item.runtime.ammoAutoReloadRemainingMs > reloadMsCfg) {
+            item.runtime.ammoAutoReloadRemainingMs = reloadMsCfg
+            continue
+          }
+          item.runtime.ammoAutoReloadRemainingMs = Math.max(0, item.runtime.ammoAutoReloadRemainingMs - tickMs)
+          if (item.runtime.ammoAutoReloadRemainingMs > 0) continue
+
+          const gained = this.refillAmmoAndTriggerGrowth(item, 1)
+          if (gained <= 0) {
+            item.runtime.ammoAutoReloadRemainingMs = reloadMsCfg
+            continue
+          }
+
+          item.runtime.ammoAutoReloadRemainingMs = 0
+          item.runtime.currentChargeMs = 0
+          item.runtime.executeCount += 1
+          this.applyPendingChargeToFreshCycle(item)
+          queue.push(item)
         } else {
           item.runtime.currentChargeMs = 0
           item.runtime.executeCount += 1
@@ -1155,6 +1188,7 @@ export class CombatEngine {
       extraTriggered: fromExtraTrigger,
     })
 
+    this.itemSystem.applyAdjacentUseChargeTriggers(item, useRepeatCount, shotIntervalTick)
     for (let i = 0; i < useRepeatCount; i++) {
       this.itemSystem.applyAdjacentUseHasteTriggers(item)
       this.itemSystem.applyAdjacentUseEnchantControlTriggers(item)
@@ -1308,6 +1342,22 @@ export class CombatEngine {
           if (!isAdjacentByFootprint(ally, item)) continue
           if (ally.baseStats.shield <= 0) continue
           ally.baseStats.shield += v
+        }
+      }
+    }
+
+    const adjacentShieldChargeLine = lines.find((s) => /使用时相邻(?:的)?护盾物品充能\s*[+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)?秒/.test(s))
+    if (adjacentShieldChargeLine) {
+      const secSeries = adjacentShieldChargeLine.match(/充能\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)\s*秒/)?.[1]
+      const sec = secSeries ? Math.max(0, pickTierSeriesValue(secSeries, tIdx)) : 0
+      const gainMs = Math.round(sec * 1000)
+      if (gainMs > 0) {
+        for (const ally of this.state.items) {
+          if (ally.side !== item.side || ally.id === item.id) continue
+          if (!isAdjacentByFootprint(ally, item)) continue
+          if (ally.baseStats.shield <= 0) continue
+          if (useRepeatCount <= 1) this.chargeItemByMs(ally, gainMs)
+          else this.scheduleRepeatedChargePulses(item, ally, useRepeatCount, gainMs, shotIntervalTick)
         }
       }
     }
@@ -1630,12 +1680,7 @@ export class CombatEngine {
 
     if (item.runtime.ammoMax > 0) {
       const ammoBefore = item.runtime.ammoCurrent
-      const phantomCount = this.state.items.filter((it) => {
-        if (it.side !== item.side) return false
-        const def2 = findItemDef(it.defId)
-        return hasLine(def2, /弹药物品伤害\+\d+(?:[\/|]\d+)*[，,]?弹药消耗翻倍/)
-      }).length
-      const singleUseCost = Math.max(1, 1 + phantomCount)
+      const singleUseCost = 1
       if (isAllAmmoShot) item.runtime.ammoCurrent = Math.max(0, item.runtime.ammoCurrent - fireCount)
       else item.runtime.ammoCurrent = Math.max(0, item.runtime.ammoCurrent - singleUseCost)
       const ammoSpent = Math.max(0, ammoBefore - item.runtime.ammoCurrent)
@@ -1666,6 +1711,7 @@ export class CombatEngine {
       }
 
       if (becameEmpty) {
+        const tacticalBackpackSupports: Array<{ owner: CombatItemRunner; gain: number; levelScore: number }> = []
         for (const owner of this.state.items) {
           if (owner.side !== item.side) continue
           const ownerDef = findItemDef(owner.defId)
@@ -1673,11 +1719,25 @@ export class CombatEngine {
           if (!line) continue
           const gain = Math.max(0, Math.round(tierValueFromLine(line, tierIndexFromRaw(ownerDef, owner.tier))))
           if (gain <= 0) continue
+          tacticalBackpackSupports.push({ owner, gain, levelScore: tierScoreFromRaw(owner.tier) })
+        }
+        if (tacticalBackpackSupports.length > 0) {
+          let best = tacticalBackpackSupports[0]!
+          for (let i = 1; i < tacticalBackpackSupports.length; i++) {
+            const one = tacticalBackpackSupports[i]!
+            if (one.levelScore > best.levelScore) {
+              best = one
+              continue
+            }
+            if (one.levelScore === best.levelScore && one.owner.id < best.owner.id) {
+              best = one
+            }
+          }
           this.pushPendingAmmoRefill({
             dueTick: this.state.tickIndex + 1,
-            sourceItemId: owner.id,
+            sourceItemId: best.owner.id,
             targetItemId: item.id,
-            gainAmmo: gain,
+            gainAmmo: best.gain,
             chargeMs: 1000,
           })
         }
@@ -1771,10 +1831,20 @@ export class CombatEngine {
       if (pctMatch?.[1]) {
         const pct = Math.max(0, Math.min(0.95, tierValueFromLine(pctMatch[1], tIdx) / 100))
         if (pct > 0) {
-          const factor = Math.pow(1 - pct, useRepeatCount)
+          const rawTierCooldown = (def?.cooldown_tiers ?? '').trim()
+          const baseCooldown = (() => {
+            if (rawTierCooldown && rawTierCooldown !== '无') {
+              const v = pickTierSeriesValue(rawTierCooldown, tIdx)
+              if (Number.isFinite(v) && v > 0) return v
+            }
+            const fallback = Number(def?.cooldown)
+            return Number.isFinite(fallback) ? Math.max(0, fallback) : item.baseStats.cooldownMs
+          })()
+          const reducePerUse = Math.round(baseCooldown * pct)
+          const totalReduce = Math.max(0, reducePerUse * useRepeatCount)
           item.baseStats.cooldownMs = Math.max(
             this.skillSystem.minReducedCdMsFor(item),
-            Math.round(item.baseStats.cooldownMs * factor),
+            item.baseStats.cooldownMs - totalReduce,
           )
         }
       } else {

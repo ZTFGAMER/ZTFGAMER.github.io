@@ -12,7 +12,7 @@ import { getConfig as getGameConfig } from '@/core/DataLoader'
 import { normalizeSize } from '@/common/items/ItemDef'
 import { CELL_SIZE } from '@/common/grid/GridZone'
 import { getBuffIconUrl, getItemIconUrl } from '@/core/AssetPath'
-import { getTierColor } from '@/config/colorPalette'
+import { getBattleEffectColor, getTierColor } from '@/config/colorPalette'
 import { isSkillItemDefId } from '@/common/skills/SkillItemDefs'
 
 const DEFAULT_POPUP_W = 400
@@ -52,6 +52,7 @@ export interface ItemInfoCustomDisplay {
   useQuestionIcon?: boolean
   hideName?: boolean
   centerRichLineInFrame?: boolean
+  hideCooldownBadge?: boolean
 }
 
 export interface ItemInfoEnchantmentDisplay {
@@ -114,10 +115,11 @@ function pickTierValue(series: string, tierIndex: number): string {
   const parts = series.split(/[\/|]/).map(v => v.trim()).filter(Boolean)
   if (parts.length <= 1) return series
   const idx = Math.max(0, Math.min(parts.length - 1, tierIndex))
-  const picked = parts[idx] ?? parts[0] ?? series
+  let picked = parts[idx] ?? parts[0] ?? series
   const head = parts[0] ?? ''
   const headSign = head.match(/^[+\-]/)?.[0] ?? ''
-  if (headSign && !/^[+\-]/.test(picked)) return `${headSign}${picked}`
+  if (headSign && !/^[+\-]/.test(picked)) picked = `${headSign}${picked}`
+  if (series.includes('%') && !picked.includes('%')) picked = `${picked}%`
   return picked
 }
 
@@ -210,7 +212,7 @@ function extractSimpleStatEntries(
     out.push({
       label: '伤害',
       value: multicast > 1 ? `${damage}*${multicast}` : damage,
-      color: 0xff6b6b,
+      color: getBattleEffectColor('hp'),
       icon: '✦',
     })
   }
@@ -220,8 +222,8 @@ function extractSimpleStatEntries(
     out.push({
       label: '护盾',
       value: shield,
-      color: 0xf5d46b,
-      icon: '🛡',
+      color: getBattleEffectColor('shield'),
+      icon: '🛡️',
     })
   }
 
@@ -230,7 +232,7 @@ function extractSimpleStatEntries(
     out.push({
       label: '回血',
       value: heal,
-      color: 0x73e6a6,
+      color: getBattleEffectColor('regen'),
       icon: '✚',
     })
   }
@@ -320,6 +322,14 @@ function isPureStatLine(line: string): boolean {
   return false
 }
 
+function stripCooldownDisplayFromLine(line: string): string {
+  let out = line
+  out = out.replace(/(?:^|[，,、\s])(?:冷却|间隔)\s*[:：]?\s*\d+(?:\.\d+)?\s*(?:秒|s|ms)(?=$|[，,、\s])/gi, ' ')
+  out = out.replace(/[，,、]\s*[，,、]+/g, '，')
+  out = out.replace(/[，,、]\s*$/g, '')
+  return out.trim()
+}
+
 function applyRuntimeValueToLine(line: string, rt?: ItemInfoRuntimeOverride): string {
   if (!rt) return line
   let out = line
@@ -368,7 +378,11 @@ export class SellPopup extends Container {
   private tierBadgeBg: Graphics
   private tierBadgeT: Text
   private cooldownT: Text
+  private cooldownLabelT: Text
+  private cooldownBadgeG: Graphics
   private priceT:  Text
+  private headerStatsCon: Container
+  private headerStatTexts: Text[] = []
   private descCon: Container
   private descDividerG: Graphics
   private descTexts: Text[] = []
@@ -479,12 +493,25 @@ export class SellPopup extends Container {
     this.cooldownT = new Text({
       text: '',
       style: {
-        fontSize: this.textSize.cooldown,
-        fill: 0x62a8ff,
+        fontSize: Math.max(20, this.textSize.cooldown + 6),
+        fill: 0xffffff,
         fontFamily: 'Arial',
         fontWeight: 'bold',
       },
     })
+    this.cooldownLabelT = new Text({
+      text: 'CD',
+      style: {
+        fontSize: Math.max(12, this.textSize.cooldown - 6),
+        fill: 0xbfd8ff,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+      },
+    })
+    this.cooldownBadgeG = new Graphics()
+    this.cooldownBadgeG.visible = false
+    this.panel.addChild(this.cooldownBadgeG)
+    this.panel.addChild(this.cooldownLabelT)
     this.panel.addChild(this.cooldownT)
 
     // 出售价格
@@ -493,6 +520,9 @@ export class SellPopup extends Container {
       style: { fontSize: this.textSize.priceCorner, fill: 0xffd700, fontFamily: 'Arial', align: 'left', fontWeight: 'bold' },
     })
     this.panel.addChild(this.priceT)
+
+    this.headerStatsCon = new Container()
+    this.panel.addChild(this.headerStatsCon)
 
     // 技能描述（分行渲染 + 分隔线）
     this.descCon = new Container()
@@ -559,9 +589,10 @@ export class SellPopup extends Container {
       desc:  n(sizes.desc,  this.textSize.desc),
       simpleDesc: n(sizes.simpleDesc, this.textSize.simpleDesc),
     }
-    this.nameT.style.fontSize  = this.textSize.name
+    this.nameT.style.fontSize  = this.textSize.name + 2
     this.tierBadgeT.style.fontSize = this.textSize.tier
     this.cooldownT.style.fontSize = this.textSize.cooldown
+    this.cooldownLabelT.style.fontSize = Math.max(12, this.textSize.cooldown - 6)
     this.priceT.style.fontSize = this.textSize.priceCorner
     if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay)
   }
@@ -624,14 +655,15 @@ export class SellPopup extends Container {
     const fromTierIndex = Math.max(0, tierScoreFromRaw(fromRaw) - startScore)
     const inUpgradePreview = Boolean(upgradeFromTier && fromTier !== tier)
     // 先更新字体，再计算布局
-    this.nameT.style.fontSize  = this.textSize.name
+    this.nameT.style.fontSize  = this.textSize.name + 8
     this.tierBadgeT.style.fontSize = this.textSize.tier
     this.cooldownT.style.fontSize = this.textSize.cooldown
     this.priceT.style.fontSize = this.textSize.priceCorner
 
     const overrideName = customDisplay?.overrideName
     const baseName = (typeof overrideName === 'string') ? overrideName.trim() : item.name_cn
-    this.nameT.text  = enchantmentDisplay?.titleSuffixCn ? `${baseName}（${enchantmentDisplay.titleSuffixCn}）` : baseName
+    const headerName = enchantmentDisplay?.titleSuffixCn ? `${baseName}（${enchantmentDisplay.titleSuffixCn}）` : baseName
+    this.nameT.text  = headerName
     this.priceT.text = ''
     this.priceT.visible = false
     const cooldownLine = (() => {
@@ -645,6 +677,14 @@ export class SellPopup extends Container {
       if (oldSec && newSec) return `间隔：${oldSec}秒 -> ${newSec}秒`
       return formatCooldownLine(item, tierIndex)
     })()
+    const cooldownBadgeValue = (() => {
+      if (runtimeOverride && typeof runtimeOverride.cooldownMs === 'number') {
+        const sec = Math.max(0, runtimeOverride.cooldownMs) / 1000
+        if (sec <= 0) return null
+        return (Math.round(sec * 10) / 10).toFixed(1)
+      }
+      return getCooldownSecText(item, tierIndex)
+    })()
     this.cooldownT.text = cooldownLine ?? ''
     this.cooldownT.visible = false
 
@@ -655,7 +695,7 @@ export class SellPopup extends Container {
     const descGuideTiered = item.simple_desc_tiered?.trim() || undefined
 
     const statLines = skillLinesRaw.map((s) => applyRuntimeValueToLine(formatDescByTier(s, tierIndex), runtimeOverride))
-    const simpleStats = customDisplay?.suppressStats
+    const rawSimpleStats = customDisplay?.suppressStats
       ? []
       : (() => {
         if (!inUpgradePreview) return extractSimpleStatEntries(statLines, item, tierIndex, runtimeOverride, infoMode)
@@ -669,6 +709,46 @@ export class SellPopup extends Container {
           return { ...s, value: `${fromValue}->${s.value}` }
         })
       })()
+    this.nameT.text = headerName
+    for (const t of this.headerStatTexts) {
+      if (t.parent) t.parent.removeChild(t)
+      t.destroy()
+    }
+    this.headerStatTexts = []
+    this.headerStatsCon.removeChildren()
+    const headerInlineStats = [
+      { key: '伤害', color: 0xff6b6b },
+      { key: '护盾', color: 0xf5d46b },
+      { key: '回血', color: 0x73e6a6 },
+    ] as const
+    let statCursorX = 0
+    for (const def of headerInlineStats) {
+      const hit = rawSimpleStats.find((s) => s.label === def.key)
+      if (!hit) continue
+      const t = new Text({
+          text: `${hit.icon}${hit.label}${hit.value}`,
+          style: {
+          fontSize: Math.max(20, this.textSize.name + 6),
+          fill: def.color,
+          fontFamily: 'Arial',
+          fontWeight: 'bold',
+        },
+      })
+      t.x = statCursorX
+      t.y = 0
+      this.headerStatsCon.addChild(t)
+      this.headerStatTexts.push(t)
+      statCursorX += t.width + 14
+    }
+    const simpleStats = rawSimpleStats.filter((entry) => (
+      entry.label !== '间隔'
+      && entry.label !== '速度'
+      && entry.label !== '伤害'
+      && entry.label !== '护盾'
+      && entry.label !== '回血'
+      && entry.label !== '弹药'
+    ))
+    const ammoEntry = rawSimpleStats.find((entry) => entry.label === '弹药')
     const descLines = (() => {
       if (customDisplay?.lines && customDisplay.lines.length > 0) {
         const out = [...customDisplay.lines]
@@ -707,12 +787,23 @@ export class SellPopup extends Container {
       if (enchantmentDisplay?.effectCn) out.push(`附魔：${enchantmentDisplay.effectCn}`)
       return out
     })()
+    if (ammoEntry) {
+      const ammoText = `弹药：${ammoEntry.value}`
+      if (descLines.length > 0) {
+        descLines[0] = `${descLines[0]}，${ammoText}`
+      } else {
+        descLines.push(ammoText)
+      }
+    }
     if (isSkillItemDefId(item.id)) {
       const skillActiveHint = '（放到背包中即可生效）'
       if (!descLines.includes(skillActiveHint)) descLines.push(skillActiveHint)
     }
 
     const isSimple = infoMode === 'simple'
+    const showCooldownBadge = Boolean(cooldownBadgeValue) && !customDisplay?.hideCooldownBadge
+    const cooldownBadgeRadius = 38
+    const cooldownBadgeReserve = showCooldownBadge ? (cooldownBadgeRadius * 2 + 12) : 0
 
     const frameX = pad
     const frameY = top
@@ -752,11 +843,11 @@ export class SellPopup extends Container {
     }
 
     let rightX = frameX + frameW + gap
-    let rightW = Math.max(120, this.panelW - rightX - pad)
+    let rightW = Math.max(120, this.panelW - rightX - pad - cooldownBadgeReserve)
     const simpleNarrowLayout = isSimple && (rightX + 120 > this.panelW - pad)
     if (simpleNarrowLayout) {
       rightX = pad
-      rightW = Math.max(120, this.panelW - pad * 2)
+      rightW = Math.max(120, this.panelW - pad * 2 - cooldownBadgeReserve)
     }
     this.nameT.style.wordWrap = false
     this.nameT.style.wordWrapWidth = rightW
@@ -764,6 +855,9 @@ export class SellPopup extends Container {
     this.nameT.x = rightX
     this.nameT.y = top
     this.nameT.visible = !isSimple && !customDisplay?.hideName
+    this.headerStatsCon.x = rightX + this.nameT.width + 12
+    this.headerStatsCon.y = top + 2
+    this.headerStatsCon.visible = this.nameT.visible && this.headerStatTexts.length > 0
 
     this.tierBadgeT.text = inUpgradePreview && fromTierLabel !== tierLabel ? `${fromTierLabel}->${tierLabel}` : tierLabel
     const badgePadX = 10
@@ -774,8 +868,9 @@ export class SellPopup extends Container {
     this.cooldownT.x = this.panelW - pad - this.cooldownT.width
     this.cooldownT.y = top
     this.cooldownT.visible = false
+    this.cooldownLabelT.visible = false
 
-    const tierMaxX = (this.cooldownT.visible ? this.cooldownT.x - 8 : (this.panelW - pad)) - badgeW + badgePadX
+    const tierMaxX = (this.panelW - pad - cooldownBadgeReserve) - badgeW + badgePadX
     this.tierBadgeT.x = Math.max(rightX + badgePadX, Math.min(tierMaxX, rightX + this.nameT.width + nameTierGap + badgePadX))
     this.tierBadgeT.y = this.nameT.y + 2
     this.tierBadgeBg.clear()
@@ -785,9 +880,33 @@ export class SellPopup extends Container {
       this.tierBadgeBg.stroke({ color: 0xffffff, width: 1, alpha: 0.5 })
     }
     const forceWhiteDesc = item.name_cn === '原石' || item.name_cn === '空白卷轴'
-    const showTierBadge = !isSimple && !customDisplay?.hideTierBadge
+    const showTierBadge = false
     this.tierBadgeBg.visible = showTierBadge
     this.tierBadgeT.visible = showTierBadge
+
+    this.cooldownBadgeG.clear()
+    if (showCooldownBadge) {
+      const cx = this.panelW - pad - cooldownBadgeRadius
+      const cy = frameY + frameH / 2
+      this.cooldownBadgeG.circle(cx, cy, cooldownBadgeRadius)
+      this.cooldownBadgeG.fill({ color: 0x203c64, alpha: 0.96 })
+      this.cooldownBadgeG.stroke({ color: 0x8ec5ff, width: 3, alpha: 0.95 })
+      this.cooldownBadgeG.visible = true
+      this.cooldownT.text = cooldownBadgeValue ?? ''
+      this.cooldownT.style.fontSize = Math.max(20, this.textSize.cooldown + 6)
+      this.cooldownLabelT.style.fontSize = Math.max(12, this.textSize.cooldown - 6)
+      this.cooldownLabelT.text = 'CD'
+      this.cooldownLabelT.x = cx - this.cooldownLabelT.width / 2
+      this.cooldownLabelT.y = cy - cooldownBadgeRadius + 9
+      this.cooldownT.x = cx - this.cooldownT.width / 2
+      this.cooldownT.y = cy - this.cooldownT.height / 2 + 8
+      this.cooldownLabelT.visible = true
+      this.cooldownT.visible = true
+    } else {
+      this.cooldownBadgeG.visible = false
+      this.cooldownLabelT.visible = false
+      this.cooldownT.visible = false
+    }
 
     // 描述区布局
     this.descCon.x = rightX
@@ -808,6 +927,12 @@ export class SellPopup extends Container {
 
     let cursorY = 0
     const lineGap = 6
+    if (descLines.length > 0 || simpleStats.length > 0) {
+      this.descDividerG.moveTo(0, 2)
+      this.descDividerG.lineTo(rightW, 2)
+      this.descDividerG.stroke({ color: 0x5a628f, width: 1, alpha: 0.9 })
+      cursorY += 10
+    }
     if (simpleStats.length > 0) {
       let statX = 0
       let statLineH = 0
@@ -842,6 +967,10 @@ export class SellPopup extends Container {
         cursorY += 10
       }
     }
+
+    const sanitizedDescLines = descLines
+      .map((line) => stripCooldownDisplayFromLine(line))
+      .filter((line) => line.length > 0)
 
     const richLineSegments = customDisplay?.richLineSegments
     if (richLineSegments && richLineSegments.length > 0) {
@@ -883,10 +1012,10 @@ export class SellPopup extends Container {
       row.y = rowY
       cursorY = rowY + rowH
     } else {
-      for (let i = 0; i < descLines.length; i++) {
+      for (let i = 0; i < sanitizedDescLines.length; i++) {
         const lineStyle = customDisplay?.lineStyles?.[i]
         const t = new Text({
-          text: descLines[i] ?? '',
+          text: sanitizedDescLines[i] ?? '',
           style: {
             fontSize: lineStyle?.fontSize ?? (isSimple ? this.textSize.simpleDesc : this.textSize.desc),
             fill: lineStyle?.fill ?? (forceWhiteDesc ? 0xffffff : 0xbfc7f5),
@@ -902,13 +1031,13 @@ export class SellPopup extends Container {
         this.descCon.addChild(t)
         this.descTexts.push(t)
         cursorY += t.height
-        if (descLines.length >= 2 && i < descLines.length - 1) {
+        if (sanitizedDescLines.length >= 2 && i < sanitizedDescLines.length - 1) {
           const y = cursorY + Math.max(2, Math.round(lineGap / 2))
           this.descDividerG.moveTo(0, y)
           this.descDividerG.lineTo(rightW, y)
           this.descDividerG.stroke({ color: 0x5a628f, width: 1, alpha: 0.9 })
           cursorY += lineGap + 2
-        } else if (i < descLines.length - 1) {
+        } else if (i < sanitizedDescLines.length - 1) {
           cursorY += lineGap
         }
       }

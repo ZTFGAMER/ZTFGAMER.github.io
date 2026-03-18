@@ -431,6 +431,14 @@ export function synthesizeTarget(
   }
   const filterCrossSynthesisPool = (list: ItemDef[]): ItemDef[] => {
     let out = list.filter((it) => it.id !== sourceDef.id && it.id !== targetDef.id)
+    const sourceArch = toSkillArchetype(getPrimaryArchetype(sourceDef.tags))
+    const targetArch = toSkillArchetype(getPrimaryArchetype(targetDef.tags))
+    const shouldExcludeSameArch = (
+      sourceArch === 'warrior' || sourceArch === 'archer' || sourceArch === 'assassin'
+    ) && sourceArch === targetArch
+    if (shouldExcludeSameArch) {
+      out = out.filter((it) => toSkillArchetype(getPrimaryArchetype(it.tags)) !== sourceArch)
+    }
     if (runPoolSet.size > 0) out = out.filter((it) => runPoolSet.has(it.id))
     return out
   }

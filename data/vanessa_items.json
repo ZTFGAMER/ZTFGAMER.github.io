@@ -10,8 +10,8 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 2500,
-    "cooldown_tiers": "2500",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000|3500|3000|2500|2000|1500",
     "skills": [
       {
         "en": "",
@@ -19,7 +19,7 @@
       },
       {
         "en": "",
-        "cn": "使用时相邻护盾物品护盾+10|15|23|35|53|80|120。"
+        "cn": "使用时相邻护盾物品充能2秒。"
       }
     ],
     "icon": "item1",
@@ -27,8 +27,8 @@
       "item1"
     ],
     "attack_style": "旋转飞行",
-    "simple_desc": "使用后相邻物品护盾提升",
-    "simple_desc_tiered": "使用时相邻护盾物品护盾+10|15|23|35|53|80|120"
+    "simple_desc": "使用后相邻护盾物品充能",
+    "simple_desc_tiered": "使用时相邻护盾物品充能2秒"
   },
   {
     "id": "578d9e51-a6c2-4c40-9dcd-60420ffe91c6",
@@ -41,18 +41,22 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 2500,
-    "cooldown_tiers": "2500",
+    "cooldown": 6000,
+    "cooldown_tiers": "6000|5500|5000|4500|4000|3500|3000",
     "skills": [
       {
         "en": "",
-        "cn": "获得20|30|45|68|102|153|230护盾。"
+        "cn": "获得10|15|23|35|53|80|120护盾。"
+      },
+      {
+        "en": "",
+        "cn": "每次使用后护盾+10|15|23|35|53|80|120。"
       }
     ],
     "icon": "item2",
     "attack_style": "旋转飞行",
-    "simple_desc": "获得护盾抵挡伤害",
-    "simple_desc_tiered": "获得护盾抵挡伤害"
+    "simple_desc": "每次使用后护盾提升",
+    "simple_desc_tiered": "每次使用后护盾+10|15|23|35|53|80|120"
   },
   {
     "id": "0c6beae3-3f07-4496-957b-447dde815ffb",
@@ -65,8 +69,8 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 2500,
-    "cooldown_tiers": "2500",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000|3500|3000|2500|2000|1500|1000",
     "skills": [
       {
         "en": "",
@@ -89,8 +93,8 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "cooldown": 7000,
+    "cooldown_tiers": "7000|6500|6000|5500|5000|4500",
     "skills": [
       {
         "en": "",
@@ -120,8 +124,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 1500,
-    "cooldown_tiers": "1500",
+    "cooldown": 4500,
+    "cooldown_tiers": "4500|4000|3500|3000|2500|2000|1500",
     "skills": [
       {
         "en": "",
@@ -148,8 +152,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 2500,
-    "cooldown_tiers": "2500",
+    "cooldown": 5000,
+    "cooldown_tiers": "5000|4500|4000|3500|3000|2500|2000",
     "skills": [
       {
         "en": "",
@@ -179,8 +183,8 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 2500,
-    "cooldown_tiers": "2500",
+    "cooldown": 6000,
+    "cooldown_tiers": "6000|5500|5000|4500|4000|3500",
     "skills": [
       {
         "en": "",
@@ -207,8 +211,8 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "cooldown": 6000,
+    "cooldown_tiers": "6000|5500|5000|4500|4000|3500",
     "skills": [
       {
         "en": "",
@@ -238,8 +242,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 1000,
-    "cooldown_tiers": "1000",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000|3500|3000|2500|2000|1500",
     "skills": [
       {
         "en": "",
@@ -266,8 +270,8 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 1500,
-    "cooldown_tiers": "1500",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000|3000",
     "skills": [
       {
         "en": "",
@@ -275,13 +279,13 @@
       },
       {
         "en": "",
-        "cn": "使用后所有护盾物品+50|75护盾。"
+        "cn": "使用后所有护盾物品+100|150护盾。"
       }
     ],
     "icon": "item13",
     "attack_style": "旋转飞行",
     "simple_desc": "使用后所有护盾物品护盾提升",
-    "simple_desc_tiered": "使用后所有护盾物品+50|75护盾"
+    "simple_desc_tiered": "使用后所有护盾物品+100|150护盾"
   },
   {
     "id": "ea7d8f3c-b0c8-4570-90de-4a706657f3f2",
@@ -294,8 +298,8 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "cooldown": 9000,
+    "cooldown_tiers": "9000|8500|8000|7500",
     "skills": [
       {
         "en": "",
@@ -322,8 +326,8 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "cooldown": 5000,
+    "cooldown_tiers": "5000|4000",
     "skills": [
       {
         "en": "",
@@ -350,8 +354,8 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 6000,
-    "cooldown_tiers": "6000",
+    "cooldown": 9000,
+    "cooldown_tiers": "9000|8500|8000|7500",
     "skills": [
       {
         "en": "",
@@ -381,8 +385,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 600,
-    "cooldown_tiers": "600",
+    "cooldown": 1500,
+    "cooldown_tiers": "1500",
     "skills": [
       {
         "en": "",
@@ -412,8 +416,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "cooldown": 16000,
+    "cooldown_tiers": "16000|12000",
     "skills": [
       {
         "en": "",
@@ -421,13 +425,13 @@
       },
       {
         "en": "",
-        "cn": "造成目标最大生命值20%|30%的伤害。"
+        "cn": "造成目标最大生命值20%|30%的伤害，使用相邻物品充能1秒。"
       }
     ],
     "icon": "item18",
     "attack_style": "旋转飞行",
     "simple_desc": "造成百分比伤害",
-    "simple_desc_tiered": "造成目标最大生命值20%|30%的伤害"
+    "simple_desc_tiered": "造成目标最大生命值20%|30%的伤害，使用相邻物品充能1秒"
   },
   {
     "id": "5a1d3f01-744e-4a2b-bf93-0f8dcf6bf0e5",
@@ -440,12 +444,12 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "cooldown": 6000,
+    "cooldown_tiers": "6000|5500|5000|4500|4000|3500",
     "skills": [
       {
         "en": "",
-        "cn": "获得30|45|68|102|153|230护盾。"
+        "cn": "获得20|30|45|68|102|153护盾。"
       },
       {
         "en": "",
@@ -468,8 +472,8 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 1500,
-    "cooldown_tiers": "1500",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000|3500|3000|2500|2000|1500",
     "skills": [
       {
         "en": "",
@@ -500,7 +504,7 @@
     "tags": "刺客",
     "position": "",
     "cooldown": 6000,
-    "cooldown_tiers": "6000",
+    "cooldown_tiers": "6000|5500|5000|4500|4000|3500",
     "skills": [
       {
         "en": "",
@@ -528,7 +532,7 @@
     "tags": "战士",
     "position": "",
     "cooldown": 6000,
-    "cooldown_tiers": "6000",
+    "cooldown_tiers": "6000|5500|5000|4500",
     "skills": [
       {
         "en": "",
@@ -555,8 +559,8 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 2500,
-    "cooldown_tiers": "2500",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000|3500|3000|2500",
     "skills": [
       {
         "en": "",
@@ -586,8 +590,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 2500,
-    "cooldown_tiers": "2500",
+    "cooldown": 6000,
+    "cooldown_tiers": "6000|5500|5000|4500",
     "skills": [
       {
         "en": "",
@@ -950,8 +954,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "cooldown": 6000,
+    "cooldown_tiers": "6000|5500|5000|4500|4000|3500",
     "skills": [
       {
         "en": "",
@@ -978,8 +982,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "cooldown": 6000,
+    "cooldown_tiers": "6000|5500|5000|4500|4000|3500",
     "skills": [
       {
         "en": "",
@@ -1006,8 +1010,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 1500,
-    "cooldown_tiers": "1500",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000|3500|3000|2500",
     "skills": [
       {
         "en": "",
@@ -1037,8 +1041,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 2500,
-    "cooldown_tiers": "2500",
+    "cooldown": 6000,
+    "cooldown_tiers": "6000|5500|5000|4500",
     "skills": [
       {
         "en": "",
@@ -1065,8 +1069,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 1500,
-    "cooldown_tiers": "1500",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000|3500|3000|2500",
     "skills": [
       {
         "en": "",
@@ -1096,8 +1100,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 2500,
-    "cooldown_tiers": "2500",
+    "cooldown": 6000,
+    "cooldown_tiers": "6000|5500|5000|4500",
     "skills": [
       {
         "en": "",
@@ -1105,13 +1109,13 @@
       },
       {
         "en": "",
-        "cn": "所有物品间隔缩短6|9|12|15%。"
+        "cn": "所有物品间隔缩短15%|20%|25%|30%。"
       }
     ],
     "icon": "item39",
     "attack_style": "旋转飞行",
     "simple_desc": "所有物品间隔缩短",
-    "simple_desc_tiered": "所有物品间隔缩短6|9|12|15%"
+    "simple_desc_tiered": "所有物品间隔缩短15%|20%|25%|30%"
   },
   {
     "id": "4ce4c826-62c4-4275-8625-7b42bcc6f601",
@@ -1124,8 +1128,8 @@
     "heroes": "",
     "tags": "刺客",
     "position": "",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "cooldown": 9000,
+    "cooldown_tiers": "9000|7000",
     "skills": [
       {
         "en": "",
@@ -1183,8 +1187,8 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 2500,
-    "cooldown_tiers": "2500",
+    "cooldown": 5000,
+    "cooldown_tiers": "5000|4500|4000|3500|3000|2500",
     "skills": [
       {
         "en": "",
@@ -1211,8 +1215,8 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "cooldown": 5000,
+    "cooldown_tiers": "5000|4500|4000|3500|3000|2500",
     "skills": [
       {
         "en": "",
@@ -1239,8 +1243,8 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "cooldown": 9000,
+    "cooldown_tiers": "9000|8500|8000|7500",
     "skills": [
       {
         "en": "",
@@ -1275,13 +1279,13 @@
     "skills": [
       {
         "en": "",
-        "cn": "弹药物品伤害+50|75|113|170，弹药消耗翻倍。"
+        "cn": "物品伤害+25|37|57|85，弹药物品增加双倍。"
       }
     ],
     "icon": "item45",
     "attack_style": "不飞行",
-    "simple_desc": "弹药物品伤害增加，弹药消耗翻倍",
-    "simple_desc_tiered": "弹药物品伤害+50|75|113|170，弹药消耗翻倍"
+    "simple_desc": "物品伤害增加，弹药物品增加双倍",
+    "simple_desc_tiered": "物品伤害+25|37|57|85，弹药物品增加双倍"
   },
   {
     "id": "4456a17d-0ba5-4fd8-a906-ce1ea86d4828",
@@ -1299,13 +1303,13 @@
     "skills": [
       {
         "en": "",
-        "cn": "相邻伤害物品伤害+20%|30%|40%|50%。"
+        "cn": "相邻伤害物品伤害+40%|60%|80%|100%。"
       }
     ],
     "icon": "item46",
     "attack_style": "不飞行",
     "simple_desc": "相邻伤害物品伤害增加",
-    "simple_desc_tiered": "相邻伤害物品伤害+20%|30%|40%|50%"
+    "simple_desc_tiered": "相邻伤害物品伤害+40%|60%|80%|100%"
   },
   {
     "id": "cb3981c5-947f-4550-87cc-f5599cab0b43",
@@ -1342,8 +1346,8 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 600,
-    "cooldown_tiers": "600",
+    "cooldown": 2000,
+    "cooldown_tiers": "2000|1500",
     "skills": [
       {
         "en": "",
@@ -1373,12 +1377,12 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 6000,
-    "cooldown_tiers": "6000",
+    "cooldown": 9000,
+    "cooldown_tiers": "9000|7000",
     "skills": [
       {
         "en": "",
-        "cn": "弹药:1。"
+        "cn": "弹药:2。"
       },
       {
         "en": "",
@@ -1404,8 +1408,8 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "cooldown": 9000,
+    "cooldown_tiers": "9000|8500|8000|7500|7000|6500",
     "skills": [
       {
         "en": "",
@@ -1432,8 +1436,8 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 2500,
-    "cooldown_tiers": "2500",
+    "cooldown": 5000,
+    "cooldown_tiers": "5000|4500|4000|3500|3000|2500",
     "skills": [
       {
         "en": "",
@@ -1460,8 +1464,8 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 6000,
-    "cooldown_tiers": "6000",
+    "cooldown": 12000,
+    "cooldown_tiers": "12000|11000|10000|9000",
     "skills": [
       {
         "en": "",
@@ -1488,8 +1492,8 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 4000,
-    "cooldown_tiers": "4000",
+    "cooldown": 12000,
+    "cooldown_tiers": "12000|11000|10000|9000",
     "skills": [
       {
         "en": "",
@@ -1543,8 +1547,8 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 2500,
-    "cooldown_tiers": "2500",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000|3500|3000|2500",
     "skills": [
       {
         "en": "",
@@ -1571,8 +1575,8 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 6000,
-    "cooldown_tiers": "6000",
+    "cooldown": 16000,
+    "cooldown_tiers": "16000|12000",
     "skills": [
       {
         "en": "",
@@ -1580,13 +1584,13 @@
       },
       {
         "en": "",
-        "cn": "获得护盾，等于当前生命值的30|45%。"
+        "cn": "获得护盾，等于当前生命值。"
       }
     ],
     "icon": "item56",
     "attack_style": "旋转飞行",
-    "simple_desc": "获得当前生命值百分比的护盾",
-    "simple_desc_tiered": "获得护盾，等于当前生命值的30|45%"
+    "simple_desc": "获得等于当前生命值的护盾",
+    "simple_desc_tiered": "获得护盾，等于当前生命值"
   },
   {
     "id": "c344a7c2-15c0-478c-91af-80b8bc7419e0",

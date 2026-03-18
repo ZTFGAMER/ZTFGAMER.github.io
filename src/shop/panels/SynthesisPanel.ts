@@ -225,7 +225,7 @@ export class SynthesisPanel extends Container {
     if (callbacks.canUseSameArchetypeDiffItemStoneSynthesis(sourceDefId, targetItem.defId, sourceTier, sourceStar, targetTier, targetStar)) {
       const customDisplay: ItemInfoCustomDisplay = {
         hideName: true,
-        lines: ['升级为 +1 级非中立职业物品（同等级桶随机）'],
+        lines: ['升级为 +1 级异职业非中立物品（同等级桶随机）'],
         suppressStats: true,
         hideTierBadge: true,
         centerRichLineInFrame: true,
@@ -387,7 +387,8 @@ export class SynthesisPanel extends Container {
     }
 
     const minStartingTier = getCrossSynthesisMinStartingTier(sourcePreview.def, targetPreview.def)
-    const preferOtherArchetype = false
+    const preferOtherArchetype = shouldCrossSynthesisPreferOtherArchetype(sourcePreview.def, targetPreview.def)
+    const sourceArch = toSkillArchetype(getPrimaryArchetype(sourcePreview.def.tags))
     const runPoolSet = new Set(getRunClassItemPoolIds())
     const candidatesRaw = getCrossIdPreviewCandidates(
       sourcePreview.def,
@@ -398,6 +399,7 @@ export class SynthesisPanel extends Container {
     )
     const candidates = candidatesRaw.filter((it) => {
       if (it.id === sourcePreview.def.id || it.id === targetPreview.def.id) return false
+      if (preferOtherArchetype && toSkillArchetype(getPrimaryArchetype(it.tags)) === sourceArch) return false
       if (runPoolSet.size > 0 && !runPoolSet.has(it.id)) return false
       return true
     })

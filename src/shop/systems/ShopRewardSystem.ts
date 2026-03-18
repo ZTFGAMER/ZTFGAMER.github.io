@@ -63,6 +63,7 @@ export type RewardSystemCallbacks = {
   setTransitionInputEnabled: (enabled: boolean) => void
   setBaseShopPrimaryButtonsVisible: (visible: boolean) => void
   applyPhaseInputLock: () => void
+  refreshPlayerStatusUI: () => void
 }
 
 type QuickDraftCandidate = {
@@ -1061,25 +1062,31 @@ export function grantSynthesisExp(
 ): void {
   const add = Math.max(0, Math.round(amount))
   if (add <= 0) return
-  const cap = getPlayerLevelCap()
-  const current = getPlayerProgressState()
-  const levelBeforeUpgrade = clampPlayerLevel(current.level)
-  let level = clampPlayerLevel(current.level)
-  let exp = Math.max(0, Math.round(current.exp)) + add
-  let leveled = false
-  while (level < cap) {
-    const need = getPlayerExpNeedByLevel(level)
-    if (exp < need) break
-    exp -= need
-    level += 1
-    leveled = true
-  }
-  if (level >= cap) exp = 0
-  setPlayerProgressState(level, exp)
-  playSynthesisExpFlyEffect(ctx, from ? getPlacedItemCenterOnStage(from.instanceId, from.zone, ctx) : null)
-  if (leveled) {
-    showHintToast('no_gold_buy' as ToastReason, `升级到 Lv${level}`, 0x8ff0b0, ctx)
-    playPlayerLevelUpFx(ctx)
-    handleLevelReward(levelBeforeUpgrade, ctx, callbacks)
-  }
+  playSynthesisExpFlyEffect(
+    ctx,
+    from ? getPlacedItemCenterOnStage(from.instanceId, from.zone, ctx) : null,
+    () => {
+      const cap = getPlayerLevelCap()
+      const current = getPlayerProgressState()
+      const levelBeforeUpgrade = clampPlayerLevel(current.level)
+      let level = clampPlayerLevel(current.level)
+      let exp = Math.max(0, Math.round(current.exp)) + add
+      let leveled = false
+      while (level < cap) {
+        const need = getPlayerExpNeedByLevel(level)
+        if (exp < need) break
+        exp -= need
+        level += 1
+        leveled = true
+      }
+      if (level >= cap) exp = 0
+      setPlayerProgressState(level, exp)
+      callbacks.refreshPlayerStatusUI()
+      if (leveled) {
+        showHintToast('no_gold_buy' as ToastReason, `升级到 Lv${level}`, 0x8ff0b0, ctx)
+        playPlayerLevelUpFx(ctx)
+        handleLevelReward(levelBeforeUpgrade, ctx, callbacks)
+      }
+    },
+  )
 }

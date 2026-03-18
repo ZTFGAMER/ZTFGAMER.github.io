@@ -892,7 +892,7 @@ export class SettingsDebugPanel extends Container {
     overlay.addChild(panel)
 
     const panelW = 620
-    const panelH = 580
+    const panelH = 960
     const panelBg = new Graphics()
     panelBg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 24)
     panelBg.fill({ color: 0x13213a, alpha: 0.98 })
@@ -904,7 +904,7 @@ export class SettingsDebugPanel extends Container {
       style: { fontSize: 38, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' },
     })
     title.anchor.set(0.5)
-    title.y = -244
+    title.y = -332
     panel.addChild(title)
 
     const all = cb.getAllItems()
@@ -926,21 +926,29 @@ export class SettingsDebugPanel extends Container {
       { key: 'Gold', count: Math.max(0, Math.round(getDebugCfg('gameplayRunClassPoolGoldCount'))) },
       { key: 'Diamond', count: Math.max(0, Math.round(getDebugCfg('gameplayRunClassPoolDiamondCount'))) },
     ] as const
-    const totalCols = Math.max(1, tierDefs.reduce((sum, one) => sum + one.count, 0))
+    const tierColumns = tierDefs.filter((one) => one.count > 0)
+    const visibleTiers = tierColumns.length > 0 ? tierColumns : [{ key: 'Bronze', count: 1 } as const]
+    const totalCols = Math.max(1, visibleTiers.length)
+    const rowsPerTier = Math.max(1, ...visibleTiers.map((one) => one.count))
 
-    const cellSize = Math.max(70, Math.min(92, Math.floor((panelW - 168 - (totalCols - 1) * 10) / totalCols)))
-    const cellGap = 10
+    const itemGap = 12
+    const sectionGap = 30
+    const cellGapX = itemGap
+    const cellGapY = itemGap
+    const cellSize = Math.max(56, Math.min(86, Math.floor((panelW - 168 - (totalCols - 1) * cellGapX) / totalCols)))
     const leftLabelW = 86
-    const gridLeft = -panelW / 2 + 24 + leftLabelW
-    const rowGap = 108
-    const rowTop = -184
+    const gridLeft = -panelW / 2 + 24 + leftLabelW + 16
+    const classGap = itemGap
+    const rowTop = title.y + 24 + sectionGap
+    const classBlockH = rowsPerTier * cellSize + (rowsPerTier - 1) * cellGapY
+    const gridBottomY = rowTop + archetypeRows.length * classBlockH + (archetypeRows.length - 1) * classGap
 
     const seenSet = ctx.runSeenItemIds
     const pendingDotSet = ctx.runPendingCompendiumDotItemIds
 
     const suppressRow = new Container()
     suppressRow.x = 0
-    suppressRow.y = 188
+    suppressRow.y = gridBottomY + sectionGap + 18
     suppressRow.eventMode = 'static'
     const suppressLabel = new Text({
       text: '本局内不再提示图鉴新物品',
@@ -984,7 +992,7 @@ export class SettingsDebugPanel extends Container {
     const showItemDetail = (item: ItemDef, seen: boolean): void => {
       if (!ctx.sellPopup) return
       const tier = parseTierName(item.starting_tier) ?? 'Bronze'
-      ctx.sellPopup.setCenterY(370)
+      ctx.sellPopup.setCenterY(270)
       this.stage.addChild(ctx.sellPopup)
       if (seen) {
         ctx.sellPopup.show(item, 0, 'none', tier)
@@ -995,20 +1003,21 @@ export class SettingsDebugPanel extends Container {
         lines: ['本局尚未随机到该物品'],
         suppressStats: true,
         hideTierBadge: true,
+        hideCooldownBadge: true,
         useQuestionIcon: true,
       })
     }
 
     for (let r = 0; r < archetypeRows.length; r++) {
       const row = archetypeRows[r]!
-      const rowY = rowTop + r * rowGap
+      const rowY = rowTop + r * (classBlockH + classGap)
       const rowLabel = new Text({
         text: row.label,
         style: { fontSize: 28, fill: 0xe6efff, fontFamily: 'Arial', fontWeight: 'bold' },
       })
       rowLabel.anchor.set(0.5)
       rowLabel.x = gridLeft - 38
-      rowLabel.y = rowY + cellSize / 2
+      rowLabel.y = rowY + classBlockH / 2
       panel.addChild(rowLabel)
 
       const classItems = runPoolItems
@@ -1021,90 +1030,86 @@ export class SettingsDebugPanel extends Container {
           return a.name_cn.localeCompare(b.name_cn, 'zh-Hans-CN')
         })
 
-      const slots: Array<{ item: ItemDef | null; tier: string }> = []
-      for (const one of tierDefs) {
-        const inTier = classItems.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === one.key)
-        for (let i = 0; i < one.count; i++) {
-          slots.push({ item: inTier[i] ?? null, tier: one.key })
-        }
-      }
+      for (let c = 0; c < visibleTiers.length; c++) {
+        const tier = visibleTiers[c]!
+        const inTier = classItems.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === tier.key)
+        for (let i = 0; i < tier.count; i++) {
+          const slotItem = inTier[i] ?? null
+          const x = gridLeft + c * (cellSize + cellGapX)
+          const y = rowY + i * (cellSize + cellGapY)
+          const cell = new Container()
+          cell.x = x
+          cell.y = y
+          cell.eventMode = 'static'
+          cell.cursor = slotItem ? 'pointer' : 'default'
+          cell.hitArea = new Rectangle(0, 0, cellSize, cellSize)
 
-      for (let c = 0; c < slots.length; c++) {
-        const slot = slots[c]!
-        const x = gridLeft + c * (cellSize + cellGap)
-        const y = rowY
-        const cell = new Container()
-        cell.x = x
-        cell.y = y
-        cell.eventMode = 'static'
-        cell.cursor = slot.item ? 'pointer' : 'default'
-        cell.hitArea = new Rectangle(0, 0, cellSize, cellSize)
+          const borderColor = tier.key === 'Bronze'
+            ? 0x6e4f2f
+            : tier.key === 'Silver'
+              ? 0x8da0bf
+              : tier.key === 'Gold'
+                ? 0xb7913e
+                : 0x3f79c9
+          const seen = !!(slotItem && ((parseTierName(slotItem.starting_tier) ?? 'Bronze') === 'Bronze' || seenSet.has(slotItem.id)))
 
-        const borderColor = slot.tier === 'Bronze'
-          ? 0x6e4f2f
-          : slot.tier === 'Silver'
-            ? 0x8da0bf
-            : slot.tier === 'Gold'
-              ? 0xb7913e
-              : 0x3f79c9
-        const seen = !!(slot.item && ((parseTierName(slot.item.starting_tier) ?? 'Bronze') === 'Bronze' || seenSet.has(slot.item.id)))
+          const bg = new Graphics()
+          bg.roundRect(0, 0, cellSize, cellSize, 14)
+          bg.fill({ color: seen ? 0x1f304f : 0x1a2338, alpha: 0.96 })
+          bg.stroke({ color: borderColor, width: 3, alpha: 0.95 })
+          cell.addChild(bg)
 
-        const bg = new Graphics()
-        bg.roundRect(0, 0, cellSize, cellSize, 14)
-        bg.fill({ color: seen ? 0x1f304f : 0x1a2338, alpha: 0.96 })
-        bg.stroke({ color: borderColor, width: 3, alpha: 0.95 })
-        cell.addChild(bg)
+          if (slotItem && seen) {
+            const sp = new Sprite(Texture.WHITE)
+            const inset = 6
+            sp.x = inset
+            sp.y = inset
+            sp.width = cellSize - inset * 2
+            sp.height = cellSize - inset * 2
+            sp.alpha = 0
+            cell.addChild(sp)
+            void Assets.load<Texture>(getItemIconUrl(slotItem.id)).then((tex) => {
+              sp.texture = tex
+              sp.alpha = 1
+            }).catch(() => {})
 
-        if (slot.item && seen) {
-          const sp = new Sprite(Texture.WHITE)
-          const inset = 6
-          sp.x = inset
-          sp.y = inset
-          sp.width = cellSize - inset * 2
-          sp.height = cellSize - inset * 2
-          sp.alpha = 0
-          cell.addChild(sp)
-          void Assets.load<Texture>(getItemIconUrl(slot.item.id)).then((tex) => {
-            sp.texture = tex
-            sp.alpha = 1
-          }).catch(() => {})
+            if (pendingDotSet.has(slotItem.id)) {
+              const dot = new Graphics()
+              dot.circle(0, 0, 7)
+              dot.fill({ color: 0xff5a63, alpha: 0.98 })
+              dot.circle(0, 0, 7)
+              dot.stroke({ color: 0xffd8dc, width: 2, alpha: 0.95 })
+              dot.x = cellSize - 11
+              dot.y = 11
+              cell.addChild(dot)
 
-          if (pendingDotSet.has(slot.item.id)) {
-            const dot = new Graphics()
-            dot.circle(0, 0, 7)
-            dot.fill({ color: 0xff5a63, alpha: 0.98 })
-            dot.circle(0, 0, 7)
-            dot.stroke({ color: 0xffd8dc, width: 2, alpha: 0.95 })
-            dot.x = cellSize - 11
-            dot.y = 11
-            cell.addChild(dot)
-
-            cell.on('pointerdown', () => {
-              if (!pendingDotSet.has(slot.item!.id)) return
-              pendingDotSet.delete(slot.item!.id)
-              dot.visible = false
-              this.refreshItemCompendiumRedDot()
-              this.cb.captureAndSave()
+              cell.on('pointerdown', () => {
+                if (!pendingDotSet.has(slotItem!.id)) return
+                pendingDotSet.delete(slotItem!.id)
+                dot.visible = false
+                this.refreshItemCompendiumRedDot()
+                this.cb.captureAndSave()
+              })
+            }
+          } else {
+            const q = new Text({
+              text: '?',
+              style: { fontSize: 48, fill: 0xc8d6f2, fontFamily: 'Arial', fontWeight: 'bold' },
             })
+            q.anchor.set(0.5)
+            q.x = cellSize / 2
+            q.y = cellSize / 2
+            cell.addChild(q)
           }
-        } else {
-          const q = new Text({
-            text: '?',
-            style: { fontSize: 48, fill: 0xc8d6f2, fontFamily: 'Arial', fontWeight: 'bold' },
+
+          cell.on('pointerdown', (e) => {
+            e.stopPropagation()
+            if (!slotItem) return
+            showItemDetail(slotItem, seen)
           })
-          q.anchor.set(0.5)
-          q.x = cellSize / 2
-          q.y = cellSize / 2
-          cell.addChild(q)
+
+          panel.addChild(cell)
         }
-
-        cell.on('pointerdown', (e) => {
-          e.stopPropagation()
-          if (!slot.item) return
-          showItemDetail(slot.item, seen)
-        })
-
-        panel.addChild(cell)
       }
     }
 
@@ -1126,7 +1131,7 @@ export class SettingsDebugPanel extends Container {
 
     const closeBtn = new Container()
     closeBtn.x = 0
-    closeBtn.y = 236
+    closeBtn.y = suppressRow.y + 18 + sectionGap + 30
     closeBtn.eventMode = 'static'
     closeBtn.cursor = 'pointer'
     const closeBg = new Graphics()
@@ -1416,12 +1421,17 @@ export class SettingsDebugPanel extends Container {
   createSettingsButton(): void {
     const ctx = this.ctx
     const stage = this.stage
-    if (ctx.settingsBtn && ctx.itemCompendiumBtn) return
     const cfg = getConfig()
+    const topSafeYOffset = getTopLeftControlYOffset()
+    const buttonGapY = 18
+    const buttonBaseX = ctx.restartBtn?.x ?? 16
+    const restartBaseY = ctx.restartBtn?.y ?? (16 + topSafeYOffset)
+    const restartHeight = Math.max(44, Math.ceil(ctx.restartBtn?.getLocalBounds().height ?? 0))
+    const settingsBaseY = restartBaseY + restartHeight + buttonGapY
     if (!ctx.settingsBtn) {
       const con = new Container()
-      con.x = 16
-      con.y = 82 + getTopLeftControlYOffset()
+      con.x = buttonBaseX
+      con.y = settingsBaseY
       con.zIndex = 7050
       con.eventMode = 'static'
       con.cursor = 'pointer'
@@ -1459,10 +1469,14 @@ export class SettingsDebugPanel extends Container {
       stage.addChild(con)
       ctx.settingsBtn = con
     }
+    if (ctx.settingsBtn) {
+      ctx.settingsBtn.x = buttonBaseX
+      ctx.settingsBtn.y = settingsBaseY
+    }
 
     if (!ctx.itemCompendiumBtn && ctx.playerStatusCon) {
       const btn = new Container()
-      btn.zIndex = 120
+      btn.zIndex = 7050
       btn.eventMode = 'static'
       btn.cursor = 'pointer'
 
@@ -1470,20 +1484,20 @@ export class SettingsDebugPanel extends Container {
       const text = new Text({
         text: '物品图鉴',
         style: {
-          fontSize: 20,
-          fill: 0xf6fbff,
+          fontSize: cfg.textSizes.refreshCost,
+          fill: 0xffe8a3,
           fontFamily: 'Arial',
           fontWeight: 'bold',
-          stroke: { color: 0x0f172b, width: 2 },
         },
       })
-      text.anchor.set(0.5)
-      const w = Math.max(124, Math.ceil(text.width + 24))
-      const h = 44
-      bg.roundRect(-w / 2, -h / 2, w, h, 14)
-      bg.fill({ color: 0x294e85, alpha: 0.94 })
-      bg.stroke({ color: 0xb9d9ff, width: 2, alpha: 0.95 })
-      btn.hitArea = new Rectangle(-w / 2, -h / 2, w, h)
+      const padX = 18
+      const padY = 10
+      const w = Math.max(124, Math.ceil(text.width + padX * 2))
+      const h = Math.ceil(text.height + padY * 2)
+      bg.roundRect(0, 0, w, h, 14)
+      bg.fill({ color: 0x1f2940, alpha: 0.88 })
+      bg.stroke({ color: 0xffd25a, width: 2, alpha: 0.95 })
+      btn.hitArea = new Rectangle(0, 0, w, h)
 
       btn.on('pointerdown', (e) => {
         e.stopPropagation()
@@ -1491,28 +1505,28 @@ export class SettingsDebugPanel extends Container {
         else this.openItemCompendiumOverlay()
       })
 
-      const avatarX = 260
-      const avatarY = 10
-      const avatarW = 120
-      const avatarH = 120
-      const avatarCenterX = avatarX + avatarW / 2
-      btn.x = avatarCenterX + getDebugCfg('gameplayCompendiumBtnOffsetX')
-      btn.y = avatarY + avatarH / 2 + getDebugCfg('gameplayCompendiumBtnOffsetY')
-
+      text.x = Math.round((w - text.width) / 2)
+      text.y = Math.round((h - text.height) / 2)
       btn.addChild(bg, text)
       const redDot = new Graphics()
       redDot.circle(0, 0, 8)
       redDot.fill({ color: 0xff4d58, alpha: 0.98 })
       redDot.circle(0, 0, 8)
       redDot.stroke({ color: 0xffd5da, width: 2, alpha: 0.95 })
-      redDot.x = w / 2 - 10
-      redDot.y = -h / 2 + 10
+      redDot.x = w - 10
+      redDot.y = 10
       redDot.visible = false
       btn.addChild(redDot)
-      ctx.playerStatusCon.addChild(btn)
+      stage.addChild(btn)
       ctx.itemCompendiumBtn = btn
       ctx.itemCompendiumBtnRedDot = redDot
       this.refreshItemCompendiumRedDot()
+    }
+
+    if (ctx.itemCompendiumBtn) {
+      const settingsHeight = Math.max(44, Math.ceil(ctx.settingsBtn?.getLocalBounds().height ?? 0))
+      ctx.itemCompendiumBtn.x = buttonBaseX
+      ctx.itemCompendiumBtn.y = settingsBaseY + settingsHeight + buttonGapY
     }
   }
 }

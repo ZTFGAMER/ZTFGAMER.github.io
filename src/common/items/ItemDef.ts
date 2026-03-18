@@ -346,6 +346,7 @@ export interface GameConfig {
     burnShieldFactor: number
     burnDecayPct: number
     healCleansePct: number
+    ammoAutoReloadMs: number
     cardSlowMs?: number
     cardFreezeMs?: number
     cardHasteMs?: number
@@ -358,6 +359,10 @@ export interface GameConfig {
     maxTicksPerFrame: number
     visualFxQueueMax: number
     visualFxConsumePerFrame: number
+    itemValueTweenMs: number
+    itemValuePulseUpMs: number
+    itemValuePulseDownMs: number
+    itemValuePulsePeakScale: number
     fxDegradeProjectileScaleL1: number
     fxDegradeProjectileScaleL2: number
     fxDegradeFloatingScaleL1: number

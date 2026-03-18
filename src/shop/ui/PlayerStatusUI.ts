@@ -13,7 +13,7 @@ import { getConfig } from '@/core/DataLoader'
 import { getPlayerProgressState } from '@/core/RunState'
 import type { TierKey } from '@/shop/ShopManager'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
-import { Assets, Graphics, Texture, Ticker } from 'pixi.js'
+import { Assets, Graphics, Text, Texture, Ticker } from 'pixi.js'
 import { tierStarLevelIndex } from '../systems/ShopSynthesisLogic'
 import { PvpContext } from '@/pvp/PvpContext'
 import type { ShopSceneCtx } from '../ShopSceneContext'
@@ -178,7 +178,7 @@ export function layoutPlayerStatusPanel(ctx: ShopSceneCtx): void {
     ctx.playerStatusDailySkillStar.y = avatarY + avatarH - 38
   }
 
-  if (ctx.itemCompendiumBtn) {
+  if (ctx.itemCompendiumBtn && ctx.itemCompendiumBtn.parent === ctx.playerStatusCon) {
     ctx.itemCompendiumBtn.x = avatarCenterX + getDebugCfg('gameplayCompendiumBtnOffsetX')
     ctx.itemCompendiumBtn.y = avatarY + avatarH / 2 + getDebugCfg('gameplayCompendiumBtnOffsetY')
   }
@@ -209,22 +209,59 @@ export function playPlayerLevelUpFx(ctx: ShopSceneCtx): void {
   const lvText = ctx.playerStatusLvText
   const stage = getApp().stage
   const flash = new Graphics()
+  const ring = new Graphics()
+  const levelUpText = new Graphics()
+  const levelUpLabel = new Text({
+    text: 'LEVEL UP',
+    style: {
+      fontSize: 18,
+      fill: 0xfff3b0,
+      fontFamily: 'Arial',
+      fontWeight: 'bold',
+      stroke: { color: 0x4a2f00, width: 3 },
+      letterSpacing: 1.5,
+    },
+  })
   flash.eventMode = 'none'
+  ring.eventMode = 'none'
+  levelUpText.eventMode = 'none'
+  flash.zIndex = 520
+  ring.zIndex = 521
+  levelUpText.zIndex = 522
+  levelUpLabel.zIndex = 523
   stage.addChild(flash)
+  stage.addChild(ring)
+  stage.addChild(levelUpText)
+  stage.addChild(levelUpLabel)
 
   const baseX = avatar.x
   const baseY = avatar.y
   const baseW = avatar.width
   const baseH = avatar.height
-  const avatarBounds = avatar.getBounds()
-  const flashPos = stage.toLocal({ x: avatarBounds.x, y: avatarBounds.y })
+  const lvBaseX = lvText.x
+  const lvBaseY = lvText.y
+  const lvBaseScaleX = lvText.scale.x
+  const lvBaseScaleY = lvText.scale.y
+  const lvBaseBounds = lvText.getBounds()
+  const lvBaseCenterX = lvBaseBounds.x + lvBaseBounds.width / 2
+  const lvBaseCenterY = lvBaseBounds.y + lvBaseBounds.height / 2
+  const avatarParent = avatar.parent
+  const avatarCenterGlobal = avatarParent
+    ? avatarParent.toGlobal({ x: baseX + baseW / 2, y: baseY + baseH / 2 })
+    : { x: baseX + baseW / 2, y: baseY + baseH / 2 }
+  const avatarTopGlobal = avatarParent
+    ? avatarParent.toGlobal({ x: baseX, y: baseY })
+    : { x: baseX, y: baseY }
+  const avatarCenterStage = stage.toLocal(avatarCenterGlobal)
+  const avatarTopStage = stage.toLocal(avatarTopGlobal)
+  const avatarBaseRadius = Math.max(12, Math.min(baseW, baseH) / 2)
 
-  const durationMs = 280
+  const durationMs = 620
   const startAt = Date.now()
   const tick = () => {
     const t = Math.min(1, (Date.now() - startAt) / durationMs)
     const pulse = Math.sin(Math.PI * t)
-    const scale = 1 + pulse * 0.16
+    const scale = 1 + pulse * 0.3
 
     const nextW = baseW * scale
     const nextH = baseH * scale
@@ -232,21 +269,62 @@ export function playPlayerLevelUpFx(ctx: ShopSceneCtx): void {
     avatar.height = nextH
     avatar.x = baseX - (nextW - baseW) / 2
     avatar.y = baseY - (nextH - baseH) / 2
-    lvText.scale.set(1 + pulse * 0.22)
+    const lvScale = 1 + pulse * 0.4
+    lvText.x = lvBaseX
+    lvText.y = lvBaseY
+    lvText.scale.set(lvBaseScaleX * lvScale, lvBaseScaleY * lvScale)
+    const lvBoundsAfter = lvText.getBounds()
+    lvText.x += lvBaseCenterX - (lvBoundsAfter.x + lvBoundsAfter.width / 2)
+    lvText.y += lvBaseCenterY - (lvBoundsAfter.y + lvBoundsAfter.height / 2)
+    lvText.style.fill = 0xfff2a1
+
+    const avatarRadius = avatarBaseRadius
+    const avatarCenterX = avatarCenterStage.x
+    const avatarCenterY = avatarCenterStage.y
 
     flash.clear()
-    flash.roundRect(flashPos.x, flashPos.y, avatarBounds.width, avatarBounds.height, 18)
-    flash.fill({ color: 0xffffff, alpha: pulse * 0.75 })
+    flash.circle(avatarCenterX, avatarCenterY, avatarRadius)
+    flash.fill({ color: 0xfff3a3, alpha: pulse * 0.65 })
+    flash.circle(avatarCenterX, avatarCenterY, avatarRadius + 3)
+    flash.stroke({ color: 0xfff3b5, width: 2, alpha: pulse * 0.9 })
+
+    const cx = avatarCenterX
+    const cy = avatarCenterY
+    const r = avatarBaseRadius * (1 + t * 1.1)
+    ring.clear()
+    ring.circle(cx, cy, r)
+    ring.stroke({ color: 0xffe37a, width: Math.max(2, 8 * (1 - t)), alpha: Math.max(0, 1 - t) * 0.9 })
+
+    const textW = baseW + 64
+    const textH = 28
+    const textX = cx - textW / 2
+    const textY = avatarTopStage.y - 34 - (1 - t) * 10
+    levelUpText.clear()
+    levelUpText.roundRect(textX, textY, textW, textH, 10)
+    levelUpText.fill({ color: 0x2f2244, alpha: 0.9 * Math.max(0, 1 - t * 0.8) })
+    levelUpText.stroke({ color: 0xffe28f, width: 2, alpha: Math.max(0, 1 - t * 0.7) })
+    levelUpLabel.x = textX + (textW - levelUpLabel.width) / 2
+    levelUpLabel.y = textY + (textH - levelUpLabel.height) / 2 - 1
+    levelUpLabel.alpha = Math.max(0, 1 - t * 0.75)
 
     if (t >= 1) {
       Ticker.shared.remove(tick)
       flash.parent?.removeChild(flash)
+      ring.parent?.removeChild(ring)
+      levelUpText.parent?.removeChild(levelUpText)
+      levelUpLabel.parent?.removeChild(levelUpLabel)
       flash.destroy()
+      ring.destroy()
+      levelUpText.destroy()
+      levelUpLabel.destroy()
       avatar.width = baseW
       avatar.height = baseH
       avatar.x = baseX
       avatar.y = baseY
-      lvText.scale.set(1)
+      lvText.x = lvBaseX
+      lvText.y = lvBaseY
+      lvText.scale.set(lvBaseScaleX, lvBaseScaleY)
+      lvText.style.fill = 0xffffff
     }
   }
   Ticker.shared.add(tick)
@@ -263,9 +341,86 @@ export function getPlayerExpCenterOnStage(ctx: ShopSceneCtx): { x: number; y: nu
   return stage.toLocal({ x: b.x + b.width / 2, y: b.y + b.height / 2 })
 }
 
-export function playSynthesisExpFlyEffect(ctx: ShopSceneCtx, from: { x: number; y: number } | null): void {
+function playExpReceivePulseFx(ctx: ShopSceneCtx): void {
+  const stage = getApp().stage
+  const expBg = ctx.playerStatusExpBg
+  const expBar = ctx.playerStatusExpBar
+  const avatar = ctx.playerStatusAvatar
+  if (!expBg && !avatar && !expBar) return
+  const flash = new Graphics()
+  flash.eventMode = 'none'
+  flash.zIndex = 520
+  stage.addChild(flash)
+
+  const avatarBaseBounds = avatar?.getBounds() ?? null
+  const avatarParent = avatar?.parent ?? null
+  const avatarCenterStage = avatar && avatarParent
+    ? stage.toLocal(avatarParent.toGlobal({ x: avatar.x + avatar.width / 2, y: avatar.y + avatar.height / 2 }))
+    : (avatarBaseBounds ? stage.toLocal({ x: avatarBaseBounds.x + avatarBaseBounds.width / 2, y: avatarBaseBounds.y + avatarBaseBounds.height / 2 }) : null)
+  const avatarPulseRadius = avatar ? Math.max(10, Math.min(avatar.width, avatar.height) / 2 + 3) : 0
+
+  const expBgParent = expBg?.parent ?? null
+  const expBarParent = expBar?.parent ?? null
+  const expW = Math.max(40, getDebugCfg('shopPlayerStatusExpBarWidth'))
+  const expH = Math.max(12, getDebugCfg('shopPlayerStatusExpBarHeight'))
+  const expInnerW = Math.max(8, expW - 4)
+  const expInnerH = Math.max(8, expH - 4)
+  const expBgStage = expBg && expBgParent
+    ? stage.toLocal(expBgParent.toGlobal({ x: expBg.x, y: expBg.y }))
+    : null
+  const expBarStage = expBar && expBarParent
+    ? stage.toLocal(expBarParent.toGlobal({ x: expBar.x, y: expBar.y }))
+    : null
+
+  const durationMs = 260
+  const startAt = Date.now()
+  const tick = () => {
+    const t = Math.min(1, (Date.now() - startAt) / durationMs)
+    const pulse = Math.sin(Math.PI * t)
+
+    flash.clear()
+    if (avatarCenterStage) {
+      const center = avatarCenterStage
+      const r = avatarPulseRadius
+      flash.circle(center.x, center.y, r)
+      flash.stroke({ color: 0x8fd8ff, width: 2, alpha: pulse * 0.9 })
+      flash.circle(center.x, center.y, Math.max(6, r - 2.5))
+      flash.fill({ color: 0xbde8ff, alpha: pulse * 0.22 })
+    }
+    if (expBgStage) {
+      const p = expBgStage
+      const radius = Math.max(6, expH / 2)
+      flash.roundRect(p.x - 3, p.y - 3, expW + 6, expH + 6, radius)
+      flash.stroke({ color: 0x8fd8ff, width: 2, alpha: pulse * 0.9 })
+      flash.roundRect(p.x - 1, p.y - 1, expW + 2, expH + 2, Math.max(5, radius - 1))
+      flash.fill({ color: 0xbde8ff, alpha: pulse * 0.28 })
+    }
+    if (expBarStage) {
+      const p = expBarStage
+      const radius = Math.max(4, expInnerH / 2)
+      flash.roundRect(p.x - 1, p.y - 1, expInnerW + 2, expInnerH + 2, radius)
+      flash.stroke({ color: 0xccecff, width: 1.5, alpha: pulse * 0.85 })
+    }
+
+    if (t >= 1) {
+      Ticker.shared.remove(tick)
+      flash.parent?.removeChild(flash)
+      flash.destroy()
+    }
+  }
+  Ticker.shared.add(tick)
+}
+
+export function playSynthesisExpFlyEffect(
+  ctx: ShopSceneCtx,
+  from: { x: number; y: number } | null,
+  onArrive?: () => void,
+): void {
   const to = getPlayerExpCenterOnStage(ctx)
-  if (!to) return
+  if (!to) {
+    onArrive?.()
+    return
+  }
   const startPos = from ?? { x: to.x, y: to.y - 120 }
   const stage = getApp().stage
   const orb = new Graphics()
@@ -291,6 +446,8 @@ export function playSynthesisExpFlyEffect(ctx: ShopSceneCtx, from: { x: number; 
       Ticker.shared.remove(tick)
       orb.parent?.removeChild(orb)
       orb.destroy()
+      playExpReceivePulseFx(ctx)
+      onArrive?.()
     }
   }
   Ticker.shared.add(tick)

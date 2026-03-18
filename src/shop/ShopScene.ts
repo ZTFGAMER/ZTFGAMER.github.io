@@ -1228,6 +1228,7 @@ function makeRewardSystemCallbacks(): RewardSystemCallbacks {
     setTransitionInputEnabled: (enabled) => setTransitionInputEnabled(enabled),
     setBaseShopPrimaryButtonsVisible: (visible) => setBaseShopPrimaryButtonsVisible(visible),
     applyPhaseInputLock: () => applyPhaseInputLock(),
+    refreshPlayerStatusUI: () => refreshPlayerStatusUI(),
   }
 }
 
@@ -2128,6 +2129,8 @@ export const ShopScene: Scene = {
     _ctx.levelQuickRewardSystem = null
     _ctx.levelQuickRewardInstanceIds.clear()
     _ctx.levelQuickRewardZoneAdded = false
+    if (_ctx.itemCompendiumBtn?.parent) _ctx.itemCompendiumBtn.parent.removeChild(_ctx.itemCompendiumBtn)
+    _ctx.itemCompendiumBtn?.destroy({ children: true })
     _ctx.playerStatusCon?.destroy({ children: true })
     _ctx.playerStatusCon = null
     _ctx.playerStatusAvatar = null

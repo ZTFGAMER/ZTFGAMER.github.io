@@ -9,7 +9,7 @@ import type { CombatState, CombatItemRunner } from './CombatTypes'
 import type { ICombatEngineBase } from './SkillTriggerSystem'
 import type { ControlSpec } from './CombatTypes'
 import {
-  findItemDef, skillLines, tierIndexFromRaw, tierValueFromLine,
+  findItemDef, skillLines, tierIndexFromRaw, tierValueFromLine, pickTierSeriesValue,
   parseControlSpecsFromDef, isAdjacentByFootprint, itemWidth, isDamageBonusEligible,
   seedFrom, shuffleDeterministic,
 } from './CombatHelpers'
@@ -18,6 +18,7 @@ import { resolveItemEnchantmentEffectCn } from '@/common/items/ItemEnchantment'
 // IItemTriggerEngineBase 复用 ICombatEngineBase，新增 enqueueOneAttackFrom
 export interface IItemTriggerEngineBase extends ICombatEngineBase {
   enqueueOneAttackFrom(source: CombatItemRunner): void
+  scheduleChargePulses(source: CombatItemRunner, target: CombatItemRunner, times: number, gainMs: number, intervalTick: number): void
 }
 
 export class ItemTriggerSystem {
@@ -251,6 +252,26 @@ export class ItemTriggerSystem {
       if (!def) continue
       if (!skillLines(def).some((s) => /使用相邻物品时(?:额外|立即)使用此物品/.test(s))) continue
       this.engine.enqueueExtraTriggeredUse(owner)
+    }
+  }
+
+  applyAdjacentUseChargeTriggers(fired: CombatItemRunner, repeatCount = 1, intervalTick = 1): void {
+    const times = Math.max(1, Math.round(repeatCount))
+    const step = Math.max(1, Math.round(intervalTick))
+    for (const owner of this.state.items) {
+      if (owner.side !== fired.side || owner.id === fired.id) continue
+      if (!isAdjacentByFootprint(owner, fired)) continue
+      const def = findItemDef(owner.defId)
+      if (!def) continue
+      const line = skillLines(def).find((s) => /使用相邻物品.*充能\d+(?:[\/|]\d+)*秒/.test(s))
+      if (!line) continue
+      const secSeries = line.match(/充能\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)\s*秒/)?.[1]
+      if (!secSeries) continue
+      const sec = Math.max(0, pickTierSeriesValue(secSeries, tierIndexFromRaw(def, owner.tier)))
+      if (sec <= 0) continue
+      const gainMs = Math.round(sec * 1000)
+      if (times <= 1) this.engine.chargeItemByMs(owner, gainMs)
+      else this.engine.scheduleChargePulses(fired, owner, times, gainMs, step)
     }
   }
 

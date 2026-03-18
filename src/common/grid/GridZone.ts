@@ -164,6 +164,7 @@ interface ItemNode {
   ammoBadgeBg: Graphics
   ammoIconText: Text
   ammoText: Text
+  reloadText: Text
   starBadgeBg: Graphics
   starText: Text
   qualityDot: Graphics
@@ -180,6 +181,7 @@ interface ItemNode {
   tier?:      string
   statOverride: ItemStatBadgeOverride | null
   ammoOverride: { current: number; max: number } | null
+  ammoReloadRemainingMs: number
   col:        number
   row:        number
   size:       ItemSizeNorm
@@ -278,6 +280,107 @@ function ammoFromSkillLines(lines: string[], tierIndex: number): number {
   return 0
 }
 
+type AnimatedStatKey = 'damage' | 'shield' | 'heal' | 'burn' | 'poison' | 'multicast'
+
+interface AnimatedAmmoValue {
+  current: number
+  max: number
+}
+
+interface RuntimeValueFxState {
+  displayStat: ItemStatBadgeOverride | null
+  statFrom: ItemStatBadgeOverride | null
+  statTo: ItemStatBadgeOverride | null
+  statStartMs: number
+  statAnimating: boolean
+  displayAmmo: AnimatedAmmoValue | null
+  ammoFrom: AnimatedAmmoValue | null
+  ammoTo: AnimatedAmmoValue | null
+  ammoStartMs: number
+  ammoAnimating: boolean
+  pulseFromScale: number
+  pulseStartMs: number
+  pulseAnimating: boolean
+}
+
+const VALUE_TWEEN_KEYS: AnimatedStatKey[] = ['damage', 'shield', 'heal', 'burn', 'poison', 'multicast']
+const COMBAT_RUNTIME = getGameConfig().combatRuntime
+const DEFAULT_VALUE_TWEEN_MS = Math.max(1, Math.round(COMBAT_RUNTIME.itemValueTweenMs ?? 200))
+const DEFAULT_VALUE_PULSE_UP_MS = Math.max(1, Math.round(COMBAT_RUNTIME.itemValuePulseUpMs ?? 100))
+const DEFAULT_VALUE_PULSE_DOWN_MS = Math.max(1, Math.round(COMBAT_RUNTIME.itemValuePulseDownMs ?? 100))
+const DEFAULT_VALUE_PULSE_PEAK_SCALE = Math.max(1, COMBAT_RUNTIME.itemValuePulsePeakScale ?? 1.1)
+
+function sanitizeStatOverride(override: ItemStatBadgeOverride | null): ItemStatBadgeOverride | null {
+  if (!override) return null
+  const out: ItemStatBadgeOverride = {}
+  for (const key of VALUE_TWEEN_KEYS) {
+    const value = override[key]
+    if (typeof value !== 'number' || !Number.isFinite(value)) continue
+    if (key === 'multicast') out.multicast = Math.max(1, Math.round(value))
+    else out[key] = Math.max(0, value)
+  }
+  return Object.keys(out).length > 0 ? out : null
+}
+
+function statOverrideEquals(a: ItemStatBadgeOverride | null, b: ItemStatBadgeOverride | null): boolean {
+  if (!a && !b) return true
+  if (!a || !b) return false
+  return VALUE_TWEEN_KEYS.every((key) => {
+    const av = a[key]
+    const bv = b[key]
+    if (typeof av !== 'number' && typeof bv !== 'number') return true
+    if (typeof av !== 'number' || typeof bv !== 'number') return false
+    return Math.abs(av - bv) < 0.0001
+  })
+}
+
+function lerpNumber(from: number, to: number, t: number): number {
+  return from + (to - from) * t
+}
+
+function interpolateStatOverride(
+  from: ItemStatBadgeOverride | null,
+  to: ItemStatBadgeOverride | null,
+  t: number,
+): ItemStatBadgeOverride | null {
+  if (!from && !to) return null
+  const out: ItemStatBadgeOverride = {}
+  for (const key of VALUE_TWEEN_KEYS) {
+    const fromRaw = from?.[key]
+    const toRaw = to?.[key]
+    if (typeof fromRaw !== 'number' && typeof toRaw !== 'number') continue
+    const fromValue = typeof fromRaw === 'number' ? fromRaw : (typeof toRaw === 'number' ? toRaw : 0)
+    const toValue = typeof toRaw === 'number' ? toRaw : fromValue
+    const value = lerpNumber(fromValue, toValue, t)
+    if (key === 'multicast') out.multicast = Math.max(1, Math.round(value))
+    else out[key] = Math.max(0, Math.round(value))
+  }
+  return Object.keys(out).length > 0 ? out : null
+}
+
+function sanitizeAmmoValue(current: number, max: number): AnimatedAmmoValue | null {
+  if (!Number.isFinite(max) || max <= 0) return null
+  const maxSafe = Math.max(1, Math.round(max))
+  const currentSafe = Math.max(0, Math.min(maxSafe, Math.round(current)))
+  return { current: currentSafe, max: maxSafe }
+}
+
+function ammoValueEquals(a: AnimatedAmmoValue | null, b: AnimatedAmmoValue | null): boolean {
+  if (!a && !b) return true
+  if (!a || !b) return false
+  return a.current === b.current && a.max === b.max
+}
+
+function interpolateAmmoValue(from: AnimatedAmmoValue | null, to: AnimatedAmmoValue | null, t: number): AnimatedAmmoValue | null {
+  if (!from && !to) return null
+  const fromValue = from ?? to
+  const toValue = to ?? from
+  if (!fromValue || !toValue) return null
+  const current = Math.max(0, Math.round(lerpNumber(fromValue.current, toValue.current, t)))
+  const max = Math.max(1, Math.round(lerpNumber(fromValue.max, toValue.max, t)))
+  return { current: Math.min(current, max), max }
+}
+
 export interface GridItemNodeView {
   container: Container
   visual: Container
@@ -323,6 +426,9 @@ export class GridZone extends Container {
   private crossGuideArrowMode: 'cross' | 'convert' = 'cross'
   private upgradeHintTick: (() => void) | null = null
   private qualityDotTick: (() => void) | null = null
+  private runtimeValueFxEnabled = false
+  private runtimeValueFxTick: (() => void) | null = null
+  private runtimeValueFxStates = new Map<string, RuntimeValueFxState>()
 
   // 当前被拖拽的节点（状态追踪；位置由 DragController/dragLayer 管理）
   dragNode: ItemNode | null = null
@@ -551,10 +657,22 @@ export class GridZone extends Container {
         stroke: { color: 0x000000, width: 2 },
       },
     })
+    const reloadText = new Text({
+      text: '',
+      style: {
+        fontSize: Math.max(10, Math.round(this.statBadgeFontSize * 0.82)),
+        fill: 0xffffff,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        stroke: { color: 0x000000, width: 2 },
+      },
+    })
+    reloadText.visible = false
     ammoBadge.addChild(ammoBadgeBg)
     ammoBadge.addChild(ammoIconText)
     ammoBadge.addChild(ammoText)
     this.badgeLayer.addChild(ammoBadge)
+    this.badgeLayer.addChild(reloadText)
 
     const starText = new Text({
       text: '',
@@ -616,6 +734,7 @@ export class GridZone extends Container {
       ammoBadgeBg,
       ammoIconText,
       ammoText,
+      reloadText,
       starBadgeBg,
       starText,
       qualityDot,
@@ -631,6 +750,7 @@ export class GridZone extends Container {
       tier,
       statOverride: null,
       ammoOverride: null,
+      ammoReloadRemainingMs: 0,
       col,
       row,
       size,
@@ -818,6 +938,8 @@ export class GridZone extends Container {
     node.statBadges.destroy({ children: true })
     if (node.ammoBadge.parent) node.ammoBadge.parent.removeChild(node.ammoBadge)
     node.ammoBadge.destroy({ children: true })
+    if (node.reloadText.parent) node.reloadText.parent.removeChild(node.reloadText)
+    node.reloadText.destroy()
     if (node.starBadgeBg.parent) node.starBadgeBg.parent.removeChild(node.starBadgeBg)
     node.starBadgeBg.destroy()
     if (node.starText.parent) node.starText.parent.removeChild(node.starText)
@@ -832,6 +954,8 @@ export class GridZone extends Container {
     this.crossUpgradeHintIds.delete(instanceId)
     this.itemOffsetX.delete(instanceId)
     this.nodes.delete(instanceId)
+    this.runtimeValueFxStates.delete(instanceId)
+    if (this.runtimeValueFxStates.size === 0) this.stopRuntimeValueFxTicker()
     this.ensureQualityDotAnimState()
   }
 
@@ -857,6 +981,7 @@ export class GridZone extends Container {
     node.selectedG.visible = false
     node.statBadges.visible = false
     node.ammoBadge.visible = false
+    node.reloadText.visible = false
     node.starBadgeBg.visible = false
     node.starText.visible = false
     node.qualityDot.visible = false
@@ -952,6 +1077,8 @@ export class GridZone extends Container {
     node?.statBadges.destroy({ children: true })
     if (node?.ammoBadge.parent) node.ammoBadge.parent.removeChild(node.ammoBadge)
     node?.ammoBadge.destroy({ children: true })
+    if (node?.reloadText.parent) node.reloadText.parent.removeChild(node.reloadText)
+    node?.reloadText.destroy()
     if (node?.starBadgeBg.parent) node.starBadgeBg.parent.removeChild(node.starBadgeBg)
     node?.starBadgeBg.destroy()
     if (node?.starText.parent) node.starText.parent.removeChild(node.starText)
@@ -964,6 +1091,8 @@ export class GridZone extends Container {
     this.crossUpgradeHintIds.delete(instanceId)
     this.itemOffsetX.delete(instanceId)
     this.nodes.delete(instanceId)
+    this.runtimeValueFxStates.delete(instanceId)
+    if (this.runtimeValueFxStates.size === 0) this.stopRuntimeValueFxTicker()
     this.ensureQualityDotAnimState()
   }
 
@@ -1106,6 +1235,18 @@ export class GridZone extends Container {
     }
   }
 
+  setRuntimeValueFxEnabled(enabled: boolean): void {
+    this.runtimeValueFxEnabled = enabled
+    if (enabled) return
+    this.stopRuntimeValueFxTicker()
+    this.runtimeValueFxStates.clear()
+    for (const node of this.nodes.values()) {
+      node.statBadges.scale.set(1)
+      node.ammoBadge.scale.set(1)
+      this.updateStatBadgePosition(node)
+    }
+  }
+
   setItemFrameUseArchetypeColor(enabled: boolean): void {
     this.itemFrameUseArchetypeColor = enabled
     for (const node of this.nodes.values()) {
@@ -1140,21 +1281,75 @@ export class GridZone extends Container {
   setItemStatOverride(instanceId: string, override: ItemStatBadgeOverride | null): void {
     const node = this.nodes.get(instanceId)
     if (!node) return
-    node.statOverride = override
-    this.updateNodeStatBadges(node)
+    const next = sanitizeStatOverride(override)
+    if (!this.runtimeValueFxEnabled) {
+      node.statOverride = next
+      this.updateNodeStatBadges(node)
+      return
+    }
+    const now = Date.now()
+    const state = this.ensureRuntimeValueFxState(instanceId, node)
+    this.advanceRuntimeValueFxState(node, state, now, false)
+    if (statOverrideEquals(next, state.statTo)) return
+    if (!next) {
+      state.displayStat = null
+      state.statFrom = null
+      state.statTo = null
+      state.statAnimating = false
+      node.statOverride = null
+      this.updateNodeStatBadges(node)
+      this.cleanupRuntimeValueFxState(instanceId)
+      return
+    }
+    const from = state.displayStat ?? state.statTo ?? node.statOverride ?? next
+    state.displayStat = from
+    state.statFrom = from
+    state.statTo = next
+    state.statStartMs = now
+    state.statAnimating = true
+    this.restartRuntimeValuePulse(node, state, now)
+    this.ensureRuntimeValueFxTicker()
   }
 
   setItemAmmo(instanceId: string, current: number, max: number): void {
     const node = this.nodes.get(instanceId)
     if (!node) return
-    if (!Number.isFinite(max) || max <= 0) {
-      node.ammoOverride = null
-    } else {
-      node.ammoOverride = {
-        current: Math.max(0, Math.round(current)),
-        max: Math.max(1, Math.round(max)),
-      }
+    const next = sanitizeAmmoValue(current, max)
+    if (!this.runtimeValueFxEnabled) {
+      node.ammoOverride = next
+      this.updateNodeAmmoBadge(node)
+      this.updateStatBadgePosition(node)
+      return
     }
+    const now = Date.now()
+    const state = this.ensureRuntimeValueFxState(instanceId, node)
+    this.advanceRuntimeValueFxState(node, state, now, false)
+    if (ammoValueEquals(next, state.ammoTo)) return
+    if (!next) {
+      state.displayAmmo = null
+      state.ammoFrom = null
+      state.ammoTo = null
+      state.ammoAnimating = false
+      node.ammoOverride = null
+      this.updateNodeAmmoBadge(node)
+      this.updateStatBadgePosition(node)
+      this.cleanupRuntimeValueFxState(instanceId)
+      return
+    }
+    const from = state.displayAmmo ?? state.ammoTo ?? node.ammoOverride ?? next
+    state.displayAmmo = from
+    state.ammoFrom = from
+    state.ammoTo = next
+    state.ammoStartMs = now
+    state.ammoAnimating = true
+    this.restartRuntimeValuePulse(node, state, now)
+    this.ensureRuntimeValueFxTicker()
+  }
+
+  setItemAmmoReloading(instanceId: string, remainingMs: number): void {
+    const node = this.nodes.get(instanceId)
+    if (!node) return
+    node.ammoReloadRemainingMs = Math.max(0, Math.round(remainingMs))
     this.updateNodeAmmoBadge(node)
     this.updateStatBadgePosition(node)
   }
@@ -1445,11 +1640,13 @@ export class GridZone extends Container {
   private updateNodeAmmoBadge(node: ItemNode): void {
     if (this.statBadgeMode === 'archetype') {
       node.ammoBadge.visible = false
+      node.reloadText.visible = false
       return
     }
     const itemDef = getDefById(node.defId)
     if (!itemDef) {
       node.ammoBadge.visible = false
+      node.reloadText.visible = false
       return
     }
 
@@ -1466,23 +1663,162 @@ export class GridZone extends Container {
 
     if (!Number.isFinite(maxAmmo) || maxAmmo <= 0) {
       node.ammoBadge.visible = false
+      node.reloadText.visible = false
       return
     }
 
     node.ammoBadge.visible = true
-    node.ammoText.text = `${Math.max(0, currentAmmo)}/${Math.max(1, maxAmmo)}`
+    const isReloading = currentAmmo <= 0 && node.ammoReloadRemainingMs > 0
+    if (isReloading) {
+      node.reloadText.text = '装填中'
+      node.reloadText.visible = true
+      node.ammoIconText.visible = false
+      node.ammoText.text = `${(Math.max(0, node.ammoReloadRemainingMs) / 1000).toFixed(1)}`
+    } else {
+      node.reloadText.visible = false
+      node.ammoIconText.visible = true
+      node.ammoText.text = `${Math.max(0, currentAmmo)}/${Math.max(1, maxAmmo)}`
+    }
     const padX = 6
     const padY = 3
     const gap = 4
     node.ammoIconText.x = padX
     node.ammoIconText.y = padY
-    node.ammoText.x = node.ammoIconText.x + node.ammoIconText.width + gap
+    node.ammoText.x = node.ammoIconText.visible ? (node.ammoIconText.x + node.ammoIconText.width + gap) : padX
     node.ammoText.y = padY
     const w = Math.ceil(node.ammoText.x + node.ammoText.width + padX)
     const h = Math.ceil(Math.max(node.ammoIconText.height, node.ammoText.height) + padY * 2)
     node.ammoBadgeBg.clear()
     node.ammoBadgeBg.roundRect(0, 0, Math.max(24, w), Math.max(16, h), 7)
     node.ammoBadgeBg.fill({ color: 0x000000, alpha: 0.45 })
+  }
+
+  private ensureRuntimeValueFxState(instanceId: string, node: ItemNode): RuntimeValueFxState {
+    const existing = this.runtimeValueFxStates.get(instanceId)
+    if (existing) return existing
+    const initial: RuntimeValueFxState = {
+      displayStat: sanitizeStatOverride(node.statOverride),
+      statFrom: null,
+      statTo: sanitizeStatOverride(node.statOverride),
+      statStartMs: 0,
+      statAnimating: false,
+      displayAmmo: node.ammoOverride ? { ...node.ammoOverride } : null,
+      ammoFrom: null,
+      ammoTo: node.ammoOverride ? { ...node.ammoOverride } : null,
+      ammoStartMs: 0,
+      ammoAnimating: false,
+      pulseFromScale: 1,
+      pulseStartMs: 0,
+      pulseAnimating: false,
+    }
+    this.runtimeValueFxStates.set(instanceId, initial)
+    return initial
+  }
+
+  private cleanupRuntimeValueFxState(instanceId: string): void {
+    const state = this.runtimeValueFxStates.get(instanceId)
+    if (!state) return
+    if (state.statAnimating || state.ammoAnimating || state.pulseAnimating) return
+    this.runtimeValueFxStates.delete(instanceId)
+    if (this.runtimeValueFxStates.size === 0) this.stopRuntimeValueFxTicker()
+  }
+
+  private restartRuntimeValuePulse(node: ItemNode, state: RuntimeValueFxState, now: number): void {
+    state.pulseFromScale = Math.max(0.6, node.statBadges.scale.x || 1)
+    state.pulseStartMs = now
+    state.pulseAnimating = true
+  }
+
+  private ensureRuntimeValueFxTicker(): void {
+    if (this.runtimeValueFxTick) return
+    this.runtimeValueFxTick = () => {
+      const now = Date.now()
+      for (const [instanceId, state] of this.runtimeValueFxStates) {
+        const node = this.nodes.get(instanceId)
+        if (!node) {
+          this.runtimeValueFxStates.delete(instanceId)
+          continue
+        }
+        this.advanceRuntimeValueFxState(node, state, now, true)
+        this.cleanupRuntimeValueFxState(instanceId)
+      }
+      if (this.runtimeValueFxStates.size === 0) this.stopRuntimeValueFxTicker()
+    }
+    this.itemFxTicks.add(this.runtimeValueFxTick)
+    Ticker.shared.add(this.runtimeValueFxTick)
+  }
+
+  private stopRuntimeValueFxTicker(): void {
+    if (!this.runtimeValueFxTick) return
+    Ticker.shared.remove(this.runtimeValueFxTick)
+    this.itemFxTicks.delete(this.runtimeValueFxTick)
+    this.runtimeValueFxTick = null
+  }
+
+  private advanceRuntimeValueFxState(node: ItemNode, state: RuntimeValueFxState, now: number, render: boolean): void {
+    const valueTweenMs = Math.max(1, getDebugCfg('battleItemValueTweenMs') || DEFAULT_VALUE_TWEEN_MS)
+    const valuePulseUpMs = Math.max(1, getDebugCfg('battleItemValuePulseUpMs') || DEFAULT_VALUE_PULSE_UP_MS)
+    const valuePulseDownMs = Math.max(1, getDebugCfg('battleItemValuePulseDownMs') || DEFAULT_VALUE_PULSE_DOWN_MS)
+    const valuePulsePeakScale = Math.max(1, getDebugCfg('battleItemValuePulsePeakScale') || DEFAULT_VALUE_PULSE_PEAK_SCALE)
+    let shouldRelayout = false
+
+    if (state.statAnimating) {
+      const duration = valueTweenMs
+      const elapsed = now - state.statStartMs
+      const progress = Math.max(0, Math.min(1, elapsed / duration))
+      const nextDisplay = interpolateStatOverride(state.statFrom, state.statTo, progress)
+      state.displayStat = nextDisplay
+      if (render) {
+        node.statOverride = nextDisplay
+        this.updateNodeStatBadges(node)
+      }
+      if (progress >= 1) {
+        state.statAnimating = false
+        state.displayStat = state.statTo
+      }
+    }
+
+    if (state.ammoAnimating) {
+      const duration = valueTweenMs
+      const elapsed = now - state.ammoStartMs
+      const progress = Math.max(0, Math.min(1, elapsed / duration))
+      const nextDisplay = interpolateAmmoValue(state.ammoFrom, state.ammoTo, progress)
+      state.displayAmmo = nextDisplay
+      if (render) {
+        node.ammoOverride = nextDisplay ? { ...nextDisplay } : null
+        this.updateNodeAmmoBadge(node)
+      }
+      if (progress >= 1) {
+        state.ammoAnimating = false
+        state.displayAmmo = state.ammoTo
+      }
+    }
+
+    let pulseScale = 1
+    if (state.pulseAnimating) {
+      const upMs = valuePulseUpMs
+      const downMs = valuePulseDownMs
+      const totalMs = upMs + downMs
+      const elapsed = now - state.pulseStartMs
+      const peakScale = valuePulsePeakScale
+      if (elapsed >= totalMs) {
+        state.pulseAnimating = false
+        pulseScale = 1
+      } else if (elapsed <= upMs) {
+        const p = Math.max(0, Math.min(1, elapsed / upMs))
+        pulseScale = lerpNumber(state.pulseFromScale, peakScale, p)
+      } else {
+        const p = Math.max(0, Math.min(1, (elapsed - upMs) / downMs))
+        pulseScale = lerpNumber(peakScale, 1, p)
+      }
+    }
+
+    if (render) {
+      node.statBadges.scale.set(pulseScale)
+      node.ammoBadge.scale.set(pulseScale)
+      shouldRelayout = true
+      if (shouldRelayout) this.updateStatBadgePosition(node)
+    }
   }
 
   private stopUpgradeHintAnim(): void {
@@ -1659,6 +1995,8 @@ export class GridZone extends Container {
     const ammoMaxY = node.starBadgeBg.y - node.ammoBadge.height - 4
     node.ammoBadge.x = node.container.x + frameInset + (frameW - node.ammoBadge.width) / 2
     node.ammoBadge.y = node.starBadgeBg.visible ? Math.min(ammoBaseY, ammoMaxY) : ammoBaseY
+    node.reloadText.x = node.ammoBadge.x + (node.ammoBadge.width - node.reloadText.width) / 2
+    node.reloadText.y = node.ammoBadge.y - node.reloadText.height - 2
     const dotY = node.container.y + frameInset + frameH - Math.max(7, Math.round(this.tierBorderWidth * 0.8)) - 12
     node.qualityDot.x = node.container.x + frameInset + frameW / 2 + 40
     node.qualityDot.y = dotY
@@ -1674,6 +2012,8 @@ export class GridZone extends Container {
     }
     for (const tick of this.itemFxTicks) Ticker.shared.remove(tick)
     this.itemFxTicks.clear()
+    this.runtimeValueFxTick = null
+    this.runtimeValueFxStates.clear()
     for (const tick of this.squeezeTicks.values()) Ticker.shared.remove(tick)
     this.squeezeTicks.clear()
     for (const tick of this.previewTicks.values()) Ticker.shared.remove(tick)

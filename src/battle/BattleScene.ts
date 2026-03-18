@@ -98,6 +98,8 @@ const transition = new BattleTransition()
 const settlement = new BattleSettlement()
 let settlementRevealAtMs: number | null = null
 let battlePresentationMs = 0
+let chargeUiElapsedSinceTickMs = 0
+let ammoReloadUiElapsedSinceTickMs = 0
 const damageStats = new BattleDamageStats()
 const BATTLE_SPEED_STEPS = [1, 2, 4, 8] as const
 const TOP_ACTION_BTN_H = 58
@@ -116,6 +118,7 @@ let playerStatusLayer: Container | null = null
 let lastHudTickIndex = -1
 let skillUI: BattleSkillUI | null = null
 const runtimeChargePercentByIdScratch = new Map<string, number>()
+const runtimeAmmoReloadMsByIdScratch = new Map<string, number>()
 const runtimeByIdScratch = new Map<string, ReturnType<CombatEngine['getRuntimeState']>[number]>()
 const playerItemsScratch: CombatBoardItem[] = []
 const enemyItemsScratch: CombatBoardItem[] = []
@@ -529,7 +532,33 @@ function drawCooldownOverlay(
   items: CombatBoardItem[],
   runtimeChargePercentById: Map<string, number>,
 ): void {
+  const roundedRectInsetAtY = (localY: number, rectH: number, radius: number): number => {
+    if (radius <= 0 || rectH <= 0) return 0
+    const y = Math.max(0, Math.min(rectH, localY))
+    const edgeDist = Math.min(y, rectH - y)
+    if (edgeDist >= radius) return 0
+    const dy = radius - edgeDist
+    const dx = Math.sqrt(Math.max(0, radius * radius - dy * dy))
+    return radius - dx
+  }
+
+  const roundedRectInsetForBand = (localCenterY: number, bandH: number, rectH: number, radius: number): number => {
+    if (bandH <= 0) return roundedRectInsetAtY(localCenterY, rectH, radius)
+    const topY = localCenterY - bandH / 2
+    const bottomY = localCenterY + bandH / 2
+    return Math.max(
+      roundedRectInsetAtY(topY, rectH, radius),
+      roundedRectInsetAtY(bottomY, rectH, radius),
+    )
+  }
+
   overlay.clear()
+  const coverAlpha = Math.max(0, Math.min(1, getDebugCfg('battleCooldownOverlayAlpha')))
+  const lineColor = Math.max(0, Math.min(0xffffff, Math.round(getDebugCfg('battleCooldownProgressLineColor'))))
+  const lineAlpha = Math.max(0, Math.min(1, getDebugCfg('battleCooldownProgressLineAlpha')))
+  const lineGlowAlpha = Math.max(0, Math.min(1, getDebugCfg('battleCooldownProgressLineGlowAlpha')))
+  const lineHRaw = Math.max(1, getDebugCfg('battleCooldownProgressLineHeight'))
+  const lineGlowHRaw = Math.max(0, getDebugCfg('battleCooldownProgressLineGlowHeight'))
   for (const it of items) {
     const { w, h } = sizeToWH(it.size)
     const pw = w * CELL_SIZE
@@ -551,9 +580,35 @@ function drawCooldownOverlay(
     const sx = cx + (x - cx) * scale
     const sy = cy + (y - cy) * scale
     const sw = wPx * scale
+    const fullSh = fullH * scale
     const sh = coverH * scale
-    overlay.roundRect(sx, sy, sw, sh, 8)
-    overlay.fill({ color: 0x0b1020, alpha: 0.48 })
+    const itemRadius = Math.max(0, getDebugCfg('gridItemCornerRadius') * scale)
+    overlay.roundRect(sx, sy, sw, sh, Math.min(itemRadius, sw / 2, sh / 2))
+    overlay.fill({ color: 0x0b1020, alpha: coverAlpha })
+
+    const lineY = sy + sh
+    const lineH = Math.max(1, lineHRaw * scale)
+    const lineGlowH = Math.max(lineH, lineGlowHRaw * scale)
+    if (lineGlowH > 0 && lineGlowAlpha > 0) {
+      const localCenterY = lineY - sy
+      const insetGlow = roundedRectInsetForBand(localCenterY, lineGlowH, fullSh, itemRadius)
+      const glowW = Math.max(0, sw - insetGlow * 2)
+      if (glowW > 0.5) {
+        const glowY = lineY - lineGlowH / 2
+        overlay.roundRect(sx + insetGlow, glowY, glowW, lineGlowH, Math.min(6, lineGlowH / 2))
+        overlay.fill({ color: lineColor, alpha: lineGlowAlpha })
+      }
+    }
+    if (lineAlpha > 0) {
+      const localCenterY = lineY - sy
+      const insetCore = roundedRectInsetForBand(localCenterY, lineH, fullSh, itemRadius)
+      const coreW = Math.max(0, sw - insetCore * 2)
+      if (coreW > 0.5) {
+        const coreY = lineY - lineH / 2
+        overlay.roundRect(sx + insetCore, coreY, coreW, lineH, Math.min(6, lineH / 2))
+        overlay.fill({ color: lineColor, alpha: lineAlpha })
+      }
+    }
   }
 }
 
@@ -561,12 +616,14 @@ function updateRuntimeStatBadges(
   zone: GridZone,
   items: CombatBoardItem[],
   runtimeById: Map<string, ReturnType<CombatEngine['getRuntimeState']>[number]>,
+  runtimeAmmoReloadMsById?: Map<string, number>,
 ): void {
   for (const it of items) {
     const rt = runtimeById.get(it.id)
     if (!rt) {
       zone.setItemStatOverride(it.id, null)
       zone.setItemAmmo(it.id, 0, 0)
+      zone.setItemAmmoReloading(it.id, 0)
       continue
     }
     zone.setItemStatOverride(it.id, {
@@ -578,6 +635,10 @@ function updateRuntimeStatBadges(
       multicast: Math.max(1, rt.multicast),
     })
     zone.setItemAmmo(it.id, Math.max(0, rt.ammoCurrent), Math.max(0, rt.ammoMax))
+    zone.setItemAmmoReloading(
+      it.id,
+      Math.max(0, runtimeAmmoReloadMsById?.get(it.id) ?? rt.ammoAutoReloadRemainingMs),
+    )
   }
 }
 
@@ -703,7 +764,7 @@ function showBattleItemInfo(instanceId: string, side: 'player' | 'enemy', keepMo
       ammoMax: Math.max(0, runtimeState.ammoMax),
     }
     : undefined
-  const nextKey = `${side}:${instanceId}:${hit.tier}:${runtimeOverride?.damage ?? -1}:${runtimeOverride?.shield ?? -1}:${runtimeOverride?.multicast ?? -1}:${runtimeOverride?.ammoCurrent ?? -1}:${runtimeOverride?.ammoMax ?? -1}`
+  const nextKey = `${side}:${instanceId}:${hit.tier}:${runtimeOverride?.cooldownMs ?? -1}:${runtimeOverride?.damage ?? -1}:${runtimeOverride?.shield ?? -1}:${runtimeOverride?.heal ?? -1}:${runtimeOverride?.multicast ?? -1}:${runtimeOverride?.ammoCurrent ?? -1}:${runtimeOverride?.ammoMax ?? -1}`
   if (keepMode && selectedItemInfoKey === nextKey) return
   if (!shouldShowSimpleDescriptions()) {
     selectedItemInfoKey = nextKey
@@ -757,6 +818,8 @@ export const BattleScene: Scene = {
     battleDay = Math.max(1, snapshot.day)
     settlementRevealAtMs = null
     battlePresentationMs = 0
+    chargeUiElapsedSinceTickMs = 0
+    ammoReloadUiElapsedSinceTickMs = 0
     fxPool.sourceNextDamageVisualAtMs.clear()
     battleSpeed = 1
     lastHudTickIndex = -1
@@ -917,6 +980,8 @@ export const BattleScene: Scene = {
     playerZone.zIndex = 20
     applyZoneVisualStyle(enemyZone)
     applyZoneVisualStyle(playerZone)
+    enemyZone.setRuntimeValueFxEnabled(true)
+    playerZone.setRuntimeValueFxEnabled(true)
     applyLayout(activeCols)
     skillUI!.resolveIntroFromSnapshot(snapshot)
     root.addChild(enemyZone)
@@ -1078,6 +1143,7 @@ export const BattleScene: Scene = {
     stage.on('pointerdown', onStageTapHidePopup)
 
     offTriggerEvent = EventBus.on('battle:item_trigger', (e) => {
+      fxPool.tryPulseItem(e.sourceItemId, e.side)
       damageStats.addTriggerCount(e.sourceItemId, e.side, Math.max(1, Math.round(e.triggerCount || 1)), engine)
     })
 
@@ -1360,6 +1426,8 @@ export const BattleScene: Scene = {
     battleDay = 1
     settlementRevealAtMs = null
     battlePresentationMs = 0
+    chargeUiElapsedSinceTickMs = 0
+    ammoReloadUiElapsedSinceTickMs = 0
     enteredSnapshot = null
     battleSpeed = 1
     fxPool.reset()
@@ -1395,7 +1463,8 @@ export const BattleScene: Scene = {
     tickAutoFxDegrade(dtMs)
     skillUI?.tickIntro(dtMs, playerZone)
     const introDone = transition.tickIntro(simDt * 1000, root)
-    if (introDone && syncAStarted) {
+    const allowSimUpdate = introDone && syncAStarted
+    if (allowSimUpdate) {
       engine.update(simDt)
     }
     consumeVisualFxQueue()
@@ -1408,11 +1477,52 @@ export const BattleScene: Scene = {
     const runtime = engine.getRuntimeState()
     const debugState = engine.getDebugState()
     const tickChanged = debugState.tickIndex !== lastHudTickIndex
+    const isBattleFinished = engine.isFinished()
+    const allowCdUiInterpolation = allowSimUpdate && !isBattleFinished
     const pulseActive = fxPool.getPulseStatesSize() > 0
+    chargeUiElapsedSinceTickMs = (!allowCdUiInterpolation || tickChanged)
+      ? 0
+      : (chargeUiElapsedSinceTickMs + dtMs)
+    ammoReloadUiElapsedSinceTickMs = (!allowCdUiInterpolation || tickChanged)
+      ? 0
+      : (ammoReloadUiElapsedSinceTickMs + dtMs)
+    const combatRuntimeCfg = getGameCfg().combatRuntime
+    const slowFactor = Math.max(0, Math.min(0.95, combatRuntimeCfg.cardSlowFactor ?? 0.4))
+    const hasteFactor = Math.max(0, combatRuntimeCfg.cardHasteFactor ?? 0.4)
     runtimeChargePercentByIdScratch.clear()
+    runtimeAmmoReloadMsByIdScratch.clear()
     runtimeByIdScratch.clear()
     for (const it of runtime) {
-      runtimeChargePercentByIdScratch.set(it.id, it.chargePercent)
+      const rawCooldownMs = Math.max(0, it.cooldownMs)
+      if (rawCooldownMs <= 0) {
+        runtimeChargePercentByIdScratch.set(it.id, 1)
+        runtimeAmmoReloadMsByIdScratch.set(it.id, 0)
+        runtimeByIdScratch.set(it.id, it)
+        continue
+      }
+      const cooldownMs = rawCooldownMs
+      let gainRate = 1
+      if (it.freezeMs > 0) {
+        gainRate = 0
+      } else {
+        if (it.slowMs > 0) gainRate *= Math.max(0.05, 1 - slowFactor)
+        if (it.hasteMs > 0) gainRate *= 1 + hasteFactor
+      }
+      const predictedChargeMs = allowCdUiInterpolation
+        ? Math.min(cooldownMs, Math.max(0, it.currentChargeMs + chargeUiElapsedSinceTickMs * gainRate))
+        : Math.min(cooldownMs, Math.max(0, it.currentChargeMs))
+      const predictedChargePercent = Math.max(0, Math.min(1, predictedChargeMs / cooldownMs))
+      const canInterpolateReload = allowCdUiInterpolation
+        && it.ammoAutoReloadRemainingMs > 0
+        && it.ammoMax > 0
+        && it.ammoCurrent <= 0
+        && it.currentChargeMs >= cooldownMs
+        && it.freezeMs <= 0
+      const predictedReloadMs = canInterpolateReload
+        ? Math.max(0, it.ammoAutoReloadRemainingMs - ammoReloadUiElapsedSinceTickMs)
+        : Math.max(0, it.ammoAutoReloadRemainingMs)
+      runtimeChargePercentByIdScratch.set(it.id, predictedChargePercent)
+      runtimeAmmoReloadMsByIdScratch.set(it.id, predictedReloadMs)
       runtimeByIdScratch.set(it.id, it)
     }
     const activeCols = getDayActiveCols(battleDay)
@@ -1441,14 +1551,14 @@ export const BattleScene: Scene = {
     }
     syncRemovedZoneItems(playerZone, 'player', playerAliveIdsScratch)
     syncRemovedZoneItems(enemyZone, 'enemy', enemyAliveIdsScratch)
+    drawCooldownOverlay(playerZone, playerCdOverlay, playerItemsScratch, runtimeChargePercentByIdScratch)
+    drawCooldownOverlay(enemyZone, enemyCdOverlay, enemyItemsScratch, runtimeChargePercentByIdScratch)
     if (tickChanged || pulseActive) {
-      drawCooldownOverlay(playerZone, playerCdOverlay, playerItemsScratch, runtimeChargePercentByIdScratch)
-      drawCooldownOverlay(enemyZone, enemyCdOverlay, enemyItemsScratch, runtimeChargePercentByIdScratch)
       fxPool.updateStatusFx(playerZone, enemyZone, engine, playerStatusLayer, enemyStatusLayer, playerFreezeOverlay, enemyFreezeOverlay)
     }
+    updateRuntimeStatBadges(playerZone, playerItemsScratch, runtimeByIdScratch, runtimeAmmoReloadMsByIdScratch)
+    updateRuntimeStatBadges(enemyZone, enemyItemsScratch, runtimeByIdScratch, runtimeAmmoReloadMsByIdScratch)
     if (tickChanged) {
-      updateRuntimeStatBadges(playerZone, playerItemsScratch, runtimeByIdScratch)
-      updateRuntimeStatBadges(enemyZone, enemyItemsScratch, runtimeByIdScratch)
       drawHeroBars(board.player, board.enemy)
       lastHudTickIndex = debugState.tickIndex
     }

@@ -65,6 +65,7 @@ export function toRunner(entity: BattleSnapshotEntity, idPrefix: string): Combat
       executeCount: 0,
       ammoMax,
       ammoCurrent: ammoMax,
+      ammoAutoReloadRemainingMs: 0,
       modifiers: {
         freezeMs: 0,
         slowMs: 0,
@@ -208,6 +209,7 @@ function buildEnemyRunner(
       executeCount: 0,
       ammoMax,
       ammoCurrent: ammoMax,
+      ammoAutoReloadRemainingMs: 0,
       modifiers: { freezeMs: 0, slowMs: 0, hasteMs: 0 },
     },
     col,
