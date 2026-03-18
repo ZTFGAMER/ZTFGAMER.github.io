@@ -179,6 +179,7 @@ export type PanelInitDeps = {
   findFirstBackpackPlace: (size: ItemSizeNorm) => { col: number; row: number } | null
   refreshSkillIconBarFn: () => void
   getCurrentRunIndex: () => number
+  restartRunFromBeginning: () => void
   restartRunAsFirstPlay: () => void
   openEventDraftPanel: () => void
   openSkillDraftPanel: (tier?: TierKey) => boolean
@@ -235,6 +236,7 @@ export function initPanelInstances(
     getAllItems: () => [...getAllItems()],
     addOnePlayerLevelForTest: () => deps.addOnePlayerLevelForTest(),
     getCurrentRunIndex: () => deps.getCurrentRunIndex(),
+    restartRunFromBeginning: () => deps.restartRunFromBeginning(),
     restartRunAsFirstPlay: () => deps.restartRunAsFirstPlay(),
   })
   stage.addChild(settingsPanel)

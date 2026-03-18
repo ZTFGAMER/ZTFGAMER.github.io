@@ -123,6 +123,8 @@ export function buildTopAreaUI(
     e.stopPropagation()
     callbacks.restartRunFromBeginning()
   })
+  restartCon.visible = false
+  restartCon.eventMode = 'none'
   ctx.restartBtn = restartCon
   stage.addChild(restartCon)
 

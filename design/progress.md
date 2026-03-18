@@ -1,5 +1,161 @@
 # 大巴扎 — 开发进度记录
 
+## 验收优化追加（2026-03-18，设置内补回“重新开始”并保留“清除所有游玩数据”）
+
+- 用户反馈：设置里缺少“重新开始”按钮。
+- 已完成：
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 在设置面板中新增“重新开始”按钮（普通重开当前游玩，不重置首玩元数据）；
+    - 原“清除所有游玩数据”按钮保留，作为更高风险操作；
+    - 按钮顺序调整为：测试+1级 → 本局物品图鉴 → 重新开始 → 清除所有游玩数据 → 关闭。
+  - `src/shop/ShopPanelInitializer.ts` + `src/shop/ShopScene.ts`
+    - 为 Settings 回调新增 `restartRunFromBeginning` 通道并完成注入。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收设置内两个重启相关按钮的文案与行为。
+
+## 工具环境（2026-03-18，Ghostty 初始配置）
+
+- 用户需求：安装后直接配置 Ghostty 便于试用。
+- 已完成：`/Users/zhengtengfei/Library/Application Support/com.mitchellh.ghostty/config.ghostty`
+  - 主题：`TokyoNight Storm`
+  - 字体：`Menlo` + `PingFang SC`（中文回退）
+  - 字号：`15.5`
+  - 视窗内边距：`window-padding-x=10`、`window-padding-y=8`
+  - 光标：`block` + `#ffcc66`
+  - 交互：`copy-on-select=clipboard`、`right-click-action=copy-or-paste`、`shell-integration=detect`
+  - macOS 标题栏：`tabs`
+- 验证：执行 `"/Applications/Ghostty.app/Contents/MacOS/ghostty" +show-config`，配置项已生效。
+- 当前阶段：等待用户体验确认（主题/字号/间距是否需要二次微调）。
+
+## 验收优化追加（2026-03-18，性能上报逻辑临时屏蔽）
+
+- 用户反馈：当前游戏里出现多处报错，要求先屏蔽性能上报相关逻辑，避免影响主流程。
+- 已完成：
+  - `data/game_config.json`
+    - `run_rules.perfReporter.enabled` 改为 `false`；
+    - `bearerToken` 回退为占位值 `PERF_INGEST_TOKEN_CHANGE_ME`（不再携带真实 token）。
+  - `src/main.ts`
+    - 仅在 `perfReporter.enabled=true` 时才初始化 `PerfReporter` 与相关监听页面/可见性事件；
+    - 默认关闭下完全不进入性能上报链路。
+- 验证：`npm run build` 通过。
+- 当前阶段：先保障游戏稳定可玩；后续如需恢复性能采样，可再按开关逐步回放。
+
+## 验收优化追加（2026-03-18，性能上报已执行落地与本地联调通过）
+
+- 用户指令：把 perf token 与服务端接入“直接执行”。
+- 已执行：
+  - `data/game_config.json`
+    - `run_rules.perfReporter.bearerToken` 已替换为真实随机 token：`pOYWqMJSUxPAEgs34OxP9vGsxbVV7qRf`。
+  - 本地服务联调：
+    - 启动 `scripts/perf_ingest_server.mjs`（`PORT=8787`，带 `PERF_INGEST_TOKEN`）；
+    - `GET /perf/health` 返回 `ok=true`；
+    - `POST /perf/ingest` 成功写入；
+    - `GET /perf/sessions` 能查询到 `local-smoke-1` 会话。
+- 验证：`npm run build` 通过。
+- 当前阶段：待将同一 token 配置到线上 `peer.kkopttarr.com` 服务环境并部署后，真机即可上报到线上地址。
+
+## 验收优化追加（2026-03-18，测试面板纵向位置上移对齐）
+
+- 用户反馈：事件/技能/物品测试面板整体偏下。
+- 已完成：`src/shop/panels/SettingsDebugPanel.ts`
+  - `openSkillTestOverlay` 面板中心 `panel.y` 调整为 `718`；
+  - `openEventTestOverlay` 面板中心 `panel.y` 调整为 `718`；
+  - `openItemTestOverlay` 面板中心 `panel.y` 调整为 `718`；
+  - 三类测试面板统一与设置主面板纵向基线对齐，避免出现“整体下沉”。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收三类测试面板位置。
+
+## 验收优化追加（2026-03-18，性能日志服务端接入与Token生成工具）
+
+- 用户需求：性能日志不仅前端采集，还要“接入服务端测试接口”，并可在 Mac 端拉取 session 给 Claude 分析；同时希望协助处理真实 token。
+- 已完成：
+  - `scripts/perf_ingest_server.mjs`（新增）
+    - 提供最小可用 perf 服务端：
+      - `POST /perf/ingest`（Bearer 鉴权）
+      - `GET /perf/health`
+      - `GET /perf/sessions`
+      - `GET /perf/sessions/:sessionId`
+    - 支持 CORS、payload 大小限制、按天+按 session 落盘（ndjson）。
+  - `scripts/generate_perf_token.mjs`（新增）
+    - 本地一键生成高熵 token。
+  - `package.json`
+    - 新增脚本：`npm run perf:token`、`npm run perf:server`。
+  - `scripts/perf_server.README.md`（新增）
+    - 记录 token 生成、服务启动、API 与部署要点。
+- 说明：我无法代你向第三方平台“申请”真实生产密钥，但已把本地生成与接入流程打通（你执行命令即可得到真实随机 token）。
+- 当前阶段：等待你在服务器环境设置 `PERF_INGEST_TOKEN` 并启动服务，然后用真机打一局验证上报链路。
+
+## 验收优化追加（2026-03-18，设置入口重排与选项精简）
+
+- 用户需求：
+  - 设置里去掉“初始合成规则弹窗”“同职异物合成选转化”两个开关；
+  - “重新开始”“物品图鉴”都放到设置面板里；
+  - 外部设置按钮上移到原“重新开始”按钮位置。
+- 已完成：
+  - `src/shop/panels/SettingsDebugPanel.ts`
+    - 设置开关列表移除：`gameplayShowStarterSynthesisGuide`、`gameplaySameArchetypeDiffItemStoneSynthesis`；
+    - 设置面板内新增“本局物品图鉴”按钮（点击后关闭设置并打开图鉴）；
+    - 外部设置按钮 Y 改为直接对齐原重开按钮位置；
+    - 外部“物品图鉴”按钮创建逻辑移除，并清理旧实例句柄。
+  - `src/shop/ui/ShopUIBuilders.ts`
+    - 外部“重新开始”按钮改为隐藏且禁用交互（保留定位参考，不再对玩家可见）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“外部仅保留设置入口 + 设置内可重开/图鉴”的交互动线。
+
+## 验收优化追加（2026-03-18，真机性能日志上传测试接口接入）
+
+- 用户需求：性能套件除本地查看外，还要同时上传测试接口，便于在 Mac 侧集中查看并由 Claude 分析。
+- 已完成：
+  - `data/game_config.json`
+    - `run_rules.perfReporter` 新增并默认启用：
+      - `endpoint`: `https://peer.kkopttarr.com/perf/ingest`
+      - `bearerToken`: `PERF_INGEST_TOKEN_CHANGE_ME`
+      - `sampleMs=500`、`flushMs=10000`、`batchSize=50`、`maxPoints=3000`、`maxEvents=1200`。
+  - `src/common/items/ItemDef.ts`
+    - 补充 `runRules.perfReporter` 类型定义。
+  - `src/perf/PerfReporter.ts`（新增）
+    - 实现会话级性能采样、环形缓冲、批量上传、`sendBeacon` 兜底、事件打点与导出快照。
+  - `src/main.ts`
+    - 启动时初始化 `PerfReporter`，接入渲染类型/场景名/Battle FX 指标；
+    - 每帧 `ticker` 采样；场景切换打点并按配置触发 flush；
+    - 页面隐藏/离开时 `sendBeacon` 兜底；
+    - 支持 URL 覆盖：`perf=1|0`、`perfEndpoint`、`perfToken`；
+    - DEV 下提供 `window.__perfFlush()` 与 `window.__perfExport()`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户提供服务端 token 并真机联调上传链路（抓一轮 session 做卡顿分析）。
+
+## 验收优化追加（2026-03-18，被动物品详情去掉单独“被动物品”行）
+
+- 用户需求：详情中的被动物品不再单独显示一行“被动物品”字样。
+- 已完成：`src/common/ui/SellPopup.ts`
+  - 在详情简要属性提取中移除无 CD 条目对“被动物品”占位行的追加；
+  - 被动物品现在不再额外占一行，仅保留其真实属性信息。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收被动物品详情显示是否符合预期。
+
+## 验收优化追加（2026-03-18，非战斗右上红心/奖杯整体下移30px）
+
+- 用户需求：非战斗界面右上角红心与奖杯位置下移 `30px`。
+- 已完成：`src/shop/ShopScene.ts`
+  - 统一将 `livesText.y` 从 `18` 调整为 `48`；
+  - 奖杯文本 `trophyText.y` 依赖红心位置计算，随之整体下移同等距离。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收右上角状态区位置。
+
+## 验收优化追加（2026-03-18，右上角常驻FPS显示）
+
+- 用户需求：游戏中持续观察卡顿，希望右上角始终显示 FPS。
+- 已完成：
+  - `src/shop/ShopScene.ts`
+    - 新增商店场景常驻 FPS HUD（右上角，约 0.25 秒采样刷新一次）；
+    - 进入场景创建，离开场景销毁。
+  - `src/battle/BattleScene.ts`
+    - 新增战斗场景常驻 FPS HUD（右上角，同采样逻辑）；
+    - 每帧更新并跟随文本宽度右对齐。
+- 样式：统一蓝白高亮字 + 深色描边，保证不同背景可读性。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“商店/战斗均常驻 FPS”与数值稳定性。
+
 ## 交付执行（2026-03-18，同步Git + TestFlight + Android打包）
 
 - 用户指令：同步 Git，并产出 TF 包与 Android 包。

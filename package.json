@@ -16,7 +16,9 @@
     "build:android-web": "tsc -b && vite build --base ./ --outDir dist-android",
     "build:deploy": "tsc -b && vite build --base ./",
     "android:sync": "npx cap sync android",
-    "android:open": "npx cap open android"
+    "android:open": "npx cap open android",
+    "perf:token": "node scripts/generate_perf_token.mjs",
+    "perf:server": "node scripts/perf_ingest_server.mjs"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.1.0",

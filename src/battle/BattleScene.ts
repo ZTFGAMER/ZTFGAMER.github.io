@@ -128,6 +128,25 @@ let monitorSampleElapsedMs = 0
 let monitorHighStreak = 0
 let monitorRecoverStreak = 0
 let autoFxDegradeLevel = 0
+let fpsHudText: Text | null = null
+let fpsSampleElapsedMs = 0
+let fpsSampleFrames = 0
+let fpsShown = 0
+
+function updateFpsHud(dt: number): void {
+  if (!fpsHudText) return
+  const dtMs = Math.max(0, dt * 1000)
+  fpsSampleElapsedMs += dtMs
+  fpsSampleFrames += 1
+  if (fpsSampleElapsedMs >= 250) {
+    fpsShown = Math.max(0, Math.round((fpsSampleFrames * 1000) / Math.max(1, fpsSampleElapsedMs)))
+    fpsSampleElapsedMs = 0
+    fpsSampleFrames = 0
+  }
+  fpsHudText.text = `FPS ${fpsShown}`
+  fpsHudText.x = CANVAS_W - fpsHudText.width - 10
+  fpsHudText.y = 8
+}
 type QueuedFxTask = {
   run: () => void
   mergeKey?: string
@@ -1035,6 +1054,23 @@ export const BattleScene: Scene = {
     itemInfoPopup.visible = false
     root.addChild(itemInfoPopup)
 
+    fpsSampleElapsedMs = 0
+    fpsSampleFrames = 0
+    fpsShown = 0
+    fpsHudText = new Text({
+      text: 'FPS 0',
+      style: {
+        fontSize: 20,
+        fill: 0xbde8ff,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        stroke: { color: 0x102136, width: 3 },
+      },
+    })
+    fpsHudText.zIndex = 260
+    root.addChild(fpsHudText)
+    updateFpsHud(0)
+
     battleEndMask = new Graphics()
     battleEndMask.zIndex = 180
     battleEndMask.eventMode = 'static'
@@ -1411,6 +1447,10 @@ export const BattleScene: Scene = {
     offItemDestroyEvent?.(); offItemDestroyEvent = null
     offBattleEndEvent?.(); offBattleEndEvent = null
     itemInfoPopup = null
+    fpsHudText = null
+    fpsSampleElapsedMs = 0
+    fpsSampleFrames = 0
+    fpsShown = 0
     selectedItemId = null
     selectedItemSide = null
     selectedItemInfoKey = null
@@ -1449,6 +1489,7 @@ export const BattleScene: Scene = {
     console.log('[BattleScene] 离开战斗场景')
   },
   update(dt: number) {
+    updateFpsHud(dt)
     if (!engine || !enemyZone || !playerZone || !enemyCdOverlay || !playerCdOverlay || !enemyFreezeOverlay || !playerFreezeOverlay || !enemyStatusLayer || !playerStatusLayer) return
     if (transition.tickExit(dt * 1000)) return
     if (isPvpSpeedupDisabled() && battleSpeed !== 1) {

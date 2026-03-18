@@ -170,6 +170,25 @@ import type { BattleZoneUICallbacks } from './ui/ShopBattleZoneBuilder'
 
 // ---- 場景共享狀態上下文 ----
 const _ctx: ShopSceneCtx = createShopSceneCtx()
+let fpsHudText: Text | null = null
+let fpsSampleElapsedMs = 0
+let fpsSampleFrames = 0
+let fpsShown = 0
+
+function updateFpsHud(dt: number): void {
+  if (!fpsHudText) return
+  const dtMs = Math.max(0, dt * 1000)
+  fpsSampleElapsedMs += dtMs
+  fpsSampleFrames += 1
+  if (fpsSampleElapsedMs >= 250) {
+    fpsShown = Math.max(0, Math.round((fpsSampleFrames * 1000) / Math.max(1, fpsSampleElapsedMs)))
+    fpsSampleElapsedMs = 0
+    fpsSampleFrames = 0
+  }
+  fpsHudText.text = `FPS ${fpsShown}`
+  fpsHudText.x = CANVAS_W - fpsHudText.width - 10
+  fpsHudText.y = 8
+}
 
 // ---- HeroSystem 本地 shim 包裝（轉發 _ctx + callbacks）----
 // 以下函數與原函數簽名完全相同，供場景內部直接調用
@@ -1176,6 +1195,7 @@ function makePanelInitDeps(): PanelInitDeps {
     findFirstBackpackPlace: (size) => findFirstBackpackPlace(size),
     refreshSkillIconBarFn: () => skillDraftPanel?.refreshSkillIconBar(),
     getCurrentRunIndex: () => getCurrentRunIndex(),
+    restartRunFromBeginning: () => restartRunFromBeginning(),
     restartRunAsFirstPlay: () => restartRunAsFirstPlay(),
     openEventDraftPanel: () => { eventDraftPanel?.closeEventDraftOverlay(); eventDraftPanel?.ensureEventDraftSelection() },
     openSkillDraftPanel: (_tier) => { skillDraftPanel?.closeSkillDraftOverlay(); skillDraftPanel?.ensureSkillDraftSelection(); return true },
@@ -1568,7 +1588,7 @@ function refreshShopUI(ctx: ShopSceneCtx = _ctx): void {
       ctx.livesText.style.fill = lives.current <= 1 ? 0xff6a6a : 0xffd4d4
     }
     ctx.livesText.x = CANVAS_W - ctx.livesText.width - 18
-    ctx.livesText.y = 18
+    ctx.livesText.y = 48
   }
   if (ctx.trophyText) {
     if (PvpContext.isActive()) {
@@ -2013,6 +2033,23 @@ export const ShopScene: Scene = {
     applyPhaseInputLock()
     ensureStarterClassSelection(stage)
     ensureDailyChoiceSelection(stage)
+
+    fpsSampleElapsedMs = 0
+    fpsSampleFrames = 0
+    fpsShown = 0
+    fpsHudText = new Text({
+      text: 'FPS 0',
+      style: {
+        fontSize: 20,
+        fill: 0xbde8ff,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        stroke: { color: 0x102136, width: 3 },
+      },
+    })
+    fpsHudText.zIndex = 9999
+    stage.addChild(fpsHudText)
+    updateFpsHud(0)
   },
 
   onExit() {
@@ -2058,6 +2095,9 @@ export const ShopScene: Scene = {
     resetDrag()
 
     if (_ctx.shopPanel)    { stage.removeChild(_ctx.shopPanel); _ctx.shopPanel.destroy({ children: true }); _ctx.shopPanel = null }
+    if (fpsHudText?.parent) fpsHudText.parent.removeChild(fpsHudText)
+    fpsHudText?.destroy()
+    fpsHudText = null
     if (_ctx.sellPopup)    stage.removeChild(_ctx.sellPopup)
     if (_ctx.battleView)   { stage.removeChild(_ctx.battleView); _ctx.battleView.destroy({ children: true }); _ctx.battleView = null }
     if (_ctx.backpackView) { stage.removeChild(_ctx.backpackView); _ctx.backpackView.destroy({ children: true }); _ctx.backpackView = null }
@@ -2283,6 +2323,7 @@ export const ShopScene: Scene = {
   },
 
   update(dt: number) {
+    updateFpsHud(dt)
     tickBattleStartTransition(dt)
     // PVP 倒计时：实时更新 Day 标签旁的秒数
     if (PvpContext.isActive() && _ctx.dayDebugText) {

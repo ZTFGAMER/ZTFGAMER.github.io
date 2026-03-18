@@ -20,6 +20,7 @@ import { setBattleSnapshot, type BattleSnapshotBundle } from '@/battle/BattleSna
 import { normalizeSize } from '@/common/items/ItemDef'
 import { CANVAS_W as BASE_W, CANVAS_H as BASE_H } from '@/config/layoutConstants'
 import { EventBus, type SceneName } from '@/core/EventBus'
+import { PerfReporter, resolvePerfReporterConfig } from '@/perf/PerfReporter'
 
 type SoakTestOptions = {
   rounds: number
@@ -52,6 +53,7 @@ let soakRoundTimer: number | null = null
 let soakBattleEndTimer: number | null = null
 let soakPollTimer: number | null = null
 let soakState: SoakTestStats | null = null
+let perfReporter: PerfReporter | null = null
 
 const DEFAULT_SOAK_OPTIONS: SoakTestOptions = {
   rounds: 20,
@@ -446,6 +448,36 @@ async function bootstrap(): Promise<void> {
   console.log(`[Renderer] ${app.renderer.type === 0 ? 'WebGL' : 'WebGPU'} | DPR=${window.devicePixelRatio} resolution=${resolution} | canvas=${app.renderer.width}x${app.renderer.height} | antialias=${!isMobile}`)
   setApp(app)
 
+  const perfCfg = resolvePerfReporterConfig(getConfig().runRules?.perfReporter)
+  const perfParams = new URLSearchParams(window.location.search)
+  if (perfParams.get('perf') === '1') perfCfg.enabled = true
+  if (perfParams.get('perf') === '0') perfCfg.enabled = false
+  const perfEndpoint = String(perfParams.get('perfEndpoint') ?? '').trim()
+  const perfToken = String(perfParams.get('perfToken') ?? '').trim()
+  if (perfEndpoint) perfCfg.endpoint = perfEndpoint
+  if (perfToken) perfCfg.bearerToken = perfToken
+  if (perfCfg.enabled) {
+    perfReporter = new PerfReporter(perfCfg, {
+      getScene: () => SceneManager.currentName(),
+      getRendererType: () => (app.renderer.type === 0 ? 'webgl' : 'webgpu'),
+      getBattlePerf: () => {
+        if (SceneManager.currentName() !== 'battle') return null
+        return getBattleFxPerfStats()
+      },
+    })
+    perfReporter.markEvent('boot', {
+      isMobile,
+      resolution,
+      renderer: app.renderer.type === 0 ? 'webgl' : 'webgpu',
+    })
+    window.addEventListener('pagehide', () => perfReporter?.flushByBeacon())
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') perfReporter?.flushByBeacon()
+    })
+  } else {
+    perfReporter = null
+  }
+
   // 3. 挂载 Canvas
   const container = document.getElementById('app')!
   const canvas = app.canvas as HTMLCanvasElement
@@ -542,6 +574,8 @@ async function bootstrap(): Promise<void> {
 
     EventBus.on('game:scene_change', ({ to }) => {
       applyBackgroundByScene(to)
+      perfReporter?.markEvent('scene_change', { to })
+      if (perfCfg.autoFlushOnSceneChange) void perfReporter?.flush(false)
     })
 
     applyBackgroundByScene(SceneManager.currentName())
@@ -624,6 +658,16 @@ async function bootstrap(): Promise<void> {
       __listItemBattleTargets?: () => ItemBattleTarget[]
       __startItemBattleTest?: (defId: string, level?: number) => boolean
     }).__startItemBattleTest = (defId: string, level?: number) => startItemBattleTest(defId, level)
+    ;(window as Window & {
+      __perfFlush?: () => void
+      __perfExport?: () => { sessionId: string; points: unknown[]; events: unknown[] } | null
+    }).__perfFlush = () => {
+      void perfReporter?.flush(true)
+    }
+    ;(window as Window & {
+      __perfFlush?: () => void
+      __perfExport?: () => { sessionId: string; points: unknown[]; events: unknown[] } | null
+    }).__perfExport = () => perfReporter?.exportSnapshot() ?? null
 
     const params = new URLSearchParams(window.location.search)
     const itemBattleId = String(params.get('itemBattleId') ?? '').trim()
@@ -654,6 +698,7 @@ async function bootstrap(): Promise<void> {
   // 6. 接入 PixiJS Ticker（取代手写 RAF）
   app.ticker.add((ticker) => {
     const dt = ticker.deltaMS / 1000
+    perfReporter?.tick(ticker.deltaMS)
     SceneManager.update(dt)
   })
 

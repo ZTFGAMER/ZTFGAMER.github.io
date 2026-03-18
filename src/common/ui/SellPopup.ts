@@ -240,14 +240,7 @@ function extractSimpleStatEntries(
   const ms = typeof rt?.cooldownMs === 'number'
     ? Math.max(0, rt.cooldownMs)
     : getCooldownMsByTier(item, tierIndex)
-  if (!Number.isFinite(ms) || ms <= 0) {
-    out.push({
-      label: '',
-      value: '被动物品',
-      color: 0x62a8ff,
-      icon: '◈',
-    })
-  } else {
+  if (Number.isFinite(ms) && ms > 0) {
     if (displayMode === 'simple') {
       out.push({
         label: '速度',

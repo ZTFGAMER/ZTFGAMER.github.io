@@ -126,6 +126,17 @@ export interface GameConfig {
   runRules?: {
     trophyWinsToFinalVictory?: number
     muteLogsInMobileRelease?: boolean
+    perfReporter?: {
+      enabled?: boolean
+      endpoint?: string
+      bearerToken?: string
+      sampleMs?: number
+      flushMs?: number
+      batchSize?: number
+      maxPoints?: number
+      maxEvents?: number
+      autoFlushOnSceneChange?: boolean
+    }
     playerExpToNextLevel?: number[]
     playerMaxLifeByLevel?: number[]
     playerRoundDamageByLevel?: number[]

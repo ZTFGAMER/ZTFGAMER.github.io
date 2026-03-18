@@ -56,6 +56,7 @@ export interface SettingsDebugCallbacks {
   getAllItems: () => ItemDef[]
   addOnePlayerLevelForTest: () => void
   getCurrentRunIndex: () => number
+  restartRunFromBeginning: () => void
   restartRunAsFirstPlay: () => void
 }
 
@@ -286,7 +287,7 @@ export class SettingsDebugPanel extends Container {
 
     const panel = new Container()
     panel.x = CANVAS_W / 2
-    panel.y = Math.round(CANVAS_H * 0.62) + 150
+    panel.y = 718
     panel.eventMode = 'static'
     panel.on('pointerdown', (e) => e.stopPropagation())
     overlay.addChild(panel)
@@ -469,7 +470,7 @@ export class SettingsDebugPanel extends Container {
 
     const panel = new Container()
     panel.x = CANVAS_W / 2
-    panel.y = CANVAS_H / 2 + 450
+    panel.y = 718
     panel.eventMode = 'static'
     panel.on('pointerdown', (e) => e.stopPropagation())
     overlay.addChild(panel)
@@ -638,7 +639,7 @@ export class SettingsDebugPanel extends Container {
 
     const panel = new Container()
     panel.x = CANVAS_W / 2
-    panel.y = CANVAS_H / 2 + getDebugCfg('gameplayCompendiumPanelOffsetY')
+    panel.y = 718
     panel.eventMode = 'static'
     panel.on('pointerdown', (e) => e.stopPropagation())
     overlay.addChild(panel)
@@ -1216,14 +1217,12 @@ export class SettingsDebugPanel extends Container {
     panel.addChild(runText)
 
     type ToggleRow = {
-      key: 'gameplayCrossSynthesisConfirm' | 'gameplayShowStarterSynthesisGuide' | 'gameplayShowSpeedButton' | 'gameplayBattleZoneNoSynthesis' | 'gameplaySameArchetypeDiffItemStoneSynthesis'
+      key: 'gameplayCrossSynthesisConfirm' | 'gameplayShowSpeedButton' | 'gameplayBattleZoneNoSynthesis'
       label: string
     }
     const rows: ToggleRow[] = [
       { key: 'gameplayBattleZoneNoSynthesis', label: '上阵区禁止合成' },
       { key: 'gameplayCrossSynthesisConfirm', label: '合成二次弹窗' },
-      { key: 'gameplayShowStarterSynthesisGuide', label: '初始合成规则弹窗' },
-      { key: 'gameplaySameArchetypeDiffItemStoneSynthesis', label: '同职异物合成选转化' },
       { key: 'gameplayShowSpeedButton', label: '战斗加速按钮' },
     ]
 
@@ -1275,7 +1274,7 @@ export class SettingsDebugPanel extends Container {
       panel.addChild(btn)
     }
 
-    const controlCount = rows.length + 5
+    const controlCount = rows.length + 7
     const controlStartY = -240
     const controlEndY = 360
     const controlGapY = controlCount > 1
@@ -1370,30 +1369,73 @@ export class SettingsDebugPanel extends Container {
     addLevelBtn.addChild(addLevelBg, addLevelText)
     panel.addChild(addLevelBtn)
 
-    const restartAsFirstBtn = new Container()
-    restartAsFirstBtn.x = 0
-    restartAsFirstBtn.y = controlYAt(rows.length + 4)
-    restartAsFirstBtn.eventMode = 'static'
-    restartAsFirstBtn.cursor = 'pointer'
-    const restartAsFirstBg = new Graphics()
-    restartAsFirstBg.roundRect(-172, -28, 344, 56, 16)
-    restartAsFirstBg.fill({ color: 0x9a3d4d, alpha: 0.96 })
-    restartAsFirstBg.stroke({ color: 0xffc4cd, width: 3, alpha: 0.95 })
-    const restartAsFirstText = new Text({
-      text: '从头开始',
+    const compendiumBtn = new Container()
+    compendiumBtn.x = 0
+    compendiumBtn.y = controlYAt(rows.length + 4)
+    compendiumBtn.eventMode = 'static'
+    compendiumBtn.cursor = 'pointer'
+    const compendiumBg = new Graphics()
+    compendiumBg.roundRect(-172, -28, 344, 56, 16)
+    compendiumBg.fill({ color: 0x3a5b93, alpha: 0.96 })
+    compendiumBg.stroke({ color: 0xb9d4ff, width: 3, alpha: 0.95 })
+    const compendiumText = new Text({
+      text: '本局物品图鉴',
+      style: { fontSize: 26, fill: 0xf3f9ff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    compendiumText.anchor.set(0.5)
+    compendiumBtn.on('pointerdown', (e) => {
+      e.stopPropagation()
+      this.closeSettingsOverlay()
+      this.openItemCompendiumOverlay()
+    })
+    compendiumBtn.addChild(compendiumBg, compendiumText)
+    panel.addChild(compendiumBtn)
+
+    const restartBtn = new Container()
+    restartBtn.x = 0
+    restartBtn.y = controlYAt(rows.length + 5)
+    restartBtn.eventMode = 'static'
+    restartBtn.cursor = 'pointer'
+    const restartBg = new Graphics()
+    restartBg.roundRect(-172, -28, 344, 56, 16)
+    restartBg.fill({ color: 0x875a2d, alpha: 0.96 })
+    restartBg.stroke({ color: 0xffddab, width: 3, alpha: 0.95 })
+    const restartText = new Text({
+      text: '重新开始',
+      style: { fontSize: 26, fill: 0xfff5df, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    restartText.anchor.set(0.5)
+    restartBtn.on('pointerdown', (e) => {
+      e.stopPropagation()
+      cb.restartRunFromBeginning()
+    })
+    restartBtn.addChild(restartBg, restartText)
+    panel.addChild(restartBtn)
+
+    const clearDataBtn = new Container()
+    clearDataBtn.x = 0
+    clearDataBtn.y = controlYAt(rows.length + 6)
+    clearDataBtn.eventMode = 'static'
+    clearDataBtn.cursor = 'pointer'
+    const clearDataBg = new Graphics()
+    clearDataBg.roundRect(-172, -28, 344, 56, 16)
+    clearDataBg.fill({ color: 0x9a3d4d, alpha: 0.96 })
+    clearDataBg.stroke({ color: 0xffc4cd, width: 3, alpha: 0.95 })
+    const clearDataText = new Text({
+      text: '清除所有游玩数据',
       style: { fontSize: 26, fill: 0xfff2f5, fontFamily: 'Arial', fontWeight: 'bold' },
     })
-    restartAsFirstText.anchor.set(0.5)
-    restartAsFirstBtn.on('pointerdown', (e) => {
+    clearDataText.anchor.set(0.5)
+    clearDataBtn.on('pointerdown', (e) => {
       e.stopPropagation()
       cb.restartRunAsFirstPlay()
     })
-    restartAsFirstBtn.addChild(restartAsFirstBg, restartAsFirstText)
-    panel.addChild(restartAsFirstBtn)
+    clearDataBtn.addChild(clearDataBg, clearDataText)
+    panel.addChild(clearDataBtn)
 
     const closeBtn = new Container()
     closeBtn.x = 0
-    closeBtn.y = controlYAt(rows.length + 5)
+    closeBtn.y = controlYAt(rows.length + 7)
     closeBtn.eventMode = 'static'
     closeBtn.cursor = 'pointer'
     const closeBg = new Graphics()
@@ -1423,11 +1465,9 @@ export class SettingsDebugPanel extends Container {
     const stage = this.stage
     const cfg = getConfig()
     const topSafeYOffset = getTopLeftControlYOffset()
-    const buttonGapY = 18
     const buttonBaseX = ctx.restartBtn?.x ?? 16
     const restartBaseY = ctx.restartBtn?.y ?? (16 + topSafeYOffset)
-    const restartHeight = Math.max(44, Math.ceil(ctx.restartBtn?.getLocalBounds().height ?? 0))
-    const settingsBaseY = restartBaseY + restartHeight + buttonGapY
+    const settingsBaseY = restartBaseY
     if (!ctx.settingsBtn) {
       const con = new Container()
       con.x = buttonBaseX
@@ -1474,59 +1514,9 @@ export class SettingsDebugPanel extends Container {
       ctx.settingsBtn.y = settingsBaseY
     }
 
-    if (!ctx.itemCompendiumBtn && ctx.playerStatusCon) {
-      const btn = new Container()
-      btn.zIndex = 7050
-      btn.eventMode = 'static'
-      btn.cursor = 'pointer'
-
-      const bg = new Graphics()
-      const text = new Text({
-        text: '物品图鉴',
-        style: {
-          fontSize: cfg.textSizes.refreshCost,
-          fill: 0xffe8a3,
-          fontFamily: 'Arial',
-          fontWeight: 'bold',
-        },
-      })
-      const padX = 18
-      const padY = 10
-      const w = Math.max(124, Math.ceil(text.width + padX * 2))
-      const h = Math.ceil(text.height + padY * 2)
-      bg.roundRect(0, 0, w, h, 14)
-      bg.fill({ color: 0x1f2940, alpha: 0.88 })
-      bg.stroke({ color: 0xffd25a, width: 2, alpha: 0.95 })
-      btn.hitArea = new Rectangle(0, 0, w, h)
-
-      btn.on('pointerdown', (e) => {
-        e.stopPropagation()
-        if (ctx.itemCompendiumOverlay) this.closeItemCompendiumOverlay()
-        else this.openItemCompendiumOverlay()
-      })
-
-      text.x = Math.round((w - text.width) / 2)
-      text.y = Math.round((h - text.height) / 2)
-      btn.addChild(bg, text)
-      const redDot = new Graphics()
-      redDot.circle(0, 0, 8)
-      redDot.fill({ color: 0xff4d58, alpha: 0.98 })
-      redDot.circle(0, 0, 8)
-      redDot.stroke({ color: 0xffd5da, width: 2, alpha: 0.95 })
-      redDot.x = w - 10
-      redDot.y = 10
-      redDot.visible = false
-      btn.addChild(redDot)
-      stage.addChild(btn)
-      ctx.itemCompendiumBtn = btn
-      ctx.itemCompendiumBtnRedDot = redDot
-      this.refreshItemCompendiumRedDot()
-    }
-
-    if (ctx.itemCompendiumBtn) {
-      const settingsHeight = Math.max(44, Math.ceil(ctx.settingsBtn?.getLocalBounds().height ?? 0))
-      ctx.itemCompendiumBtn.x = buttonBaseX
-      ctx.itemCompendiumBtn.y = settingsBaseY + settingsHeight + buttonGapY
-    }
+    if (ctx.itemCompendiumBtn?.parent) ctx.itemCompendiumBtn.parent.removeChild(ctx.itemCompendiumBtn)
+    ctx.itemCompendiumBtn?.destroy({ children: true })
+    ctx.itemCompendiumBtn = null
+    ctx.itemCompendiumBtnRedDot = null
   }
 }

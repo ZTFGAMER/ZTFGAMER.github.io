@@ -1498,6 +1498,17 @@
     "value": {
       "trophyWinsToFinalVictory": 10,
       "muteLogsInMobileRelease": true,
+      "perfReporter": {
+        "enabled": false,
+        "endpoint": "https://peer.kkopttarr.com/perf/ingest",
+        "bearerToken": "PERF_INGEST_TOKEN_CHANGE_ME",
+        "sampleMs": 500,
+        "flushMs": 10000,
+        "batchSize": 50,
+        "maxPoints": 3000,
+        "maxEvents": 1200,
+        "autoFlushOnSceneChange": true
+      },
       "playerExpToNextLevel": [
         3,
         4,
