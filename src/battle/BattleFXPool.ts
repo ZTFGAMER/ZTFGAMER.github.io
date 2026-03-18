@@ -41,6 +41,30 @@ export type BattleFxPerfStats = {
   battleStatusFxMsAvg?: number
   battleStatusFxMsP95?: number
   battleStatusFxMsMax?: number
+  battleLayoutMsAvg?: number
+  battleLayoutMsP95?: number
+  battleLayoutMsMax?: number
+  battleSyncRemovedMsAvg?: number
+  battleSyncRemovedMsP95?: number
+  battleSyncRemovedMsMax?: number
+  battleBadgesMsAvg?: number
+  battleBadgesMsP95?: number
+  battleBadgesMsMax?: number
+  battleHeroBarsMsAvg?: number
+  battleHeroBarsMsP95?: number
+  battleHeroBarsMsMax?: number
+  battlePortraitMsAvg?: number
+  battlePortraitMsP95?: number
+  battlePortraitMsMax?: number
+  battleSettlementMsAvg?: number
+  battleSettlementMsP95?: number
+  battleSettlementMsMax?: number
+  battleDamageStatsMsAvg?: number
+  battleDamageStatsMsP95?: number
+  battleDamageStatsMsMax?: number
+  battleMainResidualMsAvg?: number
+  battleMainResidualMsP95?: number
+  battleMainResidualMsMax?: number
   battleFxTickMsAvg?: number
   battleFxTickMsP95?: number
   battleFxTickMsMax?: number

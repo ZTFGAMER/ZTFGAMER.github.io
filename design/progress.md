@@ -1,5 +1,30 @@
 # 大巴扎 — 开发进度记录
 
+## 崩溃回合加固（2026-03-18，低成本崩溃定位埋点 + 主流程残差拆分）
+
+- 用户反馈：最新真机测试出现“游戏直接崩溃”。
+- 已完成加固（本轮不改玩法）：
+  - `src/main.ts`
+    - Perf 模式新增全局错误/生命周期埋点：
+      - `window_error`、`unhandled_rejection`；
+      - `visibility_change`、`lifecycle_freeze/resume/pageshow`；
+      - hidden/freeze 场景下继续 `flushByBeacon`，尽量保留崩溃前最后数据。
+  - `src/battle/BattleScene.ts`
+    - 将 `recordBattleRuntimePerfFrame` 记录时机移动到 `update` 尾部，覆盖此前漏采的后半段逻辑；
+    - 继续细分分段耗时并新增：
+      - `battleLayoutMs*`
+      - `battleSyncRemovedMs*`
+      - `battleBadgesMs*`
+      - `battleHeroBarsMs*`
+      - `battlePortraitMs*`
+      - `battleSettlementMs*`
+      - `battleDamageStatsMs*`
+      - `battleMainResidualMs*`（总耗时减去已分段和，用于识别未知主耗时）
+  - `src/battle/BattleFXPool.ts`
+    - 扩展 `BattleFxPerfStats` 类型，承载上述新增指标透传。
+- 构建验证：`npm run build` 通过。
+- 下一步：用户继续用 `perf=1` 链接复测；若再崩溃，优先看崩溃前最后 3~5 个点位中的 `window_error/unhandled_rejection` 与 `battleMainResidualMsP95`。
+
 ## 真机回归分析（2026-03-18，新增分段埋点后的首轮结论）
 
 - 用户已完成新埋点版本真机实测（同一 session：`perf-mmvujsdo-kpp0k1`，`battle` 点位 471 条）。

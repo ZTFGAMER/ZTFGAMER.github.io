@@ -588,8 +588,36 @@ async function bootstrap(): Promise<void> {
       resolution,
       renderer: app.renderer.type === 0 ? 'webgl' : 'webgpu',
     })
+    window.addEventListener('error', (evt) => {
+      perfReporter?.markEvent('window_error', {
+        message: evt.message,
+        filename: evt.filename,
+        lineno: evt.lineno,
+        colno: evt.colno,
+      })
+    })
+    window.addEventListener('unhandledrejection', (evt) => {
+      const reason = evt.reason
+      const reasonText = typeof reason === 'string'
+        ? reason
+        : (reason && typeof reason === 'object' && 'message' in reason
+            ? String((reason as { message?: unknown }).message)
+            : String(reason))
+      perfReporter?.markEvent('unhandled_rejection', { reason: reasonText })
+    })
+    window.addEventListener('pageshow', () => {
+      perfReporter?.markEvent('lifecycle_pageshow', { persisted: false })
+    })
+    window.addEventListener('freeze', () => {
+      perfReporter?.markEvent('lifecycle_freeze')
+      perfReporter?.flushByBeacon()
+    })
+    window.addEventListener('resume', () => {
+      perfReporter?.markEvent('lifecycle_resume')
+    })
     window.addEventListener('pagehide', () => perfReporter?.flushByBeacon())
     document.addEventListener('visibilitychange', () => {
+      perfReporter?.markEvent('visibility_change', { state: document.visibilityState })
       if (document.visibilityState === 'hidden') perfReporter?.flushByBeacon()
     })
   } else {

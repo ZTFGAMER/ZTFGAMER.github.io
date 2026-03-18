@@ -184,6 +184,14 @@ const battleRuntimeBuildMsSamples: number[] = []
 const battleQueueConsumeMsSamples: number[] = []
 const battleOverlayMsSamples: number[] = []
 const battleStatusFxMsSamples: number[] = []
+const battleLayoutMsSamples: number[] = []
+const battleSyncRemovedMsSamples: number[] = []
+const battleBadgesMsSamples: number[] = []
+const battleHeroBarsMsSamples: number[] = []
+const battlePortraitMsSamples: number[] = []
+const battleSettlementMsSamples: number[] = []
+const battleDamageStatsMsSamples: number[] = []
+const battleMainResidualMsSamples: number[] = []
 const battleFxTickMsSamples: number[] = []
 const battleTickDeltaSamples: number[] = []
 const battleQueuePendingRatioSamples: number[] = []
@@ -202,6 +210,14 @@ function clearBattleRuntimePerfSampleWindow(): void {
   battleQueueConsumeMsSamples.length = 0
   battleOverlayMsSamples.length = 0
   battleStatusFxMsSamples.length = 0
+  battleLayoutMsSamples.length = 0
+  battleSyncRemovedMsSamples.length = 0
+  battleBadgesMsSamples.length = 0
+  battleHeroBarsMsSamples.length = 0
+  battlePortraitMsSamples.length = 0
+  battleSettlementMsSamples.length = 0
+  battleDamageStatsMsSamples.length = 0
+  battleMainResidualMsSamples.length = 0
   battleFxTickMsSamples.length = 0
   battleTickDeltaSamples.length = 0
   battleQueuePendingRatioSamples.length = 0
@@ -236,6 +252,30 @@ function flushBattleRuntimePerfSampleWindow(): void {
     battleStatusFxMsAvg: Math.round(avg(battleStatusFxMsSamples) * 100) / 100,
     battleStatusFxMsP95: Math.round(percentile95(battleStatusFxMsSamples) * 100) / 100,
     battleStatusFxMsMax: Math.round(Math.max(...battleStatusFxMsSamples) * 100) / 100,
+    battleLayoutMsAvg: Math.round(avg(battleLayoutMsSamples) * 100) / 100,
+    battleLayoutMsP95: Math.round(percentile95(battleLayoutMsSamples) * 100) / 100,
+    battleLayoutMsMax: Math.round(Math.max(...battleLayoutMsSamples) * 100) / 100,
+    battleSyncRemovedMsAvg: Math.round(avg(battleSyncRemovedMsSamples) * 100) / 100,
+    battleSyncRemovedMsP95: Math.round(percentile95(battleSyncRemovedMsSamples) * 100) / 100,
+    battleSyncRemovedMsMax: Math.round(Math.max(...battleSyncRemovedMsSamples) * 100) / 100,
+    battleBadgesMsAvg: Math.round(avg(battleBadgesMsSamples) * 100) / 100,
+    battleBadgesMsP95: Math.round(percentile95(battleBadgesMsSamples) * 100) / 100,
+    battleBadgesMsMax: Math.round(Math.max(...battleBadgesMsSamples) * 100) / 100,
+    battleHeroBarsMsAvg: Math.round(avg(battleHeroBarsMsSamples) * 100) / 100,
+    battleHeroBarsMsP95: Math.round(percentile95(battleHeroBarsMsSamples) * 100) / 100,
+    battleHeroBarsMsMax: Math.round(Math.max(...battleHeroBarsMsSamples) * 100) / 100,
+    battlePortraitMsAvg: Math.round(avg(battlePortraitMsSamples) * 100) / 100,
+    battlePortraitMsP95: Math.round(percentile95(battlePortraitMsSamples) * 100) / 100,
+    battlePortraitMsMax: Math.round(Math.max(...battlePortraitMsSamples) * 100) / 100,
+    battleSettlementMsAvg: Math.round(avg(battleSettlementMsSamples) * 100) / 100,
+    battleSettlementMsP95: Math.round(percentile95(battleSettlementMsSamples) * 100) / 100,
+    battleSettlementMsMax: Math.round(Math.max(...battleSettlementMsSamples) * 100) / 100,
+    battleDamageStatsMsAvg: Math.round(avg(battleDamageStatsMsSamples) * 100) / 100,
+    battleDamageStatsMsP95: Math.round(percentile95(battleDamageStatsMsSamples) * 100) / 100,
+    battleDamageStatsMsMax: Math.round(Math.max(...battleDamageStatsMsSamples) * 100) / 100,
+    battleMainResidualMsAvg: Math.round(avg(battleMainResidualMsSamples) * 100) / 100,
+    battleMainResidualMsP95: Math.round(percentile95(battleMainResidualMsSamples) * 100) / 100,
+    battleMainResidualMsMax: Math.round(Math.max(...battleMainResidualMsSamples) * 100) / 100,
     battleFxTickMsAvg: Math.round(avg(battleFxTickMsSamples) * 100) / 100,
     battleFxTickMsP95: Math.round(percentile95(battleFxTickMsSamples) * 100) / 100,
     battleFxTickMsMax: Math.round(Math.max(...battleFxTickMsSamples) * 100) / 100,
@@ -256,6 +296,14 @@ function recordBattleRuntimePerfFrame(
   queueConsumeMs: number,
   overlayMs: number,
   statusFxMs: number,
+  layoutMs: number,
+  syncRemovedMs: number,
+  badgesMs: number,
+  heroBarsMs: number,
+  portraitMs: number,
+  settlementMs: number,
+  damageStatsMs: number,
+  mainResidualMs: number,
   fxTickMs: number,
   tickDelta: number,
   queuePendingRatio: number,
@@ -270,6 +318,14 @@ function recordBattleRuntimePerfFrame(
   battleQueueConsumeMsSamples.push(Math.max(0, queueConsumeMs))
   battleOverlayMsSamples.push(Math.max(0, overlayMs))
   battleStatusFxMsSamples.push(Math.max(0, statusFxMs))
+  battleLayoutMsSamples.push(Math.max(0, layoutMs))
+  battleSyncRemovedMsSamples.push(Math.max(0, syncRemovedMs))
+  battleBadgesMsSamples.push(Math.max(0, badgesMs))
+  battleHeroBarsMsSamples.push(Math.max(0, heroBarsMs))
+  battlePortraitMsSamples.push(Math.max(0, portraitMs))
+  battleSettlementMsSamples.push(Math.max(0, settlementMs))
+  battleDamageStatsMsSamples.push(Math.max(0, damageStatsMs))
+  battleMainResidualMsSamples.push(Math.max(0, mainResidualMs))
   battleFxTickMsSamples.push(Math.max(0, fxTickMs))
   battleTickDeltaSamples.push(Math.max(0, tickDelta))
   battleQueuePendingRatioSamples.push(Math.max(0, queuePendingRatio))
@@ -1773,12 +1829,14 @@ export const BattleScene: Scene = {
       runtimeByIdScratch.set(it.id, it)
     }
     const runtimeBuildCostMs = performance.now() - runtimeBuildStartMs
+    const layoutStartMs = performance.now()
     const activeCols = getDayActiveCols(battleDay)
     enemyZone.setActiveColCount(activeCols)
     playerZone.setActiveColCount(activeCols)
     applyZoneVisualStyle(enemyZone)
     applyZoneVisualStyle(playerZone)
     applyLayout(activeCols)
+    const layoutCostMs = performance.now() - layoutStartMs
 
     playerItemsScratch.length = 0
     enemyItemsScratch.length = 0
@@ -1797,8 +1855,10 @@ export const BattleScene: Scene = {
       skillUI.setEnemyBarVisible(enemyPresentationVisible && skillUI.getEnemySkills().length > 0)
       if (!enemyPresentationVisible && skillUI.isDetailPopupVisible()) skillUI.hideDetailPopup()
     }
+    const syncRemovedStartMs = performance.now()
     syncRemovedZoneItems(playerZone, 'player', playerAliveIdsScratch)
     syncRemovedZoneItems(enemyZone, 'enemy', enemyAliveIdsScratch)
+    const syncRemovedCostMs = performance.now() - syncRemovedStartMs
     const overlayStartMs = performance.now()
     drawCooldownOverlay(playerZone, playerCdOverlay, playerItemsScratch, runtimeChargePercentByIdScratch)
     drawCooldownOverlay(enemyZone, enemyCdOverlay, enemyItemsScratch, runtimeChargePercentByIdScratch)
@@ -1818,18 +1878,25 @@ export const BattleScene: Scene = {
       )
       statusFxCostMs = performance.now() - statusFxStartMs
     }
+    const badgesStartMs = performance.now()
     updateRuntimeStatBadges(playerZone, playerItemsScratch, runtimeByIdScratch, runtimeAmmoReloadMsByIdScratch)
     updateRuntimeStatBadges(enemyZone, enemyItemsScratch, runtimeByIdScratch, runtimeAmmoReloadMsByIdScratch)
+    const badgesCostMs = performance.now() - badgesStartMs
+    let heroBarsCostMs = 0
     if (tickChanged) {
+      const heroBarsStartMs = performance.now()
       drawHeroBars(board.player, board.enemy)
+      heroBarsCostMs = performance.now() - heroBarsStartMs
       lastHudTickIndex = debugState.tickIndex
     }
 
     const fxTickStartMs = performance.now()
     fxPool.tick(dtMs)
     const fxTickCostMs = performance.now() - fxTickStartMs
+    const portraitStartMs = performance.now()
     portraitFX.tickEnemy(dtMs)
     portraitFX.tickPlayer(dtMs)
+    const portraitCostMs = performance.now() - portraitStartMs
 
     const queueStats = engine.getQueuePerfStats()
     const queuePendingRatio = Math.max(
@@ -1844,23 +1911,9 @@ export const BattleScene: Scene = {
     const runtimeCacheAfter = engine.getRuntimeCachePerfStats()
     const runtimeCallsDelta = Math.max(0, runtimeCacheAfter.calls - runtimeCacheBefore.calls)
     const runtimeCacheHitsDelta = Math.max(0, runtimeCacheAfter.cacheHits - runtimeCacheBefore.cacheHits)
-    const frameUpdateCostMs = performance.now() - framePerfStartMs
-    recordBattleRuntimePerfFrame(
-      dtMs,
-      frameUpdateCostMs,
-      engineUpdateCostMs,
-      runtimeBuildCostMs,
-      queueConsumeCostMs,
-      overlayCostMs,
-      statusFxCostMs,
-      fxTickCostMs,
-      tickDelta,
-      queuePendingRatio,
-      runtimeCallsDelta,
-      runtimeCacheHitsDelta,
-    )
-
+    let settlementCostMs = 0
     if (battleEndMask) {
+      const settlementStartMs = performance.now()
       if (engine.isFinished()) {
         if (!settlement.isResolved()) {
           if (!pendingDamageImpactFx) {
@@ -1888,6 +1941,7 @@ export const BattleScene: Scene = {
       } else if (battleEndMask.visible) {
         battleEndMask.visible = false
       }
+      settlementCostMs = performance.now() - settlementStartMs
     }
 
     if (speedBtn) {
@@ -1901,9 +1955,13 @@ export const BattleScene: Scene = {
       statsBtn.y = getClampedTopActionBtnY()
     }
 
+    const settlementUiStartMs = performance.now()
     settlement.updateVisibility()
+    settlementCostMs += performance.now() - settlementUiStartMs
 
+    const damageStatsStartMs = performance.now()
     damageStats.tick(battlePresentationMs, engine)
+    const damageStatsCostMs = performance.now() - damageStatsStartMs
 
     if (backBtn) {
       backBtn.x = getDebugCfg('battleBackBtnX')
@@ -1939,5 +1997,43 @@ export const BattleScene: Scene = {
         ?? skillUI.getEnemySkills().find((s) => s.id === detailId)
       if (!active) skillUI.hideDetailPopup()
     }
+
+    const frameUpdateCostMs = performance.now() - framePerfStartMs
+    const mainResidualCostMs = frameUpdateCostMs
+      - engineUpdateCostMs
+      - runtimeBuildCostMs
+      - queueConsumeCostMs
+      - overlayCostMs
+      - statusFxCostMs
+      - layoutCostMs
+      - syncRemovedCostMs
+      - badgesCostMs
+      - heroBarsCostMs
+      - portraitCostMs
+      - settlementCostMs
+      - damageStatsCostMs
+      - fxTickCostMs
+    recordBattleRuntimePerfFrame(
+      dtMs,
+      frameUpdateCostMs,
+      engineUpdateCostMs,
+      runtimeBuildCostMs,
+      queueConsumeCostMs,
+      overlayCostMs,
+      statusFxCostMs,
+      layoutCostMs,
+      syncRemovedCostMs,
+      badgesCostMs,
+      heroBarsCostMs,
+      portraitCostMs,
+      settlementCostMs,
+      damageStatsCostMs,
+      mainResidualCostMs,
+      fxTickCostMs,
+      tickDelta,
+      queuePendingRatio,
+      runtimeCallsDelta,
+      runtimeCacheHitsDelta,
+    )
   },
 }
