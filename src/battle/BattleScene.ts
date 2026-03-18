@@ -4,7 +4,7 @@ import { clearBattleSnapshot, getBattleSnapshot } from './BattleSnapshotStore'
 import { clearBattleOutcome } from './BattleOutcomeStore'
 import { CombatEngine, setCombatRuntimeOverride, type CombatBoardItem } from './CombatEngine'
 import { SceneManager } from '@/core/SceneManager'
-import { getApp } from '@/core/AppContext'
+import { getApp, getRenderRuntimeFlags } from '@/core/AppContext'
 import {
   clearCurrentRunState,
   resetLifeState,
@@ -248,9 +248,12 @@ function enqueueVisualFx(task: QueuedFxTask | null | undefined): void {
   if (task.mergeKey) visualFxMergeMap.set(task.mergeKey, task)
 }
 
-function consumeVisualFxQueue(): void {
+function consumeVisualFxQueue(frameDtMs: number): void {
   const runtimeCfg = getGameCfg().combatRuntime
-  const budget = Math.max(1, Math.round(runtimeCfg.visualFxConsumePerFrame || 1))
+  const baseBudget = Math.max(1, Math.round(runtimeCfg.visualFxConsumePerFrame || 1))
+  const budget = frameDtMs > 24
+    ? 1
+    : (frameDtMs > 16 ? Math.max(1, Math.round(baseBudget * 0.5)) : baseBudget)
   for (let i = 0; i < budget; i++) {
     const one = visualFxQueue.shift()
     if (!one) break
@@ -1183,6 +1186,8 @@ export const BattleScene: Scene = {
     damageStats.buildPanel(root)
 
     engine = new CombatEngine()
+    const renderRuntimeFlags = getRenderRuntimeFlags()
+    const forceLowFx = renderRuntimeFlags.forceLowFx || renderRuntimeFlags.webgpuFallbackAdapter || renderRuntimeFlags.webgpuDeviceLostCount > 0
     setCombatRuntimeOverride({
       burnTickMs: getDebugCfg('gameplayBurnTickMs'),
       poisonTickMs: getDebugCfg('gameplayPoisonTickMs'),
@@ -1197,6 +1202,11 @@ export const BattleScene: Scene = {
       enemyDraftEnabled: getDebugCfg('enemyDraftEnabled'),
       enemyDraftSameArchetypeBias: getDebugCfg('enemyDraftSameArchetypeBias'),
     })
+    if (forceLowFx) {
+      autoFxDegradeLevel = 2
+      fxPool.setAutoDegradeLevel(2)
+      console.warn(`[BattleScene] Force low FX mode (fallback=${renderRuntimeFlags.webgpuFallbackAdapter} deviceLost=${renderRuntimeFlags.webgpuDeviceLostCount} reason=${renderRuntimeFlags.lastDeviceLostReason || 'none'})`)
+    }
     // PVP 模式：优先使用快照的 ownerSkillIds（与 Host 权威战斗保持完全相同的输入），
     // 避免 skillUI.getPickedSkills()（来自 localStorage）与 ownerSkillIds（来自快照扫描）不一致
     // 导致本地动画结果与权威结果偏差。PVE 模式仍回退到 skillUI.
@@ -1572,7 +1582,7 @@ export const BattleScene: Scene = {
     if (allowSimUpdate) {
       engine.update(simDt)
     }
-    consumeVisualFxQueue()
+    consumeVisualFxQueue(dtMs)
     const pendingDamageImpactFx = fxPool.hasPendingDamageImpactPresentation()
     enemyPresentationVisible = !engine.isFinished() || pendingDamageImpactFx
     enemyZone.visible = enemyPresentationVisible

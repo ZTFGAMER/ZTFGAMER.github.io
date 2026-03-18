@@ -146,6 +146,14 @@ export interface GameConfig {
       maxPoints?: number
       maxEvents?: number
       autoFlushOnSceneChange?: boolean
+      warnFrameMsP95?: number
+      criticalFrameMsP95?: number
+      warnLongTasksPerMinute?: number
+      criticalLongTasksPerMinute?: number
+      warnFrameDropRate?: number
+      criticalFrameDropRate?: number
+      warnBattleDropRate?: number
+      criticalBattleDropRate?: number
     }
     playerExpToNextLevel?: number[]
     playerMaxLifeByLevel?: number[]
