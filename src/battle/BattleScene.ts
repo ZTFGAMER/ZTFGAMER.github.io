@@ -743,8 +743,9 @@ function drawHeroBars(
   drawInfoText(playerHpInfoCon, CANVAS_W / 2, yPlayer + baseBarH / 2, playerParts, baseFontSize)
 }
 
-function applyZoneVisualStyle(zone: GridZone): void {
+function applyZoneVisualStyle(zone: GridZone, side: 'player' | 'enemy'): void {
   zone.setItemQualityMarkerEnabled(false)
+  zone.setTierBadgeVisible(false)
   zone.setItemFrameUseArchetypeColor(getDebugCfg('gameplayItemFrameColorByArchetype') >= 0.5)
   zone.setTierBorderWidth(getDebugCfg('tierBorderWidth'))
   zone.setCornerRadius(getDebugCfg('gridItemCornerRadius'))
@@ -753,8 +754,14 @@ function applyZoneVisualStyle(zone: GridZone): void {
   zone.setStatBadgeFontSize(getDebugCfg('itemStatBadgeFontSize'))
   zone.setTierStarFontSize(getDebugCfg('itemTierStarFontSize'))
   zone.setTierStarStrokeWidth(getDebugCfg('itemTierStarStrokeWidth'))
-  zone.setTierStarOffsetX(getDebugCfg('itemTierStarOffsetX'))
-  zone.setTierStarOffsetY(getDebugCfg('itemTierStarOffsetY'))
+  const sideOffsetX = side === 'enemy'
+    ? getDebugCfg('battleEnemyTierStarOffsetX')
+    : getDebugCfg('battlePlayerTierStarOffsetX')
+  const sideOffsetY = side === 'enemy'
+    ? getDebugCfg('battleEnemyTierStarOffsetY')
+    : getDebugCfg('battlePlayerTierStarOffsetY')
+  zone.setTierStarOffsetX(getDebugCfg('itemTierStarOffsetX') + sideOffsetX)
+  zone.setTierStarOffsetY(getDebugCfg('itemTierStarOffsetY') + sideOffsetY)
   zone.setStatBadgeOffsetY(getDebugCfg('itemStatBadgeOffsetY'))
   zone.setAmmoBadgeOffsetY(6)
 }
@@ -1240,8 +1247,8 @@ export const BattleScene: Scene = {
     playerZone = new GridZone('战斗区', 6, activeCols, 1)
     enemyZone.zIndex = 20
     playerZone.zIndex = 20
-    applyZoneVisualStyle(enemyZone)
-    applyZoneVisualStyle(playerZone)
+    applyZoneVisualStyle(enemyZone, 'enemy')
+    applyZoneVisualStyle(playerZone, 'player')
     enemyZone.setRuntimeValueFxEnabled(true)
     playerZone.setRuntimeValueFxEnabled(true)
     applyLayout(activeCols)
@@ -1837,8 +1844,8 @@ export const BattleScene: Scene = {
     if (activeCols !== appliedActiveCols) {
       enemyZone.setActiveColCount(activeCols)
       playerZone.setActiveColCount(activeCols)
-      applyZoneVisualStyle(enemyZone)
-      applyZoneVisualStyle(playerZone)
+      applyZoneVisualStyle(enemyZone, 'enemy')
+      applyZoneVisualStyle(playerZone, 'player')
       applyLayout(activeCols)
       appliedActiveCols = activeCols
     }

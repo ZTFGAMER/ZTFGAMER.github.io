@@ -1,5 +1,61 @@
 # 大巴扎 — 开发进度记录
 
+## 战斗等级徽标隐藏（2026-03-18，按用户反馈直接收敛展示）
+
+- 用户反馈：战斗内敌我等级数字与背景框位置调节不稳定，要求直接隐藏该元素。
+- 已完成实现：
+  - `src/common/grid/GridZone.ts`
+    - 新增 `tierBadgeVisible` 与 `setTierBadgeVisible(visible)`；
+    - 所有等级徽标显示判定改为受该开关控制（含拖拽归位/重绘路径）。
+  - `src/battle/BattleScene.ts`
+    - 在战斗区样式应用时调用 `zone.setTierBadgeVisible(false)`，仅战斗场景生效；
+    - 商店/背包等其他 GridZone 维持原显示行为。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户战斗内确认“等级数字+底色块已隐藏”；如需恢复可做开关化（战斗 UI 选项）。
+
+## 战斗等级徽标二次校准（2026-03-18，敌我分侧偏移）
+
+- 用户反馈：
+  - 敌方等级徽标希望再下移一点；
+  - 我方等级徽标整体偏右下。
+- 已完成：
+  - `src/battle/BattleScene.ts`
+    - `applyZoneVisualStyle` 增加 side 参数，支持敌我分侧设置等级徽标偏移；
+    - 敌我区域调用改为分别传 `enemy/player`。
+  - `src/config/debugConfig.ts`
+    - 新增可调参数：
+      - `battleEnemyTierStarOffsetX/Y`
+      - `battlePlayerTierStarOffsetX/Y`
+  - `data/debug_defaults.json`
+    - 默认值：敌方 `Y +2`；我方 `X -2, Y -6`。
+  - `src/debug/DebugPage.ts`
+    - 已将上述四项加入布局调试面板，支持在线细调。
+- 验证：`npm run build` 通过。
+- 下一步：用户复测一局；若仍有细微偏差，可直接在 Debug 页面继续微调 1~3px。
+
+## UI 位置修复（2026-03-18，战斗物品等级徽标偏移）
+
+- 用户反馈：战斗中物品等级徽标（数字+色块）位置异常，实时阶段看起来偏到物品框外。
+- 根因：`GridZone.updateStatBadgePosition` 中等级徽标 Y 锚点按“物品底边”定位，未扣除徽标自身高度，导致整体下沉到物品外侧。
+- 已修复：
+  - `src/common/grid/GridZone.ts`
+    - `node.starBadgeBg.y` 从 `frameH - 1` 改为 `frameH - badgeH - 1`，使徽标贴合物品底部内部区域。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户真机复测战斗中敌我双方徽标位置；若仍需微调，再通过 `itemTierStarOffsetY` 做小范围视觉校准。
+
+## 战斗弹道白块修复（2026-03-18，首次发射贴图未就绪）
+
+- 用户反馈：战斗中子弹前几次会显示白块。
+- 根因定位：
+  - 弹道精灵从对象池取出时默认 `Texture.WHITE`；
+  - 原逻辑在发射后异步 `Assets.load` 贴图，首发阶段贴图未命中缓存时会短暂显示白块。
+- 已完成修复（`src/battle/BattleFXPool.ts`）：
+  - 新增投射物贴图预热与加载去重（`projectileTextureLoading`）；
+  - `setContext(...)` 时按当前战场物品预热可飞行弹道贴图；
+  - 发射时仅在“贴图已缓存”才走精灵弹道；未命中缓存则先走 dot 弹道并后台预热，避免白块闪现。
+- 验证：`npm run build` 通过。
+- 下一步：用户真机复测“首轮发射是否仍出现白块”；若体验可接受再同步 git。
+
 ## 真机数据二次定位与快速修复（2026-03-18）
 
 - 最新真机 session：`perf-mmvvm4vt-xyhqtv`（325 点）分析结论：

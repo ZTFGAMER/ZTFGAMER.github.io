@@ -217,6 +217,7 @@ export class BattleFXPool {
   private sourceDefIdByInstanceId = new Map<string, string>()
   private projectileVariantCursor = new Map<string, number>()
   private projectileTextureCache = new Map<string, Texture>()
+  private projectileTextureLoading = new Map<string, Promise<Texture | null>>()
   private projectileMissingUrls = new Set<string>()
   private transientProjectileTextureUrls = new Set<string>()
   private textureLoadEpoch = 0
@@ -234,10 +235,49 @@ export class BattleFXPool {
     this.engine = engine
     this.sourceDefIdByInstanceId.clear()
     if (engine) {
+      const loadEpoch = this.textureLoadEpoch
+      const warmedDefIds = new Set<string>()
       for (const it of engine.getBoardState().items) {
         this.sourceDefIdByInstanceId.set(it.id, it.defId)
+        if (warmedDefIds.has(it.defId)) continue
+        const def = ITEM_BY_ID.get(it.defId) ?? null
+        if (!def) continue
+        if (!this.isFlyableProjectile(def)) continue
+        warmedDefIds.add(it.defId)
+        const urls = this.collectProjectileIconUrls(def, it.id)
+        void this.resolveProjectileTexture(urls, loadEpoch)
       }
     }
+  }
+
+  private getCachedProjectileTexture(urls: string[]): Texture | null {
+    for (let i = 0; i < urls.length; i++) {
+      const url = urls[i]!
+      if (this.projectileMissingUrls.has(url)) continue
+      const cached = this.projectileTextureCache.get(url)
+      if (cached) return cached
+    }
+    return null
+  }
+
+  private warmProjectileTexture(url: string, loadEpoch: number): Promise<Texture | null> {
+    if (this.projectileMissingUrls.has(url)) return Promise.resolve(null)
+    const cached = this.projectileTextureCache.get(url)
+    if (cached) return Promise.resolve(cached)
+    const loading = this.projectileTextureLoading.get(url)
+    if (loading) return loading
+    const task = Assets.load<Texture>(url).then((tex) => {
+      if (loadEpoch !== this.textureLoadEpoch) return null
+      this.projectileTextureCache.set(url, tex)
+      return tex
+    }).catch(() => {
+      this.projectileMissingUrls.add(url)
+      return null
+    }).finally(() => {
+      this.projectileTextureLoading.delete(url)
+    })
+    this.projectileTextureLoading.set(url, task)
+    return task
   }
 
   private resolveItemSide(sourceItemId: string, preferred?: 'player' | 'enemy'): 'player' | 'enemy' | null {
@@ -447,22 +487,12 @@ export class BattleFXPool {
   private async resolveProjectileTexture(urls: string[], loadEpoch: number): Promise<Texture | null> {
     for (let i = 0; i < urls.length; i++) {
       const url = urls[i]!
-      if (this.projectileMissingUrls.has(url)) continue
-      const cached = this.projectileTextureCache.get(url)
-      if (cached) return cached
-      try {
-        const tex = await Assets.load<Texture>(url)
-        if (loadEpoch !== this.textureLoadEpoch) {
-          return null
-        }
-        this.projectileTextureCache.set(url, tex)
+      const tex = await this.warmProjectileTexture(url, loadEpoch)
+      if (tex) {
         if (i < urls.length - 1) {
           this.transientProjectileTextureUrls.add(url)
         }
         return tex
-      } catch {
-        this.projectileMissingUrls.add(url)
-        // continue fallback url list
       }
     }
     return null
@@ -489,7 +519,19 @@ export class BattleFXPool {
 
     const useItemSprite = opts?.forceDot ? false : true
     const sourceDef = sourceItemId ? this.getDefBySourceInstance(sourceItemId) : null
-    const useSprite = useItemSprite && this.isFlyableProjectile(sourceDef)
+    const canUseSprite = useItemSprite && this.isFlyableProjectile(sourceDef)
+    const loadEpoch = this.textureLoadEpoch
+    const spriteUrls = canUseSprite && sourceDef
+      ? this.collectProjectileIconUrls(sourceDef, sourceItemId)
+      : []
+    let spriteTexture: Texture | null = null
+    if (spriteUrls.length > 0) {
+      spriteTexture = this.getCachedProjectileTexture(spriteUrls)
+      if (!spriteTexture) {
+        void this.resolveProjectileTexture(spriteUrls, loadEpoch)
+      }
+    }
+    const useSprite = canUseSprite && !!sourceDef && !!spriteTexture
 
     let visual: Graphics | Sprite
     let visualIsSprite = false
@@ -524,16 +566,9 @@ export class BattleFXPool {
         forceLinearFlight = true
       }
 
-      const urls = this.collectProjectileIconUrls(sourceDef, sourceItemId)
-      const loadEpoch = this.textureLoadEpoch
-      ;(async () => {
-        const tex = await this.resolveProjectileTexture(urls, loadEpoch)
-        if (tex && (sprite as Sprite & { __fxUseId?: number }).__fxUseId === useId) {
-          sprite.texture = tex
-          sprite.width = px
-          sprite.height = px
-        }
-      })()
+      sprite.texture = spriteTexture!
+      sprite.width = px
+      sprite.height = px
     } else {
       const dot = this.acquireProjectileDot(from, color, px * 0.34)
       this.fxLayer.addChild(dot)

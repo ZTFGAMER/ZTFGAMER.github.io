@@ -420,6 +420,7 @@ export class GridZone extends Container {
   private tierStarStrokeWidth = 2
   private tierStarOffsetX = 0
   private tierStarOffsetY = 0
+  private tierBadgeVisible = true
   private ammoBadgeOffsetY = 0
   private itemFrameUseArchetypeColor = getDebugCfg('gameplayItemFrameColorByArchetype') >= 0.5
   private itemQualityMarkerEnabled = true
@@ -1023,7 +1024,7 @@ export class GridZone extends Container {
     node.bg.visible = true
     node.selectedG.visible = this.selectedId === instanceId
     node.statBadges.visible = true
-    const showStarBadge = this.statBadgeMode !== 'archetype' && node.starText.text.length > 0
+    const showStarBadge = this.tierBadgeVisible && this.statBadgeMode !== 'archetype' && node.starText.text.length > 0
     node.starBadgeBg.visible = showStarBadge
     node.starText.visible = showStarBadge
     this.updateNodeQualityDot(node)
@@ -1052,7 +1053,7 @@ export class GridZone extends Container {
     node.bg.visible = true
     node.selectedG.visible = this.selectedId === instanceId
     node.statBadges.visible = true
-    const showStarBadge = this.statBadgeMode !== 'archetype' && node.starText.text.length > 0
+    const showStarBadge = this.tierBadgeVisible && this.statBadgeMode !== 'archetype' && node.starText.text.length > 0
     node.starBadgeBg.visible = showStarBadge
     node.starText.visible = showStarBadge
     this.updateNodeQualityDot(node)
@@ -1226,6 +1227,16 @@ export class GridZone extends Container {
   setTierStarOffsetY(offsetY: number): void {
     this.tierStarOffsetY = Math.round(offsetY)
     for (const node of this.nodes.values()) {
+      this.updateStatBadgePosition(node)
+    }
+  }
+
+  setTierBadgeVisible(visible: boolean): void {
+    this.tierBadgeVisible = visible
+    for (const node of this.nodes.values()) {
+      const showStarBadge = this.tierBadgeVisible && this.statBadgeMode !== 'archetype' && node.starText.text.length > 0
+      node.starBadgeBg.visible = showStarBadge
+      node.starText.visible = showStarBadge
       this.updateStatBadgePosition(node)
     }
   }
@@ -1492,7 +1503,7 @@ export class GridZone extends Container {
     node.starBadgeBg.fill({ color: arch.color, alpha: 0.95 })
     node.starBadgeBg.roundRect(0, 0, badgeW, badgeH, 6)
     node.starBadgeBg.stroke({ color: 0x000000, width: 2, alpha: 0.88 })
-    const showStarBadge = this.statBadgeMode !== 'archetype' && node.starText.text.length > 0
+    const showStarBadge = this.tierBadgeVisible && this.statBadgeMode !== 'archetype' && node.starText.text.length > 0
     node.starBadgeBg.visible = showStarBadge
     node.starText.visible = showStarBadge
     this.updateNodeQualityDot(node)
@@ -1990,7 +2001,7 @@ export class GridZone extends Container {
     const badgeW = node.starBadgeBg.width
     const badgeH = node.starBadgeBg.height
     node.starBadgeBg.x = node.container.x + frameInset + frameW / 2 - badgeW / 2 + this.tierStarOffsetX
-    node.starBadgeBg.y = node.container.y + frameInset + frameH - 1 + this.tierStarOffsetY
+    node.starBadgeBg.y = node.container.y + frameInset + frameH - badgeH - 1 + this.tierStarOffsetY
     node.starText.x = node.starBadgeBg.x + (badgeW - node.starText.width) / 2
     node.starText.y = node.starBadgeBg.y + (badgeH - node.starText.height) / 2
     const ammoBaseY = node.container.y + frameInset + frameH - node.ammoBadge.height - 4 + this.ammoBadgeOffsetY
