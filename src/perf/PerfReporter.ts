@@ -106,12 +106,74 @@ export class PerfReporter {
   private sampleFrames = 0
   private sampleFrameMsSum = 0
   private sampleLongFrames = 0
+  private sampleDroppedFrames = 0
   private flushElapsedMs = 0
+  private sampleLongTaskCount = 0
+  private sampleLongTaskTotalMs = 0
+  private prevDroppedProjectiles = 0
+  private prevDroppedFloatingNumbers = 0
+  private prevAttemptedProjectiles = 0
+  private prevAttemptedFloatingNumbers = 0
+  private perfLevel: 'ok' | 'warning' | 'critical' = 'ok'
+  private longTaskObserver: PerformanceObserver | null = null
   private sending = false
 
   constructor(cfg: PerfReporterConfig, deps: PerfReporterDeps) {
     this.cfg = cfg
     this.deps = deps
+    this.installLongTaskObserver()
+  }
+
+  private installLongTaskObserver(): void {
+    if (typeof PerformanceObserver === 'undefined') return
+    try {
+      const supports = Array.isArray(PerformanceObserver.supportedEntryTypes)
+        && PerformanceObserver.supportedEntryTypes.includes('longtask')
+      if (!supports) return
+      this.longTaskObserver = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (!Number.isFinite(entry.duration) || entry.duration <= 0) continue
+          if (entry.duration < 50) continue
+          this.sampleLongTaskCount += 1
+          this.sampleLongTaskTotalMs += entry.duration
+        }
+      })
+      this.longTaskObserver.observe({ type: 'longtask', buffered: true })
+    } catch {
+      this.longTaskObserver = null
+    }
+  }
+
+  private calcBattleDropRate(scene: SceneName | 'unknown', battle?: PerfBattleSnapshot): number | null {
+    if (scene !== 'battle' || !battle) return null
+    const droppedDelta = Math.max(0,
+      (battle.droppedProjectiles - this.prevDroppedProjectiles)
+      + (battle.droppedFloatingNumbers - this.prevDroppedFloatingNumbers),
+    )
+    const attemptedDelta = Math.max(0,
+      (battle.attemptedProjectiles - this.prevAttemptedProjectiles)
+      + (battle.attemptedFloatingNumbers - this.prevAttemptedFloatingNumbers),
+    )
+    this.prevDroppedProjectiles = battle.droppedProjectiles
+    this.prevDroppedFloatingNumbers = battle.droppedFloatingNumbers
+    this.prevAttemptedProjectiles = battle.attemptedProjectiles
+    this.prevAttemptedFloatingNumbers = battle.attemptedFloatingNumbers
+    if (attemptedDelta <= 0) return 0
+    return droppedDelta / attemptedDelta
+  }
+
+  private resolvePerfLevel(frameMsP95: number, longTasksPerMinute: number, frameDropRate: number, battleDropRate: number | null): 'ok' | 'warning' | 'critical' {
+    const critical = frameMsP95 >= this.cfg.criticalFrameMsP95
+      || longTasksPerMinute >= this.cfg.criticalLongTasksPerMinute
+      || frameDropRate >= this.cfg.criticalFrameDropRate
+      || ((battleDropRate ?? 0) >= this.cfg.criticalBattleDropRate)
+    if (critical) return 'critical'
+    const warning = frameMsP95 >= this.cfg.warnFrameMsP95
+      || longTasksPerMinute >= this.cfg.warnLongTasksPerMinute
+      || frameDropRate >= this.cfg.warnFrameDropRate
+      || ((battleDropRate ?? 0) >= this.cfg.warnBattleDropRate)
+    if (warning) return 'warning'
+    return 'ok'
   }
 
   setEnabled(enabled: boolean): void {
@@ -137,6 +199,7 @@ export class PerfReporter {
     this.sampleFrames += 1
     this.sampleFrameMsSum += safeDt
     if (safeDt >= 50) this.sampleLongFrames += 1
+    if (safeDt > 34) this.sampleDroppedFrames += 1
     this.frameMsWindow.push(safeDt)
     if (this.frameMsWindow.length > 180) this.frameMsWindow.shift()
 
@@ -146,6 +209,9 @@ export class PerfReporter {
       this.sampleFrames = 0
       this.sampleFrameMsSum = 0
       this.sampleLongFrames = 0
+      this.sampleDroppedFrames = 0
+      this.sampleLongTaskCount = 0
+      this.sampleLongTaskTotalMs = 0
     }
 
     if (this.flushElapsedMs >= this.cfg.flushMs || this.points.length >= this.cfg.batchSize) {
@@ -259,11 +325,27 @@ export class PerfReporter {
       ? this.sampleFrameMsSum / this.sampleFrames
       : 0
     const frameMsP95 = percentile95(this.frameMsWindow)
+    const frameDropCount = this.sampleDroppedFrames
+    const frameDropRate = this.sampleFrames > 0 ? frameDropCount / this.sampleFrames : 0
+    const longTasksPerMinute = this.sampleElapsedMs > 0
+      ? (this.sampleLongTaskCount * 60000) / this.sampleElapsedMs
+      : 0
     const mem = (performance as Performance & { memory?: { usedJSHeapSize?: number } }).memory
     const heapMb = (mem && typeof mem.usedJSHeapSize === 'number')
       ? Math.round((mem.usedJSHeapSize / (1024 * 1024)) * 10) / 10
       : null
     const battle = scene === 'battle' ? this.deps.getBattlePerf() ?? undefined : undefined
+    const battleDropRate = this.calcBattleDropRate(scene, battle)
+    const nextPerfLevel = this.resolvePerfLevel(frameMsP95, longTasksPerMinute, frameDropRate, battleDropRate)
+    if (nextPerfLevel !== this.perfLevel) {
+      this.perfLevel = nextPerfLevel
+      this.markEvent(`perf:${nextPerfLevel}`, {
+        frameMsP95: Math.round(frameMsP95 * 100) / 100,
+        longTasksPerMinute: Math.round(longTasksPerMinute * 10) / 10,
+        frameDropRate: Math.round(frameDropRate * 1000) / 1000,
+        battleDropRate: battleDropRate == null ? null : Math.round(battleDropRate * 1000) / 1000,
+      })
+    }
     this.points.push({
       ts: Date.now(),
       scene,
@@ -271,6 +353,13 @@ export class PerfReporter {
       frameMsAvg: Math.round(frameMsAvg * 100) / 100,
       frameMsP95: Math.round(frameMsP95 * 100) / 100,
       longFrameCount: this.sampleLongFrames,
+      longTaskCount: this.sampleLongTaskCount,
+      longTaskTotalMs: Math.round(this.sampleLongTaskTotalMs * 100) / 100,
+      longTasksPerMinute: Math.round(longTasksPerMinute * 10) / 10,
+      frameDropCount,
+      frameDropRate: Math.round(frameDropRate * 1000) / 1000,
+      battleDropRate: battleDropRate == null ? null : Math.round(battleDropRate * 1000) / 1000,
+      perfLevel: this.perfLevel,
       heapMb,
       renderer: this.deps.getRendererType(),
       battle,
@@ -294,5 +383,13 @@ export function resolvePerfReporterConfig(raw: unknown): PerfReporterConfig {
     maxPoints: clampInt(Number(obj.maxPoints), 100, 12000),
     maxEvents: clampInt(Number(obj.maxEvents), 50, 5000),
     autoFlushOnSceneChange: obj.autoFlushOnSceneChange !== false,
+    warnFrameMsP95: Math.max(8, Number(obj.warnFrameMsP95) || 12),
+    criticalFrameMsP95: Math.max(10, Number(obj.criticalFrameMsP95) || 16),
+    warnLongTasksPerMinute: Math.max(0, Number(obj.warnLongTasksPerMinute) || 2),
+    criticalLongTasksPerMinute: Math.max(0, Number(obj.criticalLongTasksPerMinute) || 6),
+    warnFrameDropRate: Math.max(0, Math.min(1, Number(obj.warnFrameDropRate) || 0.15)),
+    criticalFrameDropRate: Math.max(0, Math.min(1, Number(obj.criticalFrameDropRate) || 0.3)),
+    warnBattleDropRate: Math.max(0, Math.min(1, Number(obj.warnBattleDropRate) || 0.05)),
+    criticalBattleDropRate: Math.max(0, Math.min(1, Number(obj.criticalBattleDropRate) || 0.1)),
   }
 }
