@@ -1,5 +1,25 @@
 # 大巴扎 — 开发进度记录
 
+## 真机回归分析（2026-03-18，新增分段埋点后的首轮结论）
+
+- 用户已完成新埋点版本真机实测（同一 session：`perf-mmvujsdo-kpp0k1`，`battle` 点位 471 条）。
+- 关键结论（定量）：
+  - 主导瓶颈是 `battleUpdateMsP95`（整体均值约 `27.4ms`，低帧区均值约 `32.1ms`，高帧区仅约 `9.9ms`），与 FPS 下降强相关；
+  - 子项中 `battleEngineUpdateMsP95`（低帧区约 `1.17ms`）与 `battleRuntimeBuildMsP95`（低帧区约 `3.33ms`）有抬升，但量级不足以单独解释 30FPS；
+  - 其余绘制/特效分段较小：`overlay/statusFx/fxTick/queue` 均远低于主导项；
+  - `battleRuntimeCallsPerFrame≈1` 且 `battleRuntimeCacheHitRate≈0.87~0.94`，说明 runtime 缓存机制有效，不是重复调用失控；
+  - `battleTickDeltaMax≈1`、`queuePendingRatio≈0`、`battleDropRate=0`，说明并非 catch-up 或事件队列堆积导致。
+- 归因判断：当前掉帧更像“战斗 update 主流程内仍有高成本块（非已拆分子块）”，需继续把 `battleUpdateMs` 内剩余大头细分。
+- 下一步埋点计划（P0）：
+  - 在 `BattleScene.update` 继续拆分并上报：
+    - `applyZoneVisualStyle/applyLayout`，
+    - `syncRemovedZoneItems`，
+    - `updateRuntimeStatBadges`，
+    - `drawHeroBars`，
+    - `portraitFX.tickEnemy/Player`，
+    - `settlement.updateVisibility + damageStats.tick`。
+  - 加一个 `battleMainResidualMsP95 = battleUpdateMsP95 - 已分段和`，直接定位“未知大头”是否仍占主导。
+
 ## 真机定位增强（2026-03-18，战斗主线程分段耗时埋点）
 
 - 用户诉求：继续增强真机定位能力，尽快锁定“后期天数掉帧”根因。
