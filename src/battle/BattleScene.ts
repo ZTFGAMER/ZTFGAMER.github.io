@@ -364,6 +364,7 @@ let fpsSampleElapsedMs = 0
 let fpsSampleFrames = 0
 let fpsShown = 0
 let topSafeYOffset = 0
+let appliedActiveCols = -1
 
 function updateFpsHud(dt: number): void {
   if (!fpsHudText) return
@@ -1089,6 +1090,7 @@ export const BattleScene: Scene = {
     clearBattleRuntimePerfSampleWindow()
     battleRuntimePerfSnapshot = {}
     battleLastTickIndexForPerf = -1
+    appliedActiveCols = -1
     root = new Container()
     root.sortableChildren = true
     stage.addChild(root)
@@ -1736,6 +1738,7 @@ export const BattleScene: Scene = {
     clearBattleRuntimePerfSampleWindow()
     battleRuntimePerfSnapshot = {}
     battleLastTickIndexForPerf = -1
+    appliedActiveCols = -1
     // PVP sync cleanup
     syncAStarted = false
     earlyReportDone = false
@@ -1831,11 +1834,14 @@ export const BattleScene: Scene = {
     const runtimeBuildCostMs = performance.now() - runtimeBuildStartMs
     const layoutStartMs = performance.now()
     const activeCols = getDayActiveCols(battleDay)
-    enemyZone.setActiveColCount(activeCols)
-    playerZone.setActiveColCount(activeCols)
-    applyZoneVisualStyle(enemyZone)
-    applyZoneVisualStyle(playerZone)
-    applyLayout(activeCols)
+    if (activeCols !== appliedActiveCols) {
+      enemyZone.setActiveColCount(activeCols)
+      playerZone.setActiveColCount(activeCols)
+      applyZoneVisualStyle(enemyZone)
+      applyZoneVisualStyle(playerZone)
+      applyLayout(activeCols)
+      appliedActiveCols = activeCols
+    }
     const layoutCostMs = performance.now() - layoutStartMs
 
     playerItemsScratch.length = 0

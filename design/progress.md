@@ -1,5 +1,19 @@
 # 大巴扎 — 开发进度记录
 
+## 真机数据二次定位与快速修复（2026-03-18）
+
+- 最新真机 session：`perf-mmvvm4vt-xyhqtv`（325 点）分析结论：
+  - 新增残差埋点后，`battleMainResidualMsP95` 很低（约 0~1ms），说明分段覆盖基本完整；
+  - 明确主瓶颈落在 `battleLayoutMsP95`（低帧段均值约 26ms，峰值 44ms），显著高于其他分段；
+  - 其余分段（engine/runtime/status/badges）有抬升但量级明显更小。
+- 已完成快速修复（不改玩法）：
+  - `src/battle/BattleScene.ts`
+    - 将 `activeCols + applyLayout + applyZoneVisualStyle + setActiveColCount` 改为“仅当列数变化时执行”；
+    - 新增 `appliedActiveCols` 缓存并在 `onEnter/onExit` 重置；
+    - 避免战斗每帧重复做高成本布局更新。
+- 验证：`npm run build` 通过。
+- 下一步：推送后让用户复测 1 天，重点对比 `battleLayoutMsP95` 与 FPS 是否显著改善；若仍有崩溃，再补充 Worker 侧 event 持久化以抓 `window_error/unhandled_rejection` 详情。
+
 ## 崩溃回合加固（2026-03-18，低成本崩溃定位埋点 + 主流程残差拆分）
 
 - 用户反馈：最新真机测试出现“游戏直接崩溃”。
