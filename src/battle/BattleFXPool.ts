@@ -21,6 +21,34 @@ export type BattleFxPerfStats = {
   pooledProjectileDots: number
   pooledFloatingNumbers: number
   degradeLevel: number
+  battleFrameDtMsAvg?: number
+  battleFrameDtMsP95?: number
+  battleUpdateMsAvg?: number
+  battleUpdateMsP95?: number
+  battleUpdateMsMax?: number
+  battleEngineUpdateMsAvg?: number
+  battleEngineUpdateMsP95?: number
+  battleEngineUpdateMsMax?: number
+  battleRuntimeBuildMsAvg?: number
+  battleRuntimeBuildMsP95?: number
+  battleRuntimeBuildMsMax?: number
+  battleQueueConsumeMsAvg?: number
+  battleQueueConsumeMsP95?: number
+  battleQueueConsumeMsMax?: number
+  battleOverlayMsAvg?: number
+  battleOverlayMsP95?: number
+  battleOverlayMsMax?: number
+  battleStatusFxMsAvg?: number
+  battleStatusFxMsP95?: number
+  battleStatusFxMsMax?: number
+  battleFxTickMsAvg?: number
+  battleFxTickMsP95?: number
+  battleFxTickMsMax?: number
+  battleTickDeltaAvg?: number
+  battleTickDeltaMax?: number
+  battleQueuePendingRatioMax?: number
+  battleRuntimeCallsPerFrame?: number
+  battleRuntimeCacheHitRate?: number
 }
 
 export type BattleFxLimitStats = {

@@ -164,9 +164,127 @@ const TOP_ACTION_BTN_HALF_H = TOP_ACTION_BTN_H / 2
 const TOP_ACTION_BTN_SAFE_PAD = 8
 const fxPool = new BattleFXPool()
 
+function percentile95(values: number[]): number {
+  if (values.length <= 0) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const idx = Math.max(0, Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * 0.95)))
+  return sorted[idx] ?? 0
+}
+
+function avg(values: number[]): number {
+  if (values.length <= 0) return 0
+  return values.reduce((s, v) => s + v, 0) / values.length
+}
+
+let battlePerfSampleElapsedMs = 0
+const battleFrameDtMsSamples: number[] = []
+const battleUpdateMsSamples: number[] = []
+const battleEngineUpdateMsSamples: number[] = []
+const battleRuntimeBuildMsSamples: number[] = []
+const battleQueueConsumeMsSamples: number[] = []
+const battleOverlayMsSamples: number[] = []
+const battleStatusFxMsSamples: number[] = []
+const battleFxTickMsSamples: number[] = []
+const battleTickDeltaSamples: number[] = []
+const battleQueuePendingRatioSamples: number[] = []
+let battleRuntimeCallsAccum = 0
+let battleRuntimeCacheHitsAccum = 0
+let battleRuntimeFramesAccum = 0
+let battleLastTickIndexForPerf = -1
+let battleRuntimePerfSnapshot: Partial<BattleFxPerfStats> = {}
+
+function clearBattleRuntimePerfSampleWindow(): void {
+  battlePerfSampleElapsedMs = 0
+  battleFrameDtMsSamples.length = 0
+  battleUpdateMsSamples.length = 0
+  battleEngineUpdateMsSamples.length = 0
+  battleRuntimeBuildMsSamples.length = 0
+  battleQueueConsumeMsSamples.length = 0
+  battleOverlayMsSamples.length = 0
+  battleStatusFxMsSamples.length = 0
+  battleFxTickMsSamples.length = 0
+  battleTickDeltaSamples.length = 0
+  battleQueuePendingRatioSamples.length = 0
+  battleRuntimeCallsAccum = 0
+  battleRuntimeCacheHitsAccum = 0
+  battleRuntimeFramesAccum = 0
+}
+
+function flushBattleRuntimePerfSampleWindow(): void {
+  if (battleUpdateMsSamples.length <= 0) return
+  const calls = battleRuntimeCallsAccum
+  const hits = battleRuntimeCacheHitsAccum
+  const frames = Math.max(1, battleRuntimeFramesAccum)
+  battleRuntimePerfSnapshot = {
+    battleFrameDtMsAvg: Math.round(avg(battleFrameDtMsSamples) * 100) / 100,
+    battleFrameDtMsP95: Math.round(percentile95(battleFrameDtMsSamples) * 100) / 100,
+    battleUpdateMsAvg: Math.round(avg(battleUpdateMsSamples) * 100) / 100,
+    battleUpdateMsP95: Math.round(percentile95(battleUpdateMsSamples) * 100) / 100,
+    battleUpdateMsMax: Math.round(Math.max(...battleUpdateMsSamples) * 100) / 100,
+    battleEngineUpdateMsAvg: Math.round(avg(battleEngineUpdateMsSamples) * 100) / 100,
+    battleEngineUpdateMsP95: Math.round(percentile95(battleEngineUpdateMsSamples) * 100) / 100,
+    battleEngineUpdateMsMax: Math.round(Math.max(...battleEngineUpdateMsSamples) * 100) / 100,
+    battleRuntimeBuildMsAvg: Math.round(avg(battleRuntimeBuildMsSamples) * 100) / 100,
+    battleRuntimeBuildMsP95: Math.round(percentile95(battleRuntimeBuildMsSamples) * 100) / 100,
+    battleRuntimeBuildMsMax: Math.round(Math.max(...battleRuntimeBuildMsSamples) * 100) / 100,
+    battleQueueConsumeMsAvg: Math.round(avg(battleQueueConsumeMsSamples) * 100) / 100,
+    battleQueueConsumeMsP95: Math.round(percentile95(battleQueueConsumeMsSamples) * 100) / 100,
+    battleQueueConsumeMsMax: Math.round(Math.max(...battleQueueConsumeMsSamples) * 100) / 100,
+    battleOverlayMsAvg: Math.round(avg(battleOverlayMsSamples) * 100) / 100,
+    battleOverlayMsP95: Math.round(percentile95(battleOverlayMsSamples) * 100) / 100,
+    battleOverlayMsMax: Math.round(Math.max(...battleOverlayMsSamples) * 100) / 100,
+    battleStatusFxMsAvg: Math.round(avg(battleStatusFxMsSamples) * 100) / 100,
+    battleStatusFxMsP95: Math.round(percentile95(battleStatusFxMsSamples) * 100) / 100,
+    battleStatusFxMsMax: Math.round(Math.max(...battleStatusFxMsSamples) * 100) / 100,
+    battleFxTickMsAvg: Math.round(avg(battleFxTickMsSamples) * 100) / 100,
+    battleFxTickMsP95: Math.round(percentile95(battleFxTickMsSamples) * 100) / 100,
+    battleFxTickMsMax: Math.round(Math.max(...battleFxTickMsSamples) * 100) / 100,
+    battleTickDeltaAvg: Math.round(avg(battleTickDeltaSamples) * 100) / 100,
+    battleTickDeltaMax: Math.round(Math.max(...battleTickDeltaSamples) * 100) / 100,
+    battleQueuePendingRatioMax: Math.round(Math.max(...battleQueuePendingRatioSamples) * 1000) / 1000,
+    battleRuntimeCallsPerFrame: Math.round((calls / frames) * 100) / 100,
+    battleRuntimeCacheHitRate: calls > 0 ? Math.round((hits / calls) * 1000) / 1000 : 0,
+  }
+  clearBattleRuntimePerfSampleWindow()
+}
+
+function recordBattleRuntimePerfFrame(
+  frameDtMs: number,
+  frameUpdateMs: number,
+  engineUpdateMs: number,
+  runtimeBuildMs: number,
+  queueConsumeMs: number,
+  overlayMs: number,
+  statusFxMs: number,
+  fxTickMs: number,
+  tickDelta: number,
+  queuePendingRatio: number,
+  runtimeCallsDelta: number,
+  runtimeCacheHitsDelta: number,
+): void {
+  battlePerfSampleElapsedMs += Math.max(0, frameDtMs)
+  battleFrameDtMsSamples.push(Math.max(0, frameDtMs))
+  battleUpdateMsSamples.push(Math.max(0, frameUpdateMs))
+  battleEngineUpdateMsSamples.push(Math.max(0, engineUpdateMs))
+  battleRuntimeBuildMsSamples.push(Math.max(0, runtimeBuildMs))
+  battleQueueConsumeMsSamples.push(Math.max(0, queueConsumeMs))
+  battleOverlayMsSamples.push(Math.max(0, overlayMs))
+  battleStatusFxMsSamples.push(Math.max(0, statusFxMs))
+  battleFxTickMsSamples.push(Math.max(0, fxTickMs))
+  battleTickDeltaSamples.push(Math.max(0, tickDelta))
+  battleQueuePendingRatioSamples.push(Math.max(0, queuePendingRatio))
+  battleRuntimeCallsAccum += Math.max(0, runtimeCallsDelta)
+  battleRuntimeCacheHitsAccum += Math.max(0, runtimeCacheHitsDelta)
+  battleRuntimeFramesAccum += 1
+  if (battlePerfSampleElapsedMs >= 1000) flushBattleRuntimePerfSampleWindow()
+}
+
 export type { BattleFxPerfStats }
 export function getBattleFxPerfStats(): BattleFxPerfStats {
-  return fxPool.getPerfStats()
+  return {
+    ...fxPool.getPerfStats(),
+    ...battleRuntimePerfSnapshot,
+  }
 }
 let enemyFreezeOverlay: Graphics | null = null
 let playerFreezeOverlay: Graphics | null = null
@@ -912,6 +1030,9 @@ export const BattleScene: Scene = {
     autoFxDegradeLevel = 0
     fxPool.setAutoDegradeLevel(0)
     damageStats.reset()
+    clearBattleRuntimePerfSampleWindow()
+    battleRuntimePerfSnapshot = {}
+    battleLastTickIndexForPerf = -1
     root = new Container()
     root.sortableChildren = true
     stage.addChild(root)
@@ -1556,6 +1677,9 @@ export const BattleScene: Scene = {
     autoFxDegradeLevel = 0
     lastHudTickIndex = -1
     damageStats.reset()
+    clearBattleRuntimePerfSampleWindow()
+    battleRuntimePerfSnapshot = {}
+    battleLastTickIndexForPerf = -1
     // PVP sync cleanup
     syncAStarted = false
     earlyReportDone = false
@@ -1566,6 +1690,8 @@ export const BattleScene: Scene = {
     updateFpsHud(dt)
     if (!engine || !enemyZone || !playerZone || !enemyCdOverlay || !playerCdOverlay || !enemyFreezeOverlay || !playerFreezeOverlay || !enemyStatusLayer || !playerStatusLayer) return
     if (transition.tickExit(dt * 1000)) return
+    const framePerfStartMs = performance.now()
+    const runtimeCacheBefore = engine.getRuntimeCachePerfStats()
     if (isPvpSpeedupDisabled() && battleSpeed !== 1) {
       battleSpeed = 1
     }
@@ -1579,15 +1705,21 @@ export const BattleScene: Scene = {
     skillUI?.tickIntro(dtMs, playerZone)
     const introDone = transition.tickIntro(simDt * 1000, root)
     const allowSimUpdate = introDone && syncAStarted
+    let engineUpdateCostMs = 0
     if (allowSimUpdate) {
+      const t0 = performance.now()
       engine.update(simDt)
+      engineUpdateCostMs = performance.now() - t0
     }
+    const queueConsumeStartMs = performance.now()
     consumeVisualFxQueue(dtMs)
+    const queueConsumeCostMs = performance.now() - queueConsumeStartMs
     const pendingDamageImpactFx = fxPool.hasPendingDamageImpactPresentation()
     enemyPresentationVisible = !engine.isFinished() || pendingDamageImpactFx
     enemyZone.visible = enemyPresentationVisible
     if (portraitFX.enemyBossSprite) portraitFX.enemyBossSprite.visible = enemyPresentationVisible
     if (portraitFX.enemyBossFlashSprite) portraitFX.enemyBossFlashSprite.visible = enemyPresentationVisible
+    const runtimeBuildStartMs = performance.now()
     const board = engine.getBoardState()
     const runtime = engine.getRuntimeState()
     const debugState = engine.getDebugState()
@@ -1640,6 +1772,7 @@ export const BattleScene: Scene = {
       runtimeAmmoReloadMsByIdScratch.set(it.id, predictedReloadMs)
       runtimeByIdScratch.set(it.id, it)
     }
+    const runtimeBuildCostMs = performance.now() - runtimeBuildStartMs
     const activeCols = getDayActiveCols(battleDay)
     enemyZone.setActiveColCount(activeCols)
     playerZone.setActiveColCount(activeCols)
@@ -1666,9 +1799,13 @@ export const BattleScene: Scene = {
     }
     syncRemovedZoneItems(playerZone, 'player', playerAliveIdsScratch)
     syncRemovedZoneItems(enemyZone, 'enemy', enemyAliveIdsScratch)
+    const overlayStartMs = performance.now()
     drawCooldownOverlay(playerZone, playerCdOverlay, playerItemsScratch, runtimeChargePercentByIdScratch)
     drawCooldownOverlay(enemyZone, enemyCdOverlay, enemyItemsScratch, runtimeChargePercentByIdScratch)
+    const overlayCostMs = performance.now() - overlayStartMs
+    let statusFxCostMs = 0
     if (tickChanged || pulseActive) {
+      const statusFxStartMs = performance.now()
       fxPool.updateStatusFx(
         playerZone,
         enemyZone,
@@ -1679,6 +1816,7 @@ export const BattleScene: Scene = {
         enemyFreezeOverlay,
         runtimeByIdScratch,
       )
+      statusFxCostMs = performance.now() - statusFxStartMs
     }
     updateRuntimeStatBadges(playerZone, playerItemsScratch, runtimeByIdScratch, runtimeAmmoReloadMsByIdScratch)
     updateRuntimeStatBadges(enemyZone, enemyItemsScratch, runtimeByIdScratch, runtimeAmmoReloadMsByIdScratch)
@@ -1687,9 +1825,40 @@ export const BattleScene: Scene = {
       lastHudTickIndex = debugState.tickIndex
     }
 
+    const fxTickStartMs = performance.now()
     fxPool.tick(dtMs)
+    const fxTickCostMs = performance.now() - fxTickStartMs
     portraitFX.tickEnemy(dtMs)
     portraitFX.tickPlayer(dtMs)
+
+    const queueStats = engine.getQueuePerfStats()
+    const queuePendingRatio = Math.max(
+      queueStats.pendingHits / Math.max(1, queueStats.maxPendingHits),
+      queueStats.pendingItemFires / Math.max(1, queueStats.maxPendingItemFires),
+      queueStats.pendingChargePulses / Math.max(1, queueStats.maxPendingChargePulses),
+      queueStats.pendingAmmoRefills / Math.max(1, queueStats.maxPendingAmmoRefills),
+    )
+    const prevTick = battleLastTickIndexForPerf
+    const tickDelta = prevTick < 0 ? 0 : Math.max(0, debugState.tickIndex - prevTick)
+    battleLastTickIndexForPerf = debugState.tickIndex
+    const runtimeCacheAfter = engine.getRuntimeCachePerfStats()
+    const runtimeCallsDelta = Math.max(0, runtimeCacheAfter.calls - runtimeCacheBefore.calls)
+    const runtimeCacheHitsDelta = Math.max(0, runtimeCacheAfter.cacheHits - runtimeCacheBefore.cacheHits)
+    const frameUpdateCostMs = performance.now() - framePerfStartMs
+    recordBattleRuntimePerfFrame(
+      dtMs,
+      frameUpdateCostMs,
+      engineUpdateCostMs,
+      runtimeBuildCostMs,
+      queueConsumeCostMs,
+      overlayCostMs,
+      statusFxCostMs,
+      fxTickCostMs,
+      tickDelta,
+      queuePendingRatio,
+      runtimeCallsDelta,
+      runtimeCacheHitsDelta,
+    )
 
     if (battleEndMask) {
       if (engine.isFinished()) {

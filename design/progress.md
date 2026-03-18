@@ -1,5 +1,41 @@
 # 大巴扎 — 开发进度记录
 
+## 真机定位增强（2026-03-18，战斗主线程分段耗时埋点）
+
+- 用户诉求：继续增强真机定位能力，尽快锁定“后期天数掉帧”根因。
+- 本次新增埋点（不改战斗数值，仅加观测）：
+  - `src/battle/CombatEngine.ts`
+    - 新增 runtime state 缓存命中统计：`getRuntimeCachePerfStats()` 返回累计 `calls/cacheHits`。
+  - `src/battle/BattleScene.ts`
+    - 新增 1 秒窗口的战斗主线程分段采样：
+      - `battleUpdateMs*`（整帧战斗 update）
+      - `battleEngineUpdateMs*`（引擎推进）
+      - `battleRuntimeBuildMs*`（board/runtime + 运行时映射构建）
+      - `battleQueueConsumeMs*`（视觉队列消费）
+      - `battleOverlayMs*`（冷却遮罩绘制）
+      - `battleStatusFxMs*`（状态层刷新）
+      - `battleFxTickMs*`（FX 动画 tick）
+      - `battleTickDelta*`（每帧推进 tick 数，识别 catch-up）
+      - `battleQueuePendingRatioMax`（四类 pending 队列比值峰值）
+      - `battleRuntimeCallsPerFrame` 与 `battleRuntimeCacheHitRate`（评估重复计算与缓存有效性）
+    - `getBattleFxPerfStats()` 现返回 `fxPool` 指标 + 上述 runtime 分段指标。
+  - `src/battle/BattleFXPool.ts`
+    - 扩展 `BattleFxPerfStats` 类型，纳入上述可选字段，供 `PerfReporter` 透传。
+- 验证：`npm run build` 通过。
+- 下一步：让用户按现有 `perf=1` 链接再跑 4 天脚本；收到数据后优先看 `battleRuntimeBuildMsP95` / `battleEngineUpdateMsP95` / `battleOverlayMsP95` 哪段主导，再定向优化。
+
+## 交付执行（2026-03-18，iOS TestFlight 打包上传）
+
+- 用户指令：直接打 TF 包。
+- 已完成：
+  - 执行 `npm run release:tf` 全流程成功；
+  - 关键标记：`ARCHIVE SUCCEEDED`、`EXPORT SUCCEEDED`、`Upload succeeded`；
+  - 构建号：`116 -> 117`（`CURRENT_PROJECT_VERSION=117`）；
+  - IPA 产物：`ios/build/export-testflight/App.ipa`；
+  - 上传结果：`UPLOAD SUCCEEDED with no errors`。
+- 说明：日志中仅见 `Metadata extraction skipped. No AppIntents.framework dependency found.` 警告，不影响 TF 上传结果。
+- 当前阶段：等待用户在 App Store Connect/TestFlight 侧验收处理状态与可安装性。
+
 ## 验收优化追加（2026-03-18，iOS卡顿治理 P0/P1/P2 一次落地）
 
 - 用户指令：按 Notebook 指导直接完成 `P0/P1/P2` 卡顿治理改造。
@@ -60,6 +96,20 @@
   - Worker 已重新部署（Version ID: `205fdf4e-5b07-4f0e-a7a3-c990ac501d8a`）。
   - 已通过预检验证：OPTIONS 请求携带 `authorization,content-type,x-perf-schema` 返回 204 且放行。
 - 下一步：请用户再跑 1 分钟短测，确认 D1 出现新 session 后进入完整 A/B 测试与归因分析。
+
+## 真机数据回传（2026-03-18，连续4天实测已入库）
+
+- 采集状态：已收到真实 session 数据（`session_id=perf-mmvq47nj-mtdhc7`），共 116 个 battle 点位。
+- 按时间间隙切分 4 场战斗（对应连续 4 天）后统计：
+  - 第1场：`fps_avg≈54.4`，`p95_avg≈37.2`，入场有一次极端抖动（`fps_min=10`/`frameP95_max=100`）；
+  - 第2场：`fps_avg≈50.0`，`p95_avg≈25.0`；
+  - 第3场：`fps_avg≈40.6`，`p95_avg≈44.2`；
+  - 第4场：`fps_avg≈31.9`，`p95_avg≈50.8`，明显恶化。
+- 关键归因信号：
+  - `battleDropRate_avg=0`，`droppedProjectiles/FloatingNumbers` 近乎 0，说明当前瓶颈并非“特效被限流丢弃”；
+  - `perfLevel` 全部为 `critical`，且长帧总量高，指向“主线程计算/渲染负载超预算”；
+  - `heapMb` 在本设备/浏览器为 null（平台能力限制），暂不能直接用 JS heap 判断内存曲线。
+- 下一步：优先推进“阶段2：后期特效吞吐分级 + 战斗帧内计算进一步降频/缓存”并继续同脚本复测对比。
 
 ## 验收优化追加（2026-03-18，线上真机性能上报链路已落地）
 
