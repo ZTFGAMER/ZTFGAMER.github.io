@@ -1,5 +1,25 @@
 # 大巴扎 — 开发进度记录
 
+## 分支同步与打包执行结果（2026-03-19）
+
+- 用户要求：改完后同步到 `main` 并上传，切换到 `main`；再打 TestFlight 包与 Android 包。
+- 已完成：
+  - 代码同步：
+    - 在 `tdgame` 提交：`b5d2fbf`（完善战斗结算、新手合成引导、合成规则开关等）；
+    - 已推送 `origin/tdgame`；
+    - `main` 已 fast-forward 到 `b5d2fbf` 并推送 `origin/main`；
+    - 当前本地分支：`main`。
+  - TestFlight：
+    - 执行 `npm run release:tf` 成功；
+    - `ARCHIVE SUCCEEDED`、`EXPORT SUCCEEDED`、`UPLOAD SUCCEEDED`；
+    - `CURRENT_PROJECT_VERSION=119`，Delivery UUID: `9c8acaac-e709-4bf5-ad95-e2f452b9b826`。
+  - Android：
+    - 执行 `npm run build:android-web` 成功，产物在 `dist-android/`；
+    - 执行 `npm run android:sync` 成功；
+    - 执行 `android/gradlew assembleRelease` 失败：`无效的源发行版：21`（环境缺少可用 Java 21 / Android Studio JDK）。
+- 下一步：
+  - 在机器安装并配置 JDK 21 后重试 `assembleRelease`（或改为与当前 JDK 匹配的 sourceCompatibility 方案）。
+
 ## 合成规则显示开关（2026-03-19）
 
 - 用户要求：不要直接屏蔽，改为“玩法数值开关控制”，默认关闭；开启后仅在背包一行时显示。
