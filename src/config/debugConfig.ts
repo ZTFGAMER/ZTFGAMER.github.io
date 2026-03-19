@@ -1127,6 +1127,15 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     step: 1,
     unit: '',
   },
+  gameplaySameArchetypeCrossSynthesisEnabled: {
+    labelCn:      '同职业异物可合成',
+    description:  '1=同职业不同物品可合成；0=不可合成且不显示可合成提示',
+    defaultValue: 1,
+    min:  0,
+    max:  1,
+    step: 1,
+    unit: '',
+  },
   gameplayShowSimpleDescriptions: {
     labelCn:      '显示简版描述',
     description:  '1=保留简版->详细版切换；0=所有物品/技能描述默认显示详细版',

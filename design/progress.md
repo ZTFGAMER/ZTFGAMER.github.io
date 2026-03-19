@@ -1,5 +1,23 @@
 # 大巴扎 — 开发进度记录
 
+## 验收优化追加（2026-03-19，同职业异物合成开关）
+
+- 用户需求：增加玩法开关“同职业异物可合成”；默认开启。关闭后同职业异物不可合成，且不显示可合成提示。
+- 已完成：
+  - `src/config/debugConfig.ts`
+    - 新增开关 `gameplaySameArchetypeCrossSynthesisEnabled`（0/1，默认 1）。
+  - `data/debug_defaults.json`
+    - 新增默认值 `"gameplaySameArchetypeCrossSynthesisEnabled": 1`。
+  - `src/debug/DebugPage.ts`
+    - 将该开关加入“玩法”复选项分组，支持在线切换。
+  - `src/shop/systems/ShopSynthesisLogic.ts`
+    - 在 `canSynthesizePair` 与 `canUseLv7MorphSynthesis` 中接入该开关：
+      - 同物品合成不受影响；
+      - 同职业异物合成在开关关闭时直接判定不可合成。
+    - 因合成目标与提示箭头均复用该判定，关闭后不会出现可合成提示。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实机验收开关 0/1 下“同职业异物”提示与合成行为是否符合预期。
+
 ## 交付执行（2026-03-19，main/tdgame 同步 + TF + Android）
 
 - 用户指令：同步 Git（`main` 与 `tdgame` 都上传），然后打 TF 包与 Android 包。

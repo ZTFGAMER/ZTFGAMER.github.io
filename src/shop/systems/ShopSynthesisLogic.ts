@@ -13,6 +13,7 @@ import { getConfig, getAllItems, getAllItemsRaw } from '@/core/DataLoader'
 import type { ItemDef, SkillArchetype } from '@/common/items/ItemDef'
 import { getSkillItemDefById } from '@/common/skills/SkillItemDefs'
 import type { TierKey } from '@/shop/ShopManager'
+import { getConfig as getDebugCfg } from '@/config/debugConfig'
 
 // ============================================================
 // 常量
@@ -131,6 +132,7 @@ export function canSynthesizePair(
     return canUseLv7MorphSynthesis(sourceDefId, targetDefId, sourceTier, sourceStar, targetTier, targetStar)
   }
   if (sourceDefId === targetDefId) return true
+  if (getDebugCfg('gameplaySameArchetypeCrossSynthesisEnabled') < 0.5) return false
   const sourceArch = getPrimaryArchetype(sourceDef.tags)
   const targetArch = getPrimaryArchetype(targetDef.tags)
   if (!sourceArch || !targetArch) return false
@@ -151,6 +153,7 @@ export function canUseLv7MorphSynthesis(
   if (!sourceDef || !targetDef) return false
   if (isNeutralItemDef(sourceDef) || isNeutralItemDef(targetDef)) return false
   if (sourceDefId === targetDefId) return true
+  if (getDebugCfg('gameplaySameArchetypeCrossSynthesisEnabled') < 0.5) return false
   const sourceArch = toSkillArchetype(getPrimaryArchetype(sourceDef.tags))
   const targetArch = toSkillArchetype(getPrimaryArchetype(targetDef.tags))
   if (sourceArch !== 'warrior' && sourceArch !== 'archer' && sourceArch !== 'assassin') return false

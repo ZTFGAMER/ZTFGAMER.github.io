@@ -226,6 +226,7 @@ const GAMEPLAY_CHECKBOX_KEYS = [
   'gameplayCrossSynthesisConfirm',
   'gameplayBattleZoneNoSynthesis',
   'gameplaySameArchetypeDiffItemStoneSynthesis',
+  'gameplaySameArchetypeCrossSynthesisEnabled',
   'gameplayShowSimpleDescriptions',
   'gameplaySkillDraftRerollEnabled',
   'gameplayEventDraftRerollEnabled',
