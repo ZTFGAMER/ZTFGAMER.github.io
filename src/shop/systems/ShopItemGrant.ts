@@ -87,6 +87,6 @@ export function buildNamedPoolCandidate(nameCn: string): PoolCandidate | null {
   const item = getItemDefByCn(nameCn)
   if (!item) return null
   const tier = parseTierName(item.starting_tier) ?? 'Bronze'
-  const level = (tier === 'Bronze' ? 1 : tier === 'Silver' ? 2 : tier === 'Gold' ? 4 : 6) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const level = (tier === 'Bronze' ? 1 : tier === 'Silver' ? 2 : tier === 'Gold' ? 4 : 6) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   return { item, level, tier, star: 1, price: getUnlockPoolBuyPriceByLevel(level) }
 }

@@ -21,7 +21,7 @@ import {
 
 export function toRunner(entity: BattleSnapshotEntity, idPrefix: string): CombatItemRunner {
   const def = findItemDef(entity.defId)
-  const level = Math.max(1, Math.min(7, Math.round(entity.level ?? 0)))
+  const level = Math.max(1, Math.min(8, Math.round(entity.level ?? 0)))
   const tierStarFromLevel = qualityScoreToTierStar(level)
   const fallbackTierStar: { tier: EnemyTier; star: EnemyStar } = {
     tier: (entity.tier ?? 'Bronze') as EnemyTier,
@@ -107,7 +107,7 @@ export function makeEnemyRunners(day: number, snapshot: BattleSnapshotBundle): C
     snapshot.activeColCount,
     Math.round(dailyCurveValue(labCfg?.dailyItemCount, day, 5)),
   ))
-  const baseTargetAvgQuality = Math.max(1, Math.min(7, dailyCurveValue(labCfg?.dailyAvgQuality, day, 3)))
+  const baseTargetAvgQuality = Math.max(1, Math.min(8, dailyCurveValue(labCfg?.dailyAvgQuality, day, 3)))
   const playerWinStreak = Math.max(0, Math.round(getPlayerWinStreakState().count))
   const playerHp = Math.max(1, Math.round(getLifeState().current))
   const streakIdx = Math.min(9, playerWinStreak)
@@ -120,7 +120,7 @@ export function makeEnemyRunners(day: number, snapshot: BattleSnapshotBundle): C
   }
   const hpKey: 1 | 2 | 3 | 4 | 5 = playerHp >= 5 ? 5 : playerHp >= 4 ? 4 : playerHp >= 3 ? 3 : playerHp >= 2 ? 2 : 1
   const streakQualityBonus = streakBonusByHp[hpKey][streakIdx] ?? 0
-  const targetAvgQuality = Math.max(1, Math.min(7, baseTargetAvgQuality + streakQualityBonus))
+  const targetAvgQuality = Math.max(1, Math.min(8, baseTargetAvgQuality + streakQualityBonus))
   const qualityScores = buildQualityScores(targetCount, targetAvgQuality)
 
   const byArchetype = new Map<string, ItemDef[]>()

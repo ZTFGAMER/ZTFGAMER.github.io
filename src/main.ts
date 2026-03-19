@@ -150,13 +150,14 @@ function parseTierName(raw: string): 'Bronze' | 'Silver' | 'Gold' | 'Diamond' {
 }
 
 function levelToTierStar(level: number): { tier: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'; star: 1 | 2 } {
-  const lv = Math.max(1, Math.min(7, Math.round(level)))
+  const lv = Math.max(1, Math.min(8, Math.round(level)))
   if (lv <= 1) return { tier: 'Bronze', star: 1 }
-  if (lv === 2) return { tier: 'Silver', star: 1 }
-  if (lv === 3) return { tier: 'Silver', star: 2 }
-  if (lv === 4) return { tier: 'Gold', star: 1 }
-  if (lv === 5) return { tier: 'Gold', star: 2 }
-  if (lv === 6) return { tier: 'Diamond', star: 1 }
+  if (lv === 2) return { tier: 'Bronze', star: 2 }
+  if (lv === 3) return { tier: 'Silver', star: 1 }
+  if (lv === 4) return { tier: 'Silver', star: 2 }
+  if (lv === 5) return { tier: 'Gold', star: 1 }
+  if (lv === 6) return { tier: 'Gold', star: 2 }
+  if (lv === 7) return { tier: 'Diamond', star: 1 }
   return { tier: 'Diamond', star: 2 }
 }
 
@@ -185,8 +186,8 @@ function startItemBattleTest(defId: string, level = 7, allyDefId?: string, enemy
     const toW = (size: '1x1' | '2x1' | '3x1'): number => (size === '1x1' ? 1 : size === '2x1' ? 2 : 3)
     const activeColCount = 6
     const playerTier = levelToTierStar(level)
-    const enemyTier = levelToTierStar(Math.max(1, Math.min(7, Math.round(level))))
-    const normalizedLevel = Math.max(1, Math.min(7, Math.round(level))) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+    const enemyTier = levelToTierStar(Math.max(1, Math.min(8, Math.round(level))))
+    const normalizedLevel = Math.max(1, Math.min(8, Math.round(level))) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8
     const playerEntities: BattleSnapshotBundle['entities'] = [
       {
         instanceId: `item-test-player-${player.id}`,

@@ -35,7 +35,7 @@ import type { ItemSizeNorm } from '@/common/grid/GridSystem'
 
 export type PoolCandidate = {
   item: ItemDef
-  level: 1 | 2 | 3 | 4 | 5 | 6 | 7
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8
   tier: TierKey
   star: 1 | 2
   price: number
@@ -46,7 +46,7 @@ export type PoolCandidate = {
 // ============================================================
 
 export const QUALITY_PSEUDO_RANDOM_STATE = new Map<string, { bag: TierKey[]; cursor: number }>()
-export const QUICK_BUY_LEVEL_PSEUDO_RANDOM_STATE = new Map<string, { bag: Array<1 | 2 | 3 | 4 | 5 | 6 | 7>; cursor: number }>()
+export const QUICK_BUY_LEVEL_PSEUDO_RANDOM_STATE = new Map<string, { bag: Array<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8>; cursor: number }>()
 
 // ============================================================
 // Callbacks 接口
@@ -63,7 +63,7 @@ export type RollNextQuickBuyOfferCallbacks = {
   pickNeutralRandomCategoryByPool: (candidates: PoolCandidate[]) => 'stone' | 'scroll' | 'medal'
   neutralRandomCategoryOfItem: (item: ItemDef) => 'stone' | 'scroll' | 'medal' | null
   getNeutralDailyRollCap: (day: number) => number
-  getInstanceLevel: (instanceId: string) => 1 | 2 | 3 | 4 | 5 | 6 | 7
+  getInstanceLevel: (instanceId: string) => 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8
   getInstanceTier: (instanceId: string) => TierKey | undefined
   getInstanceTierMap: () => Map<string, TierKey>
   getInstanceTierStar: (instanceId: string) => 1 | 2
@@ -102,23 +102,24 @@ function parseAvailableTiers(raw: string): TierKey[] {
 
 export function levelToTierStar(level: number): { tier: TierKey; star: 1 | 2 } | null {
   if (level === 1) return { tier: 'Bronze', star: 1 }
-  if (level === 2) return { tier: 'Silver', star: 1 }
-  if (level === 3) return { tier: 'Silver', star: 2 }
-  if (level === 4) return { tier: 'Gold', star: 1 }
-  if (level === 5) return { tier: 'Gold', star: 2 }
-  if (level === 6) return { tier: 'Diamond', star: 1 }
-  if (level === 7) return { tier: 'Diamond', star: 2 }
+  if (level === 2) return { tier: 'Bronze', star: 2 }
+  if (level === 3) return { tier: 'Silver', star: 1 }
+  if (level === 4) return { tier: 'Silver', star: 2 }
+  if (level === 5) return { tier: 'Gold', star: 1 }
+  if (level === 6) return { tier: 'Gold', star: 2 }
+  if (level === 7) return { tier: 'Diamond', star: 1 }
+  if (level === 8) return { tier: 'Diamond', star: 2 }
   return null
 }
 
-export function getAllowedLevelsByStartingTier(tier: TierKey): Array<1 | 2 | 3 | 4 | 5 | 6 | 7> {
-  if (tier === 'Bronze') return [1, 2, 3, 4, 5, 6, 7]
-  if (tier === 'Silver') return [2, 3, 4, 5, 6, 7]
-  if (tier === 'Gold') return [4, 5, 6, 7]
-  return [6, 7]
+export function getAllowedLevelsByStartingTier(tier: TierKey): Array<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8> {
+  if (tier === 'Bronze') return [1, 2, 3, 4, 5, 6, 7, 8]
+  if (tier === 'Silver') return [3, 4, 5, 6, 7, 8]
+  if (tier === 'Gold') return [5, 6, 7, 8]
+  return [7, 8]
 }
 
-export function getUnlockPoolBuyPriceByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): number {
+export function getUnlockPoolBuyPriceByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8): number {
   const tierStar = levelToTierStar(level)
   const key = `${tierStar?.tier ?? 'Bronze'}#${tierStar?.star ?? 1}`
   const raw = getConfig().shopRules?.quickBuyFixedPrice?.[key]
@@ -133,7 +134,7 @@ export function getUnlockPoolBuyPriceByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): 
 // 等级权重
 // ============================================================
 
-export function getQuickBuyLevelWeightsByDay(day: number): [number, number, number, number, number, number, number] {
+export function getQuickBuyLevelWeightsByDay(day: number): [number, number, number, number, number, number, number, number] {
   const rows = getConfig().shopRules?.quickBuyLevelChancesByDay
   const idx = Math.max(0, Math.min((rows?.length ?? 1) - 1, day - 1))
   const row = rows?.[idx] ?? [1, 0, 0, 0, 0, 0, 0]
@@ -145,22 +146,23 @@ export function getQuickBuyLevelWeightsByDay(day: number): [number, number, numb
     Math.max(0, Number(row[4] ?? 0)),
     Math.max(0, Number(row[5] ?? 0)),
     Math.max(0, Number(row[6] ?? 0)),
+    Math.max(0, Number(row[7] ?? 0)),
   ]
 }
 
-export function getMaxQuickBuyLevelForDay(day: number): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+export function getMaxQuickBuyLevelForDay(day: number): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8 {
   const weights = getQuickBuyLevelWeightsByDay(day)
-  let maxLevel: 1 | 2 | 3 | 4 | 5 | 6 | 7 = 1
+  let maxLevel: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8 = 1
   for (let i = 0; i < weights.length; i++) {
-    if (Number(weights[i] ?? 0) > 0) maxLevel = (i + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+    if (Number(weights[i] ?? 0) > 0) maxLevel = (i + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8
   }
   return maxLevel
 }
 
-export function getMinQuickBuyLevelForDay(day: number): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+export function getMinQuickBuyLevelForDay(day: number): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8 {
   const weights = getQuickBuyLevelWeightsByDay(day)
   for (let i = 0; i < weights.length; i++) {
-    if (Number(weights[i] ?? 0) > 0) return (i + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+    if (Number(weights[i] ?? 0) > 0) return (i + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8
   }
   return 1
 }
@@ -169,7 +171,7 @@ export function getMinQuickBuyLevelForDay(day: number): 1 | 2 | 3 | 4 | 5 | 6 | 
 // 品质权重 & 伪随机袋
 // ============================================================
 
-export function getQuickBuyQualityWeightsByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): Record<TierKey, number> {
+export function getQuickBuyQualityWeightsByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8): Record<TierKey, number> {
   const rules = getConfig().shopRules as {
     qualityPseudoRandomWeightsByLevel?: Record<TierKey, number[]>
     quickBuyQualityWeightsByLevel?: Record<TierKey, number[]>
@@ -186,7 +188,7 @@ export function getQuickBuyQualityWeightsByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 
   }
 }
 
-export function buildQualityPseudoRandomBag(level: 1 | 2 | 3 | 4 | 5 | 6 | 7, available: TierKey[]): TierKey[] {
+export function buildQualityPseudoRandomBag(level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8, available: TierKey[]): TierKey[] {
   const qualityOrder: TierKey[] = ['Bronze', 'Silver', 'Gold', 'Diamond']
   const availableSet = new Set(available)
   const base = getQuickBuyQualityWeightsByLevel(level)
@@ -224,7 +226,7 @@ export function buildQualityPseudoRandomBag(level: 1 | 2 | 3 | 4 | 5 | 6 | 7, av
 }
 
 export function pickQualityByPseudoRandomBag(
-  level: 1 | 2 | 3 | 4 | 5 | 6 | 7,
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8,
   available: TierKey[],
 ): TierKey {
   const qualityOrder: TierKey[] = ['Bronze', 'Silver', 'Gold', 'Diamond']
@@ -247,18 +249,18 @@ export function pickQualityByPseudoRandomBag(
 // ============================================================
 
 export function pickQuickBuyLevelByPseudoRandomBucket(
-  effectiveWeights: [number, number, number, number, number, number, number],
-): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+  effectiveWeights: [number, number, number, number, number, number, number, number],
+): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8 {
   const active = effectiveWeights
-    .map((w, i) => ({ level: (i + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7, weight: Math.max(0, Number(w || 0)) }))
+    .map((w, i) => ({ level: (i + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8, weight: Math.max(0, Number(w || 0)) }))
     .filter((it) => it.weight > 0)
 
   if (active.length <= 0) return 1
   if (active.length === 1) return active[0]!.level
 
   const nonZeroLevels = active.map((it) => it.level)
-  const low = Math.min(...nonZeroLevels) as 1 | 2 | 3 | 4 | 5 | 6 | 7
-  const high = Math.max(...nonZeroLevels) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const low = Math.min(...nonZeroLevels) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8
+  const high = Math.max(...nonZeroLevels) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8
   const lowW = active.find((it) => it.level === low)?.weight ?? 0
   const highW = active.find((it) => it.level === high)?.weight ?? 0
   const isTwoLevelFiftyFifty = active.length === 2 && Math.abs(lowW - highW) <= 1e-6
@@ -278,11 +280,11 @@ export function pickQuickBuyLevelByPseudoRandomBucket(
   for (let i = 0; i < effectiveWeights.length; i++) totalWeight += Math.max(0, effectiveWeights[i] ?? 0)
   if (totalWeight <= 0) return 1
   let levelRoll = Math.random() * totalWeight
-  let pickedLevel: 1 | 2 | 3 | 4 | 5 | 6 | 7 = 1
+  let pickedLevel: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8 = 1
   for (let i = 0; i < effectiveWeights.length; i++) {
     levelRoll -= effectiveWeights[i] ?? 0
     if (levelRoll <= 0) {
-      pickedLevel = (i + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+      pickedLevel = (i + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8
       break
     }
   }
@@ -295,7 +297,7 @@ export function pickQuickBuyLevelByPseudoRandomBucket(
 
 export function collectPoolCandidatesByLevel(
   ctx: ShopSceneCtx,
-  level: 1 | 2 | 3 | 4 | 5 | 6 | 7,
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8,
   callbacks: Pick<RollNextQuickBuyOfferCallbacks, 'findFirstBattlePlace' | 'findFirstBackpackPlace'>,
 ): PoolCandidate[] {
   if (!ctx.shopManager || !ctx.battleSystem || !ctx.backpackSystem) return []
@@ -344,8 +346,8 @@ export function findCandidateByOffer(
     }
   }
   const level = tierStarLevelIndex(offer.tier, offer.star) + 1
-  if (level < 1 || level > 7) return null
-  const levelKey = level as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  if (level < 1 || level > 8) return null
+  const levelKey = level as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8
   const size = normalizeSize(item.size)
   if (!callbacks.findFirstBattlePlace(size) && !callbacks.findFirstBackpackPlace(size)) return null
   const minTier = parseTierName(item.starting_tier) ?? 'Bronze'
@@ -395,7 +397,7 @@ export function pickForcedLowLevelPairCandidate(
 
   const oddBuckets = new Map<string, {
     defId: string
-    level: 1 | 2 | 3 | 4 | 5 | 6 | 7
+    level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8
     tier: TierKey
     star: 1 | 2
     count: number
@@ -413,7 +415,7 @@ export function pickForcedLowLevelPairCandidate(
       const key = `${it.defId}|${tier}|${star}`
       const prev = oddBuckets.get(key)
       if (prev) prev.count += 1
-      else oddBuckets.set(key, { defId: it.defId, level: level as 1 | 2 | 3 | 4 | 5 | 6 | 7, tier, star, count: 1 })
+      else oddBuckets.set(key, { defId: it.defId, level: level as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8, tier, star, count: 1 })
     }
   }
   collect(ctx.battleSystem.getAllItems())
@@ -546,8 +548,8 @@ export function rollNextQuickBuyOffer(
     if (keep) return keep
   }
 
-  const collectLevel = (level: 1 | 2 | 3 | 4 | 5 | 6 | 7) => collectPoolCandidatesByLevel(ctx, level, callbacks)
-  const byLevel: Record<1 | 2 | 3 | 4 | 5 | 6 | 7, PoolCandidate[]> = {
+  const collectLevel = (level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8) => collectPoolCandidatesByLevel(ctx, level, callbacks)
+  const byLevel: Record<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8, PoolCandidate[]> = {
     1: collectLevel(1),
     2: collectLevel(2),
     3: collectLevel(3),
@@ -555,6 +557,7 @@ export function rollNextQuickBuyOffer(
     5: collectLevel(5),
     6: collectLevel(6),
     7: collectLevel(7),
+    8: collectLevel(8),
   }
 
   if (callbacks.isFirstPurchaseLockedToStarterClass()) {
@@ -565,6 +568,7 @@ export function rollNextQuickBuyOffer(
     byLevel[5] = byLevel[5].filter((c) => callbacks.isStarterClassItem(c.item))
     byLevel[6] = byLevel[6].filter((c) => callbacks.isStarterClassItem(c.item))
     byLevel[7] = byLevel[7].filter((c) => callbacks.isStarterClassItem(c.item))
+    byLevel[8] = byLevel[8].filter((c) => callbacks.isStarterClassItem(c.item))
   }
 
   const neutralCandidates = callbacks.collectNeutralQuickBuyCandidates()
@@ -610,7 +614,7 @@ export function rollNextQuickBuyOffer(
   }
 
   const baseWeights = getQuickBuyLevelWeightsByDay(ctx.currentDay)
-  const effectiveWeights: [number, number, number, number, number, number, number] = [
+  const effectiveWeights: [number, number, number, number, number, number, number, number] = [
     byLevel[1].length > 0 ? baseWeights[0] : 0,
     byLevel[2].length > 0 ? baseWeights[1] : 0,
     byLevel[3].length > 0 ? baseWeights[2] : 0,
@@ -618,6 +622,7 @@ export function rollNextQuickBuyOffer(
     byLevel[5].length > 0 ? baseWeights[4] : 0,
     byLevel[6].length > 0 ? baseWeights[5] : 0,
     byLevel[7].length > 0 ? baseWeights[6] : 0,
+    byLevel[8].length > 0 ? baseWeights[7] : 0,
   ]
   const totalWeight = effectiveWeights.reduce((sum, n) => sum + n, 0)
   if (totalWeight <= 0) {
@@ -649,7 +654,7 @@ export function rollNextQuickBuyOffer(
 
   if (force && ctx.quickBuyNoSynthRefreshStreak >= 2 && !canOfferImmediateSynthesis(ctx, picked, callbacks)) {
     const synthCandidates: PoolCandidate[] = []
-    const levels: Array<1 | 2 | 3 | 4 | 5 | 6 | 7> = [1, 2, 3, 4, 5, 6, 7]
+    const levels: Array<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8> = [1, 2, 3, 4, 5, 6, 7, 8]
     for (const lv of levels) {
       if (effectiveWeights[lv - 1] <= 0) continue
       for (const one of byLevel[lv]) {

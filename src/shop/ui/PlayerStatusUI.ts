@@ -24,19 +24,19 @@ import { getBattleZoneDisplayY } from '../ShopMathHelpers'
 // 品质等级辅助
 // ============================================================
 
-export function clampLevel(level: number): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
-  return Math.max(1, Math.min(7, Math.round(level))) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+export function clampLevel(level: number): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8 {
+  return Math.max(1, Math.min(8, Math.round(level))) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8
 }
 
-export function getQualityLevelRange(quality: TierKey): { min: 1 | 2 | 3 | 4 | 5 | 6 | 7; max: 1 | 2 | 3 | 4 | 5 | 6 | 7 } {
+export function getQualityLevelRange(quality: TierKey): { min: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8; max: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8 } {
   const cfg = getConfig().shopRules?.qualityLevelRange?.[quality]
-  const defaultMin = quality === 'Bronze' ? 1 : quality === 'Silver' ? 2 : quality === 'Gold' ? 4 : 6
+  const defaultMin = quality === 'Bronze' ? 1 : quality === 'Silver' ? 3 : quality === 'Gold' ? 5 : 7
   const min = clampLevel(Number(cfg?.min ?? defaultMin))
-  const max = clampLevel(Number(cfg?.max ?? 7))
-  return { min, max: Math.max(min, max) as 1 | 2 | 3 | 4 | 5 | 6 | 7 }
+  const max = clampLevel(Number(cfg?.max ?? 8))
+  return { min, max: Math.max(min, max) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8 }
 }
 
-export function levelFromLegacyTierStar(tier: TierKey, star: 1 | 2): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+export function levelFromLegacyTierStar(tier: TierKey, star: 1 | 2): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8 {
   return clampLevel(tierStarLevelIndex(tier, star) + 1)
 }
 

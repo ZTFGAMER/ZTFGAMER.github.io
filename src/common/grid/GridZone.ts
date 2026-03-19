@@ -148,10 +148,10 @@ function parseTierStar(tierRaw?: string): number {
 function tierToLevelLabel(tierRaw?: string): string {
   const tier = getTier('', tierRaw)
   const star = parseTierStar(tierRaw)
-  if (tier === 'Bronze') return '1'
-  if (tier === 'Silver') return String(star + 1)
-  if (tier === 'Gold') return String(star + 3)
-  return String(star + 5)
+  if (tier === 'Bronze') return String(star)
+  if (tier === 'Silver') return String(star + 2)
+  if (tier === 'Gold') return String(star + 4)
+  return String(star + 6)
 }
 
 // ---- ItemNode ----
@@ -244,17 +244,17 @@ function drawGemShape(g: Graphics, radius: number): void {
 function tierScoreFromRaw(raw?: string): number {
   const tier = parseTierName(raw ?? 'Bronze')
   const star = parseTierStar(raw)
-  if (tier === 'Bronze') return 1
-  if (tier === 'Silver') return star === 2 ? 3 : 2
-  if (tier === 'Gold') return star === 2 ? 5 : 4
-  return star === 2 ? 7 : 6
+  if (tier === 'Bronze') return star === 2 ? 2 : 1
+  if (tier === 'Silver') return star === 2 ? 4 : 3
+  if (tier === 'Gold') return star === 2 ? 6 : 5
+  return star === 2 ? 8 : 7
 }
 
 function startTierScore(raw?: string): number {
   const tier = parseTierName(raw ?? 'Bronze')
-  if (tier === 'Silver') return 2
-  if (tier === 'Gold') return 4
-  if (tier === 'Diamond') return 6
+  if (tier === 'Silver') return 3
+  if (tier === 'Gold') return 5
+  if (tier === 'Diamond') return 7
   return 1
 }
 

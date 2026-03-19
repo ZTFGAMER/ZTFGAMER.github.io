@@ -1,5 +1,97 @@
 # 大巴扎 — 开发进度记录
 
+## 验收修正（2026-03-19，Lv2 显示与品质桶回调）
+
+- 用户反馈：
+  - 直接购买物品出现了 Lv2 数值（如匕首 CD4.0/伤害+12）但角标仍显示 `1`；
+  - 要求品质桶按新 8 级表更新；
+  - 其余分布继续沿用之前配置逻辑，仅新增 `lv8=0`。
+- 已完成：
+  - `src/common/grid/GridZone.ts`
+    - 修正角标等级映射：`Bronze#2` 现在显示为 `2`（不再固定显示 1）；
+    - 新映射：Bronze=`1/2`、Silver=`3/4`、Gold=`5/6`、Diamond=`7/8`。
+  - `data/game_config.json`
+    - `qualityPseudoRandomWeightsByLevel` 改为用户给定 8 级表：
+      - Bronze: `[1,1,0.7,0.5,0.4,0.3,0.2,0]`
+      - Silver: `[0,0,0.3,0.5,0.4,0.4,0.3,0.3]`
+      - Gold: `[0,0,0,0,0.2,0.3,0.4,0.4]`
+      - Diamond: `[0,0,0,0,0,0,0.1,0.3]`
+    - 快购/升级相关表按“沿用旧配置 + 补 lv8=0”整理：
+      - `quickBuyLevelChancesByDay` 每行 8 列，末列 `lv8=0`；
+      - `levelQuickDraftLevelWeightsByPlayerLevel` 每行 12 列（`lv2~lv8 + 5特殊`），`lv8=0`；
+      - `quickBuyQualityWeightsByLevel`、`minTierDropWeightsByResultLevel`、`synthesisMinTierDropWeightsByResultLevel`、`sellFixedPriceBySize` 均补到 8 档且末档为 0。
+  - `data/vanessa_items.json`
+    - 青铜战斗物品数值回调到你给的表：`item1~item6`（短剑/圆盾/弹药袋/木弓/匕首/连发镖）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实机确认“直接购买 Lv2 角标显示正确 + 品质桶体感符合新表”。
+
+## 验收优化追加（2026-03-19，等级体系扩展到 Lv8）
+
+- 用户需求：
+  - 白银最低等级改为 Lv3，黄金最低等级改为 Lv5，钻石最低等级改为 Lv7；
+  - 物品上限等级改为 Lv8（青铜 1~8，白银 3~8，黄金 5~8，钻石 7~8）；
+  - 检查并补齐青铜新增一级所需数据。
+- 已完成（代码层）：
+  - `src/shop/systems/QuickBuySystem.ts`
+    - 等级映射改为 8 级：`Lv1=Bronze#1, Lv2=Bronze#2, Lv3=Silver#1, Lv4=Silver#2, Lv5=Gold#1, Lv6=Gold#2, Lv7=Diamond#1, Lv8=Diamond#2`；
+    - `getAllowedLevelsByStartingTier` 更新为 `Bronze[1..8] / Silver[3..8] / Gold[5..8] / Diamond[7..8]`；
+    - 快购权重、伪随机袋、候选池、强制刷新等逻辑全量扩到 8 级。
+  - `src/shop/systems/ShopSynthesisLogic.ts`
+    - tier-star 等级索引扩到 8 档（新增 Bronze#2）。
+  - `src/shop/ui/PlayerStatusUI.ts`
+    - 品质等级默认区间改为 `1/3/5/7` 起，默认上限 `8`。
+  - 相关系统同步扩展到 8 级类型与 clamp：
+    - `src/shop/systems/ShopInstanceRegistry.ts`
+    - `src/shop/systems/ShopRewardSystem.ts`
+    - `src/shop/systems/ShopEventSystem.ts`
+    - `src/shop/panels/SpecialShopPanel.ts`
+    - `src/shop/panels/NeutralItemPanel.ts`
+    - `src/shop/ui/ShopBattleZoneBuilder.ts`
+    - `src/shop/systems/ShopSynthesisController.ts`
+    - `src/shop/systems/ShopHeroSystem.ts`
+    - `src/shop/systems/ShopSkillSystem.ts`
+    - `src/common/ui/SellPopup.ts`
+    - `src/common/grid/GridZone.ts`
+    - `src/battle/CombatHelpers.ts`
+    - `src/battle/EnemyBuilder.ts`
+    - `src/main.ts`（item battle test 映射）
+- 已完成（配置层）：
+  - `data/game_config.json`
+    - `quickBuyLevelChancesByDay` 每行由 7 列扩为 8 列；
+    - `levelQuickDraftLevelWeightsByPlayerLevel` 每行由 11 列扩为 12 列（新增 `lv8` 列）；
+    - `qualityPseudoRandomWeightsByLevel` / `quickBuyQualityWeightsByLevel` / `minTierDropWeightsByResultLevel` / `synthesisMinTierDropWeightsByResultLevel` 由 7 长扩为 8 长；
+    - `sellFixedPriceBySize` 由 7 长扩为 8 长；
+    - `quickBuyFixedPrice` 新增 `Bronze#2: 5`。
+- 已完成（数据补齐）：
+  - `data/vanessa_items.json`
+    - 为青铜战斗物品补齐 Lv8 档位数据（冷却/数值/分档文案）：`item1~item6`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实机验收 Lv8 体系下的出货曲线与战斗强度节奏（尤其 Lv2 青铜、Lv7 钻1、Lv8 钻2）。
+
+## 主界面新增战车模式入口（2026-03-19）
+
+- 用户需求：在主界面“冒险模式 / 同步对战模式”下方新增“战车模式”按钮；当前先复用冒险模式内容。
+- 已完成：
+  - `src/menu/MenuScene.ts`
+    - 在模式按钮区新增第三个按钮“战车模式”；
+    - 文案与跳转先与冒险模式一致（`SceneManager.goto('shop')`）；
+    - 按钮位置在同步对战下方，保持与现有按钮一致的纵向间距（+144）。
+- 验证：`npm run build` 通过。
+- 下一步：等待用户提供战车模式独有设计后，再拆分独立场景/规则入口。
+
+## 验收优化追加（2026-03-19，升级奖励选牌数值重设）
+
+- 用户需求：按最新 1~40 级表更新“升级奖励选牌”概率（`lv2~lv7`），并将 `转职石/附魔石/青铜技能/白银技能/黄金技能` 全列设为 0。
+- 已完成：
+  - `data/game_config.json`
+    - `shop_rules.levelQuickDraftLevelWeightsByPlayerLevel` 全 40 行已按新表覆盖；
+    - 11 列结构保持不变：`[lv2, lv3, lv4, lv5, lv6, lv7, 转职石, 附魔石, 青铜技能, 白银技能, 黄金技能]`；
+    - 本次更新中后 5 列均为 `0`。
+- 校验：
+  - 配置行数校验为 `40`（覆盖等级 1~40）；
+  - `npm run build` 通过。
+- 当前阶段：等待用户实机验收升级奖励在各等级段（特别是 2/3、4/5、6/7 档切换）的体感分布。
+
 ## 验收优化追加（2026-03-19，同职业异物合成开关）
 
 - 用户需求：增加玩法开关“同职业异物可合成”；默认开启。关闭后同职业异物不可合成，且不显示可合成提示。

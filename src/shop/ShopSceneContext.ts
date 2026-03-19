@@ -182,7 +182,7 @@ export type BattleStartTransitionState = {
 
 export type PendingHeroPeriodicReward = {
   itemId: string
-  level: 1 | 2 | 3 | 4 | 5 | 6 | 7
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   tier: TierKey
   star: 1 | 2
   source: string
@@ -190,7 +190,7 @@ export type PendingHeroPeriodicReward = {
 
 export type SavedLevelQuickDraftCandidate = {
   defId: string
-  level: 1 | 2 | 3 | 4 | 5 | 6 | 7
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   tier: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
   star: 1 | 2
 }
@@ -207,7 +207,7 @@ export type SavedPlacedItem = {
   col: number
   row: number
   quality?: TierKey
-  level?: 1 | 2 | 3 | 4 | 5 | 6 | 7
+  level?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   tier: TierKey
   tierStar: 1 | 2
   permanentDamageBonus: number
@@ -294,7 +294,7 @@ export type SavedShopState = {
   pendingLevelRewards?: string[]
   pendingHeroPeriodicRewards?: Array<{
     itemId: string
-    level: 1 | 2 | 3 | 4 | 5 | 6 | 7
+    level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
     tier: TierKey
     star: 1 | 2
     source: string

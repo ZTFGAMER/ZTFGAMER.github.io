@@ -49,18 +49,18 @@ export function parseTierStar(raw: string): 1 | 2 {
 export function tierScoreFromRaw(raw: string): number {
   const tier = parseTierName(raw)
   const star = parseTierStar(raw)
-  if (tier === 'Bronze') return 1
-  if (tier === 'Silver') return star === 2 ? 3 : 2
-  if (tier === 'Gold') return star === 2 ? 5 : 4
-  return star === 2 ? 7 : 6
+  if (tier === 'Bronze') return star === 2 ? 2 : 1
+  if (tier === 'Silver') return star === 2 ? 4 : 3
+  if (tier === 'Gold') return star === 2 ? 6 : 5
+  return star === 2 ? 8 : 7
 }
 
 export function startTierScore(def: ItemDef | null): number {
   if (!def) return 1
   const tier = parseTierName(def.starting_tier || 'Bronze')
-  if (tier === 'Silver') return 2
-  if (tier === 'Gold') return 4
-  if (tier === 'Diamond') return 6
+  if (tier === 'Silver') return 3
+  if (tier === 'Gold') return 5
+  if (tier === 'Diamond') return 7
   return 1
 }
 
@@ -104,13 +104,14 @@ export function tierStarToRaw(tier: EnemyTier, star: EnemyStar): string {
 }
 
 export function qualityScoreToTierStar(score: number): { tier: EnemyTier; star: EnemyStar } {
-  const s = Math.max(1, Math.min(7, Math.round(score)))
-  if (s >= 7) return { tier: 'Diamond', star: 2 }
-  if (s >= 6) return { tier: 'Diamond', star: 1 }
-  if (s >= 5) return { tier: 'Gold', star: 2 }
-  if (s >= 4) return { tier: 'Gold', star: 1 }
-  if (s >= 3) return { tier: 'Silver', star: 2 }
-  if (s >= 2) return { tier: 'Silver', star: 1 }
+  const s = Math.max(1, Math.min(8, Math.round(score)))
+  if (s >= 8) return { tier: 'Diamond', star: 2 }
+  if (s >= 7) return { tier: 'Diamond', star: 1 }
+  if (s >= 6) return { tier: 'Gold', star: 2 }
+  if (s >= 5) return { tier: 'Gold', star: 1 }
+  if (s >= 4) return { tier: 'Silver', star: 2 }
+  if (s >= 3) return { tier: 'Silver', star: 1 }
+  if (s >= 2) return { tier: 'Bronze', star: 2 }
   return { tier: 'Bronze', star: 1 }
 }
 
@@ -123,8 +124,8 @@ export function dailyCurveValue(values: number[] | undefined, day: number, fallb
 
 export function buildQualityScores(itemCount: number, targetAvg: number): number[] {
   const count = Math.max(1, Math.round(itemCount))
-  const avg = Math.max(1, Math.min(7, targetAvg))
-  const maxScore = Math.max(1, Math.min(7, Math.floor(avg + 1)))
+  const avg = Math.max(1, Math.min(8, targetAvg))
+  const maxScore = Math.max(1, Math.min(8, Math.floor(avg + 1)))
   const targetSum = Math.max(count, Math.min(count * maxScore, Math.floor(avg * count)))
   const base = Math.max(1, Math.min(maxScore, Math.floor(avg)))
   const scores = Array.from({ length: count }, () => base)

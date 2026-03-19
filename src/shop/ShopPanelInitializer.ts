@@ -164,7 +164,7 @@ export type PanelInitDeps = {
     e: TierKey,
     f: 1 | 2,
   ) => boolean
-  collectPoolCandidatesByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7) => PoolCandidate[]
+  collectPoolCandidatesByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8) => PoolCandidate[]
   addArchetypeCornerBadge: (card: Container, item: ItemDef, cardW: number, iconTopY: number) => void
   getSpecialShopShownDesc: (item: ItemDef, tier: TierKey, star: 1 | 2, detailed: boolean) => string
   markHeroSameItemSynthesisChoiceTriggered: () => void
@@ -364,7 +364,7 @@ export function initPanelInstances(
     pickQualityByPseudoRandomBag: (level, available) => pickQualityByPseudoRandomBag(level, available),
     getMaxQuickBuyLevelForDay: (day) => getMaxQuickBuyLevelForDay(day),
     getQuickBuyLevelWeightsByDay: (day) => getQuickBuyLevelWeightsByDay(day),
-    getUnlockPoolBuyPriceByLevel: (level) => getUnlockPoolBuyPriceByLevel(level as 1 | 2 | 3 | 4 | 5 | 6 | 7),
+    getUnlockPoolBuyPriceByLevel: (level) => getUnlockPoolBuyPriceByLevel(level as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8),
     parseAvailableTiers: (raw) => parseAvailableTiers(raw),
     compareTier: (a, b) => compareTier(a, b),
     openEventDraftPanel: () => {

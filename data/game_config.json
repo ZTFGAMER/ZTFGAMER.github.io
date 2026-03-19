@@ -1304,36 +1304,246 @@
     "desc_en": "Daily skill draft configuration",
     "value": {
       "dailyDraftPlan": [
-        { "day": 1, "shouldDraft": 1, "bronzeProb": 1, "silverProb": 0, "goldProb": 0, "onlyStarterArchetype": 1, "shouldEvent": 0, "shouldShop": 0 },
-        { "day": 2, "shouldDraft": 0, "bronzeProb": 1, "silverProb": 0, "goldProb": 0, "onlyStarterArchetype": 0, "shouldEvent": 1, "shouldShop": 0 },
-        { "day": 3, "shouldDraft": 0, "bronzeProb": 0.8, "silverProb": 0.2, "goldProb": 0, "onlyStarterArchetype": 0, "shouldEvent": 0, "shouldShop": 1 },
-        { "day": 4, "shouldDraft": 1, "bronzeProb": 0.6, "silverProb": 0.4, "goldProb": 0, "onlyStarterArchetype": 0, "shouldEvent": 0, "shouldShop": 0 },
-        { "day": 5, "shouldDraft": 0, "bronzeProb": 0.4, "silverProb": 0.6, "goldProb": 0, "onlyStarterArchetype": 0, "shouldEvent": 1, "shouldShop": 0 },
-        { "day": 6, "shouldDraft": 0, "bronzeProb": 0.2, "silverProb": 0.8, "goldProb": 0, "onlyStarterArchetype": 0, "shouldEvent": 0, "shouldShop": 1 },
-        { "day": 7, "shouldDraft": 1, "bronzeProb": 0, "silverProb": 1, "goldProb": 0, "onlyStarterArchetype": 0, "shouldEvent": 0, "shouldShop": 0 },
-        { "day": 8, "shouldDraft": 0, "bronzeProb": 0, "silverProb": 0.8, "goldProb": 0.2, "onlyStarterArchetype": 0, "shouldEvent": 1, "shouldShop": 0 },
-        { "day": 9, "shouldDraft": 0, "bronzeProb": 0, "silverProb": 0.6, "goldProb": 0.4, "onlyStarterArchetype": 0, "shouldEvent": 0, "shouldShop": 1 },
-        { "day": 10, "shouldDraft": 1, "bronzeProb": 0, "silverProb": 0.4, "goldProb": 0.6, "onlyStarterArchetype": 0, "shouldEvent": 0, "shouldShop": 0 },
-        { "day": 11, "shouldDraft": 0, "bronzeProb": 0, "silverProb": 0.2, "goldProb": 0.8, "onlyStarterArchetype": 0, "shouldEvent": 1, "shouldShop": 0 },
-        { "day": 12, "shouldDraft": 0, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0, "shouldEvent": 0, "shouldShop": 1 },
-        { "day": 13, "shouldDraft": 1, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0, "shouldEvent": 0, "shouldShop": 0 },
-        { "day": 14, "shouldDraft": 0, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0, "shouldEvent": 1, "shouldShop": 0 },
-        { "day": 15, "shouldDraft": 0, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0, "shouldEvent": 0, "shouldShop": 1 },
-        { "day": 16, "shouldDraft": 1, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0, "shouldEvent": 0, "shouldShop": 0 },
-        { "day": 17, "shouldDraft": 0, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0, "shouldEvent": 1, "shouldShop": 0 },
-        { "day": 18, "shouldDraft": 0, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0, "shouldEvent": 0, "shouldShop": 1 },
-        { "day": 19, "shouldDraft": 1, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0, "shouldEvent": 0, "shouldShop": 0 },
-        { "day": 20, "shouldDraft": 0, "bronzeProb": 0, "silverProb": 0, "goldProb": 1, "onlyStarterArchetype": 0, "shouldEvent": 1, "shouldShop": 0 }
+        {
+          "day": 1,
+          "shouldDraft": 1,
+          "bronzeProb": 1,
+          "silverProb": 0,
+          "goldProb": 0,
+          "onlyStarterArchetype": 1,
+          "shouldEvent": 0,
+          "shouldShop": 0
+        },
+        {
+          "day": 2,
+          "shouldDraft": 0,
+          "bronzeProb": 1,
+          "silverProb": 0,
+          "goldProb": 0,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 1,
+          "shouldShop": 0
+        },
+        {
+          "day": 3,
+          "shouldDraft": 0,
+          "bronzeProb": 0.8,
+          "silverProb": 0.2,
+          "goldProb": 0,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 1
+        },
+        {
+          "day": 4,
+          "shouldDraft": 1,
+          "bronzeProb": 0.6,
+          "silverProb": 0.4,
+          "goldProb": 0,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 0
+        },
+        {
+          "day": 5,
+          "shouldDraft": 0,
+          "bronzeProb": 0.4,
+          "silverProb": 0.6,
+          "goldProb": 0,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 1,
+          "shouldShop": 0
+        },
+        {
+          "day": 6,
+          "shouldDraft": 0,
+          "bronzeProb": 0.2,
+          "silverProb": 0.8,
+          "goldProb": 0,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 1
+        },
+        {
+          "day": 7,
+          "shouldDraft": 1,
+          "bronzeProb": 0,
+          "silverProb": 1,
+          "goldProb": 0,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 0
+        },
+        {
+          "day": 8,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0.8,
+          "goldProb": 0.2,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 1,
+          "shouldShop": 0
+        },
+        {
+          "day": 9,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0.6,
+          "goldProb": 0.4,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 1
+        },
+        {
+          "day": 10,
+          "shouldDraft": 1,
+          "bronzeProb": 0,
+          "silverProb": 0.4,
+          "goldProb": 0.6,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 0
+        },
+        {
+          "day": 11,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0.2,
+          "goldProb": 0.8,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 1,
+          "shouldShop": 0
+        },
+        {
+          "day": 12,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 1
+        },
+        {
+          "day": 13,
+          "shouldDraft": 1,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 0
+        },
+        {
+          "day": 14,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 1,
+          "shouldShop": 0
+        },
+        {
+          "day": 15,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 1
+        },
+        {
+          "day": 16,
+          "shouldDraft": 1,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 0
+        },
+        {
+          "day": 17,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 1,
+          "shouldShop": 0
+        },
+        {
+          "day": 18,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 1
+        },
+        {
+          "day": 19,
+          "shouldDraft": 1,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 0
+        },
+        {
+          "day": 20,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 1,
+          "shouldShop": 0
+        }
       ],
       "triggerDaysByTier": {
-        "bronze": [2, 4],
-        "silver": [6, 8],
-        "gold": [10, 14]
+        "bronze": [
+          2,
+          4
+        ],
+        "silver": [
+          6,
+          8
+        ],
+        "gold": [
+          10,
+          14
+        ]
       },
       "chooseCount": 3,
       "enemyMirrorDraft": {
         "enabled": true,
-        "pickCountByDay": [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7],
+        "pickCountByDay": [
+          1,
+          1,
+          1,
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          4,
+          4,
+          4,
+          5,
+          5,
+          5,
+          6,
+          6,
+          6,
+          7,
+          7
+        ],
         "mainArchetypeRatioMin": 0.3,
         "mainArchetypeRatioMax": 0.7
       },
@@ -1427,37 +1637,406 @@
     "desc_en": "Daily event pool configuration",
     "value": {
       "eventPool": [
-        { "id": "event1", "enabled": true, "dayStart": 1, "dayEnd": 20, "icon": "event1", "lane": "left", "shortDesc": "上阵区随机升级", "detailDesc": "上阵区的1个随机物品升级", "note": "上阵区必须有物品", "conditions": { "requireBattleNotEmpty": true } },
-        { "id": "event2", "enabled": true, "dayStart": 5, "dayEnd": 20, "icon": "event2", "lane": "left", "shortDesc": "背包随机升级", "detailDesc": "背包中的2个随机物品升级", "note": "背包中必须有物品", "conditions": { "requireBackpackNotEmpty": true } },
-        { "id": "event3", "enabled": true, "dayStart": 5, "dayEnd": 20, "icon": "event3", "lane": "left", "shortDesc": "背包随机转化升级", "detailDesc": "背包中的3个随机物品转化并升级", "note": "背包中必须有物品", "conditions": { "requireBackpackNotEmpty": true } },
-        { "id": "event4", "enabled": true, "dayStart": 1, "dayEnd": 20, "icon": "event4", "lane": "left", "shortDesc": "随机获得战士物品", "detailDesc": "随机获得2个战士物品", "note": "当前上阵区战士物品最多或是最多之一", "conditions": { "requireBattleArchetypeTopTie": "warrior" } },
-        { "id": "event5", "enabled": true, "dayStart": 1, "dayEnd": 20, "icon": "event5", "lane": "left", "shortDesc": "随机获得弓手物品", "detailDesc": "随机获得2个弓手物品", "note": "当前上阵区弓手物品最多或是最多之一", "conditions": { "requireBattleArchetypeTopTie": "archer" } },
-        { "id": "event6", "enabled": true, "dayStart": 1, "dayEnd": 20, "icon": "event6", "lane": "left", "shortDesc": "随机获得刺客物品", "detailDesc": "随机获得2个刺客物品", "note": "当前上阵区刺客物品最多或是最多之一", "conditions": { "requireBattleArchetypeTopTie": "assassin" } },
-        { "id": "event7", "enabled": false, "dayStart": 1, "dayEnd": 20, "icon": "event7", "lane": "left", "shortDesc": "定向购买战士物品", "detailDesc": "本日的前3次购买必定为战士物品", "note": "当前上阵区战士物品最多或是最多之一", "conditions": { "requireBattleArchetypeTopTie": "warrior" } },
-        { "id": "event8", "enabled": false, "dayStart": 1, "dayEnd": 20, "icon": "event8", "lane": "left", "shortDesc": "定向购买弓手物品", "detailDesc": "本日的前3次购买必定为弓手物品", "note": "当前上阵区弓手物品最多或是最多之一", "conditions": { "requireBattleArchetypeTopTie": "archer" } },
-        { "id": "event9", "enabled": false, "dayStart": 1, "dayEnd": 20, "icon": "event9", "lane": "left", "shortDesc": "定向购买刺客物品", "detailDesc": "本日的前3次购买必定为刺客物品", "note": "当前上阵区刺客物品最多或是最多之一", "conditions": { "requireBattleArchetypeTopTie": "assassin" } },
-        { "id": "event10", "enabled": false, "dayStart": 5, "dayEnd": 20, "icon": "event10", "lane": "left", "shortDesc": "定向合成战士物品", "detailDesc": "本日的前2次合成必定合成战士物品", "note": "当前上阵区战士物品最多或是最多之一", "conditions": { "requireBattleArchetypeTopTie": "warrior" } },
-        { "id": "event12", "enabled": false, "dayStart": 5, "dayEnd": 20, "icon": "event12", "lane": "left", "shortDesc": "定向合成弓手物品", "detailDesc": "本日的前2次合成必定合成弓手物品", "note": "当前上阵区弓手物品最多或是最多之一", "conditions": { "requireBattleArchetypeTopTie": "archer" } },
-        { "id": "event13", "enabled": false, "dayStart": 5, "dayEnd": 20, "icon": "event13", "lane": "left", "shortDesc": "定向合成刺客物品", "detailDesc": "本日的前2次合成必定合成刺客物品", "note": "当前上阵区刺客物品最多或是最多之一", "conditions": { "requireBattleArchetypeTopTie": "assassin" } },
-        { "id": "event14", "enabled": false, "dayStart": 1, "dayEnd": 20, "icon": "event14", "lane": "left", "shortDesc": "合成时额外升级", "detailDesc": "本日的第1次合成额外提升1级" },
-        { "id": "event15", "enabled": true, "dayStart": 8, "dayEnd": 20, "icon": "event15", "lane": "left", "shortDesc": "随机复制战士物品", "detailDesc": "复制持有的1个随机战士物品", "note": "当前上阵区战士物品最多或是最多之一", "conditions": { "requireBattleArchetypeTopTie": "warrior" } },
-        { "id": "event16", "enabled": true, "dayStart": 8, "dayEnd": 20, "icon": "event16", "lane": "left", "shortDesc": "随机复制弓手物品", "detailDesc": "复制持有的1个随机弓手物品", "note": "当前上阵区弓手物品最多或是最多之一", "conditions": { "requireBattleArchetypeTopTie": "archer" } },
-        { "id": "event17", "enabled": true, "dayStart": 8, "dayEnd": 20, "icon": "event17", "lane": "left", "shortDesc": "随机复制刺客物品", "detailDesc": "复制持有的1个随机刺客物品", "note": "当前上阵区刺客物品最多或是最多之一", "conditions": { "requireBattleArchetypeTopTie": "assassin" } },
-        { "id": "event18", "enabled": true, "dayStart": 8, "dayEnd": 20, "icon": "event18", "lane": "left", "shortDesc": "背包随机复制物品", "detailDesc": "随机复制背包中的2个物品", "note": "背包中必须有物品", "conditions": { "requireBackpackNotEmpty": true } },
-        { "id": "event19", "enabled": false, "dayStart": 5, "dayEnd": 20, "icon": "event19", "lane": "right", "shortDesc": "以更高加个出售背包中物品", "detailDesc": "以购买价格+1出售所有背包中物品", "note": "背包中必须有物品", "conditions": { "requireBackpackNotEmpty": true } },
-        { "id": "event20", "enabled": true, "dayStart": 1, "dayEnd": 20, "icon": "event20", "lane": "right", "shortDesc": "获得一些金币", "detailDesc": "获得x金币", "note": "x=天数*2" },
-        { "id": "event21", "enabled": false, "dayStart": 1, "dayEnd": 20, "icon": "event21", "lane": "right", "shortDesc": "清空背包，并获得大量金币", "detailDesc": "清空背包，并获得x金币", "note": "x=（天数）*4，背包中必须有物品", "conditions": { "requireBackpackNotEmpty": true } },
-        { "id": "event22", "enabled": true, "dayStart": 1, "dayEnd": 20, "icon": "event22", "lane": "right", "shortDesc": "提升最大生命值", "detailDesc": "提升10%最大生命值", "note": "永久提升，所有最大生命值的比例加算" },
-        { "id": "event23", "enabled": false, "dayStart": 5, "dayEnd": 20, "icon": "event23", "lane": "right", "shortDesc": "恢复红心", "detailDesc": "恢复1个红心", "note": "选择2次后不能再出现选择，只有红心不满时才会随机到", "limits": { "maxSelectionsPerRun": 2 }, "conditions": { "requireHeartNotFull": true } },
-        { "id": "event24", "enabled": false, "dayStart": 5, "dayEnd": 12, "icon": "event24", "lane": "left", "shortDesc": "全部物品随机转化并升级", "detailDesc": "全部物品随机转化并升级", "note": "选择1次后不能再出现选择", "limits": { "maxSelectionsPerRun": 1 } },
-        { "id": "event25", "enabled": false, "dayStart": 1, "dayEnd": 20, "icon": "event25", "lane": "right", "shortDesc": "投资金币，明天翻倍", "detailDesc": "清空全部金币，明天获得2倍" },
-        { "id": "event26", "enabled": false, "dayStart": 1, "dayEnd": 20, "icon": "event26", "lane": "right", "shortDesc": "以双倍价格出售上阵区", "detailDesc": "以双倍价格出售上阵区所有物品", "note": "上阵区必须有物品", "conditions": { "requireBattleNotEmpty": true } },
-        { "id": "event27", "enabled": false, "dayStart": 1, "dayEnd": 20, "icon": "event27", "lane": "left", "shortDesc": "所有合成全部随机", "detailDesc": "本日所有合成都是随机合成" },
-        { "id": "event28", "enabled": true, "dayStart": 1, "dayEnd": 20, "icon": "event28", "lane": "right", "shortDesc": "未来会获得大量金币", "detailDesc": "3天后获得x金币", "note": "x=（天数）*6" },
-        { "id": "event29", "enabled": false, "dayStart": 1, "dayEnd": 20, "icon": "event29", "lane": "right", "shortDesc": "5天后上阵区全部升级", "detailDesc": "5天后上阵区的所有物品升级" },
-        { "id": "event34", "enabled": false, "dayStart": 1, "dayEnd": 20, "icon": "event34", "lane": "right", "shortDesc": "透支未来2天的收入", "detailDesc": "获得未来2天收入的60%，未来无法获得基础收入" },
-        { "id": "event35", "enabled": false, "dayStart": 1, "dayEnd": 20, "icon": "event35", "lane": "left", "shortDesc": "转化等级最高的所有物品", "detailDesc": "转化等级最高的所有物品" },
-        { "id": "event36", "enabled": false, "dayStart": 1, "dayEnd": 20, "icon": "event36", "lane": "left", "shortDesc": "升级等级最低的所有物品", "detailDesc": "升级等级最低的所有物品" }
+        {
+          "id": "event1",
+          "enabled": true,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event1",
+          "lane": "left",
+          "shortDesc": "上阵区随机升级",
+          "detailDesc": "上阵区的1个随机物品升级",
+          "note": "上阵区必须有物品",
+          "conditions": {
+            "requireBattleNotEmpty": true
+          }
+        },
+        {
+          "id": "event2",
+          "enabled": true,
+          "dayStart": 5,
+          "dayEnd": 20,
+          "icon": "event2",
+          "lane": "left",
+          "shortDesc": "背包随机升级",
+          "detailDesc": "背包中的2个随机物品升级",
+          "note": "背包中必须有物品",
+          "conditions": {
+            "requireBackpackNotEmpty": true
+          }
+        },
+        {
+          "id": "event3",
+          "enabled": true,
+          "dayStart": 5,
+          "dayEnd": 20,
+          "icon": "event3",
+          "lane": "left",
+          "shortDesc": "背包随机转化升级",
+          "detailDesc": "背包中的3个随机物品转化并升级",
+          "note": "背包中必须有物品",
+          "conditions": {
+            "requireBackpackNotEmpty": true
+          }
+        },
+        {
+          "id": "event4",
+          "enabled": true,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event4",
+          "lane": "left",
+          "shortDesc": "随机获得战士物品",
+          "detailDesc": "随机获得2个战士物品",
+          "note": "当前上阵区战士物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "warrior"
+          }
+        },
+        {
+          "id": "event5",
+          "enabled": true,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event5",
+          "lane": "left",
+          "shortDesc": "随机获得弓手物品",
+          "detailDesc": "随机获得2个弓手物品",
+          "note": "当前上阵区弓手物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "archer"
+          }
+        },
+        {
+          "id": "event6",
+          "enabled": true,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event6",
+          "lane": "left",
+          "shortDesc": "随机获得刺客物品",
+          "detailDesc": "随机获得2个刺客物品",
+          "note": "当前上阵区刺客物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "assassin"
+          }
+        },
+        {
+          "id": "event7",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event7",
+          "lane": "left",
+          "shortDesc": "定向购买战士物品",
+          "detailDesc": "本日的前3次购买必定为战士物品",
+          "note": "当前上阵区战士物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "warrior"
+          }
+        },
+        {
+          "id": "event8",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event8",
+          "lane": "left",
+          "shortDesc": "定向购买弓手物品",
+          "detailDesc": "本日的前3次购买必定为弓手物品",
+          "note": "当前上阵区弓手物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "archer"
+          }
+        },
+        {
+          "id": "event9",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event9",
+          "lane": "left",
+          "shortDesc": "定向购买刺客物品",
+          "detailDesc": "本日的前3次购买必定为刺客物品",
+          "note": "当前上阵区刺客物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "assassin"
+          }
+        },
+        {
+          "id": "event10",
+          "enabled": false,
+          "dayStart": 5,
+          "dayEnd": 20,
+          "icon": "event10",
+          "lane": "left",
+          "shortDesc": "定向合成战士物品",
+          "detailDesc": "本日的前2次合成必定合成战士物品",
+          "note": "当前上阵区战士物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "warrior"
+          }
+        },
+        {
+          "id": "event12",
+          "enabled": false,
+          "dayStart": 5,
+          "dayEnd": 20,
+          "icon": "event12",
+          "lane": "left",
+          "shortDesc": "定向合成弓手物品",
+          "detailDesc": "本日的前2次合成必定合成弓手物品",
+          "note": "当前上阵区弓手物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "archer"
+          }
+        },
+        {
+          "id": "event13",
+          "enabled": false,
+          "dayStart": 5,
+          "dayEnd": 20,
+          "icon": "event13",
+          "lane": "left",
+          "shortDesc": "定向合成刺客物品",
+          "detailDesc": "本日的前2次合成必定合成刺客物品",
+          "note": "当前上阵区刺客物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "assassin"
+          }
+        },
+        {
+          "id": "event14",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event14",
+          "lane": "left",
+          "shortDesc": "合成时额外升级",
+          "detailDesc": "本日的第1次合成额外提升1级"
+        },
+        {
+          "id": "event15",
+          "enabled": true,
+          "dayStart": 8,
+          "dayEnd": 20,
+          "icon": "event15",
+          "lane": "left",
+          "shortDesc": "随机复制战士物品",
+          "detailDesc": "复制持有的1个随机战士物品",
+          "note": "当前上阵区战士物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "warrior"
+          }
+        },
+        {
+          "id": "event16",
+          "enabled": true,
+          "dayStart": 8,
+          "dayEnd": 20,
+          "icon": "event16",
+          "lane": "left",
+          "shortDesc": "随机复制弓手物品",
+          "detailDesc": "复制持有的1个随机弓手物品",
+          "note": "当前上阵区弓手物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "archer"
+          }
+        },
+        {
+          "id": "event17",
+          "enabled": true,
+          "dayStart": 8,
+          "dayEnd": 20,
+          "icon": "event17",
+          "lane": "left",
+          "shortDesc": "随机复制刺客物品",
+          "detailDesc": "复制持有的1个随机刺客物品",
+          "note": "当前上阵区刺客物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "assassin"
+          }
+        },
+        {
+          "id": "event18",
+          "enabled": true,
+          "dayStart": 8,
+          "dayEnd": 20,
+          "icon": "event18",
+          "lane": "left",
+          "shortDesc": "背包随机复制物品",
+          "detailDesc": "随机复制背包中的2个物品",
+          "note": "背包中必须有物品",
+          "conditions": {
+            "requireBackpackNotEmpty": true
+          }
+        },
+        {
+          "id": "event19",
+          "enabled": false,
+          "dayStart": 5,
+          "dayEnd": 20,
+          "icon": "event19",
+          "lane": "right",
+          "shortDesc": "以更高加个出售背包中物品",
+          "detailDesc": "以购买价格+1出售所有背包中物品",
+          "note": "背包中必须有物品",
+          "conditions": {
+            "requireBackpackNotEmpty": true
+          }
+        },
+        {
+          "id": "event20",
+          "enabled": true,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event20",
+          "lane": "right",
+          "shortDesc": "获得一些金币",
+          "detailDesc": "获得x金币",
+          "note": "x=天数*2"
+        },
+        {
+          "id": "event21",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event21",
+          "lane": "right",
+          "shortDesc": "清空背包，并获得大量金币",
+          "detailDesc": "清空背包，并获得x金币",
+          "note": "x=（天数）*4，背包中必须有物品",
+          "conditions": {
+            "requireBackpackNotEmpty": true
+          }
+        },
+        {
+          "id": "event22",
+          "enabled": true,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event22",
+          "lane": "right",
+          "shortDesc": "提升最大生命值",
+          "detailDesc": "提升10%最大生命值",
+          "note": "永久提升，所有最大生命值的比例加算"
+        },
+        {
+          "id": "event23",
+          "enabled": false,
+          "dayStart": 5,
+          "dayEnd": 20,
+          "icon": "event23",
+          "lane": "right",
+          "shortDesc": "恢复红心",
+          "detailDesc": "恢复1个红心",
+          "note": "选择2次后不能再出现选择，只有红心不满时才会随机到",
+          "limits": {
+            "maxSelectionsPerRun": 2
+          },
+          "conditions": {
+            "requireHeartNotFull": true
+          }
+        },
+        {
+          "id": "event24",
+          "enabled": false,
+          "dayStart": 5,
+          "dayEnd": 12,
+          "icon": "event24",
+          "lane": "left",
+          "shortDesc": "全部物品随机转化并升级",
+          "detailDesc": "全部物品随机转化并升级",
+          "note": "选择1次后不能再出现选择",
+          "limits": {
+            "maxSelectionsPerRun": 1
+          }
+        },
+        {
+          "id": "event25",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event25",
+          "lane": "right",
+          "shortDesc": "投资金币，明天翻倍",
+          "detailDesc": "清空全部金币，明天获得2倍"
+        },
+        {
+          "id": "event26",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event26",
+          "lane": "right",
+          "shortDesc": "以双倍价格出售上阵区",
+          "detailDesc": "以双倍价格出售上阵区所有物品",
+          "note": "上阵区必须有物品",
+          "conditions": {
+            "requireBattleNotEmpty": true
+          }
+        },
+        {
+          "id": "event27",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event27",
+          "lane": "left",
+          "shortDesc": "所有合成全部随机",
+          "detailDesc": "本日所有合成都是随机合成"
+        },
+        {
+          "id": "event28",
+          "enabled": true,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event28",
+          "lane": "right",
+          "shortDesc": "未来会获得大量金币",
+          "detailDesc": "3天后获得x金币",
+          "note": "x=（天数）*6"
+        },
+        {
+          "id": "event29",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event29",
+          "lane": "right",
+          "shortDesc": "5天后上阵区全部升级",
+          "detailDesc": "5天后上阵区的所有物品升级"
+        },
+        {
+          "id": "event34",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event34",
+          "lane": "right",
+          "shortDesc": "透支未来2天的收入",
+          "detailDesc": "获得未来2天收入的60%，未来无法获得基础收入"
+        },
+        {
+          "id": "event35",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event35",
+          "lane": "left",
+          "shortDesc": "转化等级最高的所有物品",
+          "detailDesc": "转化等级最高的所有物品"
+        },
+        {
+          "id": "event36",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event36",
+          "lane": "left",
+          "shortDesc": "升级等级最低的所有物品",
+          "detailDesc": "升级等级最低的所有物品"
+        }
       ]
     },
     "note": "事件配置表（仅配置，不含具体实现逻辑）"
@@ -1478,12 +2057,54 @@
         "battleCols": 5,
         "mediumValueScale": 0.5
       },
-        "enemyDraftLab": {
-          "enabled": false,
-          "sameArchetypeBias": 0.85,
-          "dailyItemCount": [2, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5],
-          "dailyAvgQuality": [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.33, 5.67, 6, 6.25, 6.5, 6.75, 7, 7, 7, 7, 7]
-        },
+      "enemyDraftLab": {
+        "enabled": false,
+        "sameArchetypeBias": 0.85,
+        "dailyItemCount": [
+          2,
+          4,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "dailyAvgQuality": [
+          1,
+          1.5,
+          2,
+          2.5,
+          3,
+          3.5,
+          4,
+          4.5,
+          5,
+          5.33,
+          5.67,
+          6,
+          6.25,
+          6.5,
+          6.75,
+          7,
+          7,
+          7,
+          7,
+          7
+        ]
+      },
       "battleUi": {
         "showSpeedButton": false
       }
@@ -1734,68 +2355,768 @@
         }
       ],
       "quickBuyLevelChancesByDay": [
-        [1, 0, 0, 0, 0, 0, 0],
-        [1, 0, 0, 0, 0, 0, 0],
-        [1, 0, 0, 0, 0, 0, 0],
-        [0.5, 0.5, 0, 0, 0, 0, 0],
-        [0.5, 0.5, 0, 0, 0, 0, 0],
-        [0.5, 0.5, 0, 0, 0, 0, 0],
-        [0, 1, 0, 0, 0, 0, 0],
-        [0, 1, 0, 0, 0, 0, 0],
-        [0, 1, 0, 0, 0, 0, 0],
-        [0, 0.5, 0.5, 0, 0, 0, 0],
-        [0, 0.5, 0.5, 0, 0, 0, 0],
-        [0, 0.5, 0.5, 0, 0, 0, 0],
-        [0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0.5, 0.5, 0, 0, 0],
-        [0, 0, 0.5, 0.5, 0, 0, 0],
-        [0, 0, 0.5, 0.5, 0, 0, 0],
-        [0, 0, 0, 1, 0, 0, 0],
-        [0, 0, 0, 1, 0, 0, 0]
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ]
       ],
       "levelQuickDraftLevelWeightsByPlayerLevel": [
-        [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0.8, 0.2, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0.6, 0.4, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0.4, 0.6, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0.6, 0.4, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0.6, 0.4, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0.4, 0.6, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0.4, 0.6, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0.6, 0.4, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0.6, 0.4, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 0.6, 0.4, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 0.4, 0.6, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 0.4, 0.6, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0.6, 0.4, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0.6, 0.4, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
       ],
       "quickBuyPriceMultiplier": {
         "Bronze#1": 1,
@@ -1813,20 +3134,93 @@
         "Gold#1": 24,
         "Gold#2": 48,
         "Diamond#1": 96,
-        "Diamond#2": 192
+        "Diamond#2": 192,
+        "Bronze#2": 5
       },
       "quickBuyQualityWeightsByLevel": {
-        "Bronze": [0.7, 0.5, 0.4, 0.35, 0.3, 0.25, 0.25],
-        "Silver": [0, 0.3, 0.5, 0.4, 0.35, 0.3, 0.25],
-        "Gold": [0, 0, 0, 0.2, 0.3, 0.25, 0.25],
-        "Diamond": [0, 0, 0, 0, 0, 0.15, 0.25]
+        "Bronze": [
+          0.7,
+          0.5,
+          0.4,
+          0.35,
+          0.3,
+          0.25,
+          0.25,
+          0
+        ],
+        "Silver": [
+          0.0,
+          0.3,
+          0.5,
+          0.4,
+          0.35,
+          0.3,
+          0.25,
+          0
+        ],
+        "Gold": [
+          0.0,
+          0.0,
+          0.0,
+          0.2,
+          0.3,
+          0.25,
+          0.25,
+          0
+        ],
+        "Diamond": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.15,
+          0.25,
+          0
+        ]
       },
       "qualityPseudoRandomWindowSize": 10,
       "qualityPseudoRandomWeightsByLevel": {
-        "Bronze": [1, 0.7, 0.5, 0.4, 0.3, 0.2, 0],
-        "Silver": [0, 0.3, 0.5, 0.4, 0.4, 0.3, 0.3],
-        "Gold": [0, 0, 0, 0.2, 0.3, 0.4, 0.4],
-        "Diamond": [0, 0, 0, 0, 0, 0.1, 0.3]
+        "Bronze": [
+          1,
+          1,
+          0.7,
+          0.5,
+          0.4,
+          0.3,
+          0.2,
+          0
+        ],
+        "Silver": [
+          0,
+          0,
+          0.3,
+          0.5,
+          0.4,
+          0.4,
+          0.3,
+          0.3
+        ],
+        "Gold": [
+          0,
+          0,
+          0,
+          0,
+          0.2,
+          0.3,
+          0.4,
+          0.4
+        ],
+        "Diamond": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0.1,
+          0.3
+        ]
       },
       "quickBuyNeutralChance": 0.25,
       "quickBuyNeutralStartDay": 2,
@@ -1846,7 +3240,8 @@
           18,
           36,
           64,
-          128
+          128,
+          0
         ],
         "medium": [
           3,
@@ -1855,7 +3250,8 @@
           18,
           36,
           64,
-          128
+          128,
+          0
         ],
         "large": [
           3,
@@ -1864,7 +3260,8 @@
           18,
           36,
           64,
-          128
+          128,
+          0
         ]
       },
       "sellRatioByTier": {
@@ -1874,16 +3271,88 @@
         "Diamond": 0.25
       },
       "minTierDropWeightsByResultLevel": {
-        "Bronze": [1, 1, 0.2, 0.2, 0.05, 0.05, 0.02],
-        "Silver": [0, 0, 0.8, 0.8, 0.15, 0.15, 0.08],
-        "Gold": [0, 0, 0, 0, 0.8, 0.8, 0.2],
-        "Diamond": [0, 0, 0, 0, 0, 0, 0.7]
+        "Bronze": [
+          1.0,
+          1.0,
+          0.2,
+          0.2,
+          0.05,
+          0.05,
+          0.02,
+          0
+        ],
+        "Silver": [
+          0.0,
+          0.0,
+          0.8,
+          0.8,
+          0.15,
+          0.15,
+          0.08,
+          0
+        ],
+        "Gold": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.8,
+          0.8,
+          0.2,
+          0
+        ],
+        "Diamond": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.7,
+          0
+        ]
       },
       "synthesisMinTierDropWeightsByResultLevel": {
-        "Bronze": [1, 1, 0.6, 0.5, 0.4, 0.3, 0.2],
-        "Silver": [0, 0, 0.4, 0.5, 0.3, 0.4, 0.2],
-        "Gold": [0, 0, 0, 0, 0.3, 0.4, 0.3],
-        "Diamond": [0, 0, 0, 0, 0, 0, 0.3]
+        "Bronze": [
+          1.0,
+          1.0,
+          0.6,
+          0.5,
+          0.4,
+          0.3,
+          0.2,
+          0
+        ],
+        "Silver": [
+          0.0,
+          0.0,
+          0.4,
+          0.5,
+          0.3,
+          0.4,
+          0.2,
+          0
+        ],
+        "Gold": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.3,
+          0.4,
+          0.3,
+          0
+        ],
+        "Diamond": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.3,
+          0
+        ]
       },
       "crossIdSynthesisRequireConfirm": false,
       "crossIdSynthesisSameArchetypeChance": 0
@@ -1899,7 +3368,12 @@
       "initialHp": 30,
       "maxRounds": 30,
       "baseDamage": 1,
-      "tierDamageWeights": { "Bronze": 1, "Silver": 2, "Gold": 3, "Diamond": 4 },
+      "tierDamageWeights": {
+        "Bronze": 1,
+        "Silver": 2,
+        "Gold": 3,
+        "Diamond": 4
+      },
       "maxPlayers": 8,
       "createRoomCountdownMs": 120000
     }

@@ -46,7 +46,7 @@ export interface SettingsDebugCallbacks {
   resetEventSelectionCounters: () => void
   showHintToast: (reason: ToastReason, msg: string, color?: number) => void
   placeItemToInventoryOrBattle: (def: ItemDef, tier: TierKey, star: 1 | 2) => boolean
-  getQualityLevelRange: (quality: TierKey) => { min: 1 | 2 | 3 | 4 | 5 | 6 | 7; max: 1 | 2 | 3 | 4 | 5 | 6 | 7 }
+  getQualityLevelRange: (quality: TierKey) => { min: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; max: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 }
   levelToTierStar: (level: number) => { tier: TierKey; star: 1 | 2 } | null
   getEventPoolRows: () => EventChoice[]
   getSelectedEventCount: (eventId: string) => number

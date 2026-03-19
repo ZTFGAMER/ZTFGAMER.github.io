@@ -483,7 +483,7 @@ export type BuyRandomBronzeCallbacks = {
   syncShopOwnedTierRules: () => void
   rollNextQuickBuyOffer: (force: boolean) => { item: ItemDef; tier: TierKey; star: 1 | 2; price: number } | null
   findCandidateByOffer: (offer: { itemId: string; tier: TierKey; star: 1 | 2; price: number } | null) => { item: ItemDef; tier: TierKey; star: 1 | 2; price: number; level: number } | null
-  collectPoolCandidatesByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7) => Array<{ item: ItemDef; tier: TierKey; star: 1 | 2; price: number; level: number }>
+  collectPoolCandidatesByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8) => Array<{ item: ItemDef; tier: TierKey; star: 1 | 2; price: number; level: number }>
   canBuyItemUnderFirstPurchaseRule: (item: ItemDef) => boolean
   showFirstPurchaseRuleHint: () => void
   findFirstBattlePlace: (size: ReturnType<typeof normalizeSize>) => { col: number; row: number } | null
@@ -496,7 +496,7 @@ export type BuyRandomBronzeCallbacks = {
   instanceToDefId: Map<string, string>
   setInstanceQualityLevel: (instanceId: string, defId: string, quality: TierKey, level: number) => void
   forceInstanceLevel: (instanceId: string, level: number) => void
-  levelFromLegacyTierStar: (tier: TierKey, star: 1 | 2) => 1 | 2 | 3 | 4 | 5 | 6 | 7
+  levelFromLegacyTierStar: (tier: TierKey, star: 1 | 2) => 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   instanceToPermanentDamageBonus: Map<string, number>
   recordNeutralItemObtained: (itemId: string) => void
   updateNeutralPseudoRandomCounterOnPurchase: (item: ItemDef) => void
@@ -506,7 +506,7 @@ export type BuyRandomBronzeCallbacks = {
 
 function pickBronzeOnlyLowLevelOddTarget(
   ctx: ShopSceneCtx,
-): { level: 1 | 2 | 3 | 4 | 5 | 6 | 7; archetype: SkillArchetype } | null {
+): { level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; archetype: SkillArchetype } | null {
   if (!ctx.battleSystem || !ctx.backpackSystem) return null
   const dayMinLevel = getMinQuickBuyLevelForDay(ctx.currentDay)
   const lowLevelArchetypeCount = new Map<string, number>()
@@ -528,7 +528,7 @@ function pickBronzeOnlyLowLevelOddTarget(
     .map(([key, count]) => {
       const [lvRaw, archRaw] = key.split('|')
       return {
-        level: Math.max(1, Math.min(7, Number(lvRaw) || 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7,
+        level: Math.max(1, Math.min(8, Number(lvRaw) || 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
         archetype: archRaw as SkillArchetype,
         count,
       }
@@ -573,7 +573,7 @@ export function buyRandomBronzeToBoardOrBackpack(ctx: ShopSceneCtx, deps: BuyRan
   let tierForced: TierKey = bronzeOnly ? 'Bronze' : picked.tier
   let starForced: 1 | 2 = bronzeOnly ? 1 : picked.star
   let forceLowLevelArchetype: SkillArchetype | null = null
-  let forceLowLevelLevel: 1 | 2 | 3 | 4 | 5 | 6 | 7 | null = null
+  let forceLowLevelLevel: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | null = null
 
   if (bronzeOnly) {
     const forcedTarget = pickBronzeOnlyLowLevelOddTarget(ctx)
@@ -592,7 +592,7 @@ export function buyRandomBronzeToBoardOrBackpack(ctx: ShopSceneCtx, deps: BuyRan
 
   if (!forceLowLevelArchetype && ctx.dayEventState.forceBuyArchetype && ctx.dayEventState.forceBuyRemaining > 0) {
     const level = tierStarLevelIndex(sourceTier, sourceStar) + 1
-    const levelKey = Math.max(1, Math.min(7, level)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+    const levelKey = Math.max(1, Math.min(8, level)) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
     const forcePool = deps.collectPoolCandidatesByLevel(levelKey).filter((one) =>
       toSkillArchetype(getPrimaryArchetype(one.item.tags)) === ctx.dayEventState.forceBuyArchetype,
     )

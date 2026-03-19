@@ -79,7 +79,7 @@ import { isSkillItemDefId } from '@/common/skills/SkillItemDefs'
 const DRAG_SELL_PRICE_BY_LEVEL = [1, 2, 4, 8, 16, 32, 64] as const
 
 function getDragSellPriceByLevel(level: number | null | undefined): number {
-  const lv = Number.isFinite(level) ? Math.max(1, Math.min(7, Math.round(level as number))) : 1
+  const lv = Number.isFinite(level) ? Math.max(1, Math.min(8, Math.round(level as number))) : 1
   return DRAG_SELL_PRICE_BY_LEVEL[lv - 1] ?? DRAG_SELL_PRICE_BY_LEVEL[0]
 }
 
@@ -97,7 +97,7 @@ export type BattleZoneUICallbacks = {
   refreshShopUI: () => void
   isBackpackDropLocked: (col: number, row: number, size: ItemSizeNorm) => boolean
   clearSelection: () => void
-  grantHeroDiscardSameLevelReward: (defId: string, level: 1 | 2 | 3 | 4 | 5 | 6 | 7) => void
+  grantHeroDiscardSameLevelReward: (defId: string, level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8) => void
   checkAndPopPendingRewards: () => void
   tryFinalizeLevelQuickRewardPick: () => void
   grantSynthesisExp: (amount?: number, from?: { instanceId: string; zone: 'battle' | 'backpack' }) => void

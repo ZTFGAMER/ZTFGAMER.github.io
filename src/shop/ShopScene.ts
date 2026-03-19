@@ -481,7 +481,7 @@ function makeCaptureAndSave(ctx: ShopSceneCtx = _ctx) {
 
 function makeHeroCallbacks() {
   return {
-    getUnlockPoolBuyPriceByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7) => getUnlockPoolBuyPriceByLevel(level),
+    getUnlockPoolBuyPriceByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8) => getUnlockPoolBuyPriceByLevel(level),
     grantPoolCandidateToBoardOrBackpack: (
       candidate: Parameters<typeof grantPoolCandidateToBoardOrBackpack>[0],
       source: string,
@@ -533,7 +533,7 @@ function grantSilverDailyGoldBonusesOnNewDay(ctx: ShopSceneCtx = _ctx): void {
   })
 }
 
-function grantHeroDiscardSameLevelReward(discardedDefId: string, level: 1 | 2 | 3 | 4 | 5 | 6 | 7, ctx: ShopSceneCtx = _ctx): void {
+function grantHeroDiscardSameLevelReward(discardedDefId: string, level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8, ctx: ShopSceneCtx = _ctx): void {
   HeroSystem.grantHeroDiscardSameLevelReward(ctx, discardedDefId, level, {
     findFirstBattlePlace: (size) => findFirstBattlePlace(size),
     findFirstBackpackPlace: (size) => findFirstBackpackPlace(size),
@@ -630,7 +630,7 @@ function makeEventCallbacks() {
     schedulePendingBattleUpgrade: (day: number, count: number) => schedulePendingBattleUpgrade(day, count),
     convertHighestLevelItemsOnce: () => convertHighestLevelItemsOnce(),
     upgradeLowestLevelItemsOnce: () => upgradeLowestLevelItemsOnce(),
-    collectPoolCandidatesByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7) => collectPoolCandidatesByLevel(level),
+    collectPoolCandidatesByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8) => collectPoolCandidatesByLevel(level),
     getQuickBuyLevelWeightsByDay: (day: number) => getQuickBuyLevelWeightsByDay(day),
     getInstanceTierMap: () => instanceToTier,
     getInstanceTierStar: (instanceId: string) => getInstanceTierStar(instanceId),
@@ -689,7 +689,7 @@ function rollNextQuickBuyOffer(force = false, ctx: ShopSceneCtx = _ctx) {
 
 
 
-function collectPoolCandidatesByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7, ctx: ShopSceneCtx = _ctx): PoolCandidate[] {
+function collectPoolCandidatesByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8, ctx: ShopSceneCtx = _ctx): PoolCandidate[] {
   return QuickBuySystem.collectPoolCandidatesByLevel(ctx, level, {
     findFirstBattlePlace: (size) => findFirstBattlePlace(size),
     findFirstBackpackPlace: (size) => findFirstBackpackPlace(size),
@@ -1805,7 +1805,7 @@ function refreshShopUI(ctx: ShopSceneCtx = _ctx): void {
 }
 type PoolCandidate = {
   item: ItemDef
-  level: 1 | 2 | 3 | 4 | 5 | 6 | 7
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   tier: TierKey
   star: 1 | 2
   price: number

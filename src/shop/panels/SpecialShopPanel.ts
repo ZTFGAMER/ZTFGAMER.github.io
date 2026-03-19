@@ -43,7 +43,7 @@ const CELL_SIZE = 128
 
 type PoolCandidate = {
   item: ItemDef
-  level: 1 | 2 | 3 | 4 | 5 | 6 | 7
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   tier: TierKey
   star: 1 | 2
   price: number
@@ -146,31 +146,32 @@ export class SpecialShopPanel extends Container {
 
   private _levelToTierStar(level: number): { tier: TierKey; star: 1 | 2 } | null {
     if (level === 1) return { tier: 'Bronze', star: 1 }
-    if (level === 2) return { tier: 'Silver', star: 1 }
-    if (level === 3) return { tier: 'Silver', star: 2 }
-    if (level === 4) return { tier: 'Gold', star: 1 }
-    if (level === 5) return { tier: 'Gold', star: 2 }
-    if (level === 6) return { tier: 'Diamond', star: 1 }
-    if (level === 7) return { tier: 'Diamond', star: 2 }
+    if (level === 2) return { tier: 'Bronze', star: 2 }
+    if (level === 3) return { tier: 'Silver', star: 1 }
+    if (level === 4) return { tier: 'Silver', star: 2 }
+    if (level === 5) return { tier: 'Gold', star: 1 }
+    if (level === 6) return { tier: 'Gold', star: 2 }
+    if (level === 7) return { tier: 'Diamond', star: 1 }
+    if (level === 8) return { tier: 'Diamond', star: 2 }
     return null
   }
 
-  private _getAllowedLevelsByStartingTier(tier: TierKey): Array<1 | 2 | 3 | 4 | 5 | 6 | 7> {
-    if (tier === 'Bronze') return [1, 2, 3, 4, 5, 6, 7]
-    if (tier === 'Silver') return [2, 3, 4, 5, 6, 7]
-    if (tier === 'Gold') return [4, 5, 6, 7]
-    return [6, 7]
+  private _getAllowedLevelsByStartingTier(tier: TierKey): Array<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8> {
+    if (tier === 'Bronze') return [1, 2, 3, 4, 5, 6, 7, 8]
+    if (tier === 'Silver') return [3, 4, 5, 6, 7, 8]
+    if (tier === 'Gold') return [5, 6, 7, 8]
+    return [7, 8]
   }
 
-  private _getSpecialShopPriceByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): number {
-    const clamped = Math.max(1, Math.min(7, level)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  private _getSpecialShopPriceByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8): number {
+    const clamped = Math.max(1, Math.min(8, level)) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
     const tierStar = this._levelToTierStar(clamped)
     const key = `${tierStar?.tier ?? 'Bronze'}#${tierStar?.star ?? 1}`
     const raw = getConfig().shopRules?.quickBuyFixedPrice?.[key]
     if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
       return Math.max(1, Math.round(raw))
     }
-    const byLevel: [number, number, number, number, number, number, number] = [3, 6, 12, 24, 48, 96, 192]
+    const byLevel: [number, number, number, number, number, number, number, number] = [3, 5, 6, 12, 24, 48, 96, 192]
     return byLevel[clamped - 1] ?? 3
   }
 
@@ -191,7 +192,7 @@ export class SpecialShopPanel extends Container {
 
   private _normalizeSpecialShopOfferPrices(): void {
     const normalized = this.ctx.specialShopOffers.map((one) => {
-      const level = Math.max(1, Math.min(7, tierStarLevelIndex(one.tier, one.star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+      const level = Math.max(1, Math.min(8, tierStarLevelIndex(one.tier, one.star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
       const basePrice = this._getSpecialShopPriceByLevel(level)
       return {
         ...one,
@@ -207,7 +208,7 @@ export class SpecialShopPanel extends Container {
     return (Number(plan?.shouldShop) || 0) >= 0.5
   }
 
-  private _getCurrentMaxOwnedLevel(): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+  private _getCurrentMaxOwnedLevel(): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 {
     const ctx = this.ctx
     const cb = this.cb
     let maxLevel = 1
@@ -221,7 +222,7 @@ export class SpecialShopPanel extends Container {
     }
     collect(ctx.battleSystem?.getAllItems() ?? [])
     collect(ctx.backpackSystem?.getAllItems() ?? [])
-    return Math.max(1, Math.min(7, maxLevel)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+    return Math.max(1, Math.min(8, maxLevel)) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   }
 
   private _getDominantBattleArchetypeForSpecialShop(): SkillArchetype | null {
@@ -305,7 +306,7 @@ export class SpecialShopPanel extends Container {
     return true
   }
 
-  private _collectPoolCandidatesByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7): PoolCandidate[] {
+  private _collectPoolCandidatesByLevel(level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8): PoolCandidate[] {
     const ctx = this.ctx
     const cb = this.cb
     if (!ctx.shopManager || !ctx.battleSystem || !ctx.backpackSystem) return []
@@ -334,10 +335,10 @@ export class SpecialShopPanel extends Container {
 
   rollSpecialShopOffers(prevOffers?: SpecialShopOffer[]): SpecialShopOffer[] {
     const actualMaxLevel = this._getCurrentMaxOwnedLevel()
-    const maxLevel = Math.max(3, actualMaxLevel) as 1 | 2 | 3 | 4 | 5 | 6 | 7
-    const minLevel = (actualMaxLevel < 3 ? 2 : Math.max(1, maxLevel - 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
-    const levels: Array<1 | 2 | 3 | 4 | 5 | 6 | 7> = []
-    for (let lv = minLevel; lv <= maxLevel; lv++) levels.push(lv as 1 | 2 | 3 | 4 | 5 | 6 | 7)
+    const maxLevel = Math.max(3, actualMaxLevel) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
+    const minLevel = (actualMaxLevel < 3 ? 2 : Math.max(1, maxLevel - 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
+    const levels: Array<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8> = []
+    for (let lv = minLevel; lv <= maxLevel; lv++) levels.push(lv as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8)
     const pool = levels.flatMap((lv) => this._collectPoolCandidatesByLevel(lv))
     if (pool.length <= 0) return []
 
@@ -421,8 +422,8 @@ export class SpecialShopPanel extends Container {
       }
     }
     const level = tierStarLevelIndex(offer.tier, offer.star) + 1
-    if (level < 1 || level > 7) return null
-    const levelKey = level as 1 | 2 | 3 | 4 | 5 | 6 | 7
+    if (level < 1 || level > 8) return null
+    const levelKey = level as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
     const size = normalizeSize(item.size)
     if (!cb.findFirstBattlePlace(size) && !cb.findFirstBackpackPlace(size)) return null
     const minTier = parseTierName(item.starting_tier) ?? 'Bronze'

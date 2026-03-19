@@ -97,7 +97,7 @@ export function loadShopStateFromStorage(): SavedShopState | null {
 // 本地工具
 // ============================================================
 
-function clampLevel(level: number): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+function clampLevel(level: number): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 {
   return _PSU_clampLevel(level)
 }
 
@@ -448,7 +448,7 @@ export function applySavedShopState(
               const star = Math.max(1, Math.min(2, Math.round(Number(pick?.star ?? 1)))) as 1 | 2
               return { defId, level, tier, star }
             })
-            .filter((v): v is { defId: string; level: 1 | 2 | 3 | 4 | 5 | 6 | 7; tier: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'; star: 1 | 2 } => !!v)
+            .filter((v): v is { defId: string; level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; tier: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'; star: 1 | 2 } => !!v)
             .slice(0, 3)
           : []
         if (picks.length <= 0) return null

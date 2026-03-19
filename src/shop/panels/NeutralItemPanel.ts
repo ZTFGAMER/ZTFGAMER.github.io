@@ -129,7 +129,7 @@ export interface NeutralItemPanelCallbacks {
   unlockItemToPool: (defId: string) => boolean
 
   // 實例元數據
-  getInstanceLevel: (instanceId: string) => 1 | 2 | 3 | 4 | 5 | 6 | 7
+  getInstanceLevel: (instanceId: string) => 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   getInstanceTier: (instanceId: string) => TierKey | undefined
   getInstanceTierStar: (instanceId: string) => 1 | 2
   setInstanceQualityLevel: (instanceId: string, defId: string, quality?: TierKey, level?: number) => void
@@ -167,11 +167,11 @@ export interface NeutralItemPanelCallbacks {
   canUseHeroDailyCardReroll: () => boolean
 
   // 物品池
-  collectPoolCandidatesByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7) => Array<{
-    item: ItemDef; level: 1 | 2 | 3 | 4 | 5 | 6 | 7; tier: TierKey; star: 1 | 2; price: number
+  collectPoolCandidatesByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8) => Array<{
+    item: ItemDef; level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; tier: TierKey; star: 1 | 2; price: number
   }>
-  pickQualityByPseudoRandomBag: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7, available: TierKey[]) => TierKey
-  getMaxQuickBuyLevelForDay: (day: number) => 1 | 2 | 3 | 4 | 5 | 6 | 7
+  pickQualityByPseudoRandomBag: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8, available: TierKey[]) => TierKey
+  getMaxQuickBuyLevelForDay: (day: number) => 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   getQuickBuyLevelWeightsByDay: (day: number) => number[]
   getUnlockPoolBuyPriceByLevel: (level: number) => number
   parseAvailableTiers: (raw: string) => TierKey[]
@@ -473,7 +473,7 @@ export class NeutralItemPanel extends Container {
     return this._isNeutralKindRandomAvailable(kind)
   }
 
-  collectNeutralQuickBuyCandidates(): Array<{ item: ItemDef; level: 1 | 2 | 3 | 4 | 5 | 6 | 7; tier: TierKey; star: 1 | 2; price: number }> {
+  collectNeutralQuickBuyCandidates(): Array<{ item: ItemDef; level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; tier: TierKey; star: 1 | 2; price: number }> {
     return []
   }
 
@@ -959,7 +959,7 @@ export class NeutralItemPanel extends Container {
           // ignore load error in runtime
         })
       } else {
-        const level = String(Math.max(1, Math.min(7, levelNum)))
+        const level = String(Math.max(1, Math.min(8, levelNum)))
         const icon = this.cb.createGuideItemCard(cand.item, level, this.cb.getGuideFrameTierByLevel(level))
         icon.x = Math.round((cardW - icon.width) / 2)
         icon.y = 108
@@ -1349,7 +1349,7 @@ export class NeutralItemPanel extends Container {
         const roll = this._pickMedalArchetypeItem(choice.archetype)
         if (!roll) {
           const baseMax = this.cb.getMaxQuickBuyLevelForDay(this.ctx.currentDay)
-          const targetLevel = Math.min(7, baseMax + 2)
+          const targetLevel = Math.min(8, baseMax + 2)
           this.cb.showHintToast('no_gold_buy', `勋章：该职业无Lv${targetLevel}可用物品`, 0xffb27a)
           closeOverlay()
           return
@@ -1419,8 +1419,8 @@ export class NeutralItemPanel extends Container {
 
   private _pickArchetypeItemAtLevel(
     archetype: EventArchetype,
-    level: 1 | 2 | 3 | 4 | 5 | 6 | 7,
-  ): { item: ItemDef; level: 1 | 2 | 3 | 4 | 5 | 6 | 7; tier: TierKey; star: 1 | 2; price: number } | null {
+    level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
+  ): { item: ItemDef; level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; tier: TierKey; star: 1 | 2; price: number } | null {
     const pool = this.cb.collectPoolCandidatesByLevel(level)
       .filter((c) => toSkillArchetype(getPrimaryArchetype(c.item.tags)) === archetype)
     if (pool.length <= 0) return null
@@ -1431,7 +1431,7 @@ export class NeutralItemPanel extends Container {
     archetype: EventArchetype,
   ): { item: ItemDef; tier: TierKey; star: 1 | 2 } | null {
     const baseMax = this.cb.getMaxQuickBuyLevelForDay(this.ctx.currentDay)
-    const targetLevel = Math.min(7, baseMax + 2) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+    const targetLevel = Math.min(8, baseMax + 2) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
     return this._pickArchetypeItemAtLevel(archetype, targetLevel)
   }
 
@@ -1833,7 +1833,7 @@ export class NeutralItemPanel extends Container {
     const targetTier = this.cb.getInstanceTier(target.instanceId) ?? 'Bronze'
     const targetLevel = this.cb.getInstanceLevel(target.instanceId)
     const targetStar = this.cb.getInstanceTierStar(target.instanceId)
-    const rollLevel = Math.max(1, Math.min(7, Math.round(opts?.rollLevel ?? targetLevel))) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+    const rollLevel = Math.max(1, Math.min(8, Math.round(opts?.rollLevel ?? targetLevel))) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
     const displayTier = opts?.displayTier ?? targetTier
     const displayStar = opts?.displayStar ?? targetStar
     const choiceCount = Math.max(1, Math.min(3, Math.round(opts?.choiceCount ?? 2)))
@@ -1864,7 +1864,7 @@ export class NeutralItemPanel extends Container {
     const targetTier = this.cb.getInstanceTier(target.instanceId) ?? 'Bronze'
     const targetLevel = this.cb.getInstanceLevel(target.instanceId)
     const targetStar = this.cb.getInstanceTierStar(target.instanceId)
-    const rollLevel = Math.max(1, Math.min(7, Math.round(opts?.rollLevel ?? targetLevel))) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+    const rollLevel = Math.max(1, Math.min(8, Math.round(opts?.rollLevel ?? targetLevel))) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
     const displayTier = opts?.displayTier ?? targetTier
     const displayStar = opts?.displayStar ?? targetStar
     const poolAllTier = this._collectArchetypeRuleTransformCandidates(target.instanceId, target.zone, rule)
@@ -2027,7 +2027,7 @@ export class NeutralItemPanel extends Container {
     if (!targetItem || targetItem.defId !== sourceDefId) return false
     const upgradeTo = nextTierLevel(sourceTier, sourceStar)
     if (!upgradeTo) return false
-    const nextLevel = Math.max(1, Math.min(7, tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+    const nextLevel = Math.max(1, Math.min(8, tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
     const sourceDef = getItemDefById(sourceDefId)
     if (!sourceDef) return false
     const sourceSize = normalizeSize(sourceDef.size)
@@ -2134,7 +2134,7 @@ export class NeutralItemPanel extends Container {
     }
     const upgradeTo = nextTierLevel(sourceTier, sourceStar)
     if (!upgradeTo) return false
-    const nextLevel = Math.max(1, Math.min(7, tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+    const nextLevel = Math.max(1, Math.min(8, tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
     const rolled = this._rollStoneTransformCandidate(target, 'other', {
       rollLevel: nextLevel,
       displayTier: upgradeTo.tier,
@@ -2241,7 +2241,8 @@ function _levelToTierStar(level: number): { tier: TierKey; star: 1 | 2 } | null 
   if (level === 4) return { tier: 'Gold', star: 1 }
   if (level === 5) return { tier: 'Gold', star: 2 }
   if (level === 6) return { tier: 'Diamond', star: 1 }
-  if (level === 7) return { tier: 'Diamond', star: 2 }
+  if (level === 8) return { tier: 'Diamond', star: 2 }
+  if (level === 7) return { tier: 'Diamond', star: 1 }
   return null
 }
 

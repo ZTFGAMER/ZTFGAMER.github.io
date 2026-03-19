@@ -40,7 +40,7 @@ export function setInstCounter(value: number): void {
 
 export const instanceToDefId = new Map<string, string>()
 export const instanceToQuality = new Map<string, TierKey>()
-export const instanceToLevel = new Map<string, 1 | 2 | 3 | 4 | 5 | 6 | 7>()
+export const instanceToLevel = new Map<string, 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8>()
 export const instanceToTier = new Map<string, TierKey>()
 export const instanceToTierStar = new Map<string, 1 | 2>()
 export const instanceToPermanentDamageBonus = new Map<string, number>()
@@ -50,15 +50,15 @@ export const instanceToEnchantment = new Map<string, ItemEnchantmentKey>()
 // 工具函數（本地 shim，避免重複引用）
 // ============================================================
 
-function clampLevel(level: number): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+function clampLevel(level: number): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8 {
   return _PSU_clampLevel(level)
 }
 
-function getQualityLevelRange(quality: TierKey): { min: 1 | 2 | 3 | 4 | 5 | 6 | 7; max: 1 | 2 | 3 | 4 | 5 | 6 | 7 } {
+function getQualityLevelRange(quality: TierKey): { min: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8; max: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8 } {
   return _PSU_getQualityLevelRange(quality)
 }
 
-export function levelFromLegacyTierStar(tier: TierKey, star: 1 | 2): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+export function levelFromLegacyTierStar(tier: TierKey, star: 1 | 2): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8 {
   return _PSU_levelFromLegacyTierStar(tier, star)
 }
 
@@ -124,7 +124,7 @@ export function setInstanceQualityLevel(
   const q = quality ?? deriveQualityByDefId(defId)
   const range = getQualityLevelRange(q)
   const lv = clampLevel(level ?? range.min)
-  const boundedLevel = Math.max(range.min, Math.min(range.max, lv)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const boundedLevel = Math.max(range.min, Math.min(range.max, lv)) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8
   instanceToQuality.set(instanceId, q)
   instanceToLevel.set(instanceId, boundedLevel)
   const legacy = levelToTierStar(boundedLevel)
@@ -144,7 +144,7 @@ export function getInstanceQuality(instanceId: string): TierKey {
   return derived
 }
 
-export function getInstanceLevel(instanceId: string): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
+export function getInstanceLevel(instanceId: string): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 8 {
   const lv = instanceToLevel.get(instanceId)
   if (lv) return lv
   const legacyTier = instanceToTier.get(instanceId) ?? 'Bronze'

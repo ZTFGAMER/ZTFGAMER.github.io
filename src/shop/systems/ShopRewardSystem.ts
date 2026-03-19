@@ -68,7 +68,7 @@ export type RewardSystemCallbacks = {
 
 type QuickDraftCandidate = {
   defId: string
-  level: 1 | 2 | 3 | 4 | 5 | 6 | 7
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   tier: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
   star: 1 | 2
 }
@@ -407,9 +407,9 @@ export function checkAndPopPendingRewards(ctx: ShopSceneCtx, callbacks: RewardSy
 
 function getQuickDraftWeightsByPlayerLevel(level: number): number[] {
   const rows = getGameConfig().shopRules?.levelQuickDraftLevelWeightsByPlayerLevel
-  if (!Array.isArray(rows) || rows.length <= 0) return [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  if (!Array.isArray(rows) || rows.length <= 0) return [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   const idx = Math.max(0, Math.min(rows.length - 1, Math.round(level) - 1))
-  const row = rows[idx] ?? rows[rows.length - 1] ?? [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  const row = rows[idx] ?? rows[rows.length - 1] ?? [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   return [
     Math.max(0, Number(row[0] ?? 0)),
     Math.max(0, Number(row[1] ?? 0)),
@@ -422,6 +422,7 @@ function getQuickDraftWeightsByPlayerLevel(level: number): number[] {
     Math.max(0, Number(row[8] ?? 0)),
     Math.max(0, Number(row[9] ?? 0)),
     Math.max(0, Number(row[10] ?? 0)),
+    Math.max(0, Number(row[11] ?? 0)),
   ]
 }
 
@@ -434,11 +435,12 @@ function pickQuickDraftModeByWeights(
     + Math.max(0, Number(weights[3] ?? 0))
     + Math.max(0, Number(weights[4] ?? 0))
     + Math.max(0, Number(weights[5] ?? 0))
-  const classStone = Math.max(0, Number(weights[6] ?? 0))
-  const enchantStone = Math.max(0, Number(weights[7] ?? 0))
-  const bronzeSkill = Math.max(0, Number(weights[8] ?? 0))
-  const silverSkill = Math.max(0, Number(weights[9] ?? 0))
-  const goldSkill = Math.max(0, Number(weights[10] ?? 0))
+    + Math.max(0, Number(weights[6] ?? 0))
+  const classStone = Math.max(0, Number(weights[7] ?? 0))
+  const enchantStone = Math.max(0, Number(weights[8] ?? 0))
+  const bronzeSkill = Math.max(0, Number(weights[9] ?? 0))
+  const silverSkill = Math.max(0, Number(weights[10] ?? 0))
+  const goldSkill = Math.max(0, Number(weights[11] ?? 0))
   const total = normal + classStone + enchantStone + bronzeSkill + silverSkill + goldSkill
   if (total <= 0) return 'normal'
   let roll = Math.random() * total
@@ -455,15 +457,15 @@ function pickQuickDraftModeByWeights(
   return 'skill_gold'
 }
 
-function pickQuickDraftLevelByWeights(weights: number[]): 1 | 2 | 3 | 4 | 5 | 6 | 7 {
-  const total = weights.slice(0, 6).reduce((sum, one) => sum + Math.max(0, Number(one || 0)), 0)
+function pickQuickDraftLevelByWeights(weights: number[]): 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 {
+  const total = weights.slice(0, 7).reduce((sum, one) => sum + Math.max(0, Number(one || 0)), 0)
   if (total <= 0) return 2
   let roll = Math.random() * total
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 7; i++) {
     roll -= Math.max(0, Number(weights[i] ?? 0))
-    if (roll <= 0) return (i + 2) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+    if (roll <= 0) return (i + 2) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   }
-  return 7
+  return 8
 }
 
 function pickWeightedQuickDraftCandidate(cands: QuickDraftCandidate[]): QuickDraftCandidate | null {
@@ -498,7 +500,7 @@ function pickWeightedQuickDraftCandidate(cands: QuickDraftCandidate[]): QuickDra
 }
 
 function collectQuickDraftCandidatesByLevel(
-  level: 1 | 2 | 3 | 4 | 5 | 6 | 7,
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
   callbacks: RewardSystemCallbacks,
 ): QuickDraftCandidate[] {
   const out: QuickDraftCandidate[] = []
@@ -527,7 +529,7 @@ function buildQuickDraftCandidateByDefId(
   const def = getItemDefById(defId)
   if (!def) return null
   const minTier = parseTierName(def.starting_tier) ?? 'Bronze'
-  const level = (getAllowedLevelsByStartingTier(minTier)[0] ?? 2) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const level = (getAllowedLevelsByStartingTier(minTier)[0] ?? 2) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   const tierStar = levelToTierStar(level)
   if (!tierStar) return null
   const size = normalizeSize(def.size)

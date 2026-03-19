@@ -73,7 +73,8 @@ export function parseTierName(raw: string): TierKey | null {
 }
 
 export function maxStarForTier(tier: TierKey): 1 | 2 {
-  return tier === 'Bronze' ? 1 : 2
+  void tier
+  return 2
 }
 
 export function normalizeTierStar(tier: TierKey, star?: number): 1 | 2 {
@@ -102,13 +103,14 @@ export function nextTierLevel(tier: TierKey, star: 1 | 2): { tier: TierKey; star
 
 export function tierStarLevelIndex(tier: TierKey, star: 1 | 2): number {
   const s = normalizeTierStar(tier, star)
-  if (tier === 'Bronze')                return 0
-  if (tier === 'Silver'  && s === 1)    return 1
-  if (tier === 'Silver'  && s === 2)    return 2
-  if (tier === 'Gold'    && s === 1)    return 3
-  if (tier === 'Gold'    && s === 2)    return 4
-  if (tier === 'Diamond' && s === 1)    return 5
-  return 6
+  if (tier === 'Bronze'  && s === 1)    return 0
+  if (tier === 'Bronze'  && s === 2)    return 1
+  if (tier === 'Silver'  && s === 1)    return 2
+  if (tier === 'Silver'  && s === 2)    return 3
+  if (tier === 'Gold'    && s === 1)    return 4
+  if (tier === 'Gold'    && s === 2)    return 5
+  if (tier === 'Diamond' && s === 1)    return 6
+  return 7
 }
 
 // ============================================================

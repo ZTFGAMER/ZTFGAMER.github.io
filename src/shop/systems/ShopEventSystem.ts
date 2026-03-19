@@ -34,7 +34,7 @@ export type OwnedPlacedItem = { item: PlacedItem; zone: 'battle' | 'backpack' }
 
 export type PoolCandidate = {
   item: ItemDef
-  level: 1 | 2 | 3 | 4 | 5 | 6 | 7
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   tier: TierKey
   star: 1 | 2
   price: number
@@ -57,8 +57,8 @@ export type ApplyEventEffectCallbacks = {
   schedulePendingBattleUpgrade: (day: number, count: number) => void
   convertHighestLevelItemsOnce: () => number
   upgradeLowestLevelItemsOnce: () => number
-  collectPoolCandidatesByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7) => PoolCandidate[]
-  getQuickBuyLevelWeightsByDay: (day: number) => [number, number, number, number, number, number, number]
+  collectPoolCandidatesByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8) => PoolCandidate[]
+  getQuickBuyLevelWeightsByDay: (day: number) => [number, number, number, number, number, number, number, number]
   getInstanceTierMap: () => Map<string, TierKey>
   getInstanceTierStar: (instanceId: string) => 1 | 2
 }
@@ -263,7 +263,7 @@ function randomArchetypeItemsByDay(
   callbacks: Pick<ApplyEventEffectCallbacks, 'collectPoolCandidatesByLevel' | 'getQuickBuyLevelWeightsByDay'>,
 ): PoolCandidate[] {
   void getAllItems // 确保模块已加载
-  const byLevel: Record<1 | 2 | 3 | 4 | 5 | 6 | 7, PoolCandidate[]> = {
+  const byLevel: Record<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8, PoolCandidate[]> = {
     1: callbacks.collectPoolCandidatesByLevel(1),
     2: callbacks.collectPoolCandidatesByLevel(2),
     3: callbacks.collectPoolCandidatesByLevel(3),
@@ -271,12 +271,13 @@ function randomArchetypeItemsByDay(
     5: callbacks.collectPoolCandidatesByLevel(5),
     6: callbacks.collectPoolCandidatesByLevel(6),
     7: callbacks.collectPoolCandidatesByLevel(7),
+    8: callbacks.collectPoolCandidatesByLevel(8),
   }
   const weights = callbacks.getQuickBuyLevelWeightsByDay(ctx.currentDay)
   const out: PoolCandidate[] = []
-  const levels: Array<1 | 2 | 3 | 4 | 5 | 6 | 7> = [1, 2, 3, 4, 5, 6, 7]
+  const levels: Array<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8> = [1, 2, 3, 4, 5, 6, 7, 8]
   for (let i = 0; i < count; i++) {
-    const leveled: Array<{ level: 1 | 2 | 3 | 4 | 5 | 6 | 7; weight: number }> = []
+    const leveled: Array<{ level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; weight: number }> = []
     for (const lv of levels) {
       const pool = byLevel[lv].filter((c) => toSkillArchetype(getPrimaryArchetype(c.item.tags)) === archetype)
       if (pool.length <= 0) continue

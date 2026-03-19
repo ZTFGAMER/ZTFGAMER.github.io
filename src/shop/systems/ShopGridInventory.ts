@@ -44,7 +44,7 @@ export type OwnedPlacedItem = { item: PlacedItem; zone: 'battle' | 'backpack' }
 export type GridInventoryCallbacks = {
   recordNeutralItemObtained: (defId: string) => void
   unlockItemToPool: (defId: string) => boolean
-  collectPoolCandidatesByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7) => PoolCandidate[]
+  collectPoolCandidatesByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8) => PoolCandidate[]
 }
 
 // ---- 格位查找 ----
@@ -307,7 +307,7 @@ export function convertPlacedItemKeepLevel(
   const legacy = levelToTierStar(level)
   const tier = legacy?.tier ?? 'Bronze'
   const star = legacy?.star ?? 1
-  const candidates = callbacks.collectPoolCandidatesByLevel(level as 1 | 2 | 3 | 4 | 5 | 6 | 7)
+  const candidates = callbacks.collectPoolCandidatesByLevel(level as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8)
     .filter((c) => normalizeSize(c.item.size) === placed.size)
     .map((c) => c.item)
     .filter((it) => it.id !== placed.defId)

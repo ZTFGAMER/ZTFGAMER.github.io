@@ -195,6 +195,17 @@ export const MenuScene: Scene = {
     const pvpBtn = makePvpBtn(CANVAS_H * 0.54 + 144)
     root.addChild(pvpBtn)
 
+    const tankBtn = makeBtn(
+      '战车模式',
+      '单人闯关  击败电脑  收集奖杯',
+      0x4caf50,
+      0x1a2e1c,
+      0x4caf50,
+      CANVAS_H * 0.54 + 288,
+      () => SceneManager.goto('shop'),
+    )
+    root.addChild(tankBtn)
+
     // ── 底部 ──────────────────────────────────────────────
     const ver = new Text({
       text: 'v1.0.4',

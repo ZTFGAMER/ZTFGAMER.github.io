@@ -80,17 +80,17 @@ function parseTierStar(raw: string): 1 | 2 {
 function tierScoreFromRaw(raw: string): number {
   const tier = parseTierName(raw)
   const star = parseTierStar(raw)
-  if (tier === 'Bronze') return 1
-  if (tier === 'Silver') return star === 2 ? 3 : 2
-  if (tier === 'Gold') return star === 2 ? 5 : 4
-  return star === 2 ? 7 : 6
+  if (tier === 'Bronze') return star === 2 ? 2 : 1
+  if (tier === 'Silver') return star === 2 ? 4 : 3
+  if (tier === 'Gold') return star === 2 ? 6 : 5
+  return star === 2 ? 8 : 7
 }
 
 function startTierScoreFromItem(item: ItemDef): number {
   const tier = parseTierName(item.starting_tier || 'Bronze')
-  if (tier === 'Silver') return 2
-  if (tier === 'Gold') return 4
-  if (tier === 'Diamond') return 6
+  if (tier === 'Silver') return 3
+  if (tier === 'Gold') return 5
+  if (tier === 'Diamond') return 7
   return 1
 }
 
@@ -104,7 +104,7 @@ function formatTierQualityLabel(baseTierRaw: string): string {
 
 function formatTierLabelWithLevel(baseTierRaw: string, rawTier: string): string {
   const baseTier = parseTierName(baseTierRaw) || 'Bronze'
-  const level = Math.max(1, Math.min(7, tierScoreFromRaw(rawTier)))
+  const level = Math.max(1, Math.min(8, tierScoreFromRaw(rawTier)))
   if (baseTier === 'Bronze') return `青铜Lv${level}`
   if (baseTier === 'Silver') return `白银Lv${level}`
   if (baseTier === 'Gold') return `黄金Lv${level}`

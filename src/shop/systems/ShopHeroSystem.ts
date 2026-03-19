@@ -68,7 +68,7 @@ type PassiveResolvedStat = {
 
 type PoolCandidate = {
   item: ItemDef
-  level: 1 | 2 | 3 | 4 | 5 | 6 | 7
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   tier: TierKey
   star: 1 | 2
   price: number
@@ -86,13 +86,13 @@ type SynthesizeResult = {
 
 type HeroQuickDraftCandidate = {
   item: ItemDef
-  level: 1 | 2 | 3 | 4 | 5 | 6 | 7
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   tier: TierKey
   star: 1 | 2
 }
 
 function collectHeroQuickDraftCandidatesByLevel(
-  level: 1 | 2 | 3 | 4 | 5 | 6 | 7,
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
   callbacks: {
     findFirstBattlePlace: (size: ReturnType<typeof normalizeSize>) => { col: number; row: number } | null
     findFirstBackpackPlace: (size: ReturnType<typeof normalizeSize>) => { col: number; row: number } | null
@@ -119,7 +119,7 @@ function collectHeroQuickDraftCandidatesByLevel(
 
 function pickHeroQuickDraftCandidateByQualityBucket(
   cands: HeroQuickDraftCandidate[],
-  level: 1 | 2 | 3 | 4 | 5 | 6 | 7,
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
 ): HeroQuickDraftCandidate | null {
   if (cands.length <= 0) return null
   const byStartTier: Record<'Bronze' | 'Silver' | 'Gold' | 'Diamond', HeroQuickDraftCandidate[]> = {
@@ -549,7 +549,7 @@ export function shouldShowHeroDailySkillReadyStar(ctx: ShopSceneCtx): boolean {
 export function grantHeroDiscardSameLevelReward(
   ctx: ShopSceneCtx,
   discardedDefId: string,
-  level: 1 | 2 | 3 | 4 | 5 | 6 | 7,
+  level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
   callbacks: {
     findFirstBattlePlace: (size: ReturnType<typeof normalizeSize>) => { col: number; row: number } | null
     findFirstBackpackPlace: (size: ReturnType<typeof normalizeSize>) => { col: number; row: number } | null
@@ -564,7 +564,7 @@ export function grantHeroDiscardSameLevelReward(
   if (!canTriggerHeroFirstDiscardReward(ctx)) return
   const discardedDef = getItemDefById(discardedDefId)
   if (!discardedDef || isNeutralItemDef(discardedDef)) return
-  const rollLevel = Math.max(1, level - 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const rollLevel = Math.max(1, level - 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   const pool = collectHeroQuickDraftCandidatesByLevel(rollLevel, callbacks)
     .filter((one) => one.item.id !== discardedDefId)
   const picked = pickHeroQuickDraftCandidateByQualityBucket(pool, rollLevel)
@@ -623,7 +623,7 @@ export function tryRunHeroCrossSynthesisReroll(
   const system = synth.targetZone === 'battle' ? ctx.battleSystem : ctx.backpackSystem
   const current = system?.getItem(synth.instanceId)
   if (!current) return false
-  const targetLevel = Math.max(1, Math.min(7, callbacks.tierStarLevelIndex(synth.toTier, synth.toStar) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7
+  const targetLevel = Math.max(1, Math.min(8, callbacks.tierStarLevelIndex(synth.toTier, synth.toStar) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   const currentDefId = current.defId
   const currentDef = getItemDefById(currentDefId)
   if (!currentDef) return false
@@ -1115,7 +1115,7 @@ export function grantStarterItemsByClass(
     nextId: () => string
     toVisualTier: (tier?: TierKey, star?: 1 | 2) => string | undefined
     setInstanceQualityLevel: (instanceId: string, defId: string, quality?: TierKey, level?: number) => void
-    levelFromLegacyTierStar: (tier: TierKey, star: 1 | 2) => 1 | 2 | 3 | 4 | 5 | 6 | 7
+    levelFromLegacyTierStar: (tier: TierKey, star: 1 | 2) => 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
     recordNeutralItemObtained: (defId: string) => void
     syncUnlockPoolToManager: () => void
     instanceToDefIdSet: (id: string, defId: string) => void
@@ -1291,7 +1291,7 @@ export function createGuideItemCard(item: ItemDef, levelText: string, tierForFra
     Math.max(44, cardW - 8),
     undefined,
     'archetype',
-    { archetypeSuffix: String(Math.min(7, Math.max(1, levelNum))) },
+    { archetypeSuffix: String(Math.min(8, Math.max(1, levelNum))) },
   )
   badges.x = cardW / 2
   badges.y = getDebugCfg('itemStatBadgeOffsetY') + 14
@@ -1703,7 +1703,7 @@ export function enqueueHeroPeriodicReward(
 export function checkAndPopPendingHeroPeriodicRewards(
   ctx: ShopSceneCtx,
   callbacks: {
-    getUnlockPoolBuyPriceByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7) => number
+    getUnlockPoolBuyPriceByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8) => number
     grantPoolCandidateToBoardOrBackpack: (
       candidate: PoolCandidate,
       source: string,
