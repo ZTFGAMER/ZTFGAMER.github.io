@@ -2340,6 +2340,13 @@ export const ShopScene: Scene = {
     if (_ctx.levelQuickRewardBackdrop?.parent) _ctx.levelQuickRewardBackdrop.parent.removeChild(_ctx.levelQuickRewardBackdrop)
     _ctx.levelQuickRewardBackdrop?.destroy()
     _ctx.levelQuickRewardBackdrop = null
+    if (_ctx.levelQuickRewardGuideTick) {
+      Ticker.shared.remove(_ctx.levelQuickRewardGuideTick)
+      _ctx.levelQuickRewardGuideTick = null
+    }
+    if (_ctx.levelQuickRewardGuideFrame?.parent) _ctx.levelQuickRewardGuideFrame.parent.removeChild(_ctx.levelQuickRewardGuideFrame)
+    _ctx.levelQuickRewardGuideFrame?.destroy()
+    _ctx.levelQuickRewardGuideFrame = null
     if (_ctx.levelQuickRewardView?.parent) _ctx.levelQuickRewardView.parent.removeChild(_ctx.levelQuickRewardView)
     _ctx.levelQuickRewardView?.destroy({ children: true })
     _ctx.levelQuickRewardView = null

@@ -769,6 +769,29 @@ export class GridZone extends Container {
     this.loadGuideArrows(instanceId, node)
   }
 
+  private async loadGuideArrows(instanceId: string, node: ItemNode): Promise<void> {
+    try {
+      const textures = await ensureGuideArrowTextures()
+      if (this.nodes.get(instanceId) !== node) return
+      if (node.upgradeArrow.destroyed || node.crossUpgradeArrow.destroyed) return
+      applyArrowTexture(node.upgradeArrow, textures.same)
+      applyArrowTexture(node.crossUpgradeArrow, this.crossGuideArrowMode === 'convert' ? textures.convert : textures.cross)
+    } catch (err) {
+      console.warn('[GridZone] 提示箭头加载失败', err)
+    }
+  }
+
+  private async setCrossGuideArrowMode(mode: 'cross' | 'convert'): Promise<void> {
+    this.crossGuideArrowMode = mode
+    try {
+      const textures = await ensureGuideArrowTextures()
+      const tex = mode === 'convert' ? textures.convert : textures.cross
+      for (const node of this.nodes.values()) applyArrowTexture(node.crossUpgradeArrow, tex)
+    } catch {
+      // noop
+    }
+  }
+
   private rootContainer(): Container | null {
     let cur: Container | null = this
     while (cur?.parent) cur = cur.parent as Container
@@ -881,29 +904,6 @@ export class GridZone extends Container {
     }
     this.itemFxTicks.add(tick)
     Ticker.shared.add(tick)
-  }
-
-  private async loadGuideArrows(instanceId: string, node: ItemNode): Promise<void> {
-    try {
-      const textures = await ensureGuideArrowTextures()
-      if (this.nodes.get(instanceId) !== node) return
-      if (node.upgradeArrow.destroyed || node.crossUpgradeArrow.destroyed) return
-      applyArrowTexture(node.upgradeArrow, textures.same)
-      applyArrowTexture(node.crossUpgradeArrow, this.crossGuideArrowMode === 'convert' ? textures.convert : textures.cross)
-    } catch (err) {
-      console.warn('[GridZone] 提示箭头加载失败', err)
-    }
-  }
-
-  private async setCrossGuideArrowMode(mode: 'cross' | 'convert'): Promise<void> {
-    this.crossGuideArrowMode = mode
-    try {
-      const textures = await ensureGuideArrowTextures()
-      const tex = mode === 'convert' ? textures.convert : textures.cross
-      for (const node of this.nodes.values()) applyArrowTexture(node.crossUpgradeArrow, tex)
-    } catch {
-      // noop
-    }
   }
 
   private async loadIcon(
@@ -1398,15 +1398,19 @@ export class GridZone extends Container {
   }
 
   setUpgradeHints(instanceIds: string[]): void {
-    void instanceIds
-    // 用户要求：关闭可升级箭头显示
-    this.upgradeHintIds = new Set()
+    this.upgradeHintIds = new Set(instanceIds.filter((id) => this.nodes.has(id)))
     this.crossUpgradeHintIds = new Set()
     for (const [id, node] of this.nodes) {
       node.upgradeArrow.visible = this.upgradeHintIds.has(id)
       node.crossUpgradeArrow.visible = this.crossUpgradeHintIds.has(id)
+      if (!node.upgradeArrow.visible) {
+        node.upgradeArrow.y = node.upgradeBaseY
+        node.upgradeArrow.alpha = 1
+        node.upgradeArrow.scale.set(UPGRADE_ARROW_SCALE)
+      }
     }
-    if (this.upgradeHintTick) this.stopUpgradeHintAnim()
+    if (this.upgradeHintIds.size > 0) this.startUpgradeHintAnim()
+    else this.stopUpgradeHintAnim()
   }
 
   setDragGuideArrows(instanceIds: string[], crossInstanceIds: string[] = [], crossMode: 'cross' | 'convert' = 'cross'): void {
@@ -2035,7 +2039,7 @@ export class GridZone extends Container {
       Ticker.shared.remove(this.qualityDotTick)
       this.qualityDotTick = null
     }
-    // 清空 nodes，使进行中的异步 loadIcon/loadGuideArrows 的 guard 生效
+    // 清空 nodes，使进行中的异步 loadIcon guard 生效
     this.nodes.clear()
     super.destroy(options)
   }

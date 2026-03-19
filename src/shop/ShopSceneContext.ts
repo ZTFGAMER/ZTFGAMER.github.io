@@ -382,6 +382,8 @@ export interface ShopSceneCtx {
   specialShopOverlay:        Container | null
   levelQuickRewardOverlay:   Container | null
   levelQuickRewardBackdrop:  Graphics  | null
+  levelQuickRewardGuideFrame: Graphics | null
+  levelQuickRewardGuideTick: (() => void) | null
   levelQuickRewardView:      GridZone | null
   levelQuickRewardSystem:    GridSystem | null
   levelQuickRewardInstanceIds: Set<string>
@@ -441,6 +443,7 @@ export interface ShopSceneCtx {
   gridDragCanSell:       boolean
   gridDragCanToBackpack: boolean
   gridDragSellHot:       boolean
+  gridDragNeutralDiscardHint: boolean
   synthHoverInfoKey:     string
 
   // ---- 事件监听器（析构用）----
@@ -639,6 +642,8 @@ export function createShopSceneCtx(): ShopSceneCtx {
     specialShopOverlay:   null,
     levelQuickRewardOverlay: null,
     levelQuickRewardBackdrop: null,
+    levelQuickRewardGuideFrame: null,
+    levelQuickRewardGuideTick: null,
     levelQuickRewardView: null,
     levelQuickRewardSystem: null,
     levelQuickRewardInstanceIds: new Set(),
@@ -697,6 +702,7 @@ export function createShopSceneCtx(): ShopSceneCtx {
     gridDragCanSell:       false,
     gridDragCanToBackpack: false,
     gridDragSellHot:       false,
+    gridDragNeutralDiscardHint: false,
     synthHoverInfoKey:     '',
 
     // 事件监听器

@@ -299,6 +299,7 @@ export function resetDrag(ctx: ShopSceneCtx, deps: ShopDragDeps): void {
   }
   if (ctx.shopDragHiddenSlot >= 0) ctx.shopPanel?.setSlotDragging(ctx.shopDragHiddenSlot, false)
   ctx.shopDragHiddenSlot = -1; ctx.shopDragSlotIdx = -1; ctx.shopDragSize = null; ctx.shopDragPointerId = -1
+  ctx.gridDragNeutralDiscardHint = false
   deps.hideSynthesisHoverInfo()
   clearBackpackSynthesisGuideArrows(ctx)
   clearSelection(ctx, deps)

@@ -160,6 +160,64 @@ function getLevelQuickRewardActivePickByInstanceId(ctx: ShopSceneCtx): Map<strin
   return created
 }
 
+function getLevelQuickDraftRemainingCount(ctx: ShopSceneCtx): number {
+  const active = getLevelQuickRewardActiveEntry(ctx)
+  return getLevelQuickRewardQueue(ctx).length + (active ? 1 : 0)
+}
+
+function stopLevelQuickRewardGuideFrameFx(ctx: ShopSceneCtx): void {
+  if (ctx.levelQuickRewardGuideTick) {
+    Ticker.shared.remove(ctx.levelQuickRewardGuideTick)
+    ctx.levelQuickRewardGuideTick = null
+  }
+  if (ctx.levelQuickRewardGuideFrame?.parent) {
+    ctx.levelQuickRewardGuideFrame.parent.removeChild(ctx.levelQuickRewardGuideFrame)
+  }
+  ctx.levelQuickRewardGuideFrame?.destroy()
+  ctx.levelQuickRewardGuideFrame = null
+}
+
+function playLevelQuickRewardGuideFrameFx(quickX: number, quickY: number, quickW: number, quickH: number, ctx: ShopSceneCtx): void {
+  stopLevelQuickRewardGuideFrameFx(ctx)
+  const g = new Graphics()
+  g.zIndex = 20
+  g.eventMode = 'none'
+  const startAt = performance.now()
+  const durationMs = 760
+  const pad = 10
+  const baseX = Math.round(quickX - pad)
+  const baseY = Math.round(quickY - pad)
+  const boxW = Math.round(quickW + pad * 2)
+  const boxH = Math.round(quickH + pad * 2)
+  const corner = Math.max(12, Math.round(getDebugCfg('gridItemCornerRadius') + 4))
+  const tick = () => {
+    const p = Math.max(0, Math.min(1, (performance.now() - startAt) / durationMs))
+    const amp = Math.round((1 - p) * 12)
+    const shakeX = Math.round(Math.sin(p * Math.PI * 12) * amp)
+    const shakeY = Math.round(Math.sin(p * Math.PI * 10) * Math.max(1, Math.round(amp * 0.35)))
+    const pulse = 0.75 + 0.25 * Math.sin(p * Math.PI * 8)
+    g.clear()
+    g.roundRect(baseX + shakeX + 2, baseY + shakeY + 2, boxW, boxH, corner)
+    g.fill({ color: 0xffd84f, alpha: 0.16 * pulse })
+    g.roundRect(baseX + shakeX, baseY + shakeY, boxW, boxH, corner)
+    g.stroke({ color: 0xffdf66, width: 6, alpha: 0.95 * pulse })
+    if (p >= 1) stopLevelQuickRewardGuideFrameFx(ctx)
+  }
+  ctx.levelQuickRewardGuideFrame = g
+  ctx.levelQuickRewardGuideTick = tick
+  getApp().stage.addChild(g)
+  Ticker.shared.add(tick)
+}
+
+function getLevelQuickRewardGuideBounds(quickX: number, battleScale: number, itemCountRaw: number): { x: number; w: number } {
+  const cellW = CELL_SIZE * battleScale
+  const itemCount = Math.max(1, Math.min(3, itemCountRaw))
+  const centers = getLevelQuickRewardCentersLocal(itemCount, battleScale).map((x) => quickX + x)
+  const left = Math.min(...centers) - cellW * 0.5
+  const right = Math.max(...centers) + cellW * 0.5
+  return { x: left, w: Math.max(cellW, right - left) }
+}
+
 function shuffleInPlace<T>(arr: T[]): T[] {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))
@@ -711,9 +769,10 @@ function refreshLevelQuickRewardOverlayTitle(quickX: number, quickW: number, qui
   overlay.eventMode = 'none'
   const bubbleX = Math.round(quickX + quickW / 2)
   const labelFontSize = Math.max(20, Math.round(getDebugCfg('gridZoneLabelFontSize')))
-  const baseTitle = active?.title ?? '升级奖励'
+  const remaining = Math.max(1, getLevelQuickDraftRemainingCount(ctx))
+  const titleText = `请选择奖励（剩余${remaining}个）`
   const title = new Text({
-    text: baseTitle,
+    text: titleText,
     style: {
       fontSize: labelFontSize,
       fill: 0xd8e5ff,
@@ -797,6 +856,9 @@ function tryShowNextQueuedQuickDraft(ctx: ShopSceneCtx): boolean {
     applyLevelQuickRewardItemSpacing(ctx, battleScale)
     ctx.drag.refreshZone(ctx.levelQuickRewardView)
     refreshLevelQuickRewardOverlayTitle(quickX, quickW, quickY, ctx)
+    const itemCount = Math.max(1, Math.min(3, entry.picks.length || ctx.levelQuickRewardInstanceIds.size))
+    const guide = getLevelQuickRewardGuideBounds(quickX, battleScale, itemCount)
+    playLevelQuickRewardGuideFrameFx(guide.x, quickY, guide.w, Math.round(CELL_HEIGHT * battleScale), ctx)
     syncPersistedQuickDraftEntries(ctx)
     return true
   }
@@ -871,8 +933,12 @@ function enqueueLevelQuickRewardEntry(ctx: ShopSceneCtx, entry: QuickDraftQueueE
     void tryShowNextQueuedQuickDraft(ctx)
   } else {
     const battleScale = Math.max(0.1, Number(ctx.backpackView?.scale.x || ctx.battleView?.scale.x || 1))
-    const { quickX, quickY, quickW } = computeLevelQuickRewardPosition(ctx, battleScale)
+    const { quickX, quickY, quickW, quickH } = computeLevelQuickRewardPosition(ctx, battleScale)
     refreshLevelQuickRewardOverlayTitle(quickX, quickW, quickY, ctx)
+    const active = getLevelQuickRewardActiveEntry(ctx)
+    const itemCount = Math.max(1, Math.min(3, (active?.picks.length ?? ctx.levelQuickRewardInstanceIds.size) || 1))
+    const guide = getLevelQuickRewardGuideBounds(quickX, battleScale, itemCount)
+    playLevelQuickRewardGuideFrameFx(guide.x, quickY, guide.w, quickH, ctx)
   }
   syncPersistedQuickDraftEntries(ctx)
   saveShopStateToStorage(captureShopState(ctx))
@@ -957,6 +1023,7 @@ function clearLevelQuickRewardOverlay(ctx: ShopSceneCtx): void {
   if (ctx.levelQuickRewardBackdrop?.parent) ctx.levelQuickRewardBackdrop.parent.removeChild(ctx.levelQuickRewardBackdrop)
   ctx.levelQuickRewardBackdrop?.destroy()
   ctx.levelQuickRewardBackdrop = null
+  stopLevelQuickRewardGuideFrameFx(ctx)
   if (ctx.levelQuickRewardView) {
     ctx.levelQuickRewardView.clearHighlight()
     ctx.levelQuickRewardView.setSelected(null)

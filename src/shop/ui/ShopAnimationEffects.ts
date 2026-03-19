@@ -299,7 +299,11 @@ export function startGridDragButtonFlash(
 
       ctx.gridDragSellZoneText.style.fill = hot ? 0xfff0f0 : 0xffb3b3
       ctx.gridDragSellZoneText.style.fontSize = getDebugCfg('shopButtonLabelFontSize')
-      ctx.gridDragSellZoneText.text = '拖动到此处丢弃'
+      if (hot && ctx.gridDragNeutralDiscardHint) {
+        ctx.gridDragSellZoneText.text = '丢弃无法获得金币'
+      } else {
+        ctx.gridDragSellZoneText.text = '拖动到此处出售'
+      }
       ctx.gridDragSellZoneText.x = CANVAS_W / 2
       ctx.gridDragSellZoneText.y = top + h / 2
     }
@@ -316,6 +320,7 @@ export function stopGridDragButtonFlash(ctx: ShopSceneCtx, deps: StartGridDragBu
   ctx.gridDragCanSell = false
   ctx.gridDragCanToBackpack = false
   ctx.gridDragSellHot = false
+  ctx.gridDragNeutralDiscardHint = false
 
   const inShop = deps.isShopInputEnabled()
   if (ctx.refreshBtnHandle) ctx.refreshBtnHandle.container.visible = inShop

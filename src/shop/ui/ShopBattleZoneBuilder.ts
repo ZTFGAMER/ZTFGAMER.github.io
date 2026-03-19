@@ -76,6 +76,13 @@ import { restoreDraggedItemToZone } from '../systems/ShopGridInventory'
 import type { ShopSceneCtx } from '../ShopSceneContext'
 import { isSkillItemDefId } from '@/common/skills/SkillItemDefs'
 
+const DRAG_SELL_PRICE_BY_LEVEL = [1, 2, 4, 8, 16, 32, 64] as const
+
+function getDragSellPriceByLevel(level: number | null | undefined): number {
+  const lv = Number.isFinite(level) ? Math.max(1, Math.min(7, Math.round(level as number))) : 1
+  return DRAG_SELL_PRICE_BY_LEVEL[lv - 1] ?? DRAG_SELL_PRICE_BY_LEVEL[0]
+}
+
 // ---- 内联辅助 ----
 
 function isCrossIdSynthesisConfirmEnabled(): boolean {
@@ -312,22 +319,29 @@ export function buildBattleZoneUI(
     const overAnyDropTarget = isOverAnyGridDropTarget(anchorGx, anchorGy, size, ctx)
     const forceDiscardForNeutralStone = !!sourceDef && isNeutralTargetStone(sourceDef) && overSellArea
 
-    if (homeView === ctx.levelQuickRewardView && overSellArea) {
-      showHintToast('backpack_full_buy', '升级奖励不能丢弃，请拖到上阵区或背包区', 0xffd48f, ctx)
-      return false
-    }
+     if (homeView === ctx.levelQuickRewardView && overSellArea) {
+       showHintToast('backpack_full_buy', '升级奖励不能出售，请拖到上阵区或背包区', 0xffd48f, ctx)
+       return false
+     }
 
-    // 1) 拖到下方丢弃区域：直接丢弃
-    // 普通物品：未命中任意格子候选时才丢弃；
-    // 变化石/转职石：命中丢弃区时优先允许丢弃，避免"无目标时无法丢弃"。
+    // 1) 拖到下方出售区域：直接出售
+    // 普通物品：未命中任意格子候选时才出售；
+    // 变化石/转职石：命中出售区时优先允许出售，避免"无目标时无法出售"。
     if ((overSellArea && !overAnyDropTarget) || forceDiscardForNeutralStone) {
-      if (sourceDef && isNeutralItemDef(sourceDef) && !isSkillItemDefId(sourceDef.id)) {
+      const isNeutralDiscard = !!sourceDef && isNeutralItemDef(sourceDef) && !isSkillItemDefId(sourceDef.id)
+      const sellPrice = getDragSellPriceByLevel(sourceLevel)
+      if (isNeutralDiscard) {
         const ok = applyNeutralDiscardEffect(sourceDef, stage)
         if (!ok) return false
       }
       homeSystem.remove(instanceId)
       removeInstanceMeta(instanceId)
-      showHintToast('no_gold_buy', `已丢弃：${sourceDef?.name_cn ?? item.name_cn}`, 0x9be5ff, ctx)
+      if (isNeutralDiscard) {
+        showHintToast('no_gold_buy', `已丢弃：${sourceDef?.name_cn ?? item.name_cn}`, 0x9be5ff, ctx)
+      } else {
+        if (ctx.shopManager) ctx.shopManager.gold += sellPrice
+        showHintToast('no_gold_buy', `已出售：${sourceDef?.name_cn ?? item.name_cn} +${sellPrice}G`, 0x9be5ff, ctx)
+      }
       if (sourceDef && sourceLevel) {
         grantHeroDiscardSameLevelReward(sourceDef.id, sourceLevel)
       }
@@ -575,6 +589,7 @@ export function buildBattleZoneUI(
   }
   ctx.drag.onDragMove = ({ instanceId, anchorGx, anchorGy, size }) => {
     updateGridDragSellAreaHover(anchorGx, anchorGy, size, ctx)
+    ctx.gridDragNeutralDiscardHint = false
 
     // 可用状态随时重算（例如拖拽过程中背包可见状态变化）
     if (ctx.gridDragCanToBackpack) {
@@ -588,18 +603,29 @@ export function buildBattleZoneUI(
     if (isNeutralTargetStone(item)) refreshNeutralStoneGuideArrows(item, instanceId)
     else refreshBackpackSynthesisGuideArrows(defId ?? null, tier ?? null, star, ctx, instanceId)
 
-    const sellPrice = 0
+    const sellPrice = getDragSellPriceByLevel(getInstanceLevel(instanceId))
     const overSell = ctx.gridDragCanSell && ctx.gridDragSellHot
       if (item && ctx.sellPopup && tier && overSell) {
+      const isNeutralDiscard = isNeutralItemDef(item) && !isSkillItemDefId(item.id)
+      ctx.gridDragNeutralDiscardHint = isNeutralDiscard
+      const isStoneGuide = isNeutralTargetStone(item)
       const stoneHint = isNeutralTargetStone(item)
         ? (item.name_cn === '转职石'
           ? '拖到目标物品上触发转职效果'
           : (item.name_cn.includes('宝石') ? '拖到目标物品上触发附魔效果' : '拖到目标物品上触发变化效果'))
-        : '丢弃后不会获得金币'
+        : (isNeutralDiscard ? '丢弃后不会获得金币' : `出售可得：${sellPrice}G`)
+      const sellRichLineSegments = (!isNeutralDiscard && !isStoneGuide)
+        ? [
+          { text: '出售可得：', fill: 0xc8d5ff },
+          { text: `${sellPrice}G`, fill: 0xffd54a, fontSize: 36 },
+        ]
+        : undefined
       const customDisplay: ItemInfoCustomDisplay = {
-        overrideName: `${item.name_cn}（拖拽丢弃）`,
-        lines: [stoneHint],
+        overrideName: `${item.name_cn}（${isNeutralDiscard ? '拖拽丢弃' : '拖拽出售'}）`,
+        lines: sellRichLineSegments ? ['出售可得：'] : [stoneHint],
+        richLineSegments: sellRichLineSegments,
         suppressStats: true,
+        hideCooldownBadge: true,
       }
       const enchantment = getInstanceEnchantment(instanceId)
       const enchantDisplay = enchantment
@@ -608,7 +634,7 @@ export function buildBattleZoneUI(
           effectCn: resolveItemEnchantmentEffectCn(item, enchantment),
         }
         : undefined
-      ctx.sellPopup.show(item, sellPrice, 'none', toVisualTier(tier, star), undefined, 'detailed', undefined, customDisplay, enchantDisplay)
+      ctx.sellPopup.show(item, sellPrice, isNeutralDiscard ? 'none' : 'sell', toVisualTier(tier, star), undefined, 'detailed', undefined, customDisplay, enchantDisplay)
       ctx.drag?.setSqueezeSuppressed(false)
       hideSynthesisHoverInfo()
       return
