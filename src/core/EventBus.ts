@@ -9,6 +9,12 @@ export type GameEvents = {
   // 战斗事件
   'battle:item_trigger': { itemId: string; sourceItemId: string; side: 'player' | 'enemy'; triggerCount: number; multicast?: number; extraTriggered?: boolean };
   'battle:item_fire':    { itemId: string; sourceItemId: string; side: 'player' | 'enemy'; multicast: number };
+  'battle:item_effect_trigger': {
+    sourceItemId: string;
+    side: 'player' | 'enemy';
+    effect: 'ammo_refill';
+    triggerCount: number;
+  };
   'battle:item_destroy': {
     sourceItemId: string;
     sourceSide: 'player' | 'enemy';

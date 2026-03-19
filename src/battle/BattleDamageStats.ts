@@ -158,7 +158,7 @@ export class BattleDamageStats {
     if (!force && !this.damageStatsDirty && battlePresentationMs - this.damageStatsLastRenderAtMs < 180) return
     const rows = Array.from(this.battleStatsByItemId.values())
       .filter((it) => it.side === this.damageStatsTab)
-      .sort((a, b) => b.triggerCount - a.triggerCount || (b.damage + b.shield) - (a.damage + a.shield) || b.damage - a.damage)
+      .sort((a, b) => (b.damage + b.shield) - (a.damage + a.shield) || b.damage - a.damage || b.shield - a.shield || b.triggerCount - a.triggerCount)
     const maxStatValue = Math.max(1, ...rows.map((r) => Math.max(r.damage, r.shield)))
 
     this.damageStatsTitleText.text = engine?.isFinished() ? '战斗统计（已结束）' : '战斗统计（进行中）'
@@ -190,16 +190,18 @@ export class BattleDamageStats {
     this.damageStatsEmptyText.y = 40
     this.damageStatsRowsCon.addChild(this.damageStatsEmptyText)
 
-    const rowW = 520
-    const rowH = 88
-    const iconSide = 46
-    const barW = 228
-    const barH = 13
-    const barX = -rowW / 2 + 64
+    const rowW = 540
+    const rowH = 102
+    const iconSide = 81
+    const barW = 264
+    const barH = 14
+    const iconPaddingLeft = 18
+    const iconX = -rowW / 2 + iconPaddingLeft + iconSide / 2
+    const barX = -rowW / 2 + 114
 
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 5; i++) {
       const row = new Container()
-      row.y = -210 + i * (rowH + 10)
+      row.y = -254 + i * (rowH + 10)
 
       const rowBg = new Graphics()
       rowBg.roundRect(-rowW / 2, 0, rowW, rowH, 12)
@@ -207,40 +209,40 @@ export class BattleDamageStats {
       rowBg.stroke({ color: 0x5f79a8, width: 1, alpha: 0.9 })
       row.addChild(rowBg)
 
-      const iconX = -rowW / 2 + 36
       const iconY = rowH / 2
       const iconFrame = new Graphics()
       iconFrame.roundRect(iconX - iconSide / 2, iconY - iconSide / 2, iconSide, iconSide, 9)
       iconFrame.fill({ color: 0x1d2a45, alpha: 1 })
-      iconFrame.stroke({ color: getTierColor('Bronze'), width: 2, alpha: 0.98 })
+      iconFrame.stroke({ color: getTierColor('Bronze'), width: 5, alpha: 0.98 })
       row.addChild(iconFrame)
 
       const icon = new Sprite(Texture.WHITE)
       icon.anchor.set(0.5)
       icon.x = iconX
       icon.y = iconY
-      icon.width = 42
-      icon.height = 42
+      icon.width = 73
+      icon.height = 73
       row.addChild(icon)
 
       const name = new Text({
         text: '',
-        style: { fontSize: 21, fill: 0xeaf2ff, fontFamily: 'Arial', fontWeight: 'bold' },
+        style: { fontSize: 23, fill: 0xeaf2ff, fontFamily: 'Arial', fontWeight: 'bold' },
       })
-      name.x = -rowW / 2 + 64
-      name.y = 8
+      name.x = -rowW / 2 + 114
+      name.y = 10
       row.addChild(name)
 
       const triggerText = new Text({
         text: '',
-        style: { fontSize: 18, fill: 0xfff0bf, fontFamily: 'Arial', fontWeight: 'bold' },
+        style: { fontSize: 19, fill: 0xfff0bf, fontFamily: 'Arial', fontWeight: 'bold' },
       })
-      triggerText.x = barX + barW + 10
-      triggerText.y = 10
+      triggerText.anchor.set(0, 0)
+      triggerText.x = barX + barW + 12
+      triggerText.y = 12
       row.addChild(triggerText)
 
       const dmgBg = new Graphics()
-      dmgBg.roundRect(barX, 42, barW, barH, 6)
+      dmgBg.roundRect(barX, 52, barW, barH, 6)
       dmgBg.fill({ color: 0x2a3557, alpha: 1 })
       row.addChild(dmgBg)
 
@@ -249,14 +251,15 @@ export class BattleDamageStats {
 
       const damageText = new Text({
         text: '',
-        style: { fontSize: 18, fill: 0xffd6d6, fontFamily: 'Arial', fontWeight: 'bold' },
+        style: { fontSize: 19, fill: 0xffd6d6, fontFamily: 'Arial', fontWeight: 'bold' },
       })
-      damageText.x = barX + barW + 10
-      damageText.y = 34
+      damageText.anchor.set(0, 0)
+      damageText.x = barX + barW + 12
+      damageText.y = 44
       row.addChild(damageText)
 
       const shBg = new Graphics()
-      shBg.roundRect(barX, 62, barW, barH, 6)
+      shBg.roundRect(barX, 74, barW, barH, 6)
       shBg.fill({ color: 0x2a3557, alpha: 1 })
       row.addChild(shBg)
 
@@ -265,10 +268,11 @@ export class BattleDamageStats {
 
       const shieldText = new Text({
         text: '',
-        style: { fontSize: 18, fill: 0xd8ebff, fontFamily: 'Arial', fontWeight: 'bold' },
+        style: { fontSize: 19, fill: 0xd8ebff, fontFamily: 'Arial', fontWeight: 'bold' },
       })
-      shieldText.x = barX + barW + 10
-      shieldText.y = 54
+      shieldText.anchor.set(0, 0)
+      shieldText.x = barX + barW + 12
+      shieldText.y = 66
       row.addChild(shieldText)
 
       this.damageStatsRowsCon.addChild(row)
@@ -296,18 +300,18 @@ export class BattleDamageStats {
   }
 
   private updateDamageStatsRowView(view: DamageStatsRowView, rowIndex: number, stat: ItemBattleStat, maxStatValue: number): void {
-    const rowW = 520
-    const barW = 228
-    const barH = 13
-    const barX = -rowW / 2 + 64
-    const iconSide = 46
-    const iconX = -rowW / 2 + 36
-    const iconY = 88 / 2
+    const rowW = 540
+    const barW = 264
+    const barH = 14
+    const barX = -rowW / 2 + 114
+    const iconSide = 81
+    const iconX = -rowW / 2 + 18 + iconSide / 2
+    const iconY = 102 / 2
 
     view.iconFrame.clear()
     view.iconFrame.roundRect(iconX - iconSide / 2, iconY - iconSide / 2, iconSide, iconSide, 9)
     view.iconFrame.fill({ color: 0x1d2a45, alpha: 1 })
-    view.iconFrame.stroke({ color: getTierColor(stat.baseTier), width: 2, alpha: 0.98 })
+    view.iconFrame.stroke({ color: getTierColor(stat.baseTier), width: 5, alpha: 0.98 })
 
     view.icon.texture = Texture.from(getItemIconUrl(stat.defId))
     view.name.text = `${rowIndex + 1}. ${stat.itemName} ${tierCn(stat.baseTier)}Lv${stat.level}`
@@ -315,8 +319,8 @@ export class BattleDamageStats {
     view.damageText.text = `伤害 ${Math.round(stat.damage)}`
     view.shieldText.text = `护盾 ${Math.round(stat.shield)}`
 
-    this.updateFillBar(view.damageFill, barX, 42, barW, barH, 0xe95d5d, stat.damage / maxStatValue)
-    this.updateFillBar(view.shieldFill, barX, 62, barW, barH, Math.round(getDebugCfg('battleColorShield')), stat.shield / maxStatValue)
+    this.updateFillBar(view.damageFill, barX, 52, barW, barH, 0xe95d5d, stat.damage / maxStatValue)
+    this.updateFillBar(view.shieldFill, barX, 74, barW, barH, Math.round(getDebugCfg('battleColorShield')), stat.shield / maxStatValue)
   }
 
   private setDamageStatsTab(tab: 'player' | 'enemy', battlePresentationMs: number, engine: CombatEngine | null): void {
@@ -328,7 +332,7 @@ export class BattleDamageStats {
       const bg = btn.getChildAt(0)
       if (bg instanceof Graphics) {
         bg.clear()
-        bg.roundRect(-62, -20, 124, 40, 12)
+        bg.roundRect(-78, -28, 156, 56, 16)
         bg.fill({ color: active ? activeFill : idleFill, alpha: 0.95 })
         bg.stroke({ color: 0x8ab2ef, width: 2, alpha: 0.95 })
       }
@@ -342,13 +346,13 @@ export class BattleDamageStats {
   private makeStatsTabButton(label: string, tab: 'player' | 'enemy'): Container {
     const con = new Container()
     const bg = new Graphics()
-    bg.roundRect(-62, -20, 124, 40, 12)
+    bg.roundRect(-78, -28, 156, 56, 16)
     bg.fill({ color: 0x253455, alpha: 0.95 })
     bg.stroke({ color: 0x8ab2ef, width: 2, alpha: 0.95 })
     con.addChild(bg)
     const txt = new Text({
       text: label,
-      style: { fontSize: 20, fill: 0xe3edff, fontFamily: 'Arial', fontWeight: 'bold' },
+      style: { fontSize: 28, fill: 0xe3edff, fontFamily: 'Arial', fontWeight: 'bold' },
     })
     txt.anchor.set(0.5)
     con.addChild(txt)
@@ -433,25 +437,25 @@ export class BattleDamageStats {
 
     this.damageStatsTitleText = new Text({
       text: '战斗统计',
-      style: { fontSize: 28, fill: 0xffefc8, fontFamily: 'Arial', fontWeight: 'bold' },
+      style: { fontSize: 44, fill: 0xffefc8, fontFamily: 'Arial', fontWeight: 'bold' },
     })
     this.damageStatsTitleText.anchor.set(0.5, 0)
     this.damageStatsTitleText.x = 0
-    this.damageStatsTitleText.y = -panelH / 2 + 14
+    this.damageStatsTitleText.y = -panelH / 2 + 30
     panel.addChild(this.damageStatsTitleText)
 
     this.damageStatsTabPlayerBtn = this.makeStatsTabButton('我方', 'player')
-    this.damageStatsTabPlayerBtn.x = -70
-    this.damageStatsTabPlayerBtn.y = -panelH / 2 + 76
+    this.damageStatsTabPlayerBtn.x = -92
+    this.damageStatsTabPlayerBtn.y = panelH / 2 + 44
     panel.addChild(this.damageStatsTabPlayerBtn)
 
     this.damageStatsTabEnemyBtn = this.makeStatsTabButton('敌方', 'enemy')
-    this.damageStatsTabEnemyBtn.x = 70
-    this.damageStatsTabEnemyBtn.y = -panelH / 2 + 76
+    this.damageStatsTabEnemyBtn.x = 92
+    this.damageStatsTabEnemyBtn.y = panelH / 2 + 44
     panel.addChild(this.damageStatsTabEnemyBtn)
 
     this.damageStatsRowsCon = new Container()
-    this.damageStatsRowsCon.y = 34
+    this.damageStatsRowsCon.y = 20
     panel.addChild(this.damageStatsRowsCon)
 
     panel.x = CANVAS_W / 2

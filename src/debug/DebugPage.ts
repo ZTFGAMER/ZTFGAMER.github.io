@@ -31,6 +31,7 @@ const LAYOUT_POSITION_KEYS = [
   'battleBackBtnY',
   'battleSpeedBtnY',
   'battleStatsPanelY',
+  'battleItemInfoCenterY',
   'goldTextCenterX',
   'goldTextY',
   'shopPlayerStatusY',

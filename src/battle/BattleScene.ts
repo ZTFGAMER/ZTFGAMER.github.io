@@ -2,6 +2,7 @@ import type { Scene } from '@/core/SceneManager'
 import { PvpContext } from '@/pvp/PvpContext'
 import { clearBattleSnapshot, getBattleSnapshot } from './BattleSnapshotStore'
 import { clearBattleOutcome } from './BattleOutcomeStore'
+import { consumeRequestedBattleReplay, hasBattleReplayRecord, requestBattleReplay, saveBattleReplayRecord } from './BattleReplayStore'
 import { CombatEngine, setCombatRuntimeOverride, type CombatBoardItem } from './CombatEngine'
 import { SceneManager } from '@/core/SceneManager'
 import { getApp, getRenderRuntimeFlags } from '@/core/AppContext'
@@ -39,7 +40,7 @@ type HeroVisualId = typeof HERO_VISUAL_IDS[number]
 const IS_MOBILE_DEVICE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
 
 function randomHeroVisualId(): HeroVisualId {
-  return HERO_VISUAL_IDS[Math.floor(Math.random() * HERO_VISUAL_IDS.length)]!
+  return HERO_VISUAL_IDS[Math.floor(nextBattleRandom('hero_visual_pick') * HERO_VISUAL_IDS.length)]!
 }
 
 function readPlayerHeroVisualId(): HeroVisualId {
@@ -124,6 +125,7 @@ let playerCdOverlay: Graphics | null = null
 let engine: CombatEngine | null = null
 let offFireEvent: (() => void) | null = null
 let offTriggerEvent: (() => void) | null = null
+let offItemEffectTriggerEvent: (() => void) | null = null
 let offDamageEvent: (() => void) | null = null
 let offShieldEvent: (() => void) | null = null
 let offHealEvent: (() => void) | null = null
@@ -199,6 +201,34 @@ let battleRuntimeCallsAccum = 0
 let battleRuntimeCacheHitsAccum = 0
 let battleRuntimeFramesAccum = 0
 let battleLastTickIndexForPerf = -1
+let replayMode = false
+let replayRandomSourceValues: number[] | null = null
+let replayRandomCursor = 0
+let battleRandomValues: number[] = []
+let battleRandomTags: string[] = []
+let battleEnemyHeroVisualId: HeroVisualId | null = null
+let battleReplaySaved = false
+
+function resetBattleRandomSession(): void {
+  replayRandomCursor = 0
+  battleRandomValues = []
+  battleRandomTags = []
+}
+
+function nextBattleRandom(tag: string): number {
+  let value: number
+  if (replayRandomSourceValues && replayRandomCursor < replayRandomSourceValues.length) {
+    value = replayRandomSourceValues[replayRandomCursor++] ?? 0.5
+  } else {
+    value = Math.random()
+  }
+  if (!Number.isFinite(value)) value = 0.5
+  if (value < 0) value = 0
+  if (value >= 1) value = 0.999999
+  battleRandomValues.push(value)
+  battleRandomTags.push(tag)
+  return value
+}
 let battleRuntimePerfSnapshot: Partial<BattleFxPerfStats> = {}
 
 function clearBattleRuntimePerfSampleWindow(): void {
@@ -986,9 +1016,7 @@ function showFatigueToast(message: string, durationMs = 1300): void {
 }
 
 function getBattleInfoPanelCenterY(): number {
-  const top = getDebugCfg('enemyHpBarY') + getDebugCfg('battleHpBarH') * getEnemyHpBarScale() + 24
-  const bottom = getDebugCfg('playerHpBarY') - 24
-  return (top + bottom) / 2
+  return getDebugCfg('battleItemInfoCenterY')
 }
 
 function clearBattleItemSelection(): void {
@@ -1070,6 +1098,10 @@ export const BattleScene: Scene = {
   name: 'battle',
   async onEnter() {
     const { stage } = getApp()
+    const requestedReplay = consumeRequestedBattleReplay()
+    replayMode = requestedReplay != null
+    replayRandomSourceValues = requestedReplay ? [...requestedReplay.randomValues] : null
+    resetBattleRandomSession()
     const snapshot = getBattleSnapshot()
     if (!snapshot) {
       console.warn('[BattleScene] 缺少战斗快照，回退商店并尝试恢复进度')
@@ -1077,6 +1109,8 @@ export const BattleScene: Scene = {
       return
     }
     enteredSnapshot = snapshot
+    battleEnemyHeroVisualId = null
+    battleReplaySaved = false
     const cleanupCfg = getGameCfg().runRules?.battleCacheCleanup
     await purgeMobileBattleAssetCacheIfEnabled()
     if (cleanupCfg?.enabled && cleanupCfg?.forceTextureGcOnBattleEnter) runRendererTextureGcNow()
@@ -1086,6 +1120,7 @@ export const BattleScene: Scene = {
     chargeUiElapsedSinceTickMs = 0
     ammoReloadUiElapsedSinceTickMs = 0
     fxPool.sourceNextDamageVisualAtMs.clear()
+    fxPool.setRandomProvider(() => nextBattleRandom('fx_random'))
     battleSpeed = 1
     lastHudTickIndex = -1
     monitorSampleElapsedMs = 0
@@ -1159,14 +1194,14 @@ export const BattleScene: Scene = {
 
     portraitFX.enemyBossSprite = new Sprite(Texture.WHITE)
     portraitFX.enemyBossSprite.anchor.set(0.5, 1)
-    portraitFX.enemyBossSprite.zIndex = 30
+    portraitFX.enemyBossSprite.zIndex = 8
     portraitFX.enemyBossSprite.eventMode = 'none'
     portraitFX.enemyBossSprite.visible = true
     root.addChild(portraitFX.enemyBossSprite)
 
     portraitFX.enemyBossFlashSprite = new Sprite(Texture.WHITE)
     portraitFX.enemyBossFlashSprite.anchor.set(0.5, 1)
-    portraitFX.enemyBossFlashSprite.zIndex = 31
+    portraitFX.enemyBossFlashSprite.zIndex = 9
     portraitFX.enemyBossFlashSprite.eventMode = 'none'
     portraitFX.enemyBossFlashSprite.visible = true
     portraitFX.enemyBossFlashSprite.tint = 0xffffff
@@ -1176,14 +1211,14 @@ export const BattleScene: Scene = {
 
     portraitFX.playerHeroSprite = new Sprite(Texture.WHITE)
     portraitFX.playerHeroSprite.anchor.set(0.5, 1)
-    portraitFX.playerHeroSprite.zIndex = 10
+    portraitFX.playerHeroSprite.zIndex = 6
     portraitFX.playerHeroSprite.eventMode = 'none'
     portraitFX.playerHeroSprite.visible = true
     root.addChild(portraitFX.playerHeroSprite)
 
     portraitFX.playerHeroFlashSprite = new Sprite(Texture.WHITE)
     portraitFX.playerHeroFlashSprite.anchor.set(0.5, 1)
-    portraitFX.playerHeroFlashSprite.zIndex = 11
+    portraitFX.playerHeroFlashSprite.zIndex = 7
     portraitFX.playerHeroFlashSprite.eventMode = 'none'
     portraitFX.playerHeroFlashSprite.visible = true
     portraitFX.playerHeroFlashSprite.tint = 0xffffff
@@ -1195,9 +1230,13 @@ export const BattleScene: Scene = {
       const snap = getBattleSnapshot()
       const pvpEnemyHeroId = snap?.pvpEnemyHeroId
       const isPvpRealBattle = PvpContext.isActive()
-      const enemyHeroId = isPvpRealBattle && pvpEnemyHeroId && (HERO_VISUAL_IDS as readonly string[]).includes(pvpEnemyHeroId)
+      const replayEnemyHeroId = replayMode && requestedReplay && (HERO_VISUAL_IDS as readonly string[]).includes(requestedReplay.enemyHeroId)
+        ? requestedReplay.enemyHeroId as HeroVisualId
+        : null
+      const enemyHeroId = replayEnemyHeroId || (isPvpRealBattle && pvpEnemyHeroId && (HERO_VISUAL_IDS as readonly string[]).includes(pvpEnemyHeroId)
         ? pvpEnemyHeroId as HeroVisualId
-        : randomHeroVisualId()
+        : randomHeroVisualId())
+      battleEnemyHeroVisualId = enemyHeroId
       const tex = await Assets.load<Texture>(getHeroImageUrl(`${enemyHeroId}.png`))
       if (portraitFX.enemyBossSprite) {
         portraitFX.enemyBossSprite.texture = tex
@@ -1362,6 +1401,11 @@ export const BattleScene: Scene = {
         clearBattleOutcome()
         window.location.reload()
       },
+      () => {
+        if (!hasBattleReplayRecord()) return
+        if (!requestBattleReplay()) return
+        SceneManager.goto('battle')
+      },
       () => transition.battleExitTransitionDurationMs > 0,
     )
     const settlementStatsBtnNew = damageStats.buildSettlementButton(() => {
@@ -1438,11 +1482,14 @@ export const BattleScene: Scene = {
 
     offTriggerEvent = EventBus.on('battle:item_trigger', (e) => {
       fxPool.tryPulseItem(e.sourceItemId, e.side)
-      damageStats.addTriggerCount(e.sourceItemId, e.side, Math.max(1, Math.round(e.triggerCount || 1)), engine)
+      damageStats.addTriggerCount(e.sourceItemId, e.side, Math.max(1, Math.round(e.multicast || e.triggerCount || 1)), engine)
     })
 
     offFireEvent = EventBus.on('battle:item_fire', (e) => {
       fxPool.tryPulseItem(e.sourceItemId, e.side)
+    })
+    offItemEffectTriggerEvent = EventBus.on('battle:item_effect_trigger', (e) => {
+      damageStats.addTriggerCount(e.sourceItemId, e.side, Math.max(1, Math.round(e.triggerCount || 1)), engine)
     })
     offItemDestroyEvent = EventBus.on('battle:item_destroy', (e) => {
       const catchUp = markVisualEventTick()
@@ -1695,6 +1742,7 @@ export const BattleScene: Scene = {
     skillUI = null
     offTriggerEvent?.(); offTriggerEvent = null
     offFireEvent?.(); offFireEvent = null
+    offItemEffectTriggerEvent?.(); offItemEffectTriggerEvent = null
     offDamageEvent?.(); offDamageEvent = null
     offShieldEvent?.(); offShieldEvent = null
     offHealEvent?.(); offHealEvent = null
@@ -1729,6 +1777,7 @@ export const BattleScene: Scene = {
     enteredSnapshot = null
     battleSpeed = 1
     fxPool.reset()
+    fxPool.setRandomProvider(null)
     const cleanupCfg = getGameCfg().runRules?.battleCacheCleanup
     if (cleanupCfg?.enabled && cleanupCfg?.forceTextureGcOnBattleExit) runRendererTextureGcNow()
     visualFxQueue = []
@@ -1746,6 +1795,13 @@ export const BattleScene: Scene = {
     battleRuntimePerfSnapshot = {}
     battleLastTickIndexForPerf = -1
     appliedActiveCols = -1
+    replayMode = false
+    replayRandomSourceValues = null
+    replayRandomCursor = 0
+    battleRandomValues = []
+    battleRandomTags = []
+    battleEnemyHeroVisualId = null
+    battleReplaySaved = false
     // PVP sync cleanup
     syncAStarted = false
     earlyReportDone = false
@@ -1781,7 +1837,7 @@ export const BattleScene: Scene = {
     consumeVisualFxQueue(dtMs)
     const queueConsumeCostMs = performance.now() - queueConsumeStartMs
     const pendingDamageImpactFx = fxPool.hasPendingDamageImpactPresentation()
-    enemyPresentationVisible = !engine.isFinished() || pendingDamageImpactFx
+    enemyPresentationVisible = true
     enemyZone.visible = enemyPresentationVisible
     if (portraitFX.enemyBossSprite) portraitFX.enemyBossSprite.visible = enemyPresentationVisible
     if (portraitFX.enemyBossFlashSprite) portraitFX.enemyBossFlashSprite.visible = enemyPresentationVisible
@@ -1932,13 +1988,25 @@ export const BattleScene: Scene = {
           if (!pendingDamageImpactFx) {
             const extraDelayMs = Math.max(0, getDebugCfg('battleSettlementDelayMs'))
             if (settlementRevealAtMs === null) settlementRevealAtMs = battlePresentationMs + extraDelayMs
-            if (battlePresentationMs >= settlementRevealAtMs) settlement.resolve(battleDay, engine)
+            if (battlePresentationMs >= settlementRevealAtMs) {
+              settlement.resolve(battleDay, engine, { applyRunState: !replayMode })
+            }
           } else {
             settlementRevealAtMs = null
           }
         }
+        if (settlement.isResolved() && !battleReplaySaved && enteredSnapshot && battleEnemyHeroVisualId) {
+          saveBattleReplayRecord({
+            snapshot: enteredSnapshot,
+            enemyHeroId: battleEnemyHeroVisualId,
+            randomValues: [...battleRandomValues],
+            randomTags: [...battleRandomTags],
+            createdAtMs: Date.now(),
+          })
+          battleReplaySaved = true
+        }
         // PVP：结算面板首次显示时立即提前上报本轮结果，不等待按钮点击
-        if (settlement.isResolved() && PvpContext.isActive() && !earlyReportDone) {
+        if (settlement.isResolved() && PvpContext.isActive() && !replayMode && !earlyReportDone) {
           earlyReportDone = true
           PvpContext.reportBattleResultEarly(battleDay)
           // reportBattleResultEarly 可能同步触发场景切换（如被淘汰时）导致 teardown 执行

@@ -222,6 +222,19 @@ export class BattleFXPool {
   private transientProjectileTextureUrls = new Set<string>()
   private textureLoadEpoch = 0
   private statusFxByKey = new Map<string, StatusFx>()
+  private randomProvider: () => number = () => Math.random()
+
+  setRandomProvider(provider: (() => number) | null | undefined): void {
+    this.randomProvider = provider ?? (() => Math.random())
+  }
+
+  private nextRandom(): number {
+    const n = this.randomProvider()
+    if (!Number.isFinite(n)) return 0.5
+    if (n >= 1) return 0.999999
+    if (n < 0) return 0
+    return n
+  }
 
   setContext(
     fxLayer: Container,
@@ -582,7 +595,7 @@ export class BattleFXPool {
     const durationMin = Math.min(durationMinRaw, durationMaxRaw)
     const durationMax = Math.max(durationMinRaw, durationMaxRaw)
     const duration = durationMax > durationMin
-      ? durationMin + Math.random() * (durationMax - durationMin)
+      ? durationMin + this.nextRandom() * (durationMax - durationMin)
       : durationMin
     const arcH = forceLinearFlight ? 0 : getDebugCfg('battleProjectileArcHeight')
     const sideArcMax = Math.max(0, getDebugCfg('battleProjectileSideArcMax'))
@@ -591,8 +604,8 @@ export class BattleFXPool {
     const dist = Math.max(1, Math.hypot(dx, dy))
     const nx = -dy / dist
     const ny = dx / dist
-    const sideArcSign = Math.random() < 0.5 ? -1 : 1
-    const sideArcAmplitude = forceLinearFlight ? 0 : sideArcSign * (Math.random() * sideArcMax)
+    const sideArcSign = this.nextRandom() < 0.5 ? -1 : 1
+    const sideArcAmplitude = forceLinearFlight ? 0 : sideArcSign * (this.nextRandom() * sideArcMax)
     const scaleStart = useSprite ? getDebugCfg('battleProjectileScaleStart') : 1
     const scalePeak = useSprite ? getDebugCfg('battleProjectileScalePeak') : 1
     const scaleEnd = useSprite ? getDebugCfg('battleProjectileScaleEnd') : 1
@@ -640,7 +653,7 @@ export class BattleFXPool {
     const actualFontSize = fontSize ?? getDebugCfg('battleHpTextFontSize')
     const t = this.acquireFloatingNumber(text, color, actualFontSize)
     const randomX = getDebugCfg('battleDamageFloatRandomX')
-    t.x = to.x - t.width / 2 + (Math.random() * 2 - 1) * randomX
+    t.x = to.x - t.width / 2 + (this.nextRandom() * 2 - 1) * randomX
     t.y = to.y - t.height / 2
     this.fxLayer.addChild(t)
 

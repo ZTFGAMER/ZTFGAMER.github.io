@@ -336,9 +336,11 @@ export class DragController {
     const isLogicalSameZone = targetPair === home
 
     if (targetPair.system.getActiveRows() > 1 && targetPair === home) {
-      const handled = this.tryDropToBackpack(targetPair, home, item, container, finalRow, cell.col)
-      if (!handled) this.doSnapBack()
-      return
+      const canDropInSameBackpack = this.canPlaceInVisibleCols(targetPair, cell.col, finalRow, item.size, id)
+      if (!canDropInSameBackpack) {
+        this.doSnapBack()
+        return
+      }
     }
 
     const canDrop  = this.canPlaceInVisibleCols(targetPair, cell.col, finalRow, item.size, id)
@@ -664,65 +666,6 @@ export class DragController {
     this.onDragEnd()
   }
 
-  private tryDropToBackpack(
-    targetPair: ZonePair,
-    home: ZonePair,
-    item: { instanceId: string; defId: string; size: ItemSizeNorm },
-    container: Container,
-    preferredRow: number,
-    preferredCol: number,
-  ): boolean {
-    const plan = this.backpackLogic.buildDropPlan(
-      targetPair.system,
-      targetPair.view.activeColCount,
-      {
-        instanceId: item.instanceId,
-        defId: item.defId,
-        size: item.size,
-      },
-      { col: preferredCol, row: preferredRow },
-    )
-    if (!plan) return false
-
-    this.clearSqueezePreview()
-    this.dragContainer = null
-
-    home.system.remove(item.instanceId)
-    const moved = this.backpackLogic.applyDropPlan(targetPair.system, plan)
-
-    const squeezeMs = getConfig('squeezeMs')
-    for (const mv of moved) {
-      if (mv.instanceId === item.instanceId) continue
-      targetPair.view.animateToCell(mv.instanceId, mv.toCol, mv.toRow, squeezeMs)
-    }
-
-    if (targetPair !== home) {
-      const draggedTier = home.view.getItemTier(item.instanceId)
-      this.dragLayer.removeChild(container)
-      container.destroy({ children: true })
-      home.view.forgetDraggedItem(item.instanceId)
-      targetPair.view.addItem(
-        item.instanceId,
-        item.defId,
-        item.size,
-        plan.incoming.col,
-        plan.incoming.row,
-        draggedTier,
-        { playAcquireFx: false },
-      ).then(() => {
-        targetPair.view.setItemTier(item.instanceId, draggedTier)
-        this.onItemPlaced({ view: targetPair.view, instanceId: item.instanceId })
-        this.refreshZone(targetPair.view)
-      })
-    } else {
-      this.dragLayer.removeChild(container)
-      home.view.snapToCellFromDrag(item.instanceId, container, plan.incoming.col, plan.incoming.row)
-    }
-
-    this.onDragEnd()
-    return true
-  }
-
   // ---- 高亮层 ----
 
   private updateHighlight(): void {
@@ -756,19 +699,10 @@ export class DragController {
       const isLogicalSameZone = pair === this.homeZone
       if (pair.system.getActiveRows() > 1 && pair === this.homeZone) {
         this.clearSqueezePreview()
-        const plan = this.backpackLogic.buildDropPlan(
-          pair.system,
-          pair.view.activeColCount,
-          {
-            instanceId: this.activeId,
-            defId: item.defId,
-            size: item.size,
-          },
-          { col: cell.col, row: finalRow },
-        )
+        const canDropInSameBackpack = this.canPlaceInVisibleCols(pair, cell.col, finalRow, item.size, this.activeId)
         for (const other of this.pairs)
           if (other !== pair) other.view.clearHighlight()
-        pair.view.highlightCells(cell.col, finalRow, item.size, !!plan)
+        pair.view.highlightCells(cell.col, finalRow, item.size, canDropInSameBackpack)
         return
       }
       const canDrop  = this.canPlaceInVisibleCols(pair, cell.col, finalRow, item.size, this.activeId)

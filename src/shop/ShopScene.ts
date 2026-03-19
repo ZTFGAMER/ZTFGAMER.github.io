@@ -34,7 +34,7 @@ import { clearBattleOutcome, consumeBattleOutcome } from '@/battle/BattleOutcome
 // bronzeSkillConfig, silverSkillConfig, goldSkillConfig imports moved to SkillSystem.ts
 // shouldTriggerSkill48ExtraUpgrade → moved to ShopSynthesisController.ts
 import {
-  Container, Graphics, Text,
+  Container, Graphics, Text, Sprite, Assets, Texture,
   Ticker,
   type FederatedPointerEvent,
 } from 'pixi.js'
@@ -113,6 +113,7 @@ import {
 } from './ui/ShopAnimationEffects'
 import { CANVAS_W } from '@/config/layoutConstants'
 import { getShopUiColor, getClassColor } from '@/config/colorPalette'
+import { getItemIconUrl } from '@/core/AssetPath'
 import {
   getSpecialShopSimpleDesc, getSpecialShopDetailDesc,
   setZoneItemAmmo,
@@ -197,6 +198,171 @@ function updateFpsHud(dt: number): void {
 
 function getItemDefByCn(nameCn: string): ItemDef | null {
   return getAllItems().find((it) => it.name_cn === nameCn) ?? null
+}
+
+function getItemDefByAnyCn(names: string[]): ItemDef | null {
+  for (const name of names) {
+    const hit = getItemDefByCn(name)
+    if (hit) return hit
+  }
+  return null
+}
+
+function shouldShowBasicSynthesisGuide(ctx: ShopSceneCtx = _ctx): boolean {
+  const enabled = getConfig().shopRules?.showBasicSynthesisGuideOnOneRow === true
+  if (!enabled) return false
+  return getBackpackRowsByDay(ctx.currentDay) === 1
+}
+
+function createSynthesisGuideItemCard(
+  parent: Container,
+  x: number,
+  y: number,
+  defId: string,
+  levelText: string,
+): void {
+  const def = getItemDefById(defId)
+  if (!def) return
+  const archetype = getPrimaryArchetype(def.tags)
+  const archetypeColor = getClassColor(archetype ?? '中立')
+
+  const card = new Container()
+  card.x = x
+  card.y = y
+
+  const border = new Graphics()
+  border.roundRect(-44, -44, 88, 88, 16)
+  border.fill({ color: 0x0d1426, alpha: 0.96 })
+  border.stroke({ color: archetypeColor, width: 6, alpha: 0.98 })
+  card.addChild(border)
+
+  const levelBadge = new Graphics()
+  const badgeW = Math.max(42, levelText.length * 20 + 16)
+  levelBadge.roundRect(-badgeW / 2, -66, badgeW, 34, 9)
+  levelBadge.fill({ color: archetypeColor, alpha: 0.95 })
+  levelBadge.stroke({ color: 0x0a1020, width: 2, alpha: 0.95 })
+  card.addChild(levelBadge)
+
+  const levelLabel = new Text({
+    text: levelText,
+    style: { fontSize: 24, fill: 0xffffff, fontFamily: 'Arial', fontWeight: 'bold', stroke: { color: 0x000000, width: 3 } },
+  })
+  levelLabel.anchor.set(0.5)
+  levelLabel.y = -49
+  card.addChild(levelLabel)
+
+  const icon = new Sprite(Texture.WHITE)
+  icon.anchor.set(0.5)
+  icon.width = 56
+  icon.height = 56
+  icon.alpha = 0
+  card.addChild(icon)
+  void Assets.load<Texture>(getItemIconUrl(defId)).then((tex) => {
+    if (!icon.parent) return
+    icon.texture = tex
+    icon.alpha = 1
+  }).catch(() => undefined)
+  parent.addChild(card)
+}
+
+function buildBasicSynthesisGuide(stage: Container, ctx: ShopSceneCtx = _ctx): void {
+  basicSynthesisGuideCon?.destroy({ children: true })
+  basicSynthesisGuideCon = new Container()
+  basicSynthesisGuideCon.x = CANVAS_W / 2
+  basicSynthesisGuideCon.y = 310
+  basicSynthesisGuideCon.zIndex = 26
+  basicSynthesisGuideCon.eventMode = 'none'
+
+  const panel = new Graphics()
+  panel.roundRect(-272, -162, 544, 324, 22)
+  panel.fill({ color: 0x171b2c, alpha: 0.84 })
+  panel.stroke({ color: 0x7ea7ff, width: 3, alpha: 0.98 })
+  basicSynthesisGuideCon.addChild(panel)
+
+  const divider = new Graphics()
+  divider.moveTo(-240, 0)
+  divider.lineTo(240, 0)
+  divider.stroke({ color: 0x5b6790, width: 2, alpha: 0.9 })
+  basicSynthesisGuideCon.addChild(divider)
+
+  const sword = getItemDefByAnyCn(['短剑'])?.id
+  const shield = getItemDefByAnyCn(['圆盾'])?.id
+  const otherColorResult = getItemDefByAnyCn(['连发镖', '匕首'])?.id
+
+  const makeEquationRow = (
+    centerY: number,
+    label: string,
+    leftDefId: string,
+    rightDefId: string,
+    resultDefId: string,
+    resultLevelText: string,
+  ): void => {
+    const leftCardX = -172
+    const rightInputCardX = -32
+    const resultCardX = 168
+    const plusX = (leftCardX + rightInputCardX) / 2
+    const equalX = (rightInputCardX + resultCardX) / 2
+    const labelY = -48
+    const cardY = 20
+
+    const row = new Container()
+    row.y = centerY
+
+    const labelText = new Text({
+      text: label,
+      style: {
+        fontSize: 17,
+        fill: 0xdce8ff,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        align: 'center',
+        stroke: { color: 0x0b1222, width: 2 },
+      },
+    })
+    labelText.anchor.set(0.5)
+    labelText.y = labelY
+    row.addChild(labelText)
+
+    createSynthesisGuideItemCard(row, leftCardX, cardY, leftDefId, '1')
+
+    const plus = new Text({
+      text: '+',
+      style: { fontSize: 34, fill: 0x8ec6ff, fontFamily: 'Arial', fontWeight: 'bold', stroke: { color: 0x0b1933, width: 3 } },
+    })
+    plus.anchor.set(0.5)
+    plus.x = plusX
+    plus.y = cardY
+    row.addChild(plus)
+
+    createSynthesisGuideItemCard(row, rightInputCardX, cardY, rightDefId, '1')
+
+    const equal = new Text({
+      text: '=',
+      style: { fontSize: 44, fill: 0x8ec6ff, fontFamily: 'Arial', fontWeight: 'bold', stroke: { color: 0x0b1933, width: 3 } },
+    })
+    equal.anchor.set(0.5)
+    equal.x = equalX
+    equal.y = cardY
+    row.addChild(equal)
+
+    createSynthesisGuideItemCard(row, resultCardX, cardY, resultDefId, resultLevelText)
+    basicSynthesisGuideCon?.addChild(row)
+  }
+
+  if (sword) {
+    makeEquationRow(-80, '相同物品合成➡️升级', sword, sword, sword, '2')
+  }
+  if (sword && shield && otherColorResult) {
+    makeEquationRow(80, '相同颜色物品合成➡️升级为其他颜色物品', sword, shield, otherColorResult, '2')
+  }
+
+  basicSynthesisGuideCon.visible = shouldShowBasicSynthesisGuide(ctx)
+  stage.addChild(basicSynthesisGuideCon)
+}
+
+function refreshBasicSynthesisGuideVisibility(ctx: ShopSceneCtx = _ctx): void {
+  if (!basicSynthesisGuideCon) return
+  basicSynthesisGuideCon.visible = shouldShowBasicSynthesisGuide(ctx)
 }
 
 function isStarterRunTutorialEnabled(ctx: ShopSceneCtx = _ctx): boolean {
@@ -570,6 +736,7 @@ let neutralItemPanel: NeutralItemPanel | null = null
 
 // ---- SynthesisPanel 面板實例（onEnter 初始化，onExit 清理）----
 let synthesisPanel: SynthesisPanel | null = null
+let basicSynthesisGuideCon: Container | null = null
 
 // ---- 布局常量（640×1384 画布，CANVAS_W/H/BTN_RADIUS/BACKPACK_GAP_FROM_BATTLE 来自 layoutConstants）----
 
@@ -1743,6 +1910,7 @@ function setDay(day: number, ctx: ShopSceneCtx = _ctx): void {
   }
   const newCols = getDayActiveCols(ctx.currentDay)
   const newBackpackRows = getBackpackRowsByDay(ctx.currentDay)
+  refreshBasicSynthesisGuideVisibility(ctx)
 
   if (ctx.backpackSystem) ctx.backpackSystem.setActiveRows(newBackpackRows)
   if (ctx.backpackView) ctx.backpackView.setActiveRowCount(newBackpackRows)
@@ -1948,6 +2116,8 @@ export const ShopScene: Scene = {
 
     buildTopAreaUI(stage, cfg)
 
+    buildBasicSynthesisGuide(stage)
+
     buildBattleZoneUI(stage, cfg)
 
     buildButtonRowUI(stage, cfg)
@@ -2099,6 +2269,9 @@ export const ShopScene: Scene = {
     resetDrag()
 
     if (_ctx.shopPanel)    { stage.removeChild(_ctx.shopPanel); _ctx.shopPanel.destroy({ children: true }); _ctx.shopPanel = null }
+    if (basicSynthesisGuideCon?.parent) basicSynthesisGuideCon.parent.removeChild(basicSynthesisGuideCon)
+    basicSynthesisGuideCon?.destroy({ children: true })
+    basicSynthesisGuideCon = null
     if (fpsHudText?.parent) fpsHudText.parent.removeChild(fpsHudText)
     fpsHudText?.destroy()
     fpsHudText = null

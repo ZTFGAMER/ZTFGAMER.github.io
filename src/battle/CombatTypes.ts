@@ -119,6 +119,7 @@ export interface PendingAmmoRefill {
   targetItemId: string
   gainAmmo: number
   chargeMs: number
+  triggerCount?: number
 }
 
 export interface CombatStartOptions {

@@ -231,6 +231,7 @@ export interface GameConfig {
     }>
   }
   shopRules?: {
+    showBasicSynthesisGuideOnOneRow?: boolean
     ammoSupportRequiresAmmoOwned?: boolean
     ammoSupportItemNames?: string[]
     day1ThirdItemMatchExistingArchetype?: boolean

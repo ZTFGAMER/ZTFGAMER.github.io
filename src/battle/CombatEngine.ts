@@ -1107,7 +1107,16 @@ export class CombatEngine {
     for (const one of due) {
       const target = this.state.items.find((it) => it.id === one.targetItemId)
       if (!target) continue
-      this.refillAmmoAndTriggerGrowth(target, one.gainAmmo)
+      const actualGained = this.refillAmmoAndTriggerGrowth(target, one.gainAmmo)
+      if (actualGained > 0) {
+        const source = this.state.items.find((it) => it.id === one.sourceItemId)
+        EventBus.emit('battle:item_effect_trigger', {
+          sourceItemId: one.sourceItemId,
+          side: source?.side ?? target.side,
+          effect: 'ammo_refill',
+          triggerCount: Math.max(1, Math.round(one.triggerCount ?? 1)),
+        })
+      }
       if (one.chargeMs > 0) this.chargeItemByMs(target, one.chargeMs)
     }
   }

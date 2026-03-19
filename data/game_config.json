@@ -1652,6 +1652,7 @@
     "desc": "商店随机规则",
     "desc_en": "Shop randomization rules",
     "value": {
+      "showBasicSynthesisGuideOnOneRow": false,
       "ammoSupportRequiresAmmoOwned": true,
       "ammoSupportItemNames": [
         "弹药袋"
