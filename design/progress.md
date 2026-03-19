@@ -1,5 +1,25 @@
 # 大巴扎 — 开发进度记录
 
+## 交付执行（2026-03-19，main/tdgame 同步 + TF + Android）
+
+- 用户指令：同步 Git（`main` 与 `tdgame` 都上传），然后打 TF 包与 Android 包。
+- 已完成：
+  - Git：
+    - `main` 提交并推送：`f09692f`（优化拖拽出售反馈并强化快捷奖励引导提示）；
+    - `tdgame` fast-forward 合并 `main` 到同一提交并推送成功。
+  - iOS TestFlight：
+    - 执行 `npm run release:tf` 成功；
+    - 标记：`ARCHIVE SUCCEEDED`、`EXPORT SUCCEEDED`、`Upload succeeded`；
+    - 构建号：`119 -> 120`；
+    - IPA：`ios/build/export-testflight/App.ipa`。
+  - Android：
+    - 执行 `build:android-web` + `android:sync` + `bundleRelease` 成功；
+    - 产物：`android/app/build/outputs/bundle/release/app-release.aab`；
+    - Gradle 结果：`BUILD SUCCESSFUL`。
+- 备注：
+  - Android sync 仍提示 `@capacitor/core@8.2.0` 与 `@capacitor/android@8.1.0` 版本不一致（当前不阻塞打包）。
+- 当前阶段：等待用户在 TestFlight 与 Play Console 侧验收构建处理状态。
+
 ## 中立物品丢弃区提示文案（2026-03-19）
 
 - 用户需求：所有中立物品拖拽到丢弃区域时，下方提示应明确显示“丢弃无法获得金币”。
