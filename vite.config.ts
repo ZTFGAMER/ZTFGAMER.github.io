@@ -22,7 +22,6 @@ function debugDefaultsSavePlugin(): Plugin {
             const payload = JSON.parse(raw) as { snapshot?: Record<string, number> }
             const snapshot = payload.snapshot
             if (!snapshot || typeof snapshot !== 'object') throw new Error('invalid_snapshot')
-
             const targetPath = resolve(__dirname, 'data/debug_defaults.json')
             const text = `${JSON.stringify(snapshot, null, 2)}\n`
             await fs.writeFile(targetPath, text, 'utf-8')
@@ -65,7 +64,7 @@ export default defineConfig({
   server: {
     host: '0.0.0.0', // 局域网手机调试
     port: 5173,
-    allowedHosts: 'all',
+    allowedHosts: true,
     hmr: {
       host: 'localhost', // 桌面浏览器 HMR 走 localhost，手机调试不受影响
       port: 5173,

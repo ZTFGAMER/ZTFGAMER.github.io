@@ -1,4 +1,4 @@
-import { Container, Graphics, Sprite, Text, Texture } from 'pixi.js'
+import { Assets, Container, Graphics, Sprite, Text, Texture } from 'pixi.js'
 import { getConfig as getDebugCfg } from '@/config/debugConfig'
 import { getAllItems, getConfig as getGameCfg } from '@/core/DataLoader'
 import { getTierColor } from '@/config/colorPalette'
@@ -107,6 +107,9 @@ export class BattleDamageStats {
   private statsBtnText: Text | null = null
   private damageStatsRowViews: DamageStatsRowView[] = []
   private damageStatsEmptyText: Text | null = null
+  private damageStatsRowIconDefIds: string[] = []
+  private damageStatsIconTextureByDefId = new Map<string, Texture>()
+  private damageStatsIconLoadPendingByDefId = new Set<string>()
 
   // ---- private helpers ----
 
@@ -287,6 +290,7 @@ export class BattleDamageStats {
         shieldFill,
         shieldText,
       })
+      this.damageStatsRowIconDefIds.push('')
     }
   }
 
@@ -313,7 +317,25 @@ export class BattleDamageStats {
     view.iconFrame.fill({ color: 0x1d2a45, alpha: 1 })
     view.iconFrame.stroke({ color: getTierColor(stat.baseTier), width: 5, alpha: 0.98 })
 
-    view.icon.texture = Texture.from(getItemIconUrl(stat.defId))
+    const iconDefId = stat.defId || 'item1'
+    const prevIconDefId = this.damageStatsRowIconDefIds[rowIndex] ?? ''
+    this.damageStatsRowIconDefIds[rowIndex] = iconDefId
+    const cachedTex = this.damageStatsIconTextureByDefId.get(iconDefId)
+    if (cachedTex && view.icon.texture !== cachedTex) {
+      view.icon.texture = cachedTex
+    }
+    if (prevIconDefId !== iconDefId && !cachedTex && !this.damageStatsIconLoadPendingByDefId.has(iconDefId)) {
+      this.damageStatsIconLoadPendingByDefId.add(iconDefId)
+      const iconUrl = getItemIconUrl(iconDefId)
+      void Assets.load<Texture>(iconUrl).then((tex) => {
+        this.damageStatsIconTextureByDefId.set(iconDefId, tex)
+        this.damageStatsDirty = true
+      }).catch(() => {
+        // ignore runtime missing icon
+      }).finally(() => {
+        this.damageStatsIconLoadPendingByDefId.delete(iconDefId)
+      })
+    }
     view.name.text = `${rowIndex + 1}. ${stat.itemName} ${tierCn(stat.baseTier)}Lv${stat.level}`
     view.triggerText.text = `触发 ${Math.max(0, Math.round(stat.triggerCount))}次`
     view.damageText.text = `伤害 ${Math.round(stat.damage)}`
@@ -564,6 +586,9 @@ export class BattleDamageStats {
     this.damageStatsTabEnemyBtn = null
     this.statsBtnText = null
     this.damageStatsRowViews = []
+    this.damageStatsRowIconDefIds = []
+    this.damageStatsIconTextureByDefId.clear()
+    this.damageStatsIconLoadPendingByDefId.clear()
     this.damageStatsEmptyText = null
   }
 

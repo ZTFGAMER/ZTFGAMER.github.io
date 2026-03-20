@@ -1,5 +1,278 @@
 # 大巴扎 — 开发进度记录
 
+## 战车模式物品比例与 URL 特殊参数（2026-03-19）
+
+- 用户需求：
+  - 战车模式物品宽高比改为 `366:200`；
+  - 背包布局按新尺寸调整；
+  - 新增网页参数“战车特殊配置”，支持配置背包行/列。
+- 已完成：
+  - `src/chariot/common/grid/GridZone.ts`
+    - 战车格子高宽比改为固定 `200/366`（`CELL_HEIGHT = CELL_SIZE * 200/366`）。
+  - `src/chariot/core/ChariotSpecialConfig.ts`（新增）
+    - 新增 URL 参数解析：
+      - 单参数：`chariotSpecial`（支持 JSON 或 `rows:2,cols:6` 形式）
+      - 兼容参数：`chariotBackpackRows` / `chariotBackpackCols`
+  - `src/chariot/shop/ShopMathHelpers.ts`
+    - `getBackpackRowsByDay` 支持 URL 覆盖；
+    - 新增 `getBackpackCols`，支持 URL 覆盖。
+  - `src/chariot/shop/ui/ShopBattleZoneBuilder.ts`
+    - 初始化背包列数改为读取 `getBackpackCols()`。
+  - `src/chariot/shop/ShopScene.ts`
+    - `setDay` 时同步刷新背包可见列数（`setActiveColCount(getBackpackCols())`）。
+- 示例：
+  - `?chariotSpecial={"rows":2,"cols":6}`
+  - `?chariotSpecial=rows:2,cols:6`
+  - `?chariotBackpackRows=2&chariotBackpackCols=6`
+- 验证：`npm run build` 通过。
+
+## 战车模式精简为4物品并新增法师职业色（2026-03-20）
+
+- 用户需求：战车模式仅保留 4 个物品，删除其余全部物品；这 4 个物品职业各不相同，并新增“法师”职业（紫色）。
+- 已完成：
+  - `data/chariot_items.json`
+    - 全量精简为仅 4 条物品数据（其余已删除）；
+    - 四个物品职业分别设为：
+      - `流浪汉收容所` → 刺客
+      - `非法脑机网吧` → 战士
+      - `流浪猫发电机` → 法师
+      - `辐射变异鸡窝` → 弓手
+  - `src/chariot/config/colorPalette.ts`
+    - 新增法师职业色分支：`法师/Mage -> 0xb26cff`（紫色）。
+  - `src/chariot/shop/ShopScene.ts`
+    - 角标职业显示新增法师分支（避免法师被显示成中立）。
+  - `src/chariot/common/ui/ItemStatBadges.ts`
+    - 职业徽标系统新增 `mage/法师` 解析、标签与紫色徽标；修复法师物品不显示顶部等级徽标问题。
+  - `src/chariot/common/grid/GridZone.ts`
+    - 物品边框职业判定新增 `法师`，确保法师物品边框与职业显示一致，不再按中立回退。
+  - `src/chariot/shop/systems/ShopHeroSystem.ts`
+    - 起始赠送与推荐物品名称调整为现存 4 物品；
+    - 引导卡片职业色识别新增“法师/mage”。
+  - `data/chariot_game_config.json`
+    - 首轮固定物品池改为这 4 个；
+    - 清空与旧弹药体系耦合的 `ammoSupportItemNames/itemPrerequisites`，避免引用已删除物品。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“仅4物品池 + 法师紫色职业表现 + 开局流程可正常进入”。
+
+## 战车模式4个基础物品重设（2026-03-20）
+
+- 用户需求：战车模式按给定表重设当前 4 个基础物品（名称/间隔/数值/描述），并使用 `charoititem1~4` 图标。
+- 已完成：
+  - `data/chariot_items.json`
+    - 重设 4 个 Bronze 基础物品（沿用原 4 个基础 id）：
+      - `流浪猫发电机`（5000ms，`charoititem1`）；
+      - `流浪汉收容所`（8000ms，伤害 5|8|12|18|27|41|62|93，`charoititem2`）；
+      - `辐射变异鸡窝`（5000ms，相邻伤害增益 7|10|15|23|35|53|80|120，`charoititem3`）；
+      - `非法脑机网吧`（8000ms，护盾 7|10|15|23|35|53|80|120，`charoititem4`）。
+  - `src/chariot/core/ChariotAssetPath.ts`
+    - 战车模式图标按图标名分流：`charoit*` 走 `resource/itemicon/charoit`，其余维持 `resource/itemicon/vanessa` 兜底。
+  - `src/chariot/shop/systems/ShopHeroSystem.ts`
+    - 开局赠送与按名称查找改为新物品名，保证开局流程可取到对应物品。
+  - `src/chariot/shop/ShopScene.ts`
+    - 合成引导/教程里的基础物品名称同步为新命名。
+  - `data/chariot_game_config.json`
+    - 固定池与相关前置配置中这 4 个基础名同步替换，避免配置引用失效。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收战车模式内这 4 个基础物品的图标与战斗表现是否符合预期。
+
+## 战车模式背景切换（2026-03-19）
+
+- 用户需求：战车模式中商店背景使用 `charoit_bg2`，战斗背景使用 `charoit_bg`。
+- 已完成：
+  - `src/main.ts`
+    - 新增战车商店/战斗背景纹理与懒加载逻辑：
+      - `charoit_bg2.png` 对应 `chariot-shop`
+      - `charoit_bg.png` 对应 `chariot-battle`
+    - `applyBackgroundByScene` 增加战车场景专属映射；普通 `shop` 仍使用 `background2.png`。
+    - 桌面端启动时预加载，移动端按场景首次进入懒加载。
+- 验证：`npm run build` 通过。
+
+## 战车模式解耦复制（2026-03-20）
+
+- 用户确认方案：按“强隔离全量复制”落地战车模式，要求与原模式无耦合。
+- 已完成：
+  - 代码隔离：新增 `src/chariot/**`，完整复制原有 `shop + battle + skills + loader/runstate` 体系；
+  - 场景隔离：新增独立场景名 `chariot-shop` / `chariot-battle`，并在主流程注册；
+  - 入口切换：主菜单“战车模式”按钮改为进入 `chariot-shop`；
+  - 配置隔离：新增战车独立数据文件并接入独立加载器：
+    - `data/chariot_game_config.json`
+    - `data/chariot_items.json`
+    - `data/chariot_item_enchantments.json`
+    - `data/chariot_skill_effects_bronze_draft.json`
+    - `data/chariot_skill_effects_silver_draft.json`
+    - `data/chariot_skill_effects_gold_draft.json`
+    - `src/chariot/core/ChariotDataLoader.ts` 仅读取上述战车文件；
+  - 存档隔离：新增 `src/chariot/core/ChariotRunState.ts`，localStorage key 全部改为 `bigbazzar_chariot_*` 前缀；
+  - 技能配置隔离：新增 `src/chariot/common/skills/*`，全部改读 `chariot_skill_effects_*`；
+  - 场景系统支持：`src/core/EventBus.ts` 扩展 scene union；`src/core/PhaseManager.ts` 增加 chariot 场景映射；
+  - 背景适配：`src/main.ts` 将 `chariot-shop` 纳入商店背景逻辑。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“战车模式与原模式配置/存档/逻辑独立性”。
+
+## 战车模式零耦合加固（2026-03-20）
+
+- 用户要求：进一步做到“绝对 0 耦合”。
+- 已完成：
+  - 底层模块复制到战车命名空间并全量切换引用：
+    - `src/chariot/common/grid/**`
+    - `src/chariot/common/items/**`
+    - `src/chariot/common/ui/**`
+    - `src/chariot/config/debugConfig.ts`
+    - `src/chariot/config/layoutConstants.ts`
+    - `src/chariot/config/colorPalette.ts`
+    - `src/chariot/core/ChariotAppContext.ts`
+    - `src/chariot/core/ChariotAssetPath.ts`
+    - `src/chariot/core/ChariotAssetRuntimeTracker.ts`
+    - `src/chariot/core/ChariotMobileImageDownscaleCache.ts`
+    - `src/chariot/core/ChariotEventBus.ts`
+    - `src/chariot/core/ChariotPhaseManager.ts`
+  - 调试参数隔离：
+    - 新增 `data/chariot_debug_defaults.json`；
+    - 战车 debugConfig 存储前缀改为 `bigbazzar_chariot_cfg_`，广播通道改为 `bigbazzar_chariot_debug`。
+  - PVP 依赖隔离：
+    - 新增 `src/chariot/pvp/ChariotPvpContext.ts`（战车模式内本地 noop 上下文）；
+    - 新增 `src/chariot/pvp/ChariotPvpTypes.ts`（战车侧独立类型定义）。
+  - 场景桥接抽离：
+    - 新增 `src/chariot/core/ChariotSceneManager.ts`，战车代码侧统一走战车入口。
+  - 启动上下文双路初始化：
+    - `src/main.ts` 同步初始化战车 AppContext 的 app/layout/runtime flags，确保两套上下文互不依赖。
+- 验证：`npm run build` 通过。
+- 说明：战车代码中已无对原业务模块的直接 import；仅在 `ChariotSceneManager` 内保留对全局 SceneManager 的单点桥接，用于接入现有引擎主循环。
+
+## 战车模式规则调整（2026-03-20）
+
+- 用户新增需求：
+  - 战车模式不显示人物头像、等级、经验条；
+  - 初始不选择英雄；
+  - 升级时只加血，不触发三选一奖励。
+- 已完成：
+  - `src/chariot/shop/ui/PlayerStatusUI.ts`
+    - 新增战车隐藏开关并在刷新/布局阶段直接隐藏头像、等级文字、经验条、每日技能星标；
+    - 关闭头像点击命中区域交互；
+    - 升级特效与经验目标点在战车模式下短路（不再播放该 UI 相关特效）。
+  - `src/chariot/shop/ShopScene.ts`
+    - `ensureStarterClassSelection` 改为 no-op，战车模式不再弹初始英雄选择；
+    - 读档时清空 `pendingLevelRewards` 与 `levelQuickDraftSavedEntries`，避免残留三选一队列。
+  - `src/chariot/shop/systems/ShopRewardSystem.ts`
+    - 升级流程改为仅结算等级与血量：按等级生命表提升最大生命并同步增加当前生命；
+    - 移除升级后 `handleLevelReward(...)` 调用，不再触发升级三选一奖励。
+- 验证：`npm run build` 通过。
+
+## 战车模式问题排查修复（2026-03-20）
+
+- 用户反馈：
+  - 升级后右上角红心（局外生命）被异常拉高；
+  - 战斗内打开统计面板会报错。
+- 处理结果：
+  - `src/chariot/shop/systems/ShopRewardSystem.ts`
+    - 回退“升级同步写入 RunState 生命值”的逻辑；
+    - 战车升级仅保留等级成长（用于战斗快照 HP），不再改 `getLifeState()` 对应的局外红心值。
+  - `src/chariot/shop/ShopScene.ts`
+    - 增加历史脏数据修复：检测到旧 bug 遗留的超大生命值（`max >= 200`）时，自动回正到 30 上限。
+  - `src/chariot/battle/BattleDamageStats.ts`
+    - 统计面板容错加固：图标纹理加载失败回退白图；
+    - 打开/刷新统计面板增加异常捕获，避免直接抛出导致界面报错。
+    - 同步修正 Bronze 星级显示（`Bronze#2` 显示 Lv2）。
+- 验证：`npm run build` 通过。
+
+## 战斗统计图标缓存告警修复（2026-03-20）
+
+- 用户反馈：冒险/战车模式打开战斗统计后反复出现 Pixi `Assets cache` 告警。
+- 根因：统计行刷新频繁调用 `Texture.from(url)`，而图标资源未预先进入 Pixi Cache，导致每帧重复 warning。
+- 已修复：
+  - `src/battle/BattleDamageStats.ts`
+  - `src/chariot/battle/BattleDamageStats.ts`
+  - 改为异步 `Assets.load(url)` + 本地纹理缓存 + 行级 defId 变更检测；未就绪时先显示占位纹理，加载完成后再刷新。
+- 结果：避免每帧走 `Texture.from` 未命中路径，消除统计面板打开时的告警刷屏。
+- 验证：`npm run build` 通过。
+
+## 战车模式上阵区重构（2026-03-20）
+
+- 用户需求：战车模式上阵区改为纵向 5 位堆叠；底座 `charoit_base`，每层 `charoit_cube`，空位显示 `charoititem0`，有物品时显示具体物品。
+- 已完成：
+  - `src/chariot/shop/ui/ShopBattleZoneBuilder.ts`
+    - 上阵区固定为 5 槽；
+    - `battleSystem` 宽度改为 5；
+    - 战车上阵区启用 `setVehicleStackMode(true)`。
+  - `src/chariot/common/grid/GridZone.ts`
+    - 新增战车堆叠渲染模式：
+      - 纵向映射（逻辑 col -> 视觉上下层）；
+      - 自定义区域像素尺寸 `getZonePixelWidth/Height`；
+      - 堆叠底图与空位占位图异步加载；
+      - 空位占位图按槽位占用状态自动显隐（拖拽离位时回显）。
+  - `src/chariot/shop/systems/ShopDragSystem.ts`
+    - 区域命中判断改为使用 GridZone 实际显示尺寸，适配纵向上阵区。
+  - `src/chariot/shop/ShopMathHelpers.ts`
+    - 战车上阵区槽位固定 5；
+    - 战车上阵区水平居中按单列宽度计算；
+    - 背包 Y 计算改为基于战车上阵区真实显示高度。
+  - `src/chariot/shop/ShopScene.ts`
+    - 区域标题居中改为使用 GridZone 实际显示宽度。
+  - `src/chariot/core/ChariotAssetPath.ts`
+    - 战车物品图标路径统一映射到 `resource/itemicon/charoit/`；
+    - 对旧 `itemN` 命名自动映射为 `charoititemN`，避免找不到战车资源。
+- 验证：`npm run build` 通过。
+
+## 调试页参数模式切换（2026-03-20）
+
+- 用户反馈：之前网页调试参数没有分离，需在调试页增加“其他模式 / 战车模式”切换并分别配置。
+- 已完成：
+  - `debug.html`
+    - 头部新增参数模式切换控件（`其他模式` / `战车模式`）与当前模式提示。
+  - `src/debug/DebugPage.ts`
+    - 调试页改为双配置后端适配：
+      - `normal` -> `src/config/debugConfig.ts`
+      - `chariot` -> `src/chariot/config/debugConfig.ts`
+    - 切换模式后：自动切换 get/set/reset/snapshot 数据源并刷新当前页面全部参数值；
+    - 模式选择持久化到 `localStorage`（`bigbazzar_debug_mode`）。
+    - “保存为默认值/下载默认值”按模式输出：
+      - 其他模式：`debug_defaults.json`
+      - 战车模式：`chariot_debug_defaults.json`
+  - `vite.config.ts`
+    - `__debug/save-defaults` 接口支持 `mode` 参数，并按模式写入：
+      - `data/debug_defaults.json`
+      - `data/chariot_debug_defaults.json`
+- 验证：`npm run build` 通过。
+
+## 战车模式整体移除（2026-03-20）
+
+- 用户要求：删除全部战车模式内容，并移除网页调试参数中的战车模式切换，且不影响其他模式。
+- 风险评估与执行要点：
+  - 主风险在于主入口与场景类型仍引用战车场景；先清理引用再删目录，避免构建断链。
+  - 调试页风险在于双模式配置 API 分流；回退为单一 `debugConfig` 并恢复默认保存路径。
+- 已执行：
+  - 删除战车模式代码与资源：
+    - 删除 `src/chariot/**`
+    - 删除 `data/chariot_*.json`
+    - 删除 `resource/itemicon/charoit/**`
+  - 回退主流程引用：
+    - `src/main.ts` 移除战车场景注册、战车 AppContext 初始化、战车背景加载逻辑
+    - `src/menu/MenuScene.ts` 战车按钮入口改回 `shop`
+    - `src/core/EventBus.ts` 移除 `chariot-shop/chariot-battle` scene 类型
+    - `src/core/PhaseManager.ts` 移除 chariot phase 映射
+  - 回退调试页为单模式：
+    - `debug.html` 移除“其他模式/战车模式”切换 UI
+    - `src/debug/DebugPage.ts` 回退为仅使用 `src/config/debugConfig.ts`
+    - `vite.config.ts` `__debug/save-defaults` 回退为只写入 `data/debug_defaults.json`
+- 验证：`npm run build` 通过，其他模式可正常构建运行。
+
+## 主界面入口清理（2026-03-20）
+
+- 用户要求：主界面移除“战车模式”入口。
+- 已完成：
+  - `src/menu/MenuScene.ts` 删除“战车模式”按钮与对应入口逻辑；
+  - 主菜单当前仅保留“冒险模式”和“多人模式”两个入口。
+
+## 交付执行（2026-03-19，继续执行 TF 上传）
+
+- 用户指令：继续下一步，执行 TestFlight 打包上传。
+- 已完成：
+  - 执行 `npm run release:tf` 成功；
+  - 关键标记：`ARCHIVE SUCCEEDED`、`EXPORT SUCCEEDED`、`Upload succeeded`、`UPLOAD SUCCEEDED with no errors`；
+  - 构建号：`120 -> 121`；
+  - 产物路径：`ios/build/App.xcarchive`、`ios/build/export-testflight/App.ipa`。
+- 当前阶段：等待用户在 TestFlight 侧确认构建处理与安装验证。
+
 ## 验收修正（2026-03-19，Lv2 显示与品质桶回调）
 
 - 用户反馈：
