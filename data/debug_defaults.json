@@ -121,6 +121,7 @@
   "gameplayBattleZoneNoSynthesis": 0,
   "gameplaySameArchetypeDiffItemStoneSynthesis": 0,
   "gameplaySameArchetypeCrossSynthesisEnabled": 1,
+  "gameplaySameArchetypeCrossSynthesisPickFromPair": 0,
   "gameplayShowSimpleDescriptions": 0,
   "gameplaySkillDraftRerollEnabled": 0,
   "gameplayEventDraftRerollEnabled": 0,

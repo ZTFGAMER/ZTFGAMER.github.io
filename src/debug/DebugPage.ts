@@ -3,7 +3,43 @@
 // 每个参数一行：标签 | 滑块 | 当前值 | 单位 | 数字输入 | 重置
 // ============================================================
 
-import { getConfig, setConfig, resetConfig, CONFIG_DEFS, onConfigChange, getConfigSnapshot } from '@/config/debugConfig'
+import * as normalDebugConfig from '@/config/debugConfig'
+import * as nobagDebugConfig from '@/nobag/config/debugConfig'
+
+type DebugMode = 'normal' | 'nobag'
+
+const MODE_STORAGE_KEY = 'bigbazzar_debug_mode'
+
+function readSavedDebugMode(): DebugMode {
+  const saved = String(localStorage.getItem(MODE_STORAGE_KEY) || '').trim()
+  return saved === 'nobag' ? 'nobag' : 'normal'
+}
+
+let activeDebugMode: DebugMode = readSavedDebugMode()
+let activeModeLabelEl: HTMLElement | null = null
+let offConfigChange: (() => void) | null = null
+
+const CONFIG_DEFS = normalDebugConfig.CONFIG_DEFS
+
+function getActiveDebugConfigApi() {
+  return activeDebugMode === 'nobag' ? nobagDebugConfig : normalDebugConfig
+}
+
+function getConfig(key: string): number {
+  return getActiveDebugConfigApi().getConfig(key)
+}
+
+function setConfig(key: string, value: number): void {
+  getActiveDebugConfigApi().setConfig(key, value)
+}
+
+function resetConfig(key: string): void {
+  getActiveDebugConfigApi().resetConfig(key)
+}
+
+function getConfigSnapshot(): Record<string, number> {
+  return getActiveDebugConfigApi().getConfigSnapshot()
+}
 
 const LAYOUT_POSITION_KEYS = [
   'shopAreaX',
@@ -227,6 +263,7 @@ const GAMEPLAY_CHECKBOX_KEYS = [
   'gameplayBattleZoneNoSynthesis',
   'gameplaySameArchetypeDiffItemStoneSynthesis',
   'gameplaySameArchetypeCrossSynthesisEnabled',
+  'gameplaySameArchetypeCrossSynthesisPickFromPair',
   'gameplayShowSimpleDescriptions',
   'gameplaySkillDraftRerollEnabled',
   'gameplayEventDraftRerollEnabled',
@@ -578,6 +615,30 @@ function updateUIFromExternal(key: string, value: number): void {
   if (hex) hex.value = toHexColor(value)
 }
 
+function refreshAllRowsFromActiveMode(): void {
+  const rows = Array.from(document.querySelectorAll<HTMLElement>('.param-row'))
+  for (const row of rows) {
+    const key = String(row.dataset.key || '').trim()
+    if (!key || !CONFIG_DEFS[key]) continue
+    updateUIFromExternal(key, getConfig(key))
+  }
+}
+
+function bindActiveModeConfigChangeListener(): void {
+  if (offConfigChange) {
+    offConfigChange()
+    offConfigChange = null
+  }
+  offConfigChange = getActiveDebugConfigApi().onConfigChange((key: string, value: number) => {
+    updateUIFromExternal(key, value)
+  })
+}
+
+function updateActiveModeLabel(): void {
+  if (!activeModeLabelEl) return
+  activeModeLabelEl.textContent = activeDebugMode === 'nobag' ? '当前：无背包模式参数' : '当前：常规模式参数'
+}
+
 function enforceGameplaySectionPlacement(): void {
   const gameplaySection = document.getElementById('params-gameplay')
   const dragSection = document.getElementById('params-drag')
@@ -637,25 +698,25 @@ function downloadSnapshotFile(): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = 'debug_defaults.json'
+  a.download = activeDebugMode === 'nobag' ? 'nobag_debug_defaults.json' : 'debug_defaults.json'
   document.body.appendChild(a)
   a.click()
   a.remove()
   URL.revokeObjectURL(url)
 }
 
-async function saveSnapshotToProjectDefaults(): Promise<boolean> {
+async function saveSnapshotToProjectDefaults(): Promise<{ ok: boolean; path: string }> {
   try {
     const resp = await fetch('/__debug/save-defaults', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ snapshot: getConfigSnapshot() }),
+      body: JSON.stringify({ snapshot: getConfigSnapshot(), mode: activeDebugMode }),
     })
-    if (!resp.ok) return false
-    const data = await resp.json() as { ok?: boolean }
-    return !!data.ok
+    if (!resp.ok) return { ok: false, path: '' }
+    const data = await resp.json() as { ok?: boolean; path?: string }
+    return { ok: !!data.ok, path: String(data.path || '') }
   } catch {
-    return false
+    return { ok: false, path: '' }
   }
 }
 
@@ -731,9 +792,25 @@ document.addEventListener('DOMContentLoaded', () => {
   enforceGameplaySectionPlacement()
   setTimeout(enforceGameplaySectionPlacement, 0)
 
-  onConfigChange((key, value) => {
-    updateUIFromExternal(key, value)
-  })
+  activeModeLabelEl = document.getElementById('debug-mode-label')
+  const modeSelect = document.getElementById('debug-mode-select') as HTMLSelectElement | null
+  if (modeSelect) {
+    modeSelect.value = activeDebugMode
+    modeSelect.addEventListener('change', () => {
+      const nextMode = modeSelect.value === 'nobag' ? 'nobag' : 'normal'
+      if (nextMode === activeDebugMode) return
+      activeDebugMode = nextMode
+      localStorage.setItem(MODE_STORAGE_KEY, activeDebugMode)
+      bindActiveModeConfigChangeListener()
+      refreshAllRowsFromActiveMode()
+      updateActiveModeLabel()
+      flashSyncBadge()
+    })
+  }
+
+  bindActiveModeConfigChangeListener()
+  refreshAllRowsFromActiveMode()
+  updateActiveModeLabel()
 
   const btnCopy = document.getElementById('btn-copy-config') as HTMLButtonElement | null
   btnCopy?.addEventListener('click', async () => {
@@ -752,21 +829,23 @@ document.addEventListener('DOMContentLoaded', () => {
   btnDownload?.addEventListener('click', async () => {
     const badge = document.getElementById('sync-badge')!
     const saved = await saveSnapshotToProjectDefaults()
-    if (saved) {
-      badge.textContent = '💾 已写入 data/debug_defaults.json'
+    if (saved.ok) {
+      badge.textContent = `💾 已写入 ${saved.path || '默认配置文件'}`
       badge.style.opacity = '1'
       setTimeout(() => { badge.style.opacity = '0' }, 2200)
       return
     }
 
     downloadSnapshotFile()
-    badge.textContent = '💾 已下载 debug_defaults.json（请手动替换）'
+    badge.textContent = activeDebugMode === 'nobag'
+      ? '💾 已下载 nobag_debug_defaults.json（请手动替换）'
+      : '💾 已下载 debug_defaults.json（请手动替换）'
     badge.style.opacity = '1'
     setTimeout(() => { badge.style.opacity = '0' }, 2400)
   })
 
   const badge = document.getElementById('sync-badge')!
-  badge.textContent = '🔗 已连接'
+  badge.textContent = activeDebugMode === 'nobag' ? '🔗 已连接（无背包模式）' : '🔗 已连接（常规模式）'
   setTimeout(() => { badge.style.opacity = '0' }, 2500)
 
   const searchInput = document.getElementById('debug-search') as HTMLInputElement | null

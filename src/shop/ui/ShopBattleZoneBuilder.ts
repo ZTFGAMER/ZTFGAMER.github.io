@@ -302,8 +302,7 @@ export function buildBattleZoneUI(
     applySellButtonState()
 
     // 按钮闪烁提示：可出售则闪出售；战斗区->背包（背包未打开且有空位）则闪背包按钮
-    const isLevelQuickRewardSource = ctx.levelQuickRewardInstanceIds.has(instanceId)
-    const canSell = !isLevelQuickRewardSource
+    const canSell = true
     const canToBackpack = inBattle && !ctx.showingBackpack
       && canBackpackAcceptByAutoPack(item.id, normalizeSize(item.size), ctx)
     startGridDragButtonFlash(stage, canSell, canToBackpack, 0)
@@ -318,11 +317,6 @@ export function buildBattleZoneUI(
     const overSellArea = isOverGridDragSellArea(anchorGx, anchorGy)
     const overAnyDropTarget = isOverAnyGridDropTarget(anchorGx, anchorGy, size, ctx)
     const forceDiscardForNeutralStone = !!sourceDef && isNeutralTargetStone(sourceDef) && overSellArea
-
-     if (homeView === ctx.levelQuickRewardView && overSellArea) {
-       showHintToast('backpack_full_buy', '升级奖励不能出售，请拖到上阵区或背包区', 0xffd48f, ctx)
-       return false
-     }
 
     // 1) 拖到下方出售区域：直接出售
     // 普通物品：未命中任意格子候选时才出售；

@@ -5,8 +5,8 @@ export type GamePhase = 'SHOP' | 'COMBAT' | 'REWARD'
 type PhaseListener = (phase: GamePhase, prev: GamePhase) => void
 
 function toPhase(scene: SceneName): GamePhase {
-  if (scene === 'shop') return 'SHOP'
-  if (scene === 'battle') return 'COMBAT'
+  if (scene === 'shop' || scene === 'nobag-shop') return 'SHOP'
+  if (scene === 'battle' || scene === 'nobag-battle') return 'COMBAT'
   return 'REWARD'
 }
 

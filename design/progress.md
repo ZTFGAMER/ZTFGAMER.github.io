@@ -1,5 +1,355 @@
 # 大巴扎 — 开发进度记录
 
+## 无背包模式快捷三选一期间战斗按钮可见性修复（2026-03-20）
+
+- 用户反馈：无背包模式下，快捷三选一出现时看不到“战斗”按钮，需等所有三选一选完才出现。
+- 已完成：
+  - `src/nobag/shop/systems/ShopRewardSystem.ts`
+    - 在快捷三选一 overlay 刷新后，强制保持 `phaseBtn`（战斗按钮）可见，避免被前序状态残留隐藏。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实机验收“快捷三选一出现期间战斗按钮可见”。
+
+### 验收修正（2026-03-20 同日追加）
+
+- 用户澄清：期望行为是“快捷三选一出现期间不显示战斗按钮；仅在三选一全部处理完成后再显示战斗按钮”。
+- 已完成：
+  - `src/nobag/shop/systems/ShopRewardSystem.ts`
+    - 撤回“快捷三选一期间强制显示战斗按钮”改动，恢复原交互方向。
+  - `src/nobag/shop/ShopScene.ts`
+    - 修复按钮隐藏条件遗漏：在 `refreshShopUI` 中将 `ctx.levelQuickRewardOverlay` 纳入主按钮隐藏判定。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实机验收“快捷三选一出现期间隐藏战斗按钮；全部处理后恢复显示”。
+
+### 验收修正（2026-03-20 同日再次追加）
+
+- 用户反馈：快捷三选一界面出现时，战斗按钮仍可见。
+- 根因：`refreshShopUI` 中按钮隐藏判定执行在 `checkAndPopPendingRewards()` 之前；当本帧内刚弹出快捷三选一时，会错过本次隐藏。
+- 已完成：
+  - `src/nobag/shop/ShopScene.ts`
+    - 在 `checkAndPopPendingRewards()` 之后追加一次同条件按钮隐藏判定，确保“本帧新弹出三选一”也立即隐藏战斗按钮。
+- 验证：`npm run build` 通过。
+
+### 验收修正（2026-03-20 同日三次追加）
+
+- 用户反馈：战斗按钮仍出现，怀疑存在其他路径把按钮重新设为可见。
+- 根因补充：确有多处代码会直接把 `phaseBtn` 设为可见（如 `applyPhaseUiVisibility`、`stopGridDragButtonFlash`），会覆盖前面的隐藏结果。
+- 已完成：
+  - `src/nobag/shop/ShopScene.ts`
+    - `applyPhaseUiVisibility` 增加 `hasBlockingOverlay` 判定，快捷三选一 overlay 存在时不再显示战斗按钮。
+    - `setBaseShopPrimaryButtonsVisible` 增加统一兜底：`levelQuickRewardOverlay/skill/event/special` 任一存在时，`phaseBtn` 强制隐藏。
+  - `src/nobag/shop/ui/ShopAnimationEffects.ts`
+    - `stopGridDragButtonFlash` 不再无条件显示战斗按钮；改为受 `hasBlockingOverlay` 约束。
+- 验证：`npm run build` 通过。
+
+### 验收修正（2026-03-20 同日四次追加）
+
+- 用户反馈：快捷三选一期间隐藏已正确，但所有奖励结束后战斗按钮未恢复显示。
+- 根因：`refreshShopUI` 只做了“有 overlay 就隐藏”，缺少“无 overlay 时恢复显示”的对称分支，导致按钮状态停留在隐藏。
+- 已完成：
+  - `src/nobag/shop/ShopScene.ts`
+    - 在 `checkAndPopPendingRewards()` 后统一重算按钮状态：
+      - 有 blocking overlay（技能/事件/特殊商店/快捷三选一）或特殊商店背包态时 -> 隐藏；
+      - 否则 -> 按 `isShopInputEnabled(ctx)` 恢复主按钮可见性。
+- 验证：`npm run build` 通过。
+
+### 验收修正（2026-03-20 同日五次追加）
+
+- 用户反馈：三选一结束后战斗按钮不会立即出现，要触发一次拖拽/交互后才恢复。
+- 根因：按钮恢复仅在 `refreshShopUI` 路径生效；而“最后一选/跳过导致 overlay 关闭”的时刻没有同步触发按钮可见性回写。
+- 已完成：
+  - `src/nobag/shop/systems/ShopRewardSystem.ts`
+    - 在 `clearLevelQuickRewardOverlay` 收尾处，立即按 overlay 状态回写 `phaseBtn` 可见性：
+      - 无 blocking overlay 且不在 specialShopBackpackViewActive 时，立刻显示战斗按钮；
+      - 否则保持隐藏。
+- 验证：`npm run build` 通过。
+
+## 无背包模式三选一新增“跳过”按钮（2026-03-20）
+
+- 用户需求：在无背包模式奖励区右侧增加一个类似“战斗”按钮的“跳过”按钮，点击后跳过当前这次奖励选择。
+- 已完成：
+  - `src/nobag/shop/systems/ShopRewardSystem.ts`
+    - 在三选一 overlay 右侧新增圆形黄框“跳过”按钮（视觉风格对齐战斗按钮）；
+    - 点击“跳过”时，移除当前奖励候选且不领取任何项，并自动切到下一条排队奖励；
+    - 若队列为空则关闭奖励 overlay。
+    - 按用户验收微调：按钮半径改为与战斗按钮完全一致（`BTN_RADIUS`），并在现有基础上向右偏移 `120px`。
+    - 按用户二次验收微调：按钮整体向左回调 `40px`，按钮文字字号改为与战斗按钮一致（`textSizes.shopButtonLabel`）。
+    - 按用户三次验收微调：按钮文字样式进一步对齐战斗按钮（去描边、颜色改为 `0xffcc44`、字号严格使用 `shopButtonLabel`），避免视觉上偏小。
+    - 修复点击无效：奖励 overlay 的事件模式由 `none` 改为 `passive`，允许子节点“跳过”按钮接收点击事件。
+    - 增加规则：当“上阵区+背包区”无任何已持有物品时，跳过按钮禁用（半透明且不可点击）。
+  - `src/nobag/shop/ui/ShopBattleZoneBuilder.ts`
+    - 增加规则：当“上阵区+背包区”无任何已持有物品时，奖励区物品拖到出售区会被拦截并回弹，不允许通过丢弃实现跳过。
+  - `src/nobag/shop/systems/ShopSynthesisController.ts`
+    - 关闭奖励区内部的合成引导箭头（升级提示）显示；奖励区物品之间不再出现可合成提示，仅保留上阵区/背包区引导。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实机验收“跳过按钮位置、样式与跳过行为”。
+
+## 无背包模式去英雄化与按天生命值生效（2026-03-20）
+
+- 用户需求：
+  - 无背包模式不再选择初始英雄；
+  - 隐藏英雄头像框、等级与等级条；
+  - 无背包模式不再升级，合成后经验飞行动效隐藏；
+  - 玩家战斗生命值按 Day1~Day20 配置生效。
+- 已完成：
+  - `src/nobag/shop/ShopScene.ts`
+    - 进入商店时不再触发初始英雄选择面板；
+    - 新开局 `starterGranted` 直接置为 `true`（跳过选择流程）。
+  - `src/nobag/shop/ShopBattleSnapshot.ts`
+    - 战斗快照中的 `playerBattleHp` 改为按 `run_rules.playerBattleHpByDay[day]` 注入（仅影响战斗内血量）；
+    - 不再通过 `lifeState` 改写红心显示，战斗血量与红心解耦。
+  - `src/nobag/shop/ui/PlayerStatusUI.ts`
+    - 关闭英雄头像/点击区/英雄星标显示；
+    - 隐藏等级文字与经验条（等级进度 UI 全关闭）。
+  - `src/nobag/shop/systems/ShopRewardSystem.ts`
+    - `grantSynthesisExp` 改为空实现：不再累计升级经验，也不再播放经验飞行动效。
+  - `src/nobag/common/items/ItemDef.ts`
+    - runRules 类型新增 `playerBattleHpByDay?: number[]`。
+  - `data/nobag_game_config.json`
+    - 新增 `run_rules.playerBattleHpByDay`（Day1~20）并写入用户给定血量序列。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实机验收“无初始英雄选择 + 无等级/经验表现 + 按天生命值生效”。
+
+## 无背包模式三选一等级表对齐（2026-03-20）
+
+- 用户反馈：Day1 回合三选一应为 Lv1，但游戏里实际刷出 Lv2，怀疑等级映射未按表执行。
+- 根因排查：
+  - 快捷三选一读取 `quickBuyLevelChancesByDay` 时，把第1列当成 Lv2（存在 +1 偏移）；
+  - 且配置表未严格对齐用户给的 Day1~Day20 概率表。
+- 已完成：
+  - `src/nobag/shop/systems/ShopRewardSystem.ts`
+    - 修正等级权重映射为 `lv1~lv8`（第1列即 Lv1）；
+    - `pickQuickDraftLevelByWeights` 改为返回 `i+1`，默认等级回退改为 Lv1；
+    - 同步调整 mode 权重索引，避免与职业石/附魔石/技能石权重位冲突。
+  - `data/nobag_game_config.json`
+    - `shop_rules.quickBuyLevelChancesByDay` 按用户提供的 20 天表完整重写（Day1~2 仅 Lv1，之后按两天一档逐步上移，Day15~20 为 Lv7/Lv8 各 0.5）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实机验收“Day1 三选一为 Lv1，且 Day 表分布严格一致”。
+
+## 无背包模式升级合成次数统一为3（2026-03-20）
+
+- 用户需求：无背包模式下，升级所需合成次数统一为 3。
+- 已完成：
+  - `data/nobag_game_config.json`
+    - `runRules.playerExpToNextLevel` 调整为统一值 `3`（单值表，所有等级按兜底都为 3）。
+- 影响说明：
+  - `src/nobag/shop/ui/PlayerStatusUI.ts` 中 `getPlayerExpNeedByLevel` 读取该表并按最后一项兜底，因此任意等级升级需求都为 3。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实机验收“任意等级升级均需3次合成”。
+
+## 无背包模式回合三选一改造（2026-03-20）
+
+- 用户需求（继续执行）：
+  - 无背包模式隐藏底部“购买/整理”按钮；
+  - 升级不再触发奖励；
+  - 每回合自动发放 3 次三选一；
+  - 三选一等级分布按 Day1~Day20 表。
+- 已完成：
+  - `src/nobag/shop/ui/ShopUIBuilders.ts`
+    - 创建按钮时即隐藏“购买/整理”按钮（仅保留战斗按钮可见）。
+  - `src/nobag/shop/ShopScene.ts`
+    - `applyPhaseUiVisibility` 与 `setBaseShopPrimaryButtonsVisible` 强制保持“购买/整理”隐藏；
+    - `setDay` 在天数实际变更时自动入队 `3` 次回合三选一（`enqueueRoundAutoQuickDrafts`）。
+  - `src/nobag/shop/systems/ShopRewardSystem.ts`
+    - 新增 `enqueueRoundAutoQuickDrafts(day, count, ...)`：按天数自动入队多次三选一；
+    - 新增 day 权重读取逻辑：从 `shop_rules.quickBuyLevelChancesByDay` 取 Day 行，并映射到三选一等级池（`lv2~lv8`）；
+    - 关闭升级奖励触发：`handleLevelReward(...)` 改为仅保存状态，不再弹奖励。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实机验收“每回合自动 3 次三选一 + 升级不再弹奖励 + 购买/整理按钮隐藏”。
+
+### 验收修正（2026-03-20 同日追加）
+
+- 用户反馈：
+  - 点击上阵区物品后“购买/整理”按钮又会出现；
+  - 每天未出现三选一奖励。
+- 追加修复：
+  - `src/nobag/shop/systems/ShopDragSystem.ts`
+    - `applySellButtonState(...)` 改为强制隐藏“购买/整理”及其价格文本，不再受选中状态影响反显。
+  - `src/nobag/shop/systems/ShopRewardSystem.ts`
+    - 回合三选一候选构建去掉“必须有空位才能入候选”的限制（无背包模式下战斗区满格时此前会导致候选为空、看起来像未发奖）；
+    - 仍按 Day 概率表抽取等级。
+- 验证：`npm run build` 通过。
+
+### 验收修正（2026-03-20 同日再次追加）
+
+- 用户反馈：Day1 首次进入仍未出现三选一，导致上阵区无物品无法开战。
+- 追加修复：
+  - `src/nobag/shop/ShopScene.ts`
+    - 在“新开局（无存档恢复）”分支中，初始化完成后立即调用
+      `RewardSystem.enqueueRoundAutoQuickDrafts(currentDay, 3, ...)`，确保 Day1 进店即有 3 次奖励可选。
+- 验证：`npm run build` 通过。
+
+### 无背包模式丢弃交互改造（2026-03-20）
+
+- 用户新需求：
+  - 无背包模式不再“出售”，统一为“丢弃”（不获得金币）；
+  - 拖拽丢弃判定区改为屏幕中部矩形区域（按示意图蓝框）。
+- 已完成：
+  - `src/nobag/shop/ui/ShopBattleZoneBuilder.ts`
+    - 格子拖拽物品进入丢弃区时，统一执行“已丢弃”逻辑，不再给金币；
+    - 物品信息提示由“出售可得 xG”改为“拖拽丢弃 / 丢弃后不会获得金币”；
+    - 保留中立石类丢弃时的既有效果触发逻辑（若配置有对应效果）。
+  - `src/nobag/shop/systems/ShopDragSystem.ts`
+    - 丢弃命中区域从底部整块区域改为中上部矩形（新增 `getGridDragDiscardAreaLocalRect`）。
+  - `src/nobag/shop/ui/ShopAnimationEffects.ts`
+    - 拖拽热区高亮改为中部矩形高亮；
+    - 文案更新为“拖动到此处丢弃 / 丢弃无法获得金币”。
+  - `src/nobag/shop/ShopScene.ts`
+    - 补充 runRules 读取的类型兼容修正，避免构建报错。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“中部丢弃区命中手感 + 丢弃不加金币 + 文案一致性”。
+
+### 丢弃区热区微调（2026-03-20）
+
+- 用户追加需求：丢弃区域向下增长 200px。
+- 已完成：
+  - `src/nobag/shop/systems/ShopDragSystem.ts`
+    - `getGridDragDiscardAreaLocalRect` 的高度在原基础上 `+200px`，并做画布下边界 clamp（不超出屏幕）。
+
+### 同职业异物合成开关（2026-03-20）
+
+- 用户需求：在“玩法数值”中，于“同职业异物可合成”下新增开关“同职业异物合本职业”。
+- 规则：
+  - 开启：同职业异物合成时，结果在“参与合成的两件物品”中随机 1 个；
+  - 关闭：保持原逻辑（在其他职业物品池中随机）。
+- 已完成：
+  - `src/nobag/config/debugConfig.ts`
+    - 新增 `gameplaySameArchetypeCrossSynthesisPickFromPair` 配置定义。
+  - `src/config/debugConfig.ts`
+    - 同步新增同名配置，确保调试页键集一致。
+  - `src/debug/DebugPage.ts`
+    - 将新开关加入“玩法数值”勾选项，位置紧跟“同职业异物可合成”之后。
+  - `src/nobag/shop/systems/ShopSynthesisController.ts`
+    - 同职业异物合成分支接入新开关：开启时候选改为 `[sourceDef, targetDef]` 随机；关闭保持排除同职业逻辑。
+  - `data/debug_defaults.json`
+  - `data/nobag_debug_defaults.json`
+    - 新增默认值：`gameplaySameArchetypeCrossSynthesisPickFromPair = 0`。
+- 验证：`npm run build` 通过。
+
+### 奖励三选一与主区双向合成提示（2026-03-20）
+
+- 用户需求：
+  - 点击奖励三选一物品时，背包/上阵区可合成目标需显示提示；
+  - 点击背包或上阵区物品时，奖励区可合成目标也需显示提示。
+- 已完成：
+  - `src/nobag/shop/systems/ShopSynthesisController.ts`
+    - `refreshBackpackSynthesisGuideArrows(...)` 扩展为三路联动：背包区 + 上阵区 + 奖励区（奖励区可见时）；
+    - `clearBackpackSynthesisGuideArrows(...)` 同步清理奖励区箭头。
+  - `src/nobag/shop/systems/ShopRewardSystem.ts`
+    - 奖励三选一 `onTap` 选中时调用 `refreshBackpackSynthesisGuideArrows(...)`，即时展示全区可合成提示。
+- 验证：`npm run build` 通过。
+
+### 无背包模式数值更新（2026-03-20）
+
+- 用户提供 Day1~Day20 新表，要求同步“每天奖励三选一等级概率 + 血量”。
+- 已完成：
+  - `data/nobag_game_config.json`
+    - `shop_rules.quickBuyLevelChancesByDay` 已按新表更新为 20 行（lv1~lv8 概率）；
+    - `run_rules.playerBattleHpByDay` 已与新表一致（当前文件本身已是目标值，确认保持）。
+- 验证：`npm run build` 通过。
+
+## 无背包模式出售区命中修正（2026-03-20）
+
+- 用户反馈：无背包模式拖拽物品到下方出售区时偶发无法触发出售，怀疑受旧背包/落格判定影响。
+- 根因排查：
+  - 原逻辑要求“命中出售区且未命中任何格子目标”才算出售；
+  - 无背包模式下靠近战斗区底边时，仍可能被格子命中判定拦截，导致出售区识别失败。
+- 已完成：
+  - `src/nobag/shop/ui/ShopBattleZoneBuilder.ts`
+    - 无背包模式改为“命中出售区即优先出售”，不再受格子命中条件阻断。
+  - `src/nobag/shop/systems/ShopDragSystem.ts`
+    - 出售区 hover 热区改为仅按是否命中出售区判断，避免误判不高亮。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实机验收“拖到出售区必定触发出售（含靠近战斗区底边）”。
+
+## 无背包模式战斗区位置固定（2026-03-20）
+
+- 用户需求：无背包模式下，战斗区位置不再随天数变化；战斗场景偏移也不再跟随背包行数逻辑联动。
+- 已完成：
+  - `src/nobag/shop/ShopMathHelpers.ts`
+    - `getAdjustedBattleZoneY(day)` 改为固定返回 `battleZoneY`（忽略 day）；
+    - `getAdjustedBattleZoneYInBattleOffset(day)` 改为固定返回 `battleZoneYInBattleOffset`（忽略 day）。
+  - 商店场景、战斗场景、调试布局均复用这两个函数，因此已统一生效。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实机验收“无背包模式各天战斗区位置与战斗偏移恒定”。
+
+## 调试页常规/无背包参数切换（2026-03-20）
+
+- 用户需求：网页调试页支持“常规模式参数”和“无背包模式参数”切换，分别配置并保存。
+- 已完成：
+  - `debug.html`
+    - 头部新增参数模式切换控件：`常规模式` / `无背包模式`；
+    - 新增当前模式文案提示。
+  - `src/debug/DebugPage.ts`
+    - 调试页改为双配置后端路由：
+      - `normal` -> `src/config/debugConfig.ts`
+      - `nobag` -> `src/nobag/config/debugConfig.ts`
+    - 切换模式后自动刷新当前页面所有参数值；
+    - 模式选择持久化：`localStorage` 键 `bigbazzar_debug_mode`；
+    - “保存为默认值/下载默认值”按模式区分：
+      - 常规：`debug_defaults.json`
+      - 无背包：`nobag_debug_defaults.json`
+  - `vite.config.ts`
+    - `__debug/save-defaults` 接口新增 `mode` 参数，按模式写入：
+      - `data/debug_defaults.json`
+      - `data/nobag_debug_defaults.json`
+- 验证：`npm run build` 通过。
+
+## 无背包模式独立新增（2026-03-20）
+
+- 用户需求：在主界面“冒险模式”“同步对战”下新增“无背包模式”，并进入与冒险模式零耦合的独立游戏模式。
+- 已完成：
+  - 主界面入口：
+    - `src/menu/MenuScene.ts` 新增按钮“无背包模式”，点击进入 `nobag-shop`。
+  - 场景与主流程接入：
+    - `src/core/EventBus.ts` 新增 scene 类型 `nobag-shop` / `nobag-battle`；
+    - `src/core/PhaseManager.ts` 增加 nobag 场景 phase 映射；
+    - `src/main.ts` 注册 `NobagShopScene` / `NobagBattleScene` 并接入独立 AppContext 初始化。
+  - 零耦合代码与配置复制：
+    - 新增完整命名空间 `src/nobag/**`（shop/battle/common/config/core/pvp）；
+    - 新增独立数据文件：
+      - `data/nobag_game_config.json`
+      - `data/nobag_items.json`
+      - `data/nobag_item_enchantments.json`
+      - `data/nobag_skill_effects_bronze_draft.json`
+      - `data/nobag_skill_effects_silver_draft.json`
+      - `data/nobag_skill_effects_gold_draft.json`
+      - `data/nobag_debug_defaults.json`
+    - nobag 内部 import 已切换至 `@/nobag/*`，并完成独立存档/debug 前缀隔离。
+  - 无背包规则（模式内）：
+    - `src/nobag/shop/ShopScene.ts` 将 `findFirstBackpackPlace` 固定返回 `null`；
+    - 统一隐藏背包视图/背包背景/背包标题，保持“无背包”表现。
+- 验证：`npm run build` 通过。
+
+## 升级奖励背景层级修复（2026-03-20）
+
+- 用户反馈：奖励区背景渲染层级高于拖拽中的物品。
+- 已完成：
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 调整升级奖励背景（`levelQuickRewardBackdrop`）的插入层级；
+    - 改为插入到奖励格子层（`levelQuickRewardView`）之下，避免盖住拖拽物品。
+- 验证：`npm run build` 通过。
+
+## 升级奖励拖拽层级二次修复（2026-03-20）
+
+- 用户反馈：奖励区背景仍遮挡拖拽中的物品。
+- 已完成：
+  - `src/common/grid/DragController.ts`
+    - 将 `dragLayer` 层级固定提升到高优先级（`zIndex = 9999`），并在进入拖拽时再次确保该层级；
+    - 保障拖拽物始终在 UI 装饰层之上。
+  - `src/shop/systems/ShopRewardSystem.ts`
+    - 再次降低奖励区背景层 `zIndex`（17 -> 3），减少与拖拽层冲突可能。
+- 验证：`npm run build` 通过。
+
+## 升级奖励拖拽出售一致性（2026-03-20）
+
+- 用户需求：升级奖励物品在拖拽时，也应可拖到下方出售区出售，行为与上阵区/背包区拖拽一致。
+- 已完成：
+  - `src/shop/ui/ShopBattleZoneBuilder.ts`
+    - 取消“升级奖励来源物品不可出售”的限制；
+    - 拖拽升级奖励时，按钮闪烁提示改为允许出售；
+    - 保留原有规则：拖到出售区且未命中可落位目标时执行出售。
+- 验证：`npm run build` 通过。
+
 ## 战车模式物品比例与 URL 特殊参数（2026-03-19）
 
 - 用户需求：

@@ -118,6 +118,7 @@ export class DragController {
   ) {
     // dragLayer 必须在所有 GridZone addChild 之后加入，以确保渲染在最上层
     this.dragLayer = new Container()
+    this.dragLayer.zIndex = 9999
     stage.addChild(this.dragLayer)
 
     stage.on('pointermove',      (e: FederatedPointerEvent) => this.onMove(e))
@@ -263,6 +264,7 @@ export class DragController {
 
     // 将 container 放入 dragLayer（dragLayer 在 stage 0,0，坐标系与 stage 一致）
     // 重新置顶 dragLayer，避免被后续加入的 HUD/按钮遮挡
+    this.dragLayer.zIndex = 9999
     this.stage.addChild(this.dragLayer)
     result.container.x = result.stageX
     result.container.y = result.stageY

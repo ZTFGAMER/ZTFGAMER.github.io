@@ -1136,6 +1136,15 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     step: 1,
     unit: '',
   },
+  gameplaySameArchetypeCrossSynthesisPickFromPair: {
+    labelCn:      '同职业异物合本职业',
+    description:  '1=同职业异物合成结果在参与合成的两件物品中随机其一；0=保持原逻辑（在其他职业物品中随机）',
+    defaultValue: 0,
+    min:  0,
+    max:  1,
+    step: 1,
+    unit: '',
+  },
   gameplayShowSimpleDescriptions: {
     labelCn:      '显示简版描述',
     description:  '1=保留简版->详细版切换；0=所有物品/技能描述默认显示详细版',

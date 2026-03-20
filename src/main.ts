@@ -7,11 +7,18 @@ import { Application, Assets, Sprite, Texture } from 'pixi.js'
 import { SceneManager } from '@/core/SceneManager'
 import { ShopScene }    from '@/shop/ShopScene'
 import { BattleScene, getBattleFxPerfStats }  from '@/battle/BattleScene'
+import { ShopScene as NobagShopScene } from '@/nobag/shop/ShopScene'
+import { BattleScene as NobagBattleScene } from '@/nobag/battle/BattleScene'
 import { MenuScene }    from '@/menu/MenuScene'
 import { PvpLobbyScene } from '@/pvp/PvpLobbyScene'
 import { PvpResultScene } from '@/pvp/PvpResultScene'
 import { validateData, getAllItems, getConfig } from '@/core/DataLoader'
 import { setApp, setStageLayout, setRenderRuntimeFlags } from '@/core/AppContext'
+import {
+  setApp as setNobagApp,
+  setStageLayout as setNobagStageLayout,
+  setRenderRuntimeFlags as setNobagRenderRuntimeFlags,
+} from '@/nobag/core/NobagAppContext'
 import { clearStoredConfig } from '@/config/debugConfig'
 import { PhaseManager, type GamePhase } from '@/core/PhaseManager'
 import { Rectangle } from 'pixi.js'
@@ -99,6 +106,11 @@ function bindWebGpuDeviceLostGuard(app: Application): void {
     const message = String(info?.message ?? '')
     webgpuDeviceLostCount += 1
     setRenderRuntimeFlags({
+      webgpuDeviceLostCount,
+      forceLowFx: true,
+      lastDeviceLostReason: reason,
+    })
+    setNobagRenderRuntimeFlags({
       webgpuDeviceLostCount,
       forceLowFx: true,
       lastDeviceLostReason: reason,
@@ -546,6 +558,12 @@ async function bootstrap(): Promise<void> {
     webgpuDeviceLostCount: 0,
     lastDeviceLostReason: '',
   })
+  setNobagRenderRuntimeFlags({
+    webgpuFallbackAdapter,
+    forceLowFx: webgpuFallbackAdapter,
+    webgpuDeviceLostCount: 0,
+    lastDeviceLostReason: '',
+  })
   const resolution = isMobile ? Math.min(window.devicePixelRatio || 1, 1.5) : (window.devicePixelRatio || 1)
   const app = new Application()
   await app.init({
@@ -566,6 +584,7 @@ async function bootstrap(): Promise<void> {
   }
   bindWebGpuDeviceLostGuard(app)
   setApp(app)
+  setNobagApp(app)
 
   const perfCfg = resolvePerfReporterConfig(getConfig().runRules?.perfReporter)
   const perfParams = new URLSearchParams(window.location.search)
@@ -665,6 +684,17 @@ async function bootstrap(): Promise<void> {
       bleedX,
       bleedY,
     })
+    setNobagStageLayout({
+      baseW: BASE_W,
+      baseH: BASE_H,
+      viewW: vw,
+      viewH: vh,
+      scale,
+      offsetX,
+      offsetY,
+      bleedX,
+      bleedY,
+    })
 
     canvas.style.width = '100%'
     canvas.style.height = '100%'
@@ -712,7 +742,7 @@ async function bootstrap(): Promise<void> {
     }
 
     const applyBackgroundByScene = (scene: SceneName | null): void => {
-      if (scene === 'shop') {
+      if (scene === 'shop' || scene === 'nobag-shop') {
         loadShopBgOnce()
         if (shopBgTex) { bgSprite.texture = shopBgTex; return }
       }
@@ -734,6 +764,8 @@ async function bootstrap(): Promise<void> {
   SceneManager.register(MenuScene)
   SceneManager.register(ShopScene)
   SceneManager.register(BattleScene)
+  SceneManager.register(NobagShopScene)
+  SceneManager.register(NobagBattleScene)
   SceneManager.register(PvpLobbyScene)
   SceneManager.register(PvpResultScene)
   SceneManager.goto('menu')

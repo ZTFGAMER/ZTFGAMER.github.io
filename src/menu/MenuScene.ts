@@ -195,6 +195,17 @@ export const MenuScene: Scene = {
     const pvpBtn = makePvpBtn(CANVAS_H * 0.54 + 144)
     root.addChild(pvpBtn)
 
+    const noBackpackBtn = makeBtn(
+      '无背包模式',
+      '独立玩法  零耦合  无背包挑战',
+      0x5aa6ff,
+      0x18243d,
+      0x5aa6ff,
+      CANVAS_H * 0.54 + 288,
+      () => SceneManager.goto('nobag-shop'),
+    )
+    root.addChild(noBackpackBtn)
+
     // ── 底部 ──────────────────────────────────────────────
     const ver = new Text({
       text: 'v1.0.4',

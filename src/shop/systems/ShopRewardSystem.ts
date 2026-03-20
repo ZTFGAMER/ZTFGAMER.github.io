@@ -748,7 +748,7 @@ function refreshLevelQuickRewardBackdrop(quickX: number, quickY: number, _quickW
   const centers = getLevelQuickRewardCentersLocal(itemCount, battleScale)
   const r = Math.max(8, getDebugCfg('gridItemCornerRadius'))
   const g = new Graphics()
-  g.zIndex = 17
+  g.zIndex = 3
   g.eventMode = 'none'
   for (const center of centers) {
     const x = quickX + center - cellW * 0.5
@@ -756,7 +756,14 @@ function refreshLevelQuickRewardBackdrop(quickX: number, quickY: number, _quickW
     g.fill({ color: 0x2a2a3e, alpha: 1 })
   }
   ctx.levelQuickRewardBackdrop = g
-  getApp().stage.addChild(g)
+  const stage = getApp().stage
+  const rewardView = ctx.levelQuickRewardView
+  if (rewardView?.parent === stage) {
+    const rewardIndex = stage.getChildIndex(rewardView)
+    stage.addChildAt(g, Math.max(0, rewardIndex))
+  } else {
+    stage.addChildAt(g, 0)
+  }
 }
 
 function refreshLevelQuickRewardOverlayTitle(quickX: number, quickW: number, quickY: number, ctx: ShopSceneCtx): void {

@@ -29,6 +29,34 @@
     }
     .header h1 { font-size: 15px; font-weight: 700; color: #fff; }
     .header-right { display: flex; align-items: center; gap: 8px; }
+    .mode-switch-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 8px;
+      border: 1px solid #3a3a6a;
+      border-radius: 10px;
+      background: #131338;
+    }
+    .mode-switch-label {
+      font-size: 11px;
+      color: #a8b0ff;
+      white-space: nowrap;
+    }
+    .mode-switch-select {
+      background: #1b1b45;
+      color: #e9edff;
+      border: 1px solid #4b54a3;
+      border-radius: 6px;
+      padding: 2px 6px;
+      font-size: 11px;
+      outline: none;
+    }
+    .mode-switch-note {
+      font-size: 11px;
+      color: #7f89d6;
+      white-space: nowrap;
+    }
     #sync-badge {
       font-size: 12px;
       color: #5ecc5e;
@@ -281,6 +309,14 @@
   <div class="header">
     <h1>🎮 大巴扎 · 调试</h1>
     <div class="header-right">
+      <div class="mode-switch-wrap">
+        <span class="mode-switch-label">参数模式</span>
+        <select id="debug-mode-select" class="mode-switch-select">
+          <option value="normal">常规模式</option>
+          <option value="nobag">无背包模式</option>
+        </select>
+      </div>
+      <span id="debug-mode-label" class="mode-switch-note">当前：常规模式参数</span>
       <span id="sync-badge">🔗 连接中...</span>
       <button id="btn-copy-config" class="btn-save">复制配置</button>
       <button id="btn-download-defaults" class="btn-save">保存为默认值</button>
