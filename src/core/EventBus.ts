@@ -89,6 +89,8 @@ export type StatusType = 'burn' | 'poison' | 'regen' | 'freeze' | 'haste' | 'slo
 export type SceneName  =
   | 'shop'
   | 'battle'
+  | 'tower-shop'
+  | 'tower-battle'
   | 'nobag-shop'
   | 'nobag-battle'
   | 'result'

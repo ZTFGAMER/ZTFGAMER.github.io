@@ -19,11 +19,19 @@ function debugDefaultsSavePlugin(): Plugin {
         req.on('end', async () => {
           try {
             const raw = Buffer.concat(chunks).toString('utf-8')
-            const payload = JSON.parse(raw) as { snapshot?: Record<string, number>; mode?: 'normal' | 'nobag' }
+            const payload = JSON.parse(raw) as { snapshot?: Record<string, number>; mode?: 'normal' | 'nobag' | 'tower' }
             const snapshot = payload.snapshot
             if (!snapshot || typeof snapshot !== 'object') throw new Error('invalid_snapshot')
-            const mode = payload.mode === 'nobag' ? 'nobag' : 'normal'
-            const relativePath = mode === 'nobag' ? 'data/nobag_debug_defaults.json' : 'data/debug_defaults.json'
+            const mode = payload.mode === 'nobag'
+              ? 'nobag'
+              : payload.mode === 'tower'
+                ? 'tower'
+                : 'normal'
+            const relativePath = mode === 'nobag'
+              ? 'data/nobag_debug_defaults.json'
+              : mode === 'tower'
+                ? 'data/tower_debug_defaults.json'
+                : 'data/debug_defaults.json'
             const targetPath = resolve(__dirname, relativePath)
             const text = `${JSON.stringify(snapshot, null, 2)}\n`
             await fs.writeFile(targetPath, text, 'utf-8')

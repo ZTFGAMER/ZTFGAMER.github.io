@@ -1,0 +1,688 @@
+import { Assets, Container, Graphics, Sprite, Text, Texture } from 'pixi.js'
+import { getConfig as getDebugCfg } from '@/tower/config/debugConfig'
+import { getAllItems, getConfig as getGameCfg } from '@/tower/core/DataLoader'
+import { getTierColor } from '@/tower/config/colorPalette'
+import { getItemIconUrl, getTowerBattleImageUrl } from '@/tower/core/AssetPath'
+import { CANVAS_W, CANVAS_H } from '@/tower/config/layoutConstants'
+import type { BattleEngineLike } from './BattleEngineTypes'
+
+type ItemBattleStat = {
+  sourceItemId: string
+  side: 'player' | 'enemy'
+  defId: string
+  itemName: string
+  baseTier: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
+  tierRaw: string
+  level: number
+  triggerCount: number
+  damage: number
+  shield: number
+  isTowerEnemyUnit: boolean
+  towerEnemyIcon: string
+}
+
+type DamageStatsRowView = {
+  root: Container
+  iconFrame: Graphics
+  icon: Sprite
+  name: Text
+  triggerText: Text
+  damageFill: Graphics
+  damageText: Text
+  shieldFill: Graphics
+  shieldText: Text
+}
+
+const DAMAGE_STATS_PANEL_W = 560
+const DAMAGE_STATS_PANEL_H = 700
+
+// ---- module-level private helpers ----
+
+function parseTierLevel(tierRaw: string): number {
+  const tier = `${tierRaw}`
+  const m = tier.match(/#(\d+)/)
+  const star = Math.max(1, Math.min(2, Number(m?.[1] ?? 1) || 1)) as 1 | 2
+  if (tier.includes('Diamond')) return star + 5
+  if (tier.includes('Gold')) return star + 3
+  if (tier.includes('Silver')) return star + 1
+  return 1
+}
+
+function parseBaseTier(raw?: string): 'Bronze' | 'Silver' | 'Gold' | 'Diamond' {
+  const s = `${raw ?? ''}`
+  if (s.includes('Diamond')) return 'Diamond'
+  if (s.includes('Gold')) return 'Gold'
+  if (s.includes('Silver')) return 'Silver'
+  return 'Bronze'
+}
+
+function tierCn(tier: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'): string {
+  if (tier === 'Silver') return '白银'
+  if (tier === 'Gold') return '黄金'
+  if (tier === 'Diamond') return '钻石'
+  return '青铜'
+}
+
+function getClampedStatsPanelY(panelH: number): number {
+  const y = getDebugCfg('battleStatsPanelY')
+  const halfH = panelH / 2
+  const pad = 12
+  const minY = halfH + pad
+  const maxY = CANVAS_H - halfH - pad
+  return Math.max(minY, Math.min(maxY, y))
+}
+
+const TOP_ACTION_BTN_H = 58
+const TOP_ACTION_BTN_HALF_H = TOP_ACTION_BTN_H / 2
+const TOP_ACTION_BTN_SAFE_PAD = 8
+
+function getClampedTopActionBtnY(): number {
+  const y = getDebugCfg('battleSpeedBtnY')
+  const minY = TOP_ACTION_BTN_HALF_H + TOP_ACTION_BTN_SAFE_PAD
+  const maxY = CANVAS_H - TOP_ACTION_BTN_HALF_H - TOP_ACTION_BTN_SAFE_PAD
+  return Math.max(minY, Math.min(maxY, y))
+}
+
+// ---- BattleDamageStats class ----
+
+export class BattleDamageStats {
+  // stat data
+  private battleStatsByItemId = new Map<string, ItemBattleStat>()
+  private battleStatLastTriggerTickByItemId = new Map<string, number>()
+
+  // state flags
+  private damageStatsDirty = false
+  private damageStatsPanelVisible = false
+  private damageStatsLastRenderAtMs = 0
+  private damageStatsTab: 'player' | 'enemy' = 'player'
+
+  // UI containers/nodes
+  private damageStatsMask: Graphics | null = null
+  private damageStatsPanel: Container | null = null
+  private damageStatsTitleText: Text | null = null
+  private damageStatsRowsCon: Container | null = null
+  private damageStatsTabPlayerBtn: Container | null = null
+  private damageStatsTabEnemyBtn: Container | null = null
+  private statsBtnText: Text | null = null
+  private damageStatsRowViews: DamageStatsRowView[] = []
+  private damageStatsEmptyText: Text | null = null
+  private damageStatsRowIconDefIds: string[] = []
+  private damageStatsIconTextureByDefId = new Map<string, Texture>()
+  private damageStatsIconLoadPendingByDefId = new Set<string>()
+
+  // ---- private helpers ----
+
+  private currentBattleTickIndex(engine: BattleEngineLike | null): number {
+    const tick = engine?.getDebugState().tickIndex
+    if (typeof tick !== 'number' || !Number.isFinite(tick)) return -1
+    return Math.max(0, Math.round(tick))
+  }
+
+  private findTowerEnemyMeta(
+    sourceItemId: string,
+    engine: BattleEngineLike | null,
+  ): { enemyId: string; enemyName: string; icon: string } | null {
+    const units = engine?.getTowerEnemyUnits?.()
+    if (!units || units.length <= 0) return null
+    const unit = units.find((it) => it.id === sourceItemId)
+    if (!unit) return null
+
+    const towerRules = getGameCfg().towerDefenseRules
+    const def = (towerRules?.enemyDefs ?? []).find((it) => it.id === unit.enemyId)
+    const enemyName = String(def?.name || unit.enemyId || sourceItemId)
+    const icon = String(def?.icon || unit.icon || '').trim()
+    return {
+      enemyId: String(def?.id || unit.enemyId || sourceItemId),
+      enemyName,
+      icon,
+    }
+  }
+
+  private getTowerEnemyIconCandidates(iconKey: string): string[] {
+    const key = String(iconKey || '').trim()
+    if (!key) return []
+    const out = [`${key}.png`]
+    if (key === 'bossbattle') out.push('boss.png')
+    return out
+  }
+
+  private getRowIconKey(stat: ItemBattleStat): string {
+    if (stat.isTowerEnemyUnit) {
+      const icon = String(stat.towerEnemyIcon || stat.defId || stat.sourceItemId).trim()
+      return `tower-enemy:${icon || 'fallback'}`
+    }
+    const defId = String(stat.defId || 'item1').trim() || 'item1'
+    return `item:${defId}`
+  }
+
+  private queueDamageStatsIconLoad(iconKey: string, stat: ItemBattleStat): void {
+    if (this.damageStatsIconLoadPendingByDefId.has(iconKey)) return
+    this.damageStatsIconLoadPendingByDefId.add(iconKey)
+    if (stat.isTowerEnemyUnit) {
+      const candidates = this.getTowerEnemyIconCandidates(stat.towerEnemyIcon)
+      void (async () => {
+        for (const fileName of candidates) {
+          try {
+            const tex = await Assets.load<Texture>(getTowerBattleImageUrl(fileName))
+            this.damageStatsIconTextureByDefId.set(iconKey, tex)
+            this.damageStatsDirty = true
+            return
+          } catch {
+            continue
+          }
+        }
+      })().finally(() => {
+        this.damageStatsIconLoadPendingByDefId.delete(iconKey)
+      })
+      return
+    }
+
+    const iconUrl = getItemIconUrl(stat.defId || 'item1')
+    void Assets.load<Texture>(iconUrl).then((tex) => {
+      this.damageStatsIconTextureByDefId.set(iconKey, tex)
+      this.damageStatsDirty = true
+    }).catch(() => {
+      // ignore runtime missing icon
+    }).finally(() => {
+      this.damageStatsIconLoadPendingByDefId.delete(iconKey)
+    })
+  }
+
+  private ensureBattleStatEntry(
+    sourceItemId: string,
+    side: 'player' | 'enemy',
+    engine: BattleEngineLike | null,
+    defId = '',
+  ): ItemBattleStat {
+    const prev = this.battleStatsByItemId.get(sourceItemId)
+    if (prev) return prev
+    const boardItem = engine?.getBoardState().items.find((it) => it.id === sourceItemId)
+    const towerEnemyMeta = side === 'enemy' && !boardItem
+      ? this.findTowerEnemyMeta(sourceItemId, engine)
+      : null
+    const resolvedDefId = defId
+      || boardItem?.defId
+      || towerEnemyMeta?.enemyId
+      || ''
+    const tierRaw = boardItem?.tier ?? 'Bronze#1'
+    const itemDef = towerEnemyMeta
+      ? null
+      : getAllItems().find((it) => it.id === resolvedDefId)
+    const itemName = towerEnemyMeta?.enemyName
+      ?? itemDef?.name_cn
+      ?? resolvedDefId
+      ?? sourceItemId
+    const stat: ItemBattleStat = {
+      sourceItemId,
+      side,
+      defId: resolvedDefId,
+      itemName,
+      baseTier: towerEnemyMeta ? 'Bronze' : parseBaseTier(itemDef?.starting_tier),
+      tierRaw,
+      level: towerEnemyMeta ? 1 : parseTierLevel(tierRaw),
+      triggerCount: 0,
+      damage: 0,
+      shield: 0,
+      isTowerEnemyUnit: !!towerEnemyMeta,
+      towerEnemyIcon: towerEnemyMeta?.icon ?? '',
+    }
+    this.battleStatsByItemId.set(sourceItemId, stat)
+    return stat
+  }
+
+  private refreshDamageStatsPanel(
+    battlePresentationMs: number,
+    engine: BattleEngineLike | null,
+    force = false,
+  ): void {
+    if (!this.damageStatsPanel || !this.damageStatsTitleText || !this.damageStatsRowsCon) return
+    if (!force && !this.damageStatsDirty && battlePresentationMs - this.damageStatsLastRenderAtMs < 180) return
+    const rows = Array.from(this.battleStatsByItemId.values())
+      .filter((it) => it.side === this.damageStatsTab)
+      .sort((a, b) => (b.damage + b.shield) - (a.damage + a.shield) || b.damage - a.damage || b.shield - a.shield || b.triggerCount - a.triggerCount)
+    const maxStatValue = Math.max(1, ...rows.map((r) => Math.max(r.damage, r.shield)))
+
+    this.damageStatsTitleText.text = engine?.isFinished() ? '战斗统计（已结束）' : '战斗统计（进行中）'
+    this.ensureDamageStatsRowsBuilt()
+    const visibleCount = Math.min(this.damageStatsRowViews.length, rows.length)
+    if (this.damageStatsEmptyText) this.damageStatsEmptyText.visible = visibleCount <= 0
+    for (let i = 0; i < this.damageStatsRowViews.length; i++) {
+      const view = this.damageStatsRowViews[i]!
+      const stat = i < visibleCount ? rows[i] : null
+      view.root.visible = !!stat
+      if (!stat) continue
+      this.updateDamageStatsRowView(view, i, stat, maxStatValue)
+    }
+
+    this.damageStatsDirty = false
+    this.damageStatsLastRenderAtMs = battlePresentationMs
+  }
+
+  private ensureDamageStatsRowsBuilt(): void {
+    if (!this.damageStatsRowsCon) return
+    if (this.damageStatsRowViews.length > 0) return
+
+    this.damageStatsEmptyText = new Text({
+      text: '暂无统计',
+      style: { fontSize: 24, fill: 0xbfd0ef, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    this.damageStatsEmptyText.anchor.set(0.5)
+    this.damageStatsEmptyText.x = 0
+    this.damageStatsEmptyText.y = 40
+    this.damageStatsRowsCon.addChild(this.damageStatsEmptyText)
+
+    const rowW = 540
+    const rowH = 102
+    const iconSide = 81
+    const barW = 264
+    const barH = 14
+    const iconPaddingLeft = 18
+    const iconX = -rowW / 2 + iconPaddingLeft + iconSide / 2
+    const barX = -rowW / 2 + 114
+
+    for (let i = 0; i < 5; i++) {
+      const row = new Container()
+      row.y = -254 + i * (rowH + 10)
+
+      const rowBg = new Graphics()
+      rowBg.roundRect(-rowW / 2, 0, rowW, rowH, 12)
+      rowBg.fill({ color: 0x1a2744, alpha: 0.88 })
+      rowBg.stroke({ color: 0x5f79a8, width: 1, alpha: 0.9 })
+      row.addChild(rowBg)
+
+      const iconY = rowH / 2
+      const iconFrame = new Graphics()
+      iconFrame.roundRect(iconX - iconSide / 2, iconY - iconSide / 2, iconSide, iconSide, 9)
+      iconFrame.fill({ color: 0x1d2a45, alpha: 1 })
+      iconFrame.stroke({ color: getTierColor('Bronze'), width: 5, alpha: 0.98 })
+      row.addChild(iconFrame)
+
+      const icon = new Sprite(Texture.WHITE)
+      icon.anchor.set(0.5)
+      icon.x = iconX
+      icon.y = iconY
+      icon.width = 73
+      icon.height = 73
+      row.addChild(icon)
+
+      const name = new Text({
+        text: '',
+        style: { fontSize: 23, fill: 0xeaf2ff, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      name.x = -rowW / 2 + 114
+      name.y = 10
+      row.addChild(name)
+
+      const triggerText = new Text({
+        text: '',
+        style: { fontSize: 19, fill: 0xfff0bf, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      triggerText.anchor.set(0, 0)
+      triggerText.x = barX + barW + 12
+      triggerText.y = 12
+      row.addChild(triggerText)
+
+      const dmgBg = new Graphics()
+      dmgBg.roundRect(barX, 52, barW, barH, 6)
+      dmgBg.fill({ color: 0x2a3557, alpha: 1 })
+      row.addChild(dmgBg)
+
+      const damageFill = new Graphics()
+      row.addChild(damageFill)
+
+      const damageText = new Text({
+        text: '',
+        style: { fontSize: 19, fill: 0xffd6d6, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      damageText.anchor.set(0, 0)
+      damageText.x = barX + barW + 12
+      damageText.y = 44
+      row.addChild(damageText)
+
+      const shBg = new Graphics()
+      shBg.roundRect(barX, 74, barW, barH, 6)
+      shBg.fill({ color: 0x2a3557, alpha: 1 })
+      row.addChild(shBg)
+
+      const shieldFill = new Graphics()
+      row.addChild(shieldFill)
+
+      const shieldText = new Text({
+        text: '',
+        style: { fontSize: 19, fill: 0xd8ebff, fontFamily: 'Arial', fontWeight: 'bold' },
+      })
+      shieldText.anchor.set(0, 0)
+      shieldText.x = barX + barW + 12
+      shieldText.y = 66
+      row.addChild(shieldText)
+
+      this.damageStatsRowsCon.addChild(row)
+      this.damageStatsRowViews.push({
+        root: row,
+        iconFrame,
+        icon,
+        name,
+        triggerText,
+        damageFill,
+        damageText,
+        shieldFill,
+        shieldText,
+      })
+      this.damageStatsRowIconDefIds.push('')
+    }
+  }
+
+  private updateFillBar(fill: Graphics, x: number, y: number, width: number, height: number, color: number, ratio: number): void {
+    const clampedRatio = Math.max(0, Math.min(1, ratio))
+    const fillW = clampedRatio > 0 ? Math.max(2, Math.round(width * clampedRatio)) : 0
+    fill.clear()
+    if (fillW <= 0) return
+    fill.roundRect(x, y, fillW, height, 6)
+    fill.fill({ color, alpha: 1 })
+  }
+
+  private updateDamageStatsRowView(view: DamageStatsRowView, rowIndex: number, stat: ItemBattleStat, maxStatValue: number): void {
+    const rowW = 540
+    const barW = 264
+    const barH = 14
+    const barX = -rowW / 2 + 114
+    const iconSide = 81
+    const iconX = -rowW / 2 + 18 + iconSide / 2
+    const iconY = 102 / 2
+
+    view.iconFrame.clear()
+    view.iconFrame.roundRect(iconX - iconSide / 2, iconY - iconSide / 2, iconSide, iconSide, 9)
+    view.iconFrame.fill({ color: 0x1d2a45, alpha: 1 })
+    view.iconFrame.stroke({
+      color: stat.isTowerEnemyUnit ? 0x8eb2eb : getTierColor(stat.baseTier),
+      width: 5,
+      alpha: 0.98,
+    })
+
+    const iconKey = this.getRowIconKey(stat)
+    const prevIconDefId = this.damageStatsRowIconDefIds[rowIndex] ?? ''
+    this.damageStatsRowIconDefIds[rowIndex] = iconKey
+    const cachedTex = this.damageStatsIconTextureByDefId.get(iconKey)
+    if (cachedTex && view.icon.texture !== cachedTex) {
+      view.icon.texture = cachedTex
+    }
+    if (prevIconDefId !== iconKey && !cachedTex) {
+      this.queueDamageStatsIconLoad(iconKey, stat)
+    }
+    view.name.text = stat.isTowerEnemyUnit
+      ? `${rowIndex + 1}. ${stat.itemName}`
+      : `${rowIndex + 1}. ${stat.itemName} ${tierCn(stat.baseTier)}Lv${stat.level}`
+    view.triggerText.text = `${stat.isTowerEnemyUnit ? '攻击' : '触发'} ${Math.max(0, Math.round(stat.triggerCount))}次`
+    view.damageText.text = `伤害 ${Math.round(stat.damage)}`
+    view.shieldText.text = stat.isTowerEnemyUnit ? '' : `护盾 ${Math.round(stat.shield)}`
+
+    this.updateFillBar(view.damageFill, barX, 52, barW, barH, 0xe95d5d, stat.damage / maxStatValue)
+    this.updateFillBar(
+      view.shieldFill,
+      barX,
+      74,
+      barW,
+      barH,
+      Math.round(getDebugCfg('battleColorShield')),
+      stat.isTowerEnemyUnit ? 0 : (stat.shield / maxStatValue),
+    )
+  }
+
+  private setDamageStatsTab(tab: 'player' | 'enemy', battlePresentationMs: number, engine: BattleEngineLike | null): void {
+    this.damageStatsTab = tab
+    const activeFill = 0x4969a8
+    const idleFill = 0x253455
+    const updateBtn = (btn: Container | null, active: boolean) => {
+      if (!btn) return
+      const bg = btn.getChildAt(0)
+      if (bg instanceof Graphics) {
+        bg.clear()
+        bg.roundRect(-78, -28, 156, 56, 16)
+        bg.fill({ color: active ? activeFill : idleFill, alpha: 0.95 })
+        bg.stroke({ color: 0x8ab2ef, width: 2, alpha: 0.95 })
+      }
+    }
+    updateBtn(this.damageStatsTabPlayerBtn, tab === 'player')
+    updateBtn(this.damageStatsTabEnemyBtn, tab === 'enemy')
+    this.damageStatsDirty = true
+    this.refreshDamageStatsPanel(battlePresentationMs, engine, true)
+  }
+
+  private makeStatsTabButton(label: string, tab: 'player' | 'enemy'): Container {
+    const con = new Container()
+    const bg = new Graphics()
+    bg.roundRect(-78, -28, 156, 56, 16)
+    bg.fill({ color: 0x253455, alpha: 0.95 })
+    bg.stroke({ color: 0x8ab2ef, width: 2, alpha: 0.95 })
+    con.addChild(bg)
+    const txt = new Text({
+      text: label,
+      style: { fontSize: 28, fill: 0xe3edff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    txt.anchor.set(0.5)
+    con.addChild(txt)
+    con.eventMode = 'static'
+    con.cursor = 'pointer'
+    con.on('pointerdown', (e) => {
+      e.stopPropagation()
+      this.setDamageStatsTab(tab, 0, null)
+    })
+    return con
+  }
+
+  // ---- public API ----
+
+  addDamage(sourceItemId: string, side: 'player' | 'enemy', amount: number, engine: BattleEngineLike | null): void {
+    const stat = this.ensureBattleStatEntry(sourceItemId, side, engine)
+    stat.damage += Math.max(0, amount)
+    if (side === 'enemy') {
+      stat.triggerCount += 1
+    }
+    this.damageStatsDirty = true
+  }
+
+  addShield(sourceItemId: string, side: 'player' | 'enemy', amount: number, engine: BattleEngineLike | null): void {
+    const stat = this.ensureBattleStatEntry(sourceItemId, side, engine)
+    stat.shield += Math.max(0, amount)
+    this.damageStatsDirty = true
+  }
+
+  addTriggerCount(
+    sourceItemId: string,
+    side: 'player' | 'enemy',
+    amount: number,
+    engine: BattleEngineLike | null,
+    dedupeWithinTick = false,
+  ): void {
+    if (!sourceItemId) return
+    const add = Math.max(1, Math.round(Number(amount) || 1))
+    if (dedupeWithinTick) {
+      const tick = this.currentBattleTickIndex(engine)
+      if (tick >= 0) {
+        const last = this.battleStatLastTriggerTickByItemId.get(sourceItemId)
+        if (last === tick) return
+        this.battleStatLastTriggerTickByItemId.set(sourceItemId, tick)
+      }
+    }
+    const stat = this.ensureBattleStatEntry(sourceItemId, side, engine)
+    stat.triggerCount += add
+    this.damageStatsDirty = true
+  }
+
+  bootstrapFromBoard(engine: BattleEngineLike | null): void {
+    if (!engine) return
+    for (const it of engine.getBoardState().items) {
+      this.ensureBattleStatEntry(it.id, it.side, engine, it.defId)
+    }
+    this.damageStatsDirty = true
+  }
+
+  buildPanel(root: Container): void {
+    // Build mask
+    const mask = new Graphics()
+    mask.rect(0, 0, CANVAS_W, CANVAS_H)
+    mask.fill({ color: 0x000000, alpha: 0.6 })
+    mask.zIndex = 230
+    mask.visible = false
+    mask.eventMode = 'static'
+    mask.cursor = 'pointer'
+    mask.on('pointerdown', (e) => {
+      e.stopPropagation()
+      this.setVisible(false)
+    })
+    this.damageStatsMask = mask
+    root.addChild(mask)
+
+    // Build panel
+    const panel = new Container()
+    const panelW = DAMAGE_STATS_PANEL_W
+    const panelH = DAMAGE_STATS_PANEL_H
+    const bg = new Graphics()
+    bg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 20)
+    bg.fill({ color: 0x121a2f, alpha: 0.94 })
+    bg.stroke({ color: 0x7ea6e3, width: 2, alpha: 0.95 })
+    panel.addChild(bg)
+
+    this.damageStatsTitleText = new Text({
+      text: '战斗统计',
+      style: { fontSize: 44, fill: 0xffefc8, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    this.damageStatsTitleText.anchor.set(0.5, 0)
+    this.damageStatsTitleText.x = 0
+    this.damageStatsTitleText.y = -panelH / 2 + 30
+    panel.addChild(this.damageStatsTitleText)
+
+    this.damageStatsTabPlayerBtn = this.makeStatsTabButton('我方', 'player')
+    this.damageStatsTabPlayerBtn.x = -92
+    this.damageStatsTabPlayerBtn.y = panelH / 2 + 44
+    panel.addChild(this.damageStatsTabPlayerBtn)
+
+    this.damageStatsTabEnemyBtn = this.makeStatsTabButton('敌方', 'enemy')
+    this.damageStatsTabEnemyBtn.x = 92
+    this.damageStatsTabEnemyBtn.y = panelH / 2 + 44
+    panel.addChild(this.damageStatsTabEnemyBtn)
+
+    this.damageStatsRowsCon = new Container()
+    this.damageStatsRowsCon.y = 20
+    panel.addChild(this.damageStatsRowsCon)
+
+    panel.x = CANVAS_W / 2
+    panel.y = getClampedStatsPanelY(panelH)
+    panel.zIndex = 231
+    panel.visible = false
+    panel.eventMode = 'static'
+    panel.on('pointerdown', (e) => e.stopPropagation())
+    this.damageStatsPanel = panel
+    // Initialize tab visuals
+    this.setDamageStatsTab('player', 0, null)
+    root.addChild(panel)
+  }
+
+  buildButton(root: Container, onToggle: () => void): Container {
+    const con = new Container()
+    const bg = new Graphics()
+    const w = 116
+    const h = TOP_ACTION_BTN_H
+    bg.roundRect(-w / 2, -h / 2, w, h, 14)
+    bg.stroke({ color: 0x96b2ff, width: 2, alpha: 0.95 })
+    bg.fill({ color: 0x1f2945, alpha: 0.9 })
+    con.addChild(bg)
+
+    this.statsBtnText = new Text({
+      text: '统计',
+      style: { fontSize: 26, fill: 0xd9e4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    this.statsBtnText.anchor.set(0.5)
+    con.addChild(this.statsBtnText)
+
+    con.x = 92
+    con.y = getClampedTopActionBtnY()
+    con.zIndex = 185
+    con.eventMode = 'static'
+    con.cursor = 'pointer'
+    con.on('pointerdown', (e) => {
+      e.stopPropagation()
+      onToggle()
+    })
+    root.addChild(con)
+    return con
+  }
+
+  buildSettlementButton(onToggle: () => void): Container {
+    const con = new Container()
+    const bg = new Graphics()
+    const w = 116
+    const h = TOP_ACTION_BTN_H
+    bg.roundRect(-w / 2, -h / 2, w, h, 14)
+    bg.stroke({ color: 0x96b2ff, width: 2, alpha: 0.95 })
+    bg.fill({ color: 0x1f2945, alpha: 0.9 })
+    con.addChild(bg)
+
+    const btnText = new Text({
+      text: '统计',
+      style: { fontSize: 26, fill: 0xd9e4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+    })
+    btnText.anchor.set(0.5)
+    con.addChild(btnText)
+
+    con.x = -220
+    con.y = -160
+    con.visible = false
+    con.eventMode = 'static'
+    con.cursor = 'pointer'
+    con.on('pointerdown', (e) => {
+      e.stopPropagation()
+      onToggle()
+    })
+    return con
+  }
+
+  setVisible(v: boolean): void {
+    this.damageStatsPanelVisible = v
+    if (this.damageStatsMask) this.damageStatsMask.visible = v
+    if (this.damageStatsPanel) this.damageStatsPanel.visible = v
+    if (this.statsBtnText) this.statsBtnText.text = v ? '关统计' : '统计'
+    if (v) this.refreshDamageStatsPanel(this.damageStatsLastRenderAtMs, null, true)
+  }
+
+  isVisible(): boolean {
+    return this.damageStatsPanelVisible
+  }
+
+  tick(battlePresentationMs: number, engine: BattleEngineLike | null): void {
+    if (this.damageStatsPanel?.visible) {
+      this.refreshDamageStatsPanel(battlePresentationMs, engine)
+    }
+    if (this.damageStatsPanel) {
+      this.damageStatsPanel.y = getClampedStatsPanelY(DAMAGE_STATS_PANEL_H)
+    }
+  }
+
+  reset(): void {
+    this.battleStatsByItemId.clear()
+    this.battleStatLastTriggerTickByItemId.clear()
+    this.damageStatsPanelVisible = false
+    this.damageStatsDirty = false
+    this.damageStatsLastRenderAtMs = 0
+    this.damageStatsMask = null
+    this.damageStatsPanel = null
+    this.damageStatsTitleText = null
+    this.damageStatsRowsCon = null
+    this.damageStatsTabPlayerBtn = null
+    this.damageStatsTabEnemyBtn = null
+    this.statsBtnText = null
+    this.damageStatsRowViews = []
+    this.damageStatsRowIconDefIds = []
+    this.damageStatsIconTextureByDefId.clear()
+    this.damageStatsIconLoadPendingByDefId.clear()
+    this.damageStatsEmptyText = null
+  }
+
+  getPanel(): Container | null {
+    return this.damageStatsPanel
+  }
+
+  getMask(): Graphics | null {
+    return this.damageStatsMask
+  }
+}

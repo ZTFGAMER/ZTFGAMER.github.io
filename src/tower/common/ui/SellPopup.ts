@@ -1,0 +1,1198 @@
+// ============================================================
+// SellPopup — 物品信息浮层（仅展示，不含操作按钮）
+// 非模态：不使用全屏遮罩，可放在指定位置
+// ============================================================
+
+import {
+  Container, Graphics, Text, Sprite,
+  Assets, Texture,
+} from 'pixi.js'
+import type { ItemDef } from '@/tower/common/items/ItemDef'
+import { getConfig as getGameConfig } from '@/tower/core/DataLoader'
+import { normalizeSize } from '@/tower/common/items/ItemDef'
+import { CELL_SIZE } from '@/tower/common/grid/GridZone'
+import { getBuffIconUrl, getItemIconUrl } from '@/tower/core/AssetPath'
+import { getBattleEffectColor, getTierColor } from '@/tower/config/colorPalette'
+import { isSkillItemDefId } from '@/tower/common/skills/SkillItemDefs'
+
+const DEFAULT_POPUP_W = 400
+const POPUP_MIN_H = 240
+const POPUP_MIN_W = 360
+
+const TIER_ORDER = ['Bronze', 'Silver', 'Gold', 'Diamond'] as const
+
+export type ItemInfoMode = 'simple' | 'detailed'
+
+export interface ItemInfoRuntimeOverride {
+  cooldownMs?: number
+  damage?: number
+  shield?: number
+  heal?: number
+  burn?: number
+  poison?: number
+  multicast?: number
+  bounceCount?: number
+  ammoCurrent?: number
+  ammoMax?: number
+}
+
+export interface ItemInfoCustomDisplay {
+  overrideName?: string
+  lines?: string[]
+  richLineSegments?: Array<{
+    text: string
+    fontSize?: number
+    fill?: number
+  }>
+  lineStyles?: Array<{
+    fontSize?: number
+    fill?: number
+  }>
+  suppressStats?: boolean
+  hideTierBadge?: boolean
+  useQuestionIcon?: boolean
+  hideName?: boolean
+  centerRichLineInFrame?: boolean
+  hideCooldownBadge?: boolean
+}
+
+export interface ItemInfoEnchantmentDisplay {
+  key: string
+  nameCn: string
+  titleSuffixCn: string
+  effectCn: string
+  icon?: string
+}
+
+function parseTierName(raw: string): string {
+  for (const t of TIER_ORDER) {
+    if (raw.includes(t)) return t
+  }
+  return ''
+}
+
+function parseTierStar(raw: string): 1 | 2 {
+  const m = raw.match(/#(\d+)/)
+  const n = Number(m?.[1] ?? '1')
+  if (!Number.isFinite(n) || n <= 1) return 1
+  return 2
+}
+
+function tierScoreFromRaw(raw: string): number {
+  const tier = parseTierName(raw)
+  const star = parseTierStar(raw)
+  if (tier === 'Bronze') return star === 2 ? 2 : 1
+  if (tier === 'Silver') return star === 2 ? 4 : 3
+  if (tier === 'Gold') return star === 2 ? 6 : 5
+  return star === 2 ? 8 : 7
+}
+
+function startTierScoreFromItem(item: ItemDef): number {
+  const tier = parseTierName(item.starting_tier || 'Bronze')
+  if (tier === 'Silver') return 3
+  if (tier === 'Gold') return 5
+  if (tier === 'Diamond') return 7
+  return 1
+}
+
+function formatTierQualityLabel(baseTierRaw: string): string {
+  const baseTier = parseTierName(baseTierRaw) || 'Bronze'
+  if (baseTier === 'Bronze') return '青铜'
+  if (baseTier === 'Silver') return '白银'
+  if (baseTier === 'Gold') return '黄金'
+  return '钻石'
+}
+
+function formatTierLabelWithLevel(baseTierRaw: string, rawTier: string): string {
+  const baseTier = parseTierName(baseTierRaw) || 'Bronze'
+  const level = Math.max(1, Math.min(8, tierScoreFromRaw(rawTier)))
+  if (baseTier === 'Bronze') return `青铜Lv${level}`
+  if (baseTier === 'Silver') return `白银Lv${level}`
+  if (baseTier === 'Gold') return `黄金Lv${level}`
+  return `钻石Lv${level}`
+}
+
+function pickTierValue(series: string, tierIndex: number): string {
+  const parts = series.split(/[\/|]/).map(v => v.trim()).filter(Boolean)
+  if (parts.length <= 1) return series
+  const idx = Math.max(0, Math.min(parts.length - 1, tierIndex))
+  let picked = parts[idx] ?? parts[0] ?? series
+  const head = parts[0] ?? ''
+  const headSign = head.match(/^[+\-]/)?.[0] ?? ''
+  if (headSign && !/^[+\-]/.test(picked)) picked = `${headSign}${picked}`
+  if (series.includes('%') && !picked.includes('%')) picked = `${picked}%`
+  return picked
+}
+
+function pickTierNumericValue(series: string, tierIndex: number): number | null {
+  const parts = series.split(/[\/|]/).map((v) => v.trim()).filter(Boolean)
+  if (parts.length <= 0) return null
+  const idx = Math.max(0, Math.min(parts.length - 1, tierIndex))
+  const raw = parts[idx] ?? parts[0]
+  const n = Number(raw)
+  return Number.isFinite(n) ? n : null
+}
+
+function classifyRangeText(distance: number): '近' | '中' | '远' {
+  if (distance < 20) return '近'
+  if (distance < 32) return '中'
+  return '远'
+}
+
+function formatDescByTier(raw: string, tierIndex: number): string {
+  // 支持分档串：10/20/30、10|20|30、20%|30%
+  return raw.replace(/[+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)+/g, (m) => pickTierValue(m, tierIndex))
+}
+
+function formatDescArrowByTier(raw: string, fromTierIndex: number, toTierIndex: number): string {
+  return raw.replace(/[+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)+/g, (m) => {
+    const from = pickTierValue(m, fromTierIndex)
+    const to = pickTierValue(m, toTierIndex)
+    return `${from}->${to}`
+  })
+}
+
+function formatCooldownLine(item: ItemDef, tierIndex: number): string | null {
+  const sec = getCooldownSecText(item, tierIndex)
+  if (!sec) return null
+  return `间隔：${sec}秒`
+}
+
+function getCooldownSecText(item: ItemDef, tierIndex: number): string | null {
+  const ms = getCooldownMsByTier(item, tierIndex)
+  if (!Number.isFinite(ms) || ms <= 0) return null
+  const sec = ms / 1000
+  return (Math.round(sec * 10) / 10).toFixed(1)
+}
+
+function getCooldownMsByTier(item: ItemDef, tierIndex: number): number {
+  const rawTier = (item.cooldown_tiers ?? '').trim()
+
+  let ms = Number.NaN
+  if (rawTier && rawTier !== '无') {
+    const picked = pickTierValue(rawTier, tierIndex)
+    const n = Number(picked)
+    if (Number.isFinite(n)) ms = n
+  }
+  if (!Number.isFinite(ms)) ms = Number(item.cooldown)
+
+  return ms
+}
+
+type SimpleStatEntry = {
+  label: string
+  value: string
+  color: number
+  icon: string
+}
+
+function speedTierText(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '无'
+  if (ms <= 600) return '极快'
+  if (ms <= 1000) return '很快'
+  if (ms <= 1500) return '快'
+  if (ms <= 2500) return '中等'
+  if (ms <= 4000) return '慢'
+  return '很慢'
+}
+
+function extractSimpleStatEntries(
+  lines: string[],
+  item: ItemDef,
+  tierIndex: number,
+  rt?: ItemInfoRuntimeOverride,
+  displayMode: ItemInfoMode = 'simple',
+): SimpleStatEntry[] {
+  if (String(item.tags || '').includes('中立')) return []
+  const out: SimpleStatEntry[] = []
+  const find = (regex: RegExp): string | null => {
+    for (const line of lines) {
+      const m = line.match(regex)
+      if (m?.[1]) return m[1]
+    }
+    return null
+  }
+
+  const damage = find(/(?:造成|攻击造成)\s*([+\-]?\d+(?:\.\d+)?)\s*伤害/)
+  const multicast = (() => {
+    if (typeof rt?.multicast === 'number') return Math.max(1, Math.round(rt.multicast))
+    for (const line of lines) {
+      const m = line.match(/(?:连发次数|连续发射)\s*[:：]?\s*(\d+)\s*次?/)
+      if (m?.[1]) return Math.max(1, Math.round(Number(m[1])))
+    }
+    if (Number.isFinite(item.multicast) && item.multicast > 1) return Math.max(1, Math.round(item.multicast))
+    return 1
+  })()
+  const bounceCount = (() => {
+    if (typeof rt?.bounceCount === 'number') return Math.max(0, Math.round(rt.bounceCount))
+    const cfg = getGameConfig().towerDefenseRules
+    const iconKey = String(item.icon || '').trim()
+    const byIcon = Number(cfg?.playerItemBaseBounceByIcon?.[iconKey])
+    if (Number.isFinite(byIcon) && byIcon > 0) return Math.max(0, Math.round(byIcon))
+    for (const line of lines) {
+      const m = line.match(/弹射次数\s*[:：]?\s*(\d+)\s*次?/)
+      if (m?.[1]) return Math.max(0, Math.round(Number(m[1])))
+    }
+    return 0
+  })()
+
+  if (damage) {
+    out.push({
+      label: '伤害',
+      value: multicast > 1 ? `${damage}*${multicast}` : damage,
+      color: getBattleEffectColor('hp'),
+      icon: '✦',
+    })
+  }
+
+  const shield = find(/(?:获得|提供)\s*([+\-]?\d+(?:\.\d+)?)\s*护盾/)
+  if (shield) {
+    out.push({
+      label: '护盾',
+      value: shield,
+      color: getBattleEffectColor('shield'),
+      icon: '🛡️',
+    })
+  }
+
+  const heal = find(/(?:回复|恢复|治疗)\s*([+\-]?\d+(?:\.\d+)?)(?:\s*点?)?\s*(?:生命值|生命)?/)
+  if (heal) {
+    out.push({
+      label: '回血',
+      value: heal,
+      color: getBattleEffectColor('regen'),
+      icon: '✚',
+    })
+  }
+
+  const ms = typeof rt?.cooldownMs === 'number'
+    ? Math.max(0, rt.cooldownMs)
+    : getCooldownMsByTier(item, tierIndex)
+  if (Number.isFinite(ms) && ms > 0) {
+    if (displayMode === 'simple') {
+      out.push({
+        label: '速度',
+        value: speedTierText(ms),
+        color: 0x62a8ff,
+        icon: '⏱',
+      })
+    } else {
+      const sec = (Math.round((ms / 1000) * 10) / 10).toFixed(1)
+      out.push({
+        label: '间隔',
+        value: `${sec}秒`,
+        color: 0x62a8ff,
+        icon: '⏱',
+      })
+    }
+  }
+
+  const ammoValue = (() => {
+    if (typeof rt?.ammoMax === 'number' && rt.ammoMax > 0) {
+      if (typeof rt.ammoCurrent === 'number') {
+        return `${Math.max(0, Math.round(rt.ammoCurrent))}/${Math.max(1, Math.round(rt.ammoMax))}`
+      }
+      return `${Math.max(1, Math.round(rt.ammoMax))}`
+    }
+    for (const line of lines) {
+      const m = line.match(/弹药\s*[:：]\s*(\d+(?:\s*\/\s*\d+)?)/)
+      if (m?.[1]) return m[1].replace(/\s+/g, '')
+    }
+    return null
+  })()
+
+  if (ammoValue) {
+    out.push({
+      label: '弹药',
+      value: ammoValue,
+      color: 0xffd36b,
+      icon: '◉',
+    })
+  }
+
+  const canShowBounce = bounceCount > 0
+    && ms > 0
+    && !String(item.attack_style || '').includes('不飞行')
+
+  if (canShowBounce) {
+    out.push({
+      label: '弹射次数',
+      value: `${bounceCount}`,
+      color: 0x8ad6ff,
+      icon: '➶',
+    })
+  }
+
+  const rangeText = (() => {
+    const cfg = getGameConfig().towerDefenseRules
+    const byIcon = cfg?.playerItemAttackDistanceByIcon
+    const iconKey = String(item.icon || '').trim()
+    if (byIcon && iconKey) {
+      const byIconValue = Number(byIcon[iconKey])
+      if (Number.isFinite(byIconValue) && byIconValue > 0) {
+        return classifyRangeText(byIconValue)
+      }
+    }
+    for (const line of lines) {
+      const m = line.match(/攻击距离\s*[:：]\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/)
+      if (!m?.[1]) continue
+      const value = pickTierNumericValue(m[1], tierIndex)
+      if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) continue
+      return classifyRangeText(value)
+    }
+    return null
+  })()
+  if (rangeText) {
+    out.push({
+      label: '距离',
+      value: rangeText,
+      color: 0x62a8ff,
+      icon: '↔',
+    })
+  }
+
+  return out
+}
+
+function stripTierNumbersFromGameplayLine(line: string): string {
+  let out = line
+  out = out.replace(/\d+(?:\.\d+)?(?:\/\d+(?:\.\d+)?)+/g, '')
+  out = out.replace(/[+\-]?\d+(?:\.\d+)?/g, '')
+  out = out.replace(/\+\s*/g, '提升')
+  out = out.replace(/\s+/g, '')
+  out = out.replace(/[：:,，]\s*[。；;.!！?？]?$/g, '')
+  out = out.replace(/[。；;.!！?？]+$/g, '')
+  out = out.replace(/提升提升/g, '提升')
+  out = out.replace(/次$/g, '')
+  return out
+}
+
+function formatSimpleGameplayLine(lines: string[], preferred?: string): string {
+  if (preferred && preferred.trim()) return preferred.trim().replace(/^玩法\s*[：:]\s*/u, '')
+  const base = lines[1] ?? lines[0] ?? ''
+  const text = stripTierNumbersFromGameplayLine(base)
+  return (text || '(暂无玩法描述)').replace(/^玩法\s*[：:]\s*/u, '')
+}
+
+function isPureStatLine(line: string): boolean {
+  const s = line.replace(/\s+/g, '').replace(/[。；;!！?？]+$/g, '')
+  if (!s) return false
+  if (/^(攻击)?造成[+\-]?\d+(?:\.\d+)?伤害$/.test(s)) return true
+  if (/^(获得|提供|回复|治疗)[+\-]?\d+(?:\.\d+)?(护盾|生命|治疗)?$/.test(s)) return true
+  if (/^造成[+\-]?\d+(?:\.\d+)?(灼烧|剧毒|中毒)$/.test(s)) return true
+  if (/^(冷却|间隔)[:：]?[+\-]?\d+(?:\.\d+)?秒$/.test(s)) return true
+  return false
+}
+
+function stripCooldownDisplayFromLine(line: string): string {
+  let out = line
+  out = out.replace(/(?:^|[，,、\s])(?:冷却|间隔)\s*[:：]?\s*\d+(?:\.\d+)?\s*(?:秒|s|ms)(?=$|[，,、\s])/gi, ' ')
+  out = out.replace(/[，,、]\s*[，,、]+/g, '，')
+  out = out.replace(/[，,、]\s*$/g, '')
+  return out.trim()
+}
+
+function applyRuntimeValueToLine(line: string, rt?: ItemInfoRuntimeOverride): string {
+  if (!rt) return line
+  let out = line
+  const damage = typeof rt.damage === 'number' ? Math.max(0, Math.round(rt.damage)) : null
+  const shield = typeof rt.shield === 'number' ? Math.max(0, Math.round(rt.shield)) : null
+  const heal = typeof rt.heal === 'number' ? Math.max(0, Math.round(rt.heal)) : null
+  const burn = typeof rt.burn === 'number' ? Math.max(0, Math.round(rt.burn)) : null
+  const poison = typeof rt.poison === 'number' ? Math.max(0, Math.round(rt.poison)) : null
+  const multicast = typeof rt.multicast === 'number' ? Math.max(1, Math.round(rt.multicast)) : null
+  const bounceCount = typeof rt.bounceCount === 'number' ? Math.max(0, Math.round(rt.bounceCount)) : null
+  if (damage !== null) out = out.replace(/(?:攻击造成|造成)\s*\d+(?:\.\d+)?\s*伤害/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${damage}`))
+  if (shield !== null) out = out.replace(/(?:获得|提供)\s*\d+(?:\.\d+)?\s*护盾/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${shield}`))
+  if (heal !== null) out = out.replace(/(?:回复|恢复|治疗)\s*\d+(?:\.\d+)?(?:\s*点?)?\s*(?:生命值|生命)/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${heal}`))
+  if (burn !== null) out = out.replace(/造成\s*\d+(?:\.\d+)?\s*灼烧/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${burn}`))
+  if (poison !== null) out = out.replace(/造成\s*\d+(?:\.\d+)?\s*剧毒/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${poison}`))
+  if (multicast !== null) {
+    out = out.replace(/(?:连续发射|连发次数[:：]?|攻击次数\+)\s*\d+(?:\.\d+)?\s*次?/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${multicast}`))
+  }
+  if (bounceCount !== null) {
+    out = out.replace(/弹射次数[:：]?\s*\d+(?:\.\d+)?\s*次?/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${bounceCount}`))
+  }
+  if (typeof rt.ammoMax === 'number') {
+    const ammoText = typeof rt.ammoCurrent === 'number'
+      ? `${Math.max(0, Math.round(rt.ammoCurrent))}/${Math.max(0, Math.round(rt.ammoMax))}`
+      : `${Math.max(0, Math.round(rt.ammoMax))}`
+    out = out.replace(/弹药\s*[:：]\s*\d+(?:\/\d+)?/g, `弹药:${ammoText}`)
+  }
+  return out
+}
+
+export class SellPopup extends Container {
+  private canvasW: number
+  private panelW = DEFAULT_POPUP_W
+  private minH = POPUP_MIN_H
+  private minHSmall = 180
+  private currentMinH = POPUP_MIN_H
+  private panelH = POPUP_MIN_H
+  private anchorY = 100
+  private anchorBottomY: number | null = null
+  private anchorCenterY: number | null = null
+  private panel:   Container      // 弹窗主体
+  private panelBg: Graphics
+  private iconSp:  Sprite
+  private iconQuestionT: Text
+  private iconFrame: Graphics
+  private iconEnchantBadge: Container
+  private iconEnchantBadgeBg: Graphics
+  private iconEnchantBadgeSp: Sprite
+  private nameT:   Text
+  private tierBadgeBg: Graphics
+  private tierBadgeT: Text
+  private cooldownT: Text
+  private cooldownLabelT: Text
+  private cooldownBadgeG: Graphics
+  private priceT:  Text
+  private headerStatsCon: Container
+  private headerStatTexts: Text[] = []
+  private descCon: Container
+  private descDividerG: Graphics
+  private descTexts: Text[] = []
+  private lastItem: ItemDef | null = null
+  private lastPrice = 0
+  private lastPriceMode: 'sell' | 'buy' | 'none' = 'sell'
+  private lastTierOverride: string | undefined = undefined
+  private lastUpgradeFromTier: string | undefined = undefined
+  private lastInfoMode: ItemInfoMode = 'detailed'
+  private lastRuntimeOverride: ItemInfoRuntimeOverride | undefined = undefined
+  private lastCustomDisplay: ItemInfoCustomDisplay | undefined = undefined
+  private lastEnchantmentDisplay: ItemInfoEnchantmentDisplay | undefined = undefined
+  private textSize = { name: 22, tier: 14, cooldown: 16, priceCorner: 20, desc: 16, simpleDesc: 16 }
+  private cornerRadius = 10
+
+  constructor(canvasW: number, _canvasH: number) {
+    super()
+    this.canvasW = canvasW
+
+    const ts = getGameConfig().textSizes
+    this.textSize = {
+      name: ts.itemInfoName,
+      tier: ts.itemInfoTier,
+      cooldown: ts.itemInfoCooldown,
+      priceCorner: ts.itemInfoPriceCorner,
+      desc: ts.itemInfoDesc,
+      simpleDesc: ts.itemInfoDesc,
+    }
+
+    // 弹窗面板
+    this.panel = new Container()
+    this.panel.x = (canvasW - this.panelW) / 2
+    this.panel.y = 100
+    this.panel.eventMode = 'static'
+    this.panel.on('pointerdown', (e) => e.stopPropagation())
+
+    // 面板背景
+    this.panelBg = new Graphics()
+    this.panel.addChild(this.panelBg)
+    this.redrawPanel(POPUP_MIN_H)
+
+    // 物品图标（按实际尺寸 + item_visual_scale）
+    this.iconSp         = new Sprite(Texture.WHITE)
+    this.iconSp.width   = 1
+    this.iconSp.height  = 1
+    this.iconSp.x       = 0
+    this.iconSp.y       = 0
+    this.iconSp.alpha   = 0
+    this.panel.addChild(this.iconSp)
+
+    this.iconQuestionT = new Text({
+      text: '?',
+      style: {
+        fontSize: 72,
+        fill: 0xe6ecff,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        stroke: { color: 0x000000, width: 4 },
+      },
+    })
+    this.iconQuestionT.anchor.set(0.5)
+    this.iconQuestionT.visible = false
+    this.panel.addChild(this.iconQuestionT)
+
+    this.iconFrame = new Graphics()
+    this.panel.addChild(this.iconFrame)
+
+    this.iconEnchantBadge = new Container()
+    this.iconEnchantBadge.visible = false
+    this.iconEnchantBadge.eventMode = 'none'
+    this.iconEnchantBadgeBg = new Graphics()
+    this.iconEnchantBadgeSp = new Sprite(Texture.EMPTY)
+    this.iconEnchantBadgeSp.anchor.set(0.5)
+    this.iconEnchantBadge.addChild(this.iconEnchantBadgeBg)
+    this.iconEnchantBadge.addChild(this.iconEnchantBadgeSp)
+    this.panel.addChild(this.iconEnchantBadge)
+
+    // 物品名
+    this.nameT = new Text({
+        text: '',
+        style: {
+        fontSize: this.textSize.name,
+        fill: 0xddddee,
+        fontFamily: 'Arial',
+        align: 'left',
+        wordWrap: true,
+        wordWrapWidth: this.panelW - 24,
+        breakWords: true,
+        lineHeight: 28,
+      },
+    })
+    this.panel.addChild(this.nameT)
+
+    this.tierBadgeBg = new Graphics()
+    this.panel.addChild(this.tierBadgeBg)
+
+    this.tierBadgeT = new Text({
+      text: '',
+      style: {
+        fontSize: this.textSize.tier,
+        fill: 0xffffff,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+      },
+    })
+    this.panel.addChild(this.tierBadgeT)
+
+    this.cooldownT = new Text({
+      text: '',
+      style: {
+        fontSize: Math.max(20, this.textSize.cooldown + 6),
+        fill: 0xffffff,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+      },
+    })
+    this.cooldownLabelT = new Text({
+      text: 'CD',
+      style: {
+        fontSize: Math.max(12, this.textSize.cooldown - 6),
+        fill: 0xbfd8ff,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+      },
+    })
+    this.cooldownBadgeG = new Graphics()
+    this.cooldownBadgeG.visible = false
+    this.panel.addChild(this.cooldownBadgeG)
+    this.panel.addChild(this.cooldownLabelT)
+    this.panel.addChild(this.cooldownT)
+
+    // 出售价格
+    this.priceT = new Text({
+      text: '',
+      style: { fontSize: this.textSize.priceCorner, fill: 0xffd700, fontFamily: 'Arial', align: 'left', fontWeight: 'bold' },
+    })
+    this.panel.addChild(this.priceT)
+
+    this.headerStatsCon = new Container()
+    this.panel.addChild(this.headerStatsCon)
+
+    // 技能描述（分行渲染 + 分隔线）
+    this.descCon = new Container()
+    this.descDividerG = new Graphics()
+    this.descCon.addChild(this.descDividerG)
+    this.panel.addChild(this.descCon)
+
+    this.addChild(this.panel)
+    this.visible = false
+  }
+
+  setAnchor(x: number, y: number): void {
+    void x
+    this.anchorY = y
+    this.anchorCenterY = null
+    this.applyPanelPosition()
+  }
+
+  setBottomAnchor(bottomY: number): void {
+    this.anchorBottomY = bottomY
+    this.anchorCenterY = null
+    this.applyPanelPosition()
+  }
+
+  clearBottomAnchor(): void {
+    this.anchorBottomY = null
+    this.applyPanelPosition()
+  }
+
+  setCenterY(centerY: number): void {
+    this.anchorBottomY = null
+    this.anchorCenterY = centerY
+    this.applyPanelPosition()
+  }
+
+  setMinHeight(height: number): void {
+    this.minH = Math.max(0, height)
+    this.currentMinH = this.minH
+    if (this.lastItem) {
+      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay)
+    } else {
+      this.redrawPanel(this.minH)
+      this.setAnchor(0, this.anchorY)
+    }
+  }
+
+  setSmallMinHeight(height: number): void {
+    this.minHSmall = Math.max(0, height)
+    if (this.lastItem) {
+      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay)
+    }
+  }
+
+  setTextSizes(sizes: { name?: number; tier?: number; cooldown?: number; priceCorner?: number; desc?: number; simpleDesc?: number }): void {
+    const n = (v: unknown, fallback: number) => {
+      const x = Number(v)
+      return Number.isFinite(x) ? Math.max(1, x) : fallback
+    }
+    this.textSize = {
+      name:  n(sizes.name,  this.textSize.name),
+      tier:  n(sizes.tier,  this.textSize.tier),
+      cooldown: n(sizes.cooldown, this.textSize.cooldown),
+      priceCorner: n(sizes.priceCorner, this.textSize.priceCorner),
+      desc:  n(sizes.desc,  this.textSize.desc),
+      simpleDesc: n(sizes.simpleDesc, this.textSize.simpleDesc),
+    }
+    this.nameT.style.fontSize  = this.textSize.name + 2
+    this.tierBadgeT.style.fontSize = this.textSize.tier
+    this.cooldownT.style.fontSize = this.textSize.cooldown
+    this.cooldownLabelT.style.fontSize = Math.max(12, this.textSize.cooldown - 6)
+    this.priceT.style.fontSize = this.textSize.priceCorner
+    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay)
+  }
+
+  setCornerRadius(radius: number): void {
+    this.cornerRadius = Math.max(0, radius)
+    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay)
+  }
+
+  setWidth(width: number): void {
+    this.panelW = Math.max(POPUP_MIN_W, Math.min(this.canvasW, width))
+    this.nameT.style.wordWrapWidth = this.panelW - 24
+    if (this.lastItem) {
+      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay)
+    } else {
+      this.redrawPanel(POPUP_MIN_H)
+      this.setAnchor(0, this.anchorY)
+    }
+  }
+
+  /** 展示弹窗（需传入物品信息及出售价格） */
+  show(item: ItemDef, price: number, priceMode: 'sell' | 'buy' | 'none' = 'sell', tierOverride?: string, upgradeFromTier?: string, infoMode: ItemInfoMode = 'detailed', runtimeOverride?: ItemInfoRuntimeOverride, customDisplay?: ItemInfoCustomDisplay, enchantmentDisplay?: ItemInfoEnchantmentDisplay): void {
+    this.lastItem = item
+    this.lastPrice = price
+    this.lastPriceMode = priceMode
+    this.lastTierOverride = tierOverride
+    this.lastUpgradeFromTier = upgradeFromTier
+    this.lastInfoMode = infoMode
+    this.lastRuntimeOverride = runtimeOverride
+    this.lastCustomDisplay = customDisplay
+    this.lastEnchantmentDisplay = enchantmentDisplay
+    const cfg = getGameConfig()
+    const visualScale = cfg.itemVisualScale
+    const size = normalizeSize(item.size)
+    const baseIconW = (size === '1x1' ? CELL_SIZE : size === '2x1' ? CELL_SIZE * 2 : CELL_SIZE * 3) * visualScale
+    const baseIconH = baseIconW
+    const iconW = baseIconW
+    const iconH = baseIconH
+    this.currentMinH = size === '1x1' ? this.minHSmall : this.minH
+
+    const pad = 16
+    const gap = 14
+    const top = 14
+
+    const tierRaw = tierOverride ?? (parseTierName(item.starting_tier) || 'Bronze')
+    const tier = parseTierName(tierRaw) || 'Bronze'
+    const baseTier = parseTierName(item.starting_tier || 'Bronze') || 'Bronze'
+    const tierColor = getTierColor(baseTier)
+    const isClassItem = !isSkillItemDefId(item.id) && /战士|弓手|刺客/.test(String(item.tags || ''))
+    const tierLabel = isClassItem ? formatTierLabelWithLevel(baseTier, tierRaw) : formatTierQualityLabel(baseTier)
+    const fromTierBase = parseTierName(upgradeFromTier ?? tierRaw) || baseTier
+    const fromTierLabel = isClassItem
+      ? formatTierLabelWithLevel(baseTier, upgradeFromTier ?? tierRaw)
+      : formatTierQualityLabel(fromTierBase)
+    const startScore = startTierScoreFromItem(item)
+    const tierIndex = Math.max(0, tierScoreFromRaw(tierRaw) - startScore)
+    const fromTier = parseTierName(upgradeFromTier ?? tierRaw) || tier
+    const fromStar = fromTier === 'Bronze' ? 1 : parseTierStar(upgradeFromTier ?? tierRaw)
+    const fromRaw = `${fromTier}#${fromStar}`
+    const fromTierIndex = Math.max(0, tierScoreFromRaw(fromRaw) - startScore)
+    const inUpgradePreview = Boolean(upgradeFromTier && fromTier !== tier)
+    // 先更新字体，再计算布局
+    this.nameT.style.fontSize  = this.textSize.name + 8
+    this.tierBadgeT.style.fontSize = this.textSize.tier
+    this.cooldownT.style.fontSize = this.textSize.cooldown
+    this.priceT.style.fontSize = this.textSize.priceCorner
+
+    const overrideName = customDisplay?.overrideName
+    const baseName = (typeof overrideName === 'string') ? overrideName.trim() : item.name_cn
+    const headerName = enchantmentDisplay?.titleSuffixCn ? `${baseName}（${enchantmentDisplay.titleSuffixCn}）` : baseName
+    this.nameT.text  = headerName
+    this.priceT.text = ''
+    this.priceT.visible = false
+    const cooldownLine = (() => {
+      if (runtimeOverride && typeof runtimeOverride.cooldownMs === 'number') {
+        const sec = Math.max(0, runtimeOverride.cooldownMs) / 1000
+        if (sec <= 0) return null
+        return `间隔：${(Math.round(sec * 10) / 10).toFixed(1)}秒`
+      }
+      if (!inUpgradePreview) return formatCooldownLine(item, tierIndex)
+      const oldSec = getCooldownSecText(item, fromTierIndex)
+      const newSec = getCooldownSecText(item, tierIndex)
+      if (oldSec && newSec) return `间隔：${oldSec}秒 -> ${newSec}秒`
+      return formatCooldownLine(item, tierIndex)
+    })()
+    const cooldownBadgeValue = (() => {
+      if (runtimeOverride && typeof runtimeOverride.cooldownMs === 'number') {
+        const sec = Math.max(0, runtimeOverride.cooldownMs) / 1000
+        if (sec <= 0) return null
+        return (Math.round(sec * 10) / 10).toFixed(1)
+      }
+      return getCooldownSecText(item, tierIndex)
+    })()
+    this.cooldownT.text = cooldownLine ?? ''
+    this.cooldownT.visible = false
+
+    const skillLinesRaw = item.skills
+      .map((s) => s.cn?.trim())
+      .filter((s): s is string => Boolean(s))
+    const descGuideSimple = item.simple_desc?.trim() || undefined
+    const descGuideTiered = item.simple_desc_tiered?.trim() || undefined
+
+    const statLines = skillLinesRaw.map((s) => applyRuntimeValueToLine(formatDescByTier(s, tierIndex), runtimeOverride))
+    const rawSimpleStats = customDisplay?.suppressStats
+      ? []
+      : (() => {
+        if (!inUpgradePreview) return extractSimpleStatEntries(statLines, item, tierIndex, runtimeOverride, infoMode)
+        const fromLines = skillLinesRaw.map((s) => applyRuntimeValueToLine(formatDescByTier(s, fromTierIndex), runtimeOverride))
+        const fromStats = extractSimpleStatEntries(fromLines, item, fromTierIndex, runtimeOverride, infoMode)
+        const toStats = extractSimpleStatEntries(statLines, item, tierIndex, runtimeOverride, infoMode)
+        const fromMap = new Map(fromStats.map((s) => [`${s.label}|${s.icon}`, s.value]))
+        return toStats.map((s) => {
+          const key = `${s.label}|${s.icon}`
+          const fromValue = fromMap.get(key) ?? s.value
+          return { ...s, value: `${fromValue}->${s.value}` }
+        })
+      })()
+    this.nameT.text = headerName
+    for (const t of this.headerStatTexts) {
+      if (t.parent) t.parent.removeChild(t)
+      t.destroy()
+    }
+    this.headerStatTexts = []
+    this.headerStatsCon.removeChildren()
+    const headerInlineStats = [
+      { key: '伤害', color: 0xff6b6b },
+      { key: '护盾', color: 0xf5d46b },
+      { key: '回血', color: 0x73e6a6 },
+      { key: '距离', color: 0x62a8ff },
+    ] as const
+    let statCursorX = 0
+    for (const def of headerInlineStats) {
+      const hit = rawSimpleStats.find((s) => s.label === def.key)
+      if (!hit) continue
+      const t = new Text({
+          text: `${hit.icon}${hit.label}${hit.value}`,
+          style: {
+          fontSize: Math.max(16, this.textSize.name - 2),
+          fill: def.color,
+          fontFamily: 'Arial',
+          fontWeight: 'bold',
+        },
+      })
+      t.x = statCursorX
+      t.y = 0
+      this.headerStatsCon.addChild(t)
+      this.headerStatTexts.push(t)
+      statCursorX += t.width + 10
+    }
+    const simpleStats = rawSimpleStats.filter((entry) => (
+      entry.label !== '间隔'
+      && entry.label !== '速度'
+      && entry.label !== '伤害'
+      && entry.label !== '护盾'
+      && entry.label !== '回血'
+      && entry.label !== '距离'
+      && entry.label !== '弹射次数'
+      && entry.label !== '弹药'
+    ))
+    const ammoEntry = rawSimpleStats.find((entry) => entry.label === '弹药')
+    const bounceEntry = rawSimpleStats.find((entry) => entry.label === '弹射次数')
+    const descLines = (() => {
+      if (customDisplay?.lines && customDisplay.lines.length > 0) {
+        const out = [...customDisplay.lines]
+        if (enchantmentDisplay?.effectCn) out.push(`附魔：${enchantmentDisplay.effectCn}`)
+        return out
+      }
+      if (infoMode === 'simple') {
+        const out = [
+          formatSimpleGameplayLine(statLines, descGuideSimple),
+        ]
+        if (enchantmentDisplay?.effectCn) out.push(`附魔：${enchantmentDisplay.effectCn}`)
+        return out
+      }
+
+      if (!inUpgradePreview) {
+        if (descGuideTiered) {
+          const out = [applyRuntimeValueToLine(formatDescByTier(descGuideTiered, tierIndex), runtimeOverride)]
+          if (enchantmentDisplay?.effectCn) out.push(`附魔：${enchantmentDisplay.effectCn}`)
+          return out
+        }
+        const lines = skillLinesRaw
+          .map((s) => applyRuntimeValueToLine(formatDescByTier(s, tierIndex), runtimeOverride))
+          .filter((line) => !isPureStatLine(line))
+        const out = lines.length > 0 ? lines : []
+        if (enchantmentDisplay?.effectCn) out.push(`附魔：${enchantmentDisplay.effectCn}`)
+        return out
+      }
+
+      if (descGuideTiered) {
+        const out = [formatDescArrowByTier(descGuideTiered, fromTierIndex, tierIndex)]
+        if (enchantmentDisplay?.effectCn) out.push(`附魔：${enchantmentDisplay.effectCn}`)
+        return out
+      }
+
+      const out = skillLinesRaw.map((s) => formatDescArrowByTier(s, fromTierIndex, tierIndex))
+      if (enchantmentDisplay?.effectCn) out.push(`附魔：${enchantmentDisplay.effectCn}`)
+      return out
+    })()
+    if (ammoEntry) {
+      const ammoText = `弹药：${ammoEntry.value}`
+      if (descLines.length > 0) {
+        descLines[0] = `${descLines[0]}，${ammoText}`
+      } else {
+        descLines.push(ammoText)
+      }
+    }
+    if (bounceEntry) {
+      const bounceText = `弹射次数:${bounceEntry.value}`
+      if (descLines.length > 0) {
+        descLines[0] = `${descLines[0]}，${bounceText}`
+      } else {
+        descLines.push(bounceText)
+      }
+    }
+    if (isSkillItemDefId(item.id)) {
+      const skillActiveHint = '（放到背包中即可生效）'
+      if (!descLines.includes(skillActiveHint)) descLines.push(skillActiveHint)
+    }
+
+    const isSimple = infoMode === 'simple'
+    const showCooldownBadge = Boolean(cooldownBadgeValue) && !customDisplay?.hideCooldownBadge
+    const cooldownBadgeRadius = 38
+    const cooldownBadgeReserve = showCooldownBadge ? (cooldownBadgeRadius * 2 + 12) : 0
+
+    const frameX = pad
+    const frameY = top
+    // 边框与图标一致，按物品基础可视尺寸展示
+    const frameW = iconW
+    const frameH = iconH
+
+    const iconInset = 6
+    this.iconSp.width = Math.max(1, frameW - iconInset * 2)
+    this.iconSp.height = Math.max(1, frameH - iconInset * 2)
+    this.iconSp.x = frameX + iconInset
+    this.iconSp.y = frameY + iconInset
+    this.iconSp.visible = !customDisplay?.useQuestionIcon
+    this.iconQuestionT.visible = Boolean(customDisplay?.useQuestionIcon)
+    this.iconQuestionT.style.fontSize = Math.max(28, Math.round(frameH * 0.56))
+    this.iconQuestionT.x = frameX + frameW / 2
+    this.iconQuestionT.y = frameY + frameH / 2
+
+    this.iconFrame.clear()
+    this.iconFrame.roundRect(frameX, frameY, frameW, frameH, this.cornerRadius)
+    this.iconFrame.stroke({ color: tierColor, width: 4, alpha: 0.98 })
+    this.iconFrame.visible = true
+
+    if (enchantmentDisplay?.icon) {
+      const badgeSize = Math.max(44, Math.round(Math.min(frameW, frameH) * 0.48))
+      const radius = Math.round(badgeSize / 2)
+      this.iconEnchantBadgeBg.clear()
+      this.iconEnchantBadgeBg.visible = false
+      this.iconEnchantBadge.x = frameX + radius + 4 - 10
+      this.iconEnchantBadge.y = frameY + frameH - radius - 4 + 10
+      const iconSize = Math.max(12, Math.round(badgeSize * 0.8))
+      this.iconEnchantBadgeSp.width = iconSize
+      this.iconEnchantBadgeSp.height = iconSize
+      this.iconEnchantBadge.visible = true
+    } else {
+      this.iconEnchantBadge.visible = false
+    }
+
+    let rightX = frameX + frameW + gap
+    let rightW = Math.max(120, this.panelW - rightX - pad - cooldownBadgeReserve)
+    const simpleNarrowLayout = isSimple && (rightX + 120 > this.panelW - pad)
+    if (simpleNarrowLayout) {
+      rightX = pad
+      rightW = Math.max(120, this.panelW - pad * 2 - cooldownBadgeReserve)
+    }
+    this.nameT.style.wordWrap = false
+    this.nameT.style.wordWrapWidth = rightW
+
+    this.nameT.x = rightX
+    this.nameT.y = top
+    this.nameT.visible = !isSimple && !customDisplay?.hideName
+    const headerStartX = rightX + this.nameT.width + 12
+    const headerMaxRight = this.panelW - pad - cooldownBadgeReserve - 6
+    const headerAvailableW = Math.max(0, headerMaxRight - headerStartX)
+    let headerScale = 1
+    const headerContentW = this.headerStatsCon.width
+    if (headerContentW > headerAvailableW && headerContentW > 0) {
+      headerScale = Math.max(0.65, headerAvailableW / headerContentW)
+    }
+    this.headerStatsCon.scale.set(headerScale)
+    this.headerStatsCon.x = headerStartX
+    this.headerStatsCon.y = top + 2 + (1 - headerScale) * 4
+    this.headerStatsCon.visible = this.nameT.visible && this.headerStatTexts.length > 0 && headerAvailableW >= 24
+
+    this.tierBadgeT.text = inUpgradePreview && fromTierLabel !== tierLabel ? `${fromTierLabel}->${tierLabel}` : tierLabel
+    const badgePadX = 10
+    const badgePadY = 4
+    const badgeW = this.tierBadgeT.width + badgePadX * 2
+    const badgeH = this.tierBadgeT.height + badgePadY * 2
+    const nameTierGap = Math.max(8, Math.round(this.textSize.tier * 0.8))
+    this.cooldownT.x = this.panelW - pad - this.cooldownT.width
+    this.cooldownT.y = top
+    this.cooldownT.visible = false
+    this.cooldownLabelT.visible = false
+
+    const tierMaxX = (this.panelW - pad - cooldownBadgeReserve) - badgeW + badgePadX
+    this.tierBadgeT.x = Math.max(rightX + badgePadX, Math.min(tierMaxX, rightX + this.nameT.width + nameTierGap + badgePadX))
+    this.tierBadgeT.y = this.nameT.y + 2
+    this.tierBadgeBg.clear()
+    if (!isSimple) {
+      this.tierBadgeBg.roundRect(this.tierBadgeT.x - badgePadX, this.tierBadgeT.y - badgePadY, badgeW, badgeH, 8)
+      this.tierBadgeBg.fill({ color: tierColor, alpha: 0.92 })
+      this.tierBadgeBg.stroke({ color: 0xffffff, width: 1, alpha: 0.5 })
+    }
+    const forceWhiteDesc = item.name_cn === '原石' || item.name_cn === '空白卷轴'
+    const showTierBadge = false
+    this.tierBadgeBg.visible = showTierBadge
+    this.tierBadgeT.visible = showTierBadge
+
+    this.cooldownBadgeG.clear()
+    if (showCooldownBadge) {
+      const cx = this.panelW - pad - cooldownBadgeRadius
+      const cy = frameY + frameH / 2
+      this.cooldownBadgeG.circle(cx, cy, cooldownBadgeRadius)
+      this.cooldownBadgeG.fill({ color: 0x203c64, alpha: 0.96 })
+      this.cooldownBadgeG.stroke({ color: 0x8ec5ff, width: 3, alpha: 0.95 })
+      this.cooldownBadgeG.visible = true
+      this.cooldownT.text = cooldownBadgeValue ?? ''
+      this.cooldownT.style.fontSize = Math.max(20, this.textSize.cooldown + 6)
+      this.cooldownLabelT.style.fontSize = Math.max(12, this.textSize.cooldown - 6)
+      this.cooldownLabelT.text = 'CD'
+      this.cooldownLabelT.x = cx - this.cooldownLabelT.width / 2
+      this.cooldownLabelT.y = cy - cooldownBadgeRadius + 9
+      this.cooldownT.x = cx - this.cooldownT.width / 2
+      this.cooldownT.y = cy - this.cooldownT.height / 2 + 8
+      this.cooldownLabelT.visible = true
+      this.cooldownT.visible = true
+    } else {
+      this.cooldownBadgeG.visible = false
+      this.cooldownLabelT.visible = false
+      this.cooldownT.visible = false
+    }
+
+    // 描述区布局
+    this.descCon.x = rightX
+    const headerH = Math.max(
+      this.nameT.visible ? this.nameT.height : 0,
+      this.tierBadgeT.visible ? this.tierBadgeT.height : 0,
+      this.cooldownT.visible ? this.cooldownT.height : 0,
+    )
+    this.descCon.y = isSimple
+      ? (simpleNarrowLayout ? (frameY + frameH + 8) : top)
+      : (top + headerH + 10)
+    this.descDividerG.clear()
+    for (const t of this.descTexts) {
+      if (t.parent) t.parent.removeChild(t)
+      t.destroy()
+    }
+    this.descTexts = []
+
+    let cursorY = 0
+    const lineGap = 6
+    if (descLines.length > 0 || simpleStats.length > 0) {
+      this.descDividerG.moveTo(0, 2)
+      this.descDividerG.lineTo(rightW, 2)
+      this.descDividerG.stroke({ color: 0x5a628f, width: 1, alpha: 0.9 })
+      cursorY += 10
+    }
+    if (simpleStats.length > 0) {
+      let statX = 0
+      let statLineH = 0
+      for (const entry of simpleStats) {
+        const t = new Text({
+          text: `${entry.icon} ${entry.label}${entry.value}`,
+          style: {
+            fontSize: this.textSize.simpleDesc,
+            fill: entry.color,
+            fontFamily: 'Arial',
+            fontWeight: 'bold',
+          },
+        })
+        if (statX > 0 && statX + t.width > rightW) {
+          statX = 0
+          cursorY += statLineH + 4
+          statLineH = 0
+        }
+        t.x = statX
+        t.y = cursorY
+        this.descCon.addChild(t)
+        this.descTexts.push(t)
+        statX += t.width + 16
+        statLineH = Math.max(statLineH, t.height)
+      }
+      cursorY += statLineH
+      if (descLines.length > 0) {
+        const y = cursorY + 5
+        this.descDividerG.moveTo(0, y)
+        this.descDividerG.lineTo(rightW, y)
+        this.descDividerG.stroke({ color: 0x5a628f, width: 1, alpha: 0.9 })
+        cursorY += 10
+      }
+    }
+
+    const sanitizedDescLines = descLines
+      .map((line) => stripCooldownDisplayFromLine(line))
+      .filter((line) => line.length > 0)
+
+    const richLineSegments = customDisplay?.richLineSegments
+    if (richLineSegments && richLineSegments.length > 0) {
+      const row = new Container()
+      row.x = 0
+      let rowY = cursorY
+      this.descCon.addChild(row)
+
+      const baseFontSize = isSimple ? this.textSize.simpleDesc : this.textSize.desc
+      const parts: Text[] = []
+      let rowW = 0
+      let rowH = 0
+      for (const seg of richLineSegments) {
+        const t = new Text({
+          text: seg.text,
+          style: {
+            fontSize: seg.fontSize ?? baseFontSize,
+            fill: seg.fill ?? (forceWhiteDesc ? 0xffffff : 0xbfc7f5),
+            fontFamily: 'Arial',
+            wordWrap: false,
+          },
+        })
+        parts.push(t)
+        rowW += t.width
+        rowH = Math.max(rowH, t.height)
+      }
+      let x = Math.max(0, (rightW - rowW) / 2)
+      for (const t of parts) {
+        t.x = x
+        t.y = Math.max(0, (rowH - t.height) / 2)
+        row.addChild(t)
+        this.descTexts.push(t)
+        x += t.width
+      }
+      if (customDisplay?.centerRichLineInFrame) {
+        const centeredY = Math.round(frameY + (frameH - rowH) / 2 - this.descCon.y)
+        rowY = Math.max(cursorY, centeredY)
+      }
+      row.y = rowY
+      cursorY = rowY + rowH
+    } else {
+      for (let i = 0; i < sanitizedDescLines.length; i++) {
+        const lineStyle = customDisplay?.lineStyles?.[i]
+        const t = new Text({
+          text: sanitizedDescLines[i] ?? '',
+          style: {
+            fontSize: lineStyle?.fontSize ?? (isSimple ? this.textSize.simpleDesc : this.textSize.desc),
+            fill: lineStyle?.fill ?? (forceWhiteDesc ? 0xffffff : 0xbfc7f5),
+            fontFamily: 'Arial',
+            wordWrap: true,
+            wordWrapWidth: rightW,
+            breakWords: true,
+            lineHeight: Math.round((isSimple ? this.textSize.simpleDesc : this.textSize.desc) * 1.25),
+          },
+        })
+        t.x = 0
+        t.y = cursorY
+        this.descCon.addChild(t)
+        this.descTexts.push(t)
+        cursorY += t.height
+        if (sanitizedDescLines.length >= 2 && i < sanitizedDescLines.length - 1) {
+          const y = cursorY + Math.max(2, Math.round(lineGap / 2))
+          this.descDividerG.moveTo(0, y)
+          this.descDividerG.lineTo(rightW, y)
+          this.descDividerG.stroke({ color: 0x5a628f, width: 1, alpha: 0.9 })
+          cursorY += lineGap + 2
+        } else if (i < sanitizedDescLines.length - 1) {
+          cursorY += lineGap
+        }
+      }
+    }
+
+    this.priceT.x = this.panelW - pad - this.priceT.width
+    const contentBottomPad = 12
+    this.priceT.y = Math.max(this.descCon.y + cursorY + 8, frameY + frameH - this.priceT.height)
+
+    const iconBottom = frameY + frameH
+    const textBottom = this.priceT.visible
+      ? (this.priceT.y + this.priceT.height + contentBottomPad)
+      : (this.descCon.y + cursorY + contentBottomPad)
+    const panelH = Math.max(this.currentMinH, Math.max(iconBottom + pad, textBottom))
+    this.redrawPanel(panelH)
+    this.applyPanelPosition()
+
+    // 异步加载图标
+    if (!customDisplay?.useQuestionIcon) {
+      const url = getItemIconUrl(item.id)
+      this.iconSp.alpha = 0
+      Assets.load<Texture>(url).then(tex => {
+        this.iconSp.texture = tex
+        this.iconSp.alpha   = 1
+      }).catch((err) => {
+        console.warn('[SellPopup] 图标加载失败', url, err)
+      })
+    }
+
+    if (enchantmentDisplay?.icon) {
+      const buffUrl = getBuffIconUrl(enchantmentDisplay.icon)
+      const expectedIcon = enchantmentDisplay.icon
+      Assets.load<Texture>(buffUrl).then((tex) => {
+        if (this.lastEnchantmentDisplay?.icon !== expectedIcon) return
+        this.iconEnchantBadgeSp.texture = tex
+      }).catch((err) => {
+        console.warn('[SellPopup] 附魔图标加载失败', buffUrl, err)
+      })
+    }
+
+    this.visible = true
+  }
+
+  showUpgradePreview(item: ItemDef, price: number, fromTier: string, toTier: string, priceMode: 'sell' | 'buy' | 'none' = 'buy'): void {
+    this.show(item, price, priceMode, toTier, fromTier, 'detailed')
+  }
+
+  hide(): void {
+    this.visible = false
+  }
+
+  private redrawPanel(height: number): void {
+    this.panelH = height
+    this.panelBg.clear()
+    this.panelBg.roundRect(0, 0, this.panelW, height, 18)
+    this.panelBg.fill({ color: 0x1e1e30, alpha: 0.97 })
+    this.panelBg.stroke({ color: 0x5566aa, width: 2 })
+  }
+
+  private applyPanelPosition(): void {
+    this.panel.x = (this.canvasW - this.panelW) / 2
+    if (this.anchorCenterY !== null) {
+      this.panel.y = this.anchorCenterY - this.panelH / 2
+    } else if (this.anchorBottomY !== null) {
+      this.panel.y = this.anchorBottomY - this.panelH
+    } else {
+      this.panel.y = this.anchorY + (this.currentMinH - this.panelH)
+    }
+  }
+}

@@ -1,0 +1,3687 @@
+[
+  {
+    "id": 1,
+    "name": "sell_min_days_by_rarity",
+    "desc": "出售不同品质物品的最小天数",
+    "desc_en": "Minimum days to sell items by rarity",
+    "value": [
+      1,
+      2,
+      5,
+      8
+    ],
+    "note": "对应青铜、白银、黄金、钻石品质"
+  },
+  {
+    "id": 2,
+    "name": "daily_gold",
+    "desc": "每天获得的金币数量",
+    "desc_en": "Daily gold amount",
+    "value": 6
+  },
+  {
+    "id": 16,
+    "name": "daily_gold_by_day",
+    "desc": "按天发放金币（Day1~Day20）",
+    "desc_en": "Daily gold by day (Day1~Day20)",
+    "value": [
+      6,
+      12,
+      15,
+      21,
+      21,
+      21,
+      30,
+      30,
+      30,
+      45,
+      45,
+      45,
+      60,
+      60,
+      60,
+      75,
+      75,
+      75,
+      90,
+      90
+    ],
+    "note": "用户指定曲线 Day1~Day20（2026-03-23）"
+  },
+  {
+    "id": 3,
+    "name": "shop_refresh_prices",
+    "desc": "商店刷新价格",
+    "desc_en": "Shop refresh prices",
+    "value": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "note": "每次刷新的价格递增"
+  },
+  {
+    "id": 4,
+    "name": "daily_battle_area_slots",
+    "desc": "每天的战斗区域格数",
+    "desc_en": "Daily battle area slots",
+    "value": [
+      5,
+      5,
+      5
+    ],
+    "note": "战斗区单行可见宽度固定 5 格"
+  },
+  {
+    "id": 5,
+    "name": "shop_item_count",
+    "desc": "商店显示物品数量",
+    "desc_en": "Shop item display count",
+    "value": 3
+  },
+  {
+    "id": 6,
+    "name": "backpack_slots",
+    "desc": "背包格数",
+    "desc_en": "Backpack slots",
+    "value": 6
+  },
+  {
+    "id": 7,
+    "name": "daily_health",
+    "desc": "每天的生命值",
+    "desc_en": "Daily health",
+    "value": [
+      500,
+      1000,
+      1500,
+      2000,
+      2500,
+      3000,
+      4000,
+      5000,
+      6000,
+      8000,
+      10000,
+      12000,
+      14000,
+      18000,
+      22000,
+      26000,
+      30000,
+      34000,
+      38000,
+      42000
+    ],
+    "note": "兼容字段：同步敌方血量曲线"
+  },
+  {
+    "id": 17,
+    "name": "daily_enemy_health",
+    "desc": "敌方每日生命值（Day1~Day20）",
+    "desc_en": "Enemy daily health (Day1~Day20)",
+    "value": [
+      500,
+      1000,
+      1500,
+      2000,
+      2500,
+      3000,
+      4000,
+      5000,
+      6000,
+      8000,
+      10000,
+      12000,
+      14000,
+      18000,
+      22000,
+      26000,
+      30000,
+      34000,
+      38000,
+      42000
+    ],
+    "note": "用户指定敌方血量 Day1~Day20"
+  },
+  {
+    "id": 18,
+    "name": "daily_player_health",
+    "desc": "玩家每日生命值（Day1~Day20）",
+    "desc_en": "Player daily health (Day1~Day20)",
+    "value": [
+      500,
+      1000,
+      1500,
+      2000,
+      2500,
+      3000,
+      4000,
+      5000,
+      6000,
+      8000,
+      10000,
+      12000,
+      14000,
+      18000,
+      22000,
+      26000,
+      30000,
+      34000,
+      38000,
+      42000
+    ],
+    "note": "用户指定玩家血量 Day1~Day20"
+  },
+  {
+    "id": 8,
+    "name": "small_item_prices",
+    "desc": "小型物品不同品质的价格",
+    "desc_en": "Small item prices by rarity",
+    "value": [
+      2,
+      4,
+      8,
+      16
+    ],
+    "note": "对应青铜、白银、黄金、钻石品质"
+  },
+  {
+    "id": 9,
+    "name": "medium_item_prices",
+    "desc": "中型物品不同品质的价格",
+    "desc_en": "Medium item prices by rarity",
+    "value": [
+      4,
+      8,
+      16,
+      32
+    ],
+    "note": "对应青铜、白银、黄金、钻石品质"
+  },
+  {
+    "id": 10,
+    "name": "large_item_prices",
+    "desc": "大型物品不同品质的价格",
+    "desc_en": "Large item prices by rarity",
+    "value": [
+      6,
+      12,
+      24,
+      48
+    ],
+    "note": "对应青铜、白银、黄金、钻石品质"
+  },
+  {
+    "id": 11,
+    "name": "sell_price_ratio",
+    "desc": "出售价格折损",
+    "desc_en": "Sell price ratio",
+    "value": 0.5,
+    "value_display": "50%",
+    "note": "出售价格为购买价格的50%"
+  },
+  {
+    "id": 12,
+    "name": "item_visual_scale",
+    "desc": "装备显示缩放",
+    "desc_en": "Item visual scale",
+    "value": 0.8333333333,
+    "note": "全局装备图标/底板缩放系数（5/6），用于商店/背包/战斗区一致缩放"
+  },
+  {
+    "id": 13,
+    "name": "text_sizes",
+    "desc": "游戏内文本字号配置",
+    "desc_en": "In-game text size configuration",
+    "value": {
+      "gridZoneLabel": 24,
+      "shopButtonLabel": 24,
+      "phaseButtonLabel": 24,
+      "battleBackButtonLabel": 32,
+      "battleTextDamage": 24,
+      "battleTextCrit": 32,
+      "battleStatusTimer": 20,
+      "sellButtonSubPrice": 16,
+      "refreshCost": 20,
+      "gold": 20,
+      "dayDebugArrow": 24,
+      "dayDebugLabel": 20,
+      "shopItemName": 16,
+      "shopItemPrice": 16,
+      "shopItemBought": 24,
+      "itemStatBadge": 20,
+      "itemTierStar": 36,
+      "itemInfoName": 24,
+      "itemInfoTier": 16,
+      "itemInfoPrice": 20,
+      "itemInfoPriceCorner": 20,
+      "itemInfoCooldown": 20,
+      "itemInfoDesc": 16,
+      "itemInfoSimpleDesc": 16,
+      "synthTitle": 36,
+      "synthName": 24
+    },
+    "note": "统一管理游戏内文本字号，禁止硬编码"
+  },
+  {
+    "id": 14,
+    "name": "shop_tier_chances_by_day",
+    "desc": "商店按天数的品质概率（青铜/白银/黄金/钻石）",
+    "desc_en": "Shop tier chances by day (Bronze/Silver/Gold/Diamond)",
+    "value": [
+      [
+        100,
+        0,
+        0,
+        0
+      ],
+      [
+        90,
+        10,
+        0,
+        0
+      ],
+      [
+        80,
+        20,
+        0,
+        0
+      ],
+      [
+        70,
+        30,
+        0,
+        0
+      ],
+      [
+        55,
+        40,
+        5,
+        0
+      ],
+      [
+        40,
+        50,
+        10,
+        0
+      ],
+      [
+        30,
+        50,
+        20,
+        0
+      ],
+      [
+        25,
+        45,
+        30,
+        0
+      ],
+      [
+        10,
+        40,
+        40,
+        10
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ],
+      [
+        0,
+        30,
+        50,
+        20
+      ]
+    ],
+    "note": "Day1~Day20 品质概率；超过 20 天沿用 Day20"
+  },
+  {
+    "id": 15,
+    "name": "combat_runtime",
+    "desc": "战斗运行时参数",
+    "desc_en": "Combat runtime parameters",
+    "value": {
+      "tickMs": 250,
+      "fatigueStartMs": 30000,
+      "fatigueTickMs": 100,
+      "fatigueBaseValue": 1,
+      "fatigueDoubleEveryMs": 1000,
+      "timeoutMs": 40000,
+      "critMultiplier": 2,
+      "burnTickMs": 500,
+      "poisonTickMs": 1000,
+      "regenTickMs": 1000,
+      "burnShieldFactor": 0.5,
+      "burnDecayPct": 0.05,
+      "healCleansePct": 0.05,
+      "ammoAutoReloadMs": 5000,
+      "maxPendingHits": 1200,
+      "maxPendingItemFires": 600,
+      "maxPendingChargePulses": 1200,
+      "maxPendingAmmoRefills": 600,
+      "maxTicksPerFrame": 10,
+      "visualFxQueueMax": 56,
+      "visualFxConsumePerFrame": 8,
+      "itemValueTweenMs": 200,
+      "itemValuePulseUpMs": 100,
+      "itemValuePulseDownMs": 100,
+      "itemValuePulsePeakScale": 1.1,
+      "fxDegradeProjectileScaleL1": 0.6,
+      "fxDegradeProjectileScaleL2": 0.35,
+      "fxDegradeFloatingScaleL1": 0.6,
+      "fxDegradeFloatingScaleL2": 0.3,
+      "fxDegradeActiveScaleL1": 0.65,
+      "fxDegradeActiveScaleL2": 0.4,
+      "memoryMonitorSampleMs": 1000,
+      "memoryMonitorEscalateSamples": 2,
+      "memoryMonitorRecoverSamples": 5,
+      "memoryMonitorHighPendingRatio": 0.8,
+      "memoryMonitorRecoverPendingRatio": 0.45,
+      "memoryMonitorHighFxRatio": 0.8,
+      "memoryMonitorRecoverFxRatio": 0.45,
+      "memoryMonitorHighHeapMb": 220,
+      "memoryMonitorRecoverHeapMb": 170,
+      "enemyByDay": [
+        {
+          "dayStart": 1,
+          "dayEnd": 3,
+          "itemNames": [
+            "水草",
+            "珍珠",
+            "食人鱼",
+            "水母",
+            "鱼饵",
+            "海螺壳",
+            "珊瑚",
+            "玳瑁",
+            "鹦鹉皮特",
+            "毒须鲶",
+            "独角鲸",
+            "迷幻蝠鲼",
+            "宠物石",
+            "打火机",
+            "星图",
+            "淬锋钢",
+            "火药角",
+            "弹簧刀",
+            "靴里剑",
+            "迷你弯刀",
+            "流星索",
+            "葡萄弹",
+            "刺刀",
+            "抓钩",
+            "手斧",
+            "铲子",
+            "左轮手枪",
+            "步枪",
+            "燃烧响炮",
+            "渔网",
+            "火炮",
+            "鲨齿爪",
+            "弯刀",
+            "武士刀",
+            "钓鱼竿",
+            "拍立蚌",
+            "木桶",
+            "龙涎香",
+            "赛博铁尺",
+            "绵鳚",
+            "鳐鲨",
+            "双管霰弹枪",
+            "珊瑚护甲",
+            "手里剑",
+            "沙滩充气球",
+            "湿件战服"
+          ]
+        },
+        {
+          "dayStart": 4,
+          "dayEnd": 7,
+          "itemNames": [
+            "鱼叉",
+            "盐钳海盗",
+            "元素深水炸弹",
+            "带刃悬浮板",
+            "码头缆索",
+            "潜水配重",
+            "深海弯刀",
+            "小冰镐",
+            "牌桌",
+            "龟壳",
+            "河豚",
+            "船舵",
+            "六分仪",
+            "通缉海报",
+            "飞镖发射器",
+            "烈酒杯",
+            "标枪",
+            "消音器",
+            "连发步枪",
+            "锁镰",
+            "理查森先生",
+            "风暴瓶",
+            "火枪",
+            "星盘",
+            "恶鬼面具",
+            "船首像",
+            "炮弹",
+            "定制准镜",
+            "大钢弩",
+            "十手",
+            "蝶剑",
+            "伪装",
+            "吸血章鱼",
+            "潜水头盔",
+            "烽火",
+            "填弹杆",
+            "藏刃匕首",
+            "海影宝驹",
+            "套娃",
+            "幽渊鮟鱇",
+            "救生圈",
+            "海底热泉"
+          ]
+        },
+        {
+          "dayStart": 8,
+          "dayEnd": 12,
+          "itemNames": [
+            "划艇",
+            "电鳗",
+            "船锚",
+            "大坝",
+            "海狗沙龙",
+            "弩炮",
+            "火炮阵列",
+            "灯塔",
+            "热带岛屿",
+            "刺刀手枪",
+            "枪套",
+            "逞威风腰带扣",
+            "侦察望远镜",
+            "狙击步枪",
+            "绊索",
+            "滚石",
+            "吹箭枪",
+            "旗舰",
+            "港口",
+            "鸦巢",
+            "船长舱",
+            "抛石机",
+            "鱼雷",
+            "潜艇",
+            "温馨海湾"
+          ]
+        },
+        {
+          "dayStart": 13,
+          "dayEnd": 20,
+          "itemNames": [
+            "雷筒",
+            "船骸",
+            "大坝",
+            "滚石",
+            "狙击步枪",
+            "火炮阵列",
+            "旗舰",
+            "潜艇",
+            "弩炮",
+            "热带岛屿",
+            "海狗沙龙",
+            "鸦巢",
+            "灯塔",
+            "船长舱",
+            "港口",
+            "抛石机",
+            "鱼雷"
+          ]
+        }
+      ],
+      "enemyTeachingByDay": [
+        {
+          "dayStart": 1,
+          "dayEnd": 1,
+          "templates": [
+            {
+              "name": "Day1模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "短剑",
+                  "col": 0,
+                  "tier": "Bronze",
+                  "star": 1
+                },
+                {
+                  "itemName": "圆盾",
+                  "col": 1,
+                  "tier": "Bronze",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 2,
+          "dayEnd": 2,
+          "templates": [
+            {
+              "name": "Day2模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "木弓",
+                  "col": 0,
+                  "tier": "Bronze",
+                  "star": 1
+                },
+                {
+                  "itemName": "弹药袋",
+                  "col": 2,
+                  "tier": "Bronze",
+                  "star": 1
+                },
+                {
+                  "itemName": "木弓",
+                  "col": 3,
+                  "tier": "Bronze",
+                  "star": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 3,
+          "dayEnd": 3,
+          "templates": [
+            {
+              "name": "Day3模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "匕首",
+                  "col": 0,
+                  "tier": "Bronze",
+                  "star": 1
+                },
+                {
+                  "itemName": "连发飞镖",
+                  "col": 1,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "匕首",
+                  "col": 3,
+                  "tier": "Bronze",
+                  "star": 1
+                },
+                {
+                  "itemName": "连发飞镖",
+                  "col": 4,
+                  "tier": "Bronze",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 4,
+          "dayEnd": 4,
+          "templates": [
+            {
+              "name": "Day4模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "圆盾",
+                  "col": 0,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "长盾",
+                  "col": 2,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "圆盾",
+                  "col": 4,
+                  "tier": "Bronze",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 5,
+          "dayEnd": 5,
+          "templates": [
+            {
+              "name": "Day5模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "手弩",
+                  "col": 0,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 2,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "弹药袋",
+                  "col": 3,
+                  "tier": "Bronze",
+                  "star": 1
+                },
+                {
+                  "itemName": "木弓",
+                  "col": 4,
+                  "tier": "Bronze",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 6,
+          "dayEnd": 6,
+          "templates": [
+            {
+              "name": "Day6模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "回旋镖",
+                  "col": 0,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "回旋镖",
+                  "col": 1,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "连发飞镖",
+                  "col": 3,
+                  "tier": "Bronze",
+                  "star": 1
+                },
+                {
+                  "itemName": "匕首",
+                  "col": 5,
+                  "tier": "Bronze",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 7,
+          "dayEnd": 7,
+          "templates": [
+            {
+              "name": "Day7模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "长盾",
+                  "col": 0,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "长盾",
+                  "col": 1,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "长盾",
+                  "col": 3,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "长盾",
+                  "col": 4,
+                  "tier": "Silver",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 8,
+          "dayEnd": 8,
+          "templates": [
+            {
+              "name": "Day8模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "手弩",
+                  "col": 0,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 2,
+                  "tier": "Silver",
+                  "star": 2
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 3,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 5,
+                  "tier": "Silver",
+                  "star": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 9,
+          "dayEnd": 9,
+          "templates": [
+            {
+              "name": "Day9模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "连发飞镖",
+                  "col": 0,
+                  "tier": "Bronze",
+                  "star": 1
+                },
+                {
+                  "itemName": "回旋镖",
+                  "col": 2,
+                  "tier": "Silver",
+                  "star": 2
+                },
+                {
+                  "itemName": "连发飞镖",
+                  "col": 4,
+                  "tier": "Bronze",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 10,
+          "dayEnd": 10,
+          "templates": [
+            {
+              "name": "Day10模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "长盾",
+                  "col": 0,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "圆盾",
+                  "col": 1,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "尖刺金盾",
+                  "col": 3,
+                  "tier": "Gold",
+                  "star": 1
+                },
+                {
+                  "itemName": "长盾",
+                  "col": 5,
+                  "tier": "Silver",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 11,
+          "dayEnd": 11,
+          "templates": [
+            {
+              "name": "Day11模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "圆盾",
+                  "col": 0,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "皇家佩剑",
+                  "col": 2,
+                  "tier": "Gold",
+                  "star": 1
+                },
+                {
+                  "itemName": "圆盾",
+                  "col": 3,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "长盾",
+                  "col": 5,
+                  "tier": "Silver",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 12,
+          "dayEnd": 12,
+          "templates": [
+            {
+              "name": "Day12模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "长盾",
+                  "col": 0,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "超级手雷",
+                  "col": 1,
+                  "tier": "Gold",
+                  "star": 1
+                },
+                {
+                  "itemName": "圆盾",
+                  "col": 2,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "长盾",
+                  "col": 4,
+                  "tier": "Silver",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 13,
+          "dayEnd": 13,
+          "templates": [
+            {
+              "name": "Day13模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "超级弩机",
+                  "col": 0,
+                  "tier": "Gold",
+                  "star": 1
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 2,
+                  "tier": "Silver",
+                  "star": 2
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 3,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 5,
+                  "tier": "Silver",
+                  "star": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 14,
+          "dayEnd": 14,
+          "templates": [
+            {
+              "name": "Day14模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "黄金袖箭",
+                  "col": 0,
+                  "tier": "Gold",
+                  "star": 1
+                },
+                {
+                  "itemName": "回旋镖",
+                  "col": 1,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "黄金袖箭",
+                  "col": 3,
+                  "tier": "Gold",
+                  "star": 1
+                },
+                {
+                  "itemName": "回旋镖",
+                  "col": 4,
+                  "tier": "Silver",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 15,
+          "dayEnd": 15,
+          "templates": [
+            {
+              "name": "Day15模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "切割镰刀",
+                  "col": 0,
+                  "tier": "Gold",
+                  "star": 1
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 2,
+                  "tier": "Silver",
+                  "star": 2
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 3,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 5,
+                  "tier": "Silver",
+                  "star": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 16,
+          "dayEnd": 16,
+          "templates": [
+            {
+              "name": "Day16模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "长盾",
+                  "col": 0,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "圆盾",
+                  "col": 1,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "尖刺金盾",
+                  "col": 3,
+                  "tier": "Gold",
+                  "star": 2
+                },
+                {
+                  "itemName": "长盾",
+                  "col": 5,
+                  "tier": "Silver",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 17,
+          "dayEnd": 17,
+          "templates": [
+            {
+              "name": "Day17模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "圆盾",
+                  "col": 0,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "皇家佩剑",
+                  "col": 2,
+                  "tier": "Gold",
+                  "star": 2
+                },
+                {
+                  "itemName": "圆盾",
+                  "col": 3,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "长盾",
+                  "col": 5,
+                  "tier": "Silver",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 18,
+          "dayEnd": 18,
+          "templates": [
+            {
+              "name": "Day18模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "长盾",
+                  "col": 0,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "超级手雷",
+                  "col": 1,
+                  "tier": "Gold",
+                  "star": 2
+                },
+                {
+                  "itemName": "圆盾",
+                  "col": 2,
+                  "tier": "Bronze",
+                  "star": 2
+                },
+                {
+                  "itemName": "长盾",
+                  "col": 4,
+                  "tier": "Silver",
+                  "star": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 19,
+          "dayEnd": 19,
+          "templates": [
+            {
+              "name": "Day19模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "超级弩机",
+                  "col": 0,
+                  "tier": "Gold",
+                  "star": 2
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 2,
+                  "tier": "Silver",
+                  "star": 2
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 3,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "手弩",
+                  "col": 5,
+                  "tier": "Silver",
+                  "star": 2
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "dayStart": 20,
+          "dayEnd": 20,
+          "templates": [
+            {
+              "name": "Day20模板",
+              "focus": "按表配置",
+              "placements": [
+                {
+                  "itemName": "黄金袖箭",
+                  "col": 0,
+                  "tier": "Gold",
+                  "star": 2
+                },
+                {
+                  "itemName": "回旋镖",
+                  "col": 1,
+                  "tier": "Silver",
+                  "star": 1
+                },
+                {
+                  "itemName": "黄金袖箭",
+                  "col": 3,
+                  "tier": "Gold",
+                  "star": 2
+                },
+                {
+                  "itemName": "切割镰刀",
+                  "col": 4,
+                  "tier": "Gold",
+                  "star": 2
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "note": "Stage3 战斗时序参数：固定 Tick、超时疲劳、暴击倍率"
+  },
+  {
+    "id": 19,
+    "name": "skill_system",
+    "desc": "技能三选一按天配置",
+    "desc_en": "Daily skill draft configuration",
+    "value": {
+      "dailyDraftPlan": [
+        {
+          "day": 1,
+          "shouldDraft": 1,
+          "bronzeProb": 1,
+          "silverProb": 0,
+          "goldProb": 0,
+          "onlyStarterArchetype": 1,
+          "shouldEvent": 0,
+          "shouldShop": 0
+        },
+        {
+          "day": 2,
+          "shouldDraft": 0,
+          "bronzeProb": 1,
+          "silverProb": 0,
+          "goldProb": 0,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 1,
+          "shouldShop": 0
+        },
+        {
+          "day": 3,
+          "shouldDraft": 0,
+          "bronzeProb": 0.8,
+          "silverProb": 0.2,
+          "goldProb": 0,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 1
+        },
+        {
+          "day": 4,
+          "shouldDraft": 1,
+          "bronzeProb": 0.6,
+          "silverProb": 0.4,
+          "goldProb": 0,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 0
+        },
+        {
+          "day": 5,
+          "shouldDraft": 0,
+          "bronzeProb": 0.4,
+          "silverProb": 0.6,
+          "goldProb": 0,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 1,
+          "shouldShop": 0
+        },
+        {
+          "day": 6,
+          "shouldDraft": 0,
+          "bronzeProb": 0.2,
+          "silverProb": 0.8,
+          "goldProb": 0,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 1
+        },
+        {
+          "day": 7,
+          "shouldDraft": 1,
+          "bronzeProb": 0,
+          "silverProb": 1,
+          "goldProb": 0,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 0
+        },
+        {
+          "day": 8,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0.8,
+          "goldProb": 0.2,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 1,
+          "shouldShop": 0
+        },
+        {
+          "day": 9,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0.6,
+          "goldProb": 0.4,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 1
+        },
+        {
+          "day": 10,
+          "shouldDraft": 1,
+          "bronzeProb": 0,
+          "silverProb": 0.4,
+          "goldProb": 0.6,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 0
+        },
+        {
+          "day": 11,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0.2,
+          "goldProb": 0.8,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 1,
+          "shouldShop": 0
+        },
+        {
+          "day": 12,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 1
+        },
+        {
+          "day": 13,
+          "shouldDraft": 1,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 0
+        },
+        {
+          "day": 14,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 1,
+          "shouldShop": 0
+        },
+        {
+          "day": 15,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 1
+        },
+        {
+          "day": 16,
+          "shouldDraft": 1,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 0
+        },
+        {
+          "day": 17,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 1,
+          "shouldShop": 0
+        },
+        {
+          "day": 18,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 1
+        },
+        {
+          "day": 19,
+          "shouldDraft": 1,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 0,
+          "shouldShop": 0
+        },
+        {
+          "day": 20,
+          "shouldDraft": 0,
+          "bronzeProb": 0,
+          "silverProb": 0,
+          "goldProb": 1,
+          "onlyStarterArchetype": 0,
+          "shouldEvent": 1,
+          "shouldShop": 0
+        }
+      ],
+      "triggerDaysByTier": {
+        "bronze": [
+          2,
+          4
+        ],
+        "silver": [
+          6,
+          8
+        ],
+        "gold": [
+          10,
+          14
+        ]
+      },
+      "chooseCount": 3,
+      "enemyMirrorDraft": {
+        "enabled": true,
+        "pickCountByDay": [
+          1,
+          1,
+          1,
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          4,
+          4,
+          4,
+          5,
+          5,
+          5,
+          6,
+          6,
+          6,
+          7,
+          7
+        ],
+        "mainArchetypeRatioMin": 0.3,
+        "mainArchetypeRatioMax": 0.7
+      },
+      "pools": {
+        "bronze": [
+          {
+            "id": "bronze_warrior_guard",
+            "name": "盾墙训练",
+            "archetype": "warrior",
+            "desc": "上阵区中拥有护盾的武器更容易形成连携。"
+          },
+          {
+            "id": "bronze_archer_focus",
+            "name": "稳弓姿态",
+            "archetype": "archer",
+            "desc": "弹药武器更容易稳定打出完整弹药循环。"
+          },
+          {
+            "id": "bronze_assassin_chain",
+            "name": "疾影连击",
+            "archetype": "assassin",
+            "desc": "低冷却武器更容易形成连续攻击节奏。"
+          },
+          {
+            "id": "bronze_utility_supply",
+            "name": "后勤补给",
+            "archetype": "utility",
+            "desc": "战斗前排布与背包调度更加从容。"
+          }
+        ],
+        "silver": [
+          {
+            "id": "silver_warrior_bastion",
+            "name": "坚壁阵线",
+            "archetype": "warrior",
+            "desc": "护盾体系在中期更容易稳住战线。"
+          },
+          {
+            "id": "silver_archer_storm",
+            "name": "箭雨节拍",
+            "archetype": "archer",
+            "desc": "弹药与连发体系更容易形成爆发窗口。"
+          },
+          {
+            "id": "silver_assassin_execute",
+            "name": "追猎终结",
+            "archetype": "assassin",
+            "desc": "刺客体系更容易打出收割节奏。"
+          },
+          {
+            "id": "silver_utility_hub",
+            "name": "战术枢纽",
+            "archetype": "utility",
+            "desc": "通用构筑在多流派切换时更平滑。"
+          }
+        ],
+        "gold": [
+          {
+            "id": "gold_warrior_ironwall",
+            "name": "不破铁壁",
+            "archetype": "warrior",
+            "desc": "后期护盾体系获得更高上限的阵地能力。"
+          },
+          {
+            "id": "gold_archer_ballista",
+            "name": "弩阵共鸣",
+            "archetype": "archer",
+            "desc": "高阶弹药武器更容易叠出连射爆发。"
+          },
+          {
+            "id": "gold_assassin_phantom",
+            "name": "幻影处决",
+            "archetype": "assassin",
+            "desc": "高频武器在后期对局中更具斩杀压迫。"
+          },
+          {
+            "id": "gold_utility_masterplan",
+            "name": "大师谋略",
+            "archetype": "utility",
+            "desc": "全流派协同能力在后期回合更稳定。"
+          }
+        ]
+      }
+    },
+    "note": "技能三选一按天配置（每日是否触发、品质概率、首日职业定向）"
+  },
+  {
+    "id": 21,
+    "name": "event_system",
+    "desc": "事件池按天配置",
+    "desc_en": "Daily event pool configuration",
+    "value": {
+      "eventPool": [
+        {
+          "id": "event1",
+          "enabled": true,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event1",
+          "lane": "left",
+          "shortDesc": "上阵区随机升级",
+          "detailDesc": "上阵区的1个随机物品升级",
+          "note": "上阵区必须有物品",
+          "conditions": {
+            "requireBattleNotEmpty": true
+          }
+        },
+        {
+          "id": "event2",
+          "enabled": true,
+          "dayStart": 5,
+          "dayEnd": 20,
+          "icon": "event2",
+          "lane": "left",
+          "shortDesc": "背包随机升级",
+          "detailDesc": "背包中的2个随机物品升级",
+          "note": "背包中必须有物品",
+          "conditions": {
+            "requireBackpackNotEmpty": true
+          }
+        },
+        {
+          "id": "event3",
+          "enabled": true,
+          "dayStart": 5,
+          "dayEnd": 20,
+          "icon": "event3",
+          "lane": "left",
+          "shortDesc": "背包随机转化升级",
+          "detailDesc": "背包中的3个随机物品转化并升级",
+          "note": "背包中必须有物品",
+          "conditions": {
+            "requireBackpackNotEmpty": true
+          }
+        },
+        {
+          "id": "event4",
+          "enabled": true,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event4",
+          "lane": "left",
+          "shortDesc": "随机获得战士物品",
+          "detailDesc": "随机获得2个战士物品",
+          "note": "当前上阵区战士物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "warrior"
+          }
+        },
+        {
+          "id": "event5",
+          "enabled": true,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event5",
+          "lane": "left",
+          "shortDesc": "随机获得弓手物品",
+          "detailDesc": "随机获得2个弓手物品",
+          "note": "当前上阵区弓手物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "archer"
+          }
+        },
+        {
+          "id": "event6",
+          "enabled": true,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event6",
+          "lane": "left",
+          "shortDesc": "随机获得刺客物品",
+          "detailDesc": "随机获得2个刺客物品",
+          "note": "当前上阵区刺客物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "assassin"
+          }
+        },
+        {
+          "id": "event7",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event7",
+          "lane": "left",
+          "shortDesc": "定向购买战士物品",
+          "detailDesc": "本日的前3次购买必定为战士物品",
+          "note": "当前上阵区战士物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "warrior"
+          }
+        },
+        {
+          "id": "event8",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event8",
+          "lane": "left",
+          "shortDesc": "定向购买弓手物品",
+          "detailDesc": "本日的前3次购买必定为弓手物品",
+          "note": "当前上阵区弓手物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "archer"
+          }
+        },
+        {
+          "id": "event9",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event9",
+          "lane": "left",
+          "shortDesc": "定向购买刺客物品",
+          "detailDesc": "本日的前3次购买必定为刺客物品",
+          "note": "当前上阵区刺客物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "assassin"
+          }
+        },
+        {
+          "id": "event10",
+          "enabled": false,
+          "dayStart": 5,
+          "dayEnd": 20,
+          "icon": "event10",
+          "lane": "left",
+          "shortDesc": "定向合成战士物品",
+          "detailDesc": "本日的前2次合成必定合成战士物品",
+          "note": "当前上阵区战士物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "warrior"
+          }
+        },
+        {
+          "id": "event12",
+          "enabled": false,
+          "dayStart": 5,
+          "dayEnd": 20,
+          "icon": "event12",
+          "lane": "left",
+          "shortDesc": "定向合成弓手物品",
+          "detailDesc": "本日的前2次合成必定合成弓手物品",
+          "note": "当前上阵区弓手物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "archer"
+          }
+        },
+        {
+          "id": "event13",
+          "enabled": false,
+          "dayStart": 5,
+          "dayEnd": 20,
+          "icon": "event13",
+          "lane": "left",
+          "shortDesc": "定向合成刺客物品",
+          "detailDesc": "本日的前2次合成必定合成刺客物品",
+          "note": "当前上阵区刺客物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "assassin"
+          }
+        },
+        {
+          "id": "event14",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event14",
+          "lane": "left",
+          "shortDesc": "合成时额外升级",
+          "detailDesc": "本日的第1次合成额外提升1级"
+        },
+        {
+          "id": "event15",
+          "enabled": true,
+          "dayStart": 8,
+          "dayEnd": 20,
+          "icon": "event15",
+          "lane": "left",
+          "shortDesc": "随机复制战士物品",
+          "detailDesc": "复制持有的1个随机战士物品",
+          "note": "当前上阵区战士物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "warrior"
+          }
+        },
+        {
+          "id": "event16",
+          "enabled": true,
+          "dayStart": 8,
+          "dayEnd": 20,
+          "icon": "event16",
+          "lane": "left",
+          "shortDesc": "随机复制弓手物品",
+          "detailDesc": "复制持有的1个随机弓手物品",
+          "note": "当前上阵区弓手物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "archer"
+          }
+        },
+        {
+          "id": "event17",
+          "enabled": true,
+          "dayStart": 8,
+          "dayEnd": 20,
+          "icon": "event17",
+          "lane": "left",
+          "shortDesc": "随机复制刺客物品",
+          "detailDesc": "复制持有的1个随机刺客物品",
+          "note": "当前上阵区刺客物品最多或是最多之一",
+          "conditions": {
+            "requireBattleArchetypeTopTie": "assassin"
+          }
+        },
+        {
+          "id": "event18",
+          "enabled": true,
+          "dayStart": 8,
+          "dayEnd": 20,
+          "icon": "event18",
+          "lane": "left",
+          "shortDesc": "背包随机复制物品",
+          "detailDesc": "随机复制背包中的2个物品",
+          "note": "背包中必须有物品",
+          "conditions": {
+            "requireBackpackNotEmpty": true
+          }
+        },
+        {
+          "id": "event19",
+          "enabled": false,
+          "dayStart": 5,
+          "dayEnd": 20,
+          "icon": "event19",
+          "lane": "right",
+          "shortDesc": "以更高加个出售背包中物品",
+          "detailDesc": "以购买价格+1出售所有背包中物品",
+          "note": "背包中必须有物品",
+          "conditions": {
+            "requireBackpackNotEmpty": true
+          }
+        },
+        {
+          "id": "event20",
+          "enabled": true,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event20",
+          "lane": "right",
+          "shortDesc": "获得一些金币",
+          "detailDesc": "获得x金币",
+          "note": "x=天数*2"
+        },
+        {
+          "id": "event21",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event21",
+          "lane": "right",
+          "shortDesc": "清空背包，并获得大量金币",
+          "detailDesc": "清空背包，并获得x金币",
+          "note": "x=（天数）*4，背包中必须有物品",
+          "conditions": {
+            "requireBackpackNotEmpty": true
+          }
+        },
+        {
+          "id": "event22",
+          "enabled": true,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event22",
+          "lane": "right",
+          "shortDesc": "提升最大生命值",
+          "detailDesc": "提升10%最大生命值",
+          "note": "永久提升，所有最大生命值的比例加算"
+        },
+        {
+          "id": "event23",
+          "enabled": false,
+          "dayStart": 5,
+          "dayEnd": 20,
+          "icon": "event23",
+          "lane": "right",
+          "shortDesc": "恢复红心",
+          "detailDesc": "恢复1个红心",
+          "note": "选择2次后不能再出现选择，只有红心不满时才会随机到",
+          "limits": {
+            "maxSelectionsPerRun": 2
+          },
+          "conditions": {
+            "requireHeartNotFull": true
+          }
+        },
+        {
+          "id": "event24",
+          "enabled": false,
+          "dayStart": 5,
+          "dayEnd": 12,
+          "icon": "event24",
+          "lane": "left",
+          "shortDesc": "全部物品随机转化并升级",
+          "detailDesc": "全部物品随机转化并升级",
+          "note": "选择1次后不能再出现选择",
+          "limits": {
+            "maxSelectionsPerRun": 1
+          }
+        },
+        {
+          "id": "event25",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event25",
+          "lane": "right",
+          "shortDesc": "投资金币，明天翻倍",
+          "detailDesc": "清空全部金币，明天获得2倍"
+        },
+        {
+          "id": "event26",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event26",
+          "lane": "right",
+          "shortDesc": "以双倍价格出售上阵区",
+          "detailDesc": "以双倍价格出售上阵区所有物品",
+          "note": "上阵区必须有物品",
+          "conditions": {
+            "requireBattleNotEmpty": true
+          }
+        },
+        {
+          "id": "event27",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event27",
+          "lane": "left",
+          "shortDesc": "所有合成全部随机",
+          "detailDesc": "本日所有合成都是随机合成"
+        },
+        {
+          "id": "event28",
+          "enabled": true,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event28",
+          "lane": "right",
+          "shortDesc": "未来会获得大量金币",
+          "detailDesc": "3天后获得x金币",
+          "note": "x=（天数）*6"
+        },
+        {
+          "id": "event29",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event29",
+          "lane": "right",
+          "shortDesc": "5天后上阵区全部升级",
+          "detailDesc": "5天后上阵区的所有物品升级"
+        },
+        {
+          "id": "event34",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event34",
+          "lane": "right",
+          "shortDesc": "透支未来2天的收入",
+          "detailDesc": "获得未来2天收入的60%，未来无法获得基础收入"
+        },
+        {
+          "id": "event35",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event35",
+          "lane": "left",
+          "shortDesc": "转化等级最高的所有物品",
+          "detailDesc": "转化等级最高的所有物品"
+        },
+        {
+          "id": "event36",
+          "enabled": false,
+          "dayStart": 1,
+          "dayEnd": 20,
+          "icon": "event36",
+          "lane": "left",
+          "shortDesc": "升级等级最低的所有物品",
+          "detailDesc": "升级等级最低的所有物品"
+        }
+      ]
+    },
+    "note": "事件配置表（仅配置，不含具体实现逻辑）"
+  },
+  {
+    "id": 16,
+    "name": "gameplay_mode_values",
+    "desc": "玩法模式参数",
+    "desc_en": "Gameplay mode values",
+    "value": {
+      "compactMode": {
+        "enabled": true,
+        "itemSet": "compact",
+        "cellScale": 1,
+        "cellHeightRatio": 1.3,
+        "squareCell": true,
+        "backpackRows": 2,
+        "battleCols": 5,
+        "mediumValueScale": 0.5
+      },
+      "enemyDraftLab": {
+        "enabled": false,
+        "sameArchetypeBias": 0.85,
+        "dailyItemCount": [
+          2,
+          4,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "dailyAvgQuality": [
+          1,
+          1.5,
+          2,
+          2.5,
+          3,
+          3.5,
+          4,
+          4.5,
+          5,
+          5.33,
+          5.67,
+          6,
+          6.25,
+          6.5,
+          6.75,
+          7,
+          7,
+          7,
+          7,
+          7
+        ]
+      },
+      "battleUi": {
+        "showSpeedButton": false
+      }
+    },
+    "note": "全小型试验模式：半格正方形、背包6x2、中型改小型并按0.5数值模板读取"
+  },
+  {
+    "id": 20,
+    "name": "run_rules",
+    "desc": "局外流程规则",
+    "desc_en": "Run-level rules",
+    "value": {
+      "trophyWinsToFinalVictory": 10,
+      "muteLogsInMobileRelease": true,
+      "mobileImageDownscale": {
+        "enabled": true,
+        "scale": 0.5
+      },
+      "battleCacheCleanup": {
+        "enabled": true,
+        "purgeItemIconsOnBattleEnter": true,
+        "forceTextureGcOnBattleEnter": false,
+        "forceTextureGcOnBattleExit": false
+      },
+      "perfReporter": {
+        "enabled": false,
+        "endpoint": "https://peer.kkopttarr.com/perf/ingest",
+        "bearerToken": "PERF_INGEST_TOKEN_CHANGE_ME",
+        "sampleMs": 500,
+        "flushMs": 10000,
+        "batchSize": 50,
+        "maxPoints": 3000,
+        "maxEvents": 1200,
+        "autoFlushOnSceneChange": true,
+        "warnFrameMsP95": 12,
+        "criticalFrameMsP95": 16,
+        "warnLongTasksPerMinute": 2,
+        "criticalLongTasksPerMinute": 6,
+        "warnFrameDropRate": 0.15,
+        "criticalFrameDropRate": 0.3,
+        "warnBattleDropRate": 0.05,
+        "criticalBattleDropRate": 0.1
+      },
+      "playerExpToNextLevel": [
+        3,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        4,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        6,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8
+      ],
+      "playerMaxLifeByLevel": [
+        300,
+        500,
+        700,
+        1000,
+        1300,
+        1700,
+        2100,
+        2500,
+        3000,
+        3500,
+        4000,
+        4500,
+        5000,
+        5600,
+        6300,
+        7100,
+        8000,
+        9000,
+        10000,
+        11000,
+        12000,
+        13000,
+        14000,
+        15000,
+        16000,
+        17000,
+        18000,
+        19000,
+        20000,
+        21000,
+        22000,
+        23000,
+        24000,
+        25000,
+        26000,
+        27000,
+        28000,
+        29000,
+        30000,
+        31000
+      ],
+      "playerRoundDamageByLevel": [
+        1,
+        1,
+        1,
+        2,
+        2,
+        2,
+        3,
+        3,
+        4,
+        4
+      ],
+      "firstRunsFixedItemPool": {
+        "enabledRunCount": 1,
+        "itemNamesCn": [
+          "回旋镖",
+          "黄金袖箭",
+          "匕首",
+          "连发镖",
+          "切割镰刀",
+          "手弩",
+          "黄金弩机",
+          "弹药袋",
+          "木弓",
+          "超级手雷",
+          "长盾",
+          "尖刺金盾",
+          "短剑",
+          "圆盾",
+          "皇家佩剑"
+        ]
+      }
+    },
+    "note": "累计胜利达到阈值后判定为最终胜利"
+  },
+  {
+    "id": 19,
+    "name": "shop_rules",
+    "desc": "商店随机规则",
+    "desc_en": "Shop randomization rules",
+    "value": {
+      "showBasicSynthesisGuideOnOneRow": false,
+      "ammoSupportRequiresAmmoOwned": true,
+      "ammoSupportItemNames": [
+        "弹药袋"
+      ],
+      "itemPrerequisites": {
+        "弹药袋": [
+          "木弓",
+          "手弩",
+          "超级手雷",
+          "超级弩机"
+        ]
+      },
+      "day1ThirdItemMatchExistingArchetype": true,
+      "initialUnlocksByStarterClass": {
+        "swordsman": [
+          "ab108c45-bd0b-4129-8b92-19d17c798164",
+          "578d9e51-a6c2-4c40-9dcd-60420ffe91c6"
+        ],
+        "archer": [
+          "16e55d6c-d856-4820-a337-5f73332b8fe4",
+          "0c6beae3-3f07-4496-957b-447dde815ffb"
+        ],
+        "assassin": [
+          "aa05e315-afdd-40ba-8149-3fd3fd3617ce",
+          "4e61c6f3-4d31-4b29-97fb-691537b3a3a0"
+        ]
+      },
+      "unlockStartingTierWeights": {
+        "Bronze": 75,
+        "Silver": 20,
+        "Gold": 4,
+        "Diamond": 1
+      },
+      "shopSizeWeights": {
+        "small": 2,
+        "medium": 1,
+        "large": 1
+      },
+      "quickBuyByDay": [
+        {
+          "dayStart": 1,
+          "dayEnd": 5,
+          "weights": {
+            "bronze1": 100,
+            "bronze2": 0,
+            "silver1": 0
+          },
+          "ownedWeightMultiplier": 1
+        },
+        {
+          "dayStart": 6,
+          "dayEnd": 10,
+          "weights": {
+            "bronze1": 65,
+            "bronze2": 25,
+            "silver1": 10
+          },
+          "ownedWeightMultiplier": 1.6
+        },
+        {
+          "dayStart": 11,
+          "dayEnd": 15,
+          "weights": {
+            "bronze1": 35,
+            "bronze2": 40,
+            "silver1": 25
+          },
+          "ownedWeightMultiplier": 2.2
+        },
+        {
+          "dayStart": 16,
+          "dayEnd": 20,
+          "weights": {
+            "bronze1": 15,
+            "bronze2": 45,
+            "silver1": 40
+          },
+          "ownedWeightMultiplier": 3
+        }
+      ],
+      "quickBuyLevelChancesByDay": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ]
+      ],
+      "levelQuickDraftLevelWeightsByPlayerLevel": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0.0,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.6,
+          0.4,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.4,
+          0.6,
+          0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      ],
+      "quickBuyPriceMultiplier": {
+        "Bronze#1": 1,
+        "Silver#1": 1,
+        "Silver#2": 1,
+        "Gold#1": 1,
+        "Gold#2": 1,
+        "Diamond#1": 1,
+        "Diamond#2": 1
+      },
+      "quickBuyFixedPrice": {
+        "Bronze#1": 3,
+        "Silver#1": 6,
+        "Silver#2": 12,
+        "Gold#1": 24,
+        "Gold#2": 48,
+        "Diamond#1": 96,
+        "Diamond#2": 192,
+        "Bronze#2": 5
+      },
+      "quickBuyQualityWeightsByLevel": {
+        "Bronze": [
+          0.7,
+          0.5,
+          0.4,
+          0.35,
+          0.3,
+          0.25,
+          0.25,
+          0
+        ],
+        "Silver": [
+          0.0,
+          0.3,
+          0.5,
+          0.4,
+          0.35,
+          0.3,
+          0.25,
+          0
+        ],
+        "Gold": [
+          0.0,
+          0.0,
+          0.0,
+          0.2,
+          0.3,
+          0.25,
+          0.25,
+          0
+        ],
+        "Diamond": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.15,
+          0.25,
+          0
+        ]
+      },
+      "qualityPseudoRandomWindowSize": 10,
+      "qualityPseudoRandomWeightsByLevel": {
+        "Bronze": [
+          1,
+          1,
+          0.7,
+          0.5,
+          0.4,
+          0.3,
+          0.2,
+          0
+        ],
+        "Silver": [
+          0,
+          0,
+          0.3,
+          0.5,
+          0.4,
+          0.4,
+          0.3,
+          0.3
+        ],
+        "Gold": [
+          0,
+          0,
+          0,
+          0,
+          0.2,
+          0.3,
+          0.4,
+          0.4
+        ],
+        "Diamond": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0.1,
+          0.3
+        ]
+      },
+      "quickBuyNeutralChance": 0.25,
+      "quickBuyNeutralStartDay": 2,
+      "quickBuyNeutralPseudoRandomChances": [
+        0.182,
+        0.25,
+        0.318,
+        0.386,
+        0.454,
+        1
+      ],
+      "sellFixedPriceBySize": {
+        "small": [
+          3,
+          5,
+          10,
+          18,
+          36,
+          64,
+          128,
+          0
+        ],
+        "medium": [
+          3,
+          5,
+          10,
+          18,
+          36,
+          64,
+          128,
+          0
+        ],
+        "large": [
+          3,
+          5,
+          10,
+          18,
+          36,
+          64,
+          128,
+          0
+        ]
+      },
+      "sellRatioByTier": {
+        "Bronze": 0.6667,
+        "Silver": 0.5,
+        "Gold": 0.3333,
+        "Diamond": 0.25
+      },
+      "minTierDropWeightsByResultLevel": {
+        "Bronze": [
+          1.0,
+          1.0,
+          0.2,
+          0.2,
+          0.05,
+          0.05,
+          0.02,
+          0
+        ],
+        "Silver": [
+          0.0,
+          0.0,
+          0.8,
+          0.8,
+          0.15,
+          0.15,
+          0.08,
+          0
+        ],
+        "Gold": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.8,
+          0.8,
+          0.2,
+          0
+        ],
+        "Diamond": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.7,
+          0
+        ]
+      },
+      "synthesisMinTierDropWeightsByResultLevel": {
+        "Bronze": [
+          1.0,
+          1.0,
+          0.6,
+          0.5,
+          0.4,
+          0.3,
+          0.2,
+          0
+        ],
+        "Silver": [
+          0.0,
+          0.0,
+          0.4,
+          0.5,
+          0.3,
+          0.4,
+          0.2,
+          0
+        ],
+        "Gold": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.3,
+          0.4,
+          0.3,
+          0
+        ],
+        "Diamond": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.3,
+          0
+        ]
+      },
+      "crossIdSynthesisRequireConfirm": false,
+      "crossIdSynthesisSameArchetypeChance": 0
+    },
+    "note": "弹药支持物品需先拥有弹药系物品；Day1 初始第3件与前两件职业一致"
+  },
+  {
+    "id": 17,
+    "name": "pvp_rules",
+    "desc": "PVP 对战规则参数",
+    "desc_en": "PVP battle rule parameters",
+    "value": {
+      "initialHp": 30,
+      "maxRounds": 30,
+      "baseDamage": 1,
+      "tierDamageWeights": {
+        "Bronze": 1,
+        "Silver": 2,
+        "Gold": 3,
+        "Diamond": 4
+      },
+      "maxPlayers": 8,
+      "createRoomCountdownMs": 120000
+    }
+  },
+  {
+    "id": 101,
+    "name": "tower_defense_rules",
+    "desc": "塔防模式怪物刷新与路径参数",
+    "desc_en": "Tower defense enemy wave and path parameters",
+    "value": {
+      "enabled": true,
+      "levelDistance": 1000,
+      "attackDistance": 100,
+      "farY": 280,
+      "nearY": 960,
+      "farScale": 0.6,
+      "farAlpha": 0,
+      "nearScale": 1.8,
+      "opaqueWithinDistance": 220,
+      "fullAlphaDistance": 620,
+      "roadFarWidthRatio": 0.3,
+      "roadNearWidthRatio": 0.8,
+      "roadFarCenterX": 320,
+      "roadNearCenterX": 320,
+      "enemyHpBarYOffset": -107,
+      "enemyHpBarScale": 1,
+      "enemyShadowYOffset": -10,
+      "enemyShadowScale": 0.7,
+      "projectileScaleTopY": 280,
+      "projectileScaleBottomY": 960,
+      "projectileScaleMin": 0.6,
+      "projectileScaleMax": 2,
+      "enemyDeathFlyAngleMinDeg": 30,
+      "enemyDeathFlyAngleMaxDeg": 35,
+      "enemyDeathFlySpeedMin": 540,
+      "enemyDeathFlySpeedMax": 720,
+      "enemyDeathFlyRotMinDegPerSec": 540,
+      "enemyDeathFlyRotMaxDegPerSec": 720,
+      "enemyDeathFlyOutMargin": 180,
+      "enemyDeathFlyFadeStartMs": 200,
+      "enemyDeathFlyFadeEndMs": 900,
+      "enemyDeathFlyFinalAlpha": 0.35,
+      "enemyDeathFlyScaleEndMs": 900,
+      "enemyDeathFlyFinalScaleMul": 0.9,
+      "enemyHitPopMs": 200,
+      "enemyHitPopScale": 1.15,
+      "reducedCooldownMinMs": 500,
+      "moveDistancePerSecAtSpeed1": 25,
+      "playerItemAttackDistanceByIcon": {
+        "item1": 16,
+        "item5": 28,
+        "item6": 28,
+        "item11": 28,
+        "item21": 28,
+        "item17": 28,
+        "item18": 28,
+        "item40": 28,
+        "item4": 40,
+        "item20": 16,
+        "item9": 28,
+        "item44": 40,
+        "item48": 28,
+        "item15": 28,
+        "item50": 16,
+        "item52": 16,
+        "item13": 16
+      },
+      "playerItemBaseBounceByIcon": {
+        "item11": 1,
+        "item21": 1,
+        "item17": 1
+      },
+      "playerBounceProjectileFlyMs": 200,
+      "playerBounceProjectileSpeedPxPerSec": 500,
+      "enemyAttackDoubleAfterAllSpawnMs": 20000,
+      "playerMeleeSweepHitStepMs": 30,
+      "playerMeleeSweepOriginOffsetX": 0,
+      "playerMeleeSweepOriginOffsetY": -250,
+      "playerMeleeSweepDurationMs": 240,
+      "playerMeleeSweepStartAngleDeg": -132,
+      "playerMeleeSweepEndAngleDeg": 32,
+      "playerMeleeSweepAlphaStart": 0.5,
+      "playerMeleeSweepAlphaMid": 0.78,
+      "playerMeleeSweepAlphaEnd": 0.5,
+      "playerMeleeSweepWeaponSizePx": 170,
+      "playerMeleeSweepScaleBase": -0.4,
+      "playerMeleeSweepScalePerDistance": 0.25,
+      "playerMeleeSweepScaleDistanceUnit": 50,
+      "playerMeleeSweepScaleMin": 1,
+      "playerMeleeSweepScaleMax": 4,
+      "laneEnemyMinGapDistance": 4,
+      "spawnFrontGapDistance": 6,
+      "spawnLanes": 5,
+      "defaultSpawnDurationMs": 10000,
+      "enemyDefs": [
+        {
+          "id": "enemy1",
+          "name": "骷髅小兵",
+          "hp": 25,
+          "attack": 10,
+          "moveSpeed": 1,
+          "attackIntervalMs": 4000,
+          "attackDistance": 100,
+          "attackType": "近战",
+          "icon": "enemy1",
+          "enemyHpBarYOffset": -107,
+          "enemyHpBarScale": 1,
+          "enemyShadowYOffset": -10,
+          "enemyShadowScale": 0.7
+        },
+        {
+          "id": "enemy2",
+          "name": "骷髅战士",
+          "hp": 70,
+          "attack": 10,
+          "moveSpeed": 1,
+          "attackIntervalMs": 2000,
+          "attackDistance": 100,
+          "attackType": "近战",
+          "icon": "enemy2",
+          "enemyHpBarYOffset": -107,
+          "enemyHpBarScale": 1,
+          "enemyShadowYOffset": -10,
+          "enemyShadowScale": 0.7
+        },
+        {
+          "id": "enemy3",
+          "name": "骷髅弓手",
+          "hp": 40,
+          "attack": 10,
+          "moveSpeed": 1,
+          "attackIntervalMs": 2000,
+          "attackDistance": 400,
+          "attackType": "直线飞行",
+          "projectileIcon": "item4_a",
+          "icon": "enemy3",
+          "enemyHpBarYOffset": -107,
+          "enemyHpBarScale": 1,
+          "enemyShadowYOffset": -10,
+          "enemyShadowScale": 0.7
+        },
+        {
+          "id": "enemy4",
+          "name": "蝙蝠小妖",
+          "hp": 40,
+          "attack": 5,
+          "moveSpeed": 2,
+          "attackIntervalMs": 1000,
+          "attackDistance": 100,
+          "attackType": "近战",
+          "icon": "enemy4",
+          "enemyHpBarYOffset": -107,
+          "enemyHpBarScale": 1,
+          "enemyShadowYOffset": -10,
+          "enemyShadowScale": 0.5
+        },
+        {
+          "id": "enemy5",
+          "name": "灰色小妖",
+          "hp": 100,
+          "attack": 15,
+          "moveSpeed": 1,
+          "attackIntervalMs": 2000,
+          "attackDistance": 100,
+          "attackType": "近战",
+          "icon": "enemy5",
+          "enemyHpBarYOffset": -107,
+          "enemyHpBarScale": 1,
+          "enemyShadowYOffset": -10,
+          "enemyShadowScale": 0.7
+        },
+        {
+          "id": "enemy6",
+          "name": "灰色小妖队长",
+          "hp": 300,
+          "attack": 25,
+          "moveSpeed": 1,
+          "attackIntervalMs": 2000,
+          "attackDistance": 100,
+          "attackType": "近战",
+          "icon": "enemy6",
+          "enemyHpBarYOffset": -132,
+          "enemyHpBarScale": 1.2,
+          "enemyShadowYOffset": -10,
+          "enemyShadowScale": 0.8
+        },
+        {
+          "id": "bossbattle",
+          "name": "首领",
+          "hp": 2000,
+          "attack": 50,
+          "moveSpeed": 1,
+          "attackIntervalMs": 4000,
+          "attackDistance": 300,
+          "laneOccupyCount": 3,
+          "attackType": "旋转飞行",
+          "projectileIcon": "item49_a",
+          "projectileFlyMs": 500,
+          "projectileReturnMs": 500,
+          "icon": "boss",
+          "enemyHpBarYOffset": -230,
+          "enemyHpBarScale": 3,
+          "enemyShadowYOffset": -20,
+          "enemyShadowScale": 2
+        }
+      ],
+      "dayWaves": [
+        { "day": 1, "enemies": [{ "id": "enemy1", "count": 10 }] },
+        { "day": 2, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
+        { "day": 3, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
+        { "day": 4, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
+        { "day": 5, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
+        { "day": 6, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 7, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 8, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 9, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 10, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
+        { "day": 11, "enemies": [{ "id": "enemy1", "count": 10 }] },
+        { "day": 12, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
+        { "day": 13, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
+        { "day": 14, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
+        { "day": 15, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
+        { "day": 16, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 17, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 18, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 19, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 20, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
+        { "day": 21, "enemies": [{ "id": "enemy1", "count": 10 }] },
+        { "day": 22, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
+        { "day": 23, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
+        { "day": 24, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
+        { "day": 25, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
+        { "day": 26, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 27, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 28, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 29, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 30, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
+        { "day": 31, "enemies": [{ "id": "enemy1", "count": 10 }] },
+        { "day": 32, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
+        { "day": 33, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
+        { "day": 34, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
+        { "day": 35, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
+        { "day": 36, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 37, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 38, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 39, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 40, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
+        { "day": 41, "enemies": [{ "id": "enemy1", "count": 10 }] },
+        { "day": 42, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
+        { "day": 43, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
+        { "day": 44, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
+        { "day": 45, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
+        { "day": 46, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 47, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 48, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 49, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 50, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
+        { "day": 51, "enemies": [{ "id": "enemy1", "count": 10 }] },
+        { "day": 52, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
+        { "day": 53, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
+        { "day": 54, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
+        { "day": 55, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
+        { "day": 56, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 57, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 58, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 59, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 60, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
+        { "day": 61, "enemies": [{ "id": "enemy1", "count": 10 }] },
+        { "day": 62, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
+        { "day": 63, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
+        { "day": 64, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
+        { "day": 65, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
+        { "day": 66, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 67, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 68, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 69, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 70, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
+        { "day": 71, "enemies": [{ "id": "enemy1", "count": 10 }] },
+        { "day": 72, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
+        { "day": 73, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
+        { "day": 74, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
+        { "day": 75, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
+        { "day": 76, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 77, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 78, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 79, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 80, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
+        { "day": 81, "enemies": [{ "id": "enemy1", "count": 10 }] },
+        { "day": 82, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
+        { "day": 83, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
+        { "day": 84, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
+        { "day": 85, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
+        { "day": 86, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 87, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 88, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 89, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 90, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
+        { "day": 91, "enemies": [{ "id": "enemy1", "count": 10 }] },
+        { "day": 92, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
+        { "day": 93, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
+        { "day": 94, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
+        { "day": 95, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
+        { "day": 96, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 97, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 98, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 99, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
+        { "day": 100, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] }
+      ]
+    }
+  }
+]

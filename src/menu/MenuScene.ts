@@ -206,6 +206,17 @@ export const MenuScene: Scene = {
     )
     root.addChild(noBackpackBtn)
 
+    const towerDefenseBtn = makeBtn(
+      '塔防模式',
+      '独立玩法  零耦合  规则源于冒险',
+      0xffa64d,
+      0x3a2413,
+      0xffa64d,
+      CANVAS_H * 0.54 + 432,
+      () => SceneManager.goto('tower-shop'),
+    )
+    root.addChild(towerDefenseBtn)
+
     // ── 底部 ──────────────────────────────────────────────
     const ver = new Text({
       text: 'v1.0.4',

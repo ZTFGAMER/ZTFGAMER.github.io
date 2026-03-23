@@ -9,6 +9,8 @@ import { ShopScene }    from '@/shop/ShopScene'
 import { BattleScene, getBattleFxPerfStats }  from '@/battle/BattleScene'
 import { ShopScene as NobagShopScene } from '@/nobag/shop/ShopScene'
 import { BattleScene as NobagBattleScene } from '@/nobag/battle/BattleScene'
+import { ShopScene as TowerShopScene } from '@/tower/shop/ShopScene'
+import { BattleScene as TowerBattleScene } from '@/tower/battle/BattleScene'
 import { MenuScene }    from '@/menu/MenuScene'
 import { PvpLobbyScene } from '@/pvp/PvpLobbyScene'
 import { PvpResultScene } from '@/pvp/PvpResultScene'
@@ -19,6 +21,11 @@ import {
   setStageLayout as setNobagStageLayout,
   setRenderRuntimeFlags as setNobagRenderRuntimeFlags,
 } from '@/nobag/core/NobagAppContext'
+import {
+  setApp as setTowerApp,
+  setStageLayout as setTowerStageLayout,
+  setRenderRuntimeFlags as setTowerRenderRuntimeFlags,
+} from '@/tower/core/AppContext'
 import { clearStoredConfig } from '@/config/debugConfig'
 import { PhaseManager, type GamePhase } from '@/core/PhaseManager'
 import { Rectangle } from 'pixi.js'
@@ -111,6 +118,11 @@ function bindWebGpuDeviceLostGuard(app: Application): void {
       lastDeviceLostReason: reason,
     })
     setNobagRenderRuntimeFlags({
+      webgpuDeviceLostCount,
+      forceLowFx: true,
+      lastDeviceLostReason: reason,
+    })
+    setTowerRenderRuntimeFlags({
       webgpuDeviceLostCount,
       forceLowFx: true,
       lastDeviceLostReason: reason,
@@ -564,6 +576,12 @@ async function bootstrap(): Promise<void> {
     webgpuDeviceLostCount: 0,
     lastDeviceLostReason: '',
   })
+  setTowerRenderRuntimeFlags({
+    webgpuFallbackAdapter,
+    forceLowFx: webgpuFallbackAdapter,
+    webgpuDeviceLostCount: 0,
+    lastDeviceLostReason: '',
+  })
   const resolution = isMobile ? Math.min(window.devicePixelRatio || 1, 1.5) : (window.devicePixelRatio || 1)
   const app = new Application()
   await app.init({
@@ -585,6 +603,7 @@ async function bootstrap(): Promise<void> {
   bindWebGpuDeviceLostGuard(app)
   setApp(app)
   setNobagApp(app)
+  setTowerApp(app)
 
   const perfCfg = resolvePerfReporterConfig(getConfig().runRules?.perfReporter)
   const perfParams = new URLSearchParams(window.location.search)
@@ -695,6 +714,17 @@ async function bootstrap(): Promise<void> {
       bleedX,
       bleedY,
     })
+    setTowerStageLayout({
+      baseW: BASE_W,
+      baseH: BASE_H,
+      viewW: vw,
+      viewH: vh,
+      scale,
+      offsetX,
+      offsetY,
+      bleedX,
+      bleedY,
+    })
 
     canvas.style.width = '100%'
     canvas.style.height = '100%'
@@ -719,16 +749,33 @@ async function bootstrap(): Promise<void> {
     // 移动端：background2 在首次进入商店时再懒加载，节省启动内存约 16MB
     let shopBgTex: Texture | null = null
     let shopBgLoading = false
+    let towerBgTex: Texture | null = null
+    let towerBgLoading = false
     const loadShopBgOnce = (): void => {
       if (shopBgLoading || shopBgTex) return
       shopBgLoading = true
       loadBgTexture(getSceneImageUrl('background2.png'), isMobile)
         .then((tex) => {
           shopBgTex = tex
-          if (SceneManager.currentName() === 'shop') bgSprite.texture = shopBgTex
+          const scene = SceneManager.currentName()
+          if (scene === 'shop' || scene === 'nobag-shop') bgSprite.texture = shopBgTex
         })
         .catch((err) => {
           console.warn('[main] 商店背景图 background2.png 加载失败，回退默认背景', err)
+        })
+    }
+
+    const loadTowerBgOnce = (): void => {
+      if (towerBgLoading || towerBgTex) return
+      towerBgLoading = true
+      loadBgTexture(getSceneImageUrl('background3.png'), isMobile)
+        .then((tex) => {
+          towerBgTex = tex
+          const scene = SceneManager.currentName()
+          if (scene === 'tower-shop' || scene === 'tower-battle') bgSprite.texture = towerBgTex
+        })
+        .catch((err) => {
+          console.warn('[main] 塔防背景图 background3.png 加载失败，回退默认背景', err)
         })
     }
 
@@ -739,9 +786,18 @@ async function bootstrap(): Promise<void> {
       } catch (shopErr) {
         console.warn('[main] 商店背景图 background2.png 加载失败，回退默认背景', shopErr)
       }
+      try {
+        towerBgTex = await loadBgTexture(getSceneImageUrl('background3.png'), false)
+      } catch (towerErr) {
+        console.warn('[main] 塔防背景图 background3.png 加载失败，回退默认背景', towerErr)
+      }
     }
 
     const applyBackgroundByScene = (scene: SceneName | null): void => {
+      if (scene === 'tower-shop' || scene === 'tower-battle') {
+        loadTowerBgOnce()
+        if (towerBgTex) { bgSprite.texture = towerBgTex; return }
+      }
       if (scene === 'shop' || scene === 'nobag-shop') {
         loadShopBgOnce()
         if (shopBgTex) { bgSprite.texture = shopBgTex; return }
@@ -766,9 +822,23 @@ async function bootstrap(): Promise<void> {
   SceneManager.register(BattleScene)
   SceneManager.register(NobagShopScene)
   SceneManager.register(NobagBattleScene)
+  SceneManager.register(TowerShopScene)
+  SceneManager.register(TowerBattleScene)
   SceneManager.register(PvpLobbyScene)
   SceneManager.register(PvpResultScene)
   SceneManager.goto('menu')
+
+  {
+    const params = new URLSearchParams(window.location.search)
+    const mode = String(params.get('mode') ?? '').trim().toLowerCase()
+    if (mode === 'nobag') {
+      SceneManager.goto('nobag-shop')
+    } else if (mode === 'tower' || mode === 'towerdefense' || mode === 'td') {
+      SceneManager.goto('tower-shop')
+    } else if (mode === 'normal' || mode === 'adventure') {
+      SceneManager.goto('shop')
+    }
+  }
 
   if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
     ;(window as Window & {

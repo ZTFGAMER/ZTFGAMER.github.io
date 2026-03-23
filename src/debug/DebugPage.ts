@@ -5,14 +5,17 @@
 
 import * as normalDebugConfig from '@/config/debugConfig'
 import * as nobagDebugConfig from '@/nobag/config/debugConfig'
+import * as towerDebugConfig from '@/tower/config/debugConfig'
 
-type DebugMode = 'normal' | 'nobag'
+type DebugMode = 'normal' | 'nobag' | 'tower'
 
 const MODE_STORAGE_KEY = 'bigbazzar_debug_mode'
 
 function readSavedDebugMode(): DebugMode {
   const saved = String(localStorage.getItem(MODE_STORAGE_KEY) || '').trim()
-  return saved === 'nobag' ? 'nobag' : 'normal'
+  if (saved === 'nobag') return 'nobag'
+  if (saved === 'tower') return 'tower'
+  return 'normal'
 }
 
 let activeDebugMode: DebugMode = readSavedDebugMode()
@@ -22,7 +25,9 @@ let offConfigChange: (() => void) | null = null
 const CONFIG_DEFS = normalDebugConfig.CONFIG_DEFS
 
 function getActiveDebugConfigApi() {
-  return activeDebugMode === 'nobag' ? nobagDebugConfig : normalDebugConfig
+  if (activeDebugMode === 'nobag') return nobagDebugConfig
+  if (activeDebugMode === 'tower') return towerDebugConfig
+  return normalDebugConfig
 }
 
 function getConfig(key: string): number {
@@ -636,7 +641,15 @@ function bindActiveModeConfigChangeListener(): void {
 
 function updateActiveModeLabel(): void {
   if (!activeModeLabelEl) return
-  activeModeLabelEl.textContent = activeDebugMode === 'nobag' ? '当前：无背包模式参数' : '当前：常规模式参数'
+  if (activeDebugMode === 'nobag') {
+    activeModeLabelEl.textContent = '当前：无背包模式参数'
+    return
+  }
+  if (activeDebugMode === 'tower') {
+    activeModeLabelEl.textContent = '当前：塔防模式参数'
+    return
+  }
+  activeModeLabelEl.textContent = '当前：常规模式参数'
 }
 
 function enforceGameplaySectionPlacement(): void {
@@ -698,7 +711,9 @@ function downloadSnapshotFile(): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = activeDebugMode === 'nobag' ? 'nobag_debug_defaults.json' : 'debug_defaults.json'
+  if (activeDebugMode === 'nobag') a.download = 'nobag_debug_defaults.json'
+  else if (activeDebugMode === 'tower') a.download = 'tower_debug_defaults.json'
+  else a.download = 'debug_defaults.json'
   document.body.appendChild(a)
   a.click()
   a.remove()
@@ -797,7 +812,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (modeSelect) {
     modeSelect.value = activeDebugMode
     modeSelect.addEventListener('change', () => {
-      const nextMode = modeSelect.value === 'nobag' ? 'nobag' : 'normal'
+      const nextRaw = String(modeSelect.value || '').trim()
+      const nextMode: DebugMode = nextRaw === 'nobag'
+        ? 'nobag'
+        : nextRaw === 'tower'
+          ? 'tower'
+          : 'normal'
       if (nextMode === activeDebugMode) return
       activeDebugMode = nextMode
       localStorage.setItem(MODE_STORAGE_KEY, activeDebugMode)
@@ -839,13 +859,19 @@ document.addEventListener('DOMContentLoaded', () => {
     downloadSnapshotFile()
     badge.textContent = activeDebugMode === 'nobag'
       ? '💾 已下载 nobag_debug_defaults.json（请手动替换）'
-      : '💾 已下载 debug_defaults.json（请手动替换）'
+      : activeDebugMode === 'tower'
+        ? '💾 已下载 tower_debug_defaults.json（请手动替换）'
+        : '💾 已下载 debug_defaults.json（请手动替换）'
     badge.style.opacity = '1'
     setTimeout(() => { badge.style.opacity = '0' }, 2400)
   })
 
   const badge = document.getElementById('sync-badge')!
-  badge.textContent = activeDebugMode === 'nobag' ? '🔗 已连接（无背包模式）' : '🔗 已连接（常规模式）'
+  badge.textContent = activeDebugMode === 'nobag'
+    ? '🔗 已连接（无背包模式）'
+    : activeDebugMode === 'tower'
+      ? '🔗 已连接（塔防模式）'
+      : '🔗 已连接（常规模式）'
   setTimeout(() => { badge.style.opacity = '0' }, 2500)
 
   const searchInput = document.getElementById('debug-search') as HTMLInputElement | null
