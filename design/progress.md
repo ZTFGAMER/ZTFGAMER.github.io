@@ -1,5 +1,20 @@
 # 大巴扎 — 开发进度记录
 
+## 回滚误改的塔防放缩参数（2026-03-23）
+
+- 用户反馈：`nearScale` 与近战挥动放缩是有意配置，不应被下调。
+- 已完成：
+  - `data/tower_game_config.json`
+    - 回滚到用户原配置：
+      - `nearScale = 1.8`
+      - `playerMeleeSweepWeaponSizePx = 170`
+      - `playerMeleeSweepScaleBase = -0.4`
+      - `playerMeleeSweepScalePerDistance = 0.25`
+      - `playerMeleeSweepScaleMin = 1`
+      - `playerMeleeSweepScaleMax = 4`
+- 验证：`npm run build` 通过。
+- 当前阶段：按用户配置继续定位“线上尺寸异常”的根因（优先排查 localStorage 调试参数残留与线上部署版本差异）。
+
 ## 塔防怪物基础数值三次下调（2026-03-23）
 
 - 用户需求：按最新表再次下调 7 类塔防怪物基础血量（其余属性保持当前表）。
