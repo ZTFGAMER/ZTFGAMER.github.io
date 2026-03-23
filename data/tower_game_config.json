@@ -3472,10 +3472,10 @@
         {
           "id": "enemy1",
           "name": "骷髅小兵",
-          "hp": 25,
+          "hp": 20,
           "attack": 10,
           "moveSpeed": 1,
-          "attackIntervalMs": 4000,
+          "attackIntervalMs": 2000,
           "attackDistance": 100,
           "attackType": "近战",
           "icon": "enemy1",
@@ -3487,7 +3487,7 @@
         {
           "id": "enemy2",
           "name": "骷髅战士",
-          "hp": 70,
+          "hp": 50,
           "attack": 10,
           "moveSpeed": 1,
           "attackIntervalMs": 2000,
@@ -3502,10 +3502,10 @@
         {
           "id": "enemy3",
           "name": "骷髅弓手",
-          "hp": 40,
+          "hp": 30,
           "attack": 10,
           "moveSpeed": 1,
-          "attackIntervalMs": 2000,
+          "attackIntervalMs": 4000,
           "attackDistance": 400,
           "attackType": "直线飞行",
           "projectileIcon": "item4_a",
@@ -3518,7 +3518,7 @@
         {
           "id": "enemy4",
           "name": "蝙蝠小妖",
-          "hp": 40,
+          "hp": 25,
           "attack": 5,
           "moveSpeed": 2,
           "attackIntervalMs": 1000,
@@ -3533,7 +3533,7 @@
         {
           "id": "enemy5",
           "name": "灰色小妖",
-          "hp": 100,
+          "hp": 40,
           "attack": 15,
           "moveSpeed": 1,
           "attackIntervalMs": 2000,
@@ -3548,7 +3548,7 @@
         {
           "id": "enemy6",
           "name": "灰色小妖队长",
-          "hp": 300,
+          "hp": 150,
           "attack": 25,
           "moveSpeed": 1,
           "attackIntervalMs": 2000,
@@ -3563,7 +3563,7 @@
         {
           "id": "bossbattle",
           "name": "首领",
-          "hp": 2000,
+          "hp": 1200,
           "attack": 50,
           "moveSpeed": 1,
           "attackIntervalMs": 4000,

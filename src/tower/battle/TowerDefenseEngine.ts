@@ -1324,7 +1324,15 @@ export class TowerDefenseEngine implements BattleEngineLike {
       const attackDistance = this.playerAttackDistanceByItemId.get(source.id)
       const attackType = this.resolvePlayerAttackType(source)
       const damage = this.resolveSourceDamageForThisFire(source)
-      if (damage <= 0) continue
+      if (damage <= 0) {
+        this.applyPostItemUseEffects(source)
+        this.applyPostPlayerFireEffects(source)
+        const useDamageBonus = this.playerUseDamageBonusByItemId.get(source.id)
+        if (useDamageBonus && useDamageBonus > 0) {
+          source.baseStats.damage += useDamageBonus
+        }
+        continue
+      }
 
       if (attackType === 'melee_sweep') {
         const sweepTargets = this.pickMeleeSweepTargetsByPredictedHp(predictedHpById, attackDistance)

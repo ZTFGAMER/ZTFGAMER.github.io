@@ -1,5 +1,35 @@
 # 大巴扎 — 开发进度记录
 
+## 塔防怪物基础数值三次下调（2026-03-23）
+
+- 用户需求：按最新表再次下调 7 类塔防怪物基础血量（其余属性保持当前表）。
+- 已完成：
+  - `data/tower_game_config.json`（`tower_defense_rules.enemyDefs`）
+    - `enemy1`：`hp 25 -> 20`；
+    - `enemy2`：`hp 70 -> 50`；
+    - `enemy3`：`hp 40 -> 30`；
+    - `enemy4`：`hp 40 -> 25`；
+    - `enemy5`：`hp 60 -> 40`；
+    - `enemy6`：`hp 200 -> 150`；
+    - `bossbattle`：`hp 1500 -> 1200`；
+    - 攻击/速度/攻击间隔/攻击距离/攻击类型/子弹图标保持与目标表一致。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收怪物强度与攻击节奏。
+
+## 长盾“每次使用后护盾+X”不生效修复（2026-03-23）
+
+- 用户反馈：长盾（`item7`）每次使用后护盾没有增长。
+- 根因：此前将“每次使用后”逻辑迁移到连发逐发阶段后，`consumePendingPlayerFires()` 对 `damage<=0` 的发射会直接 `continue`，导致护盾类（无伤害）物品跳过后处理。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 在 `damage<=0` 分支补齐逐发后处理：
+      - `applyPostItemUseEffects()`
+      - `applyPostPlayerFireEffects()`
+      - `useDamageBonus` 叠加
+    - 保障长盾、皇家佩剑等无伤害但“每次使用后”生效的物品可正常成长。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“长盾每次使用后护盾递增”。
+
 ## 塔防敌人血条放缩支持按怪物配置（2026-03-23）
 
 - 用户需求：Boss 血条放大 50%，并支持每个怪物独立配置血条放缩；其他怪默认 1 倍，Boss 1.5 倍。
