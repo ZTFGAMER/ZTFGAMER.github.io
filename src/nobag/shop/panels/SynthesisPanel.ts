@@ -211,6 +211,7 @@ export class SynthesisPanel extends Container {
     const upgradeTo = nextTierLevel(sourceTier, sourceStar)
     if (!upgradeTo) return
     const isSameItem = sourceDefId === targetItem.defId
+    const sameItemRandomSynthesis = getDebugCfg('gameplaySameItemRandomSynthesis') >= 0.5
     const mode = isSameItem ? 'same_archetype' : 'cross_archetype'
     const key = `${sourceDefId}|${sourceTier}|${sourceStar}|${target.instanceId}|${mode}`
     if (ctx.synthHoverInfoKey === key) return
@@ -218,6 +219,24 @@ export class SynthesisPanel extends Container {
 
     const buyPrice = ctx.shopManager.getItemPrice(sourceDef, sourceTier)
     if (isSameItem) {
+      if (sameItemRandomSynthesis) {
+        const customDisplay: ItemInfoCustomDisplay = {
+          hideName: true,
+          lines: ['升级为随机物品'],
+          richLineSegments: [
+            { text: '升级为 ', fontSize: 28, fill: 0xbfc7f5 },
+            { text: '随机', fontSize: 40, fill: 0xffd86b },
+            { text: ' 物品', fontSize: 28, fill: 0xbfc7f5 },
+          ],
+          suppressStats: true,
+          hideTierBadge: true,
+          hideCooldownBadge: true,
+          useQuestionIcon: true,
+          centerRichLineInFrame: true,
+        }
+        ctx.sellPopup.show(sourceDef, buyPrice, 'buy', callbacks.toVisualTier(upgradeTo.tier, upgradeTo.star), undefined, 'detailed', undefined, customDisplay)
+        return
+      }
       ctx.sellPopup.show(sourceDef, buyPrice, 'buy', callbacks.toVisualTier(upgradeTo.tier, upgradeTo.star), undefined, 'detailed')
       return
     }
@@ -228,6 +247,7 @@ export class SynthesisPanel extends Container {
         lines: ['升级为 +1 级异职业非中立物品（同等级桶随机）'],
         suppressStats: true,
         hideTierBadge: true,
+        hideCooldownBadge: true,
         centerRichLineInFrame: true,
       }
       ctx.sellPopup.show(sourceDef, buyPrice, 'buy', callbacks.toVisualTier(upgradeTo.tier, upgradeTo.star), undefined, 'detailed', undefined, customDisplay)
@@ -244,6 +264,7 @@ export class SynthesisPanel extends Container {
       ],
       suppressStats: true,
       hideTierBadge: true,
+      hideCooldownBadge: true,
       useQuestionIcon: true,
       centerRichLineInFrame: true,
     }

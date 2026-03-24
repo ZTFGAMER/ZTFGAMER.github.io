@@ -22,31 +22,41 @@
   {
     "id": 16,
     "name": "daily_gold_by_day",
-    "desc": "按天发放金币（Day1~Day20）",
-    "desc_en": "Daily gold by day (Day1~Day20)",
+    "desc": "按天发放金币（Day1~Day30）",
+    "desc_en": "Daily gold by day (Day1~Day30)",
     "value": [
       6,
       12,
       15,
+      18,
       21,
-      21,
-      21,
+      24,
+      24,
+      27,
+      27,
       30,
       30,
-      30,
+      33,
+      33,
+      36,
+      36,
+      39,
+      39,
+      42,
+      42,
       45,
       45,
-      45,
-      60,
-      60,
-      60,
-      75,
-      75,
-      75,
-      90,
-      90
+      48,
+      48,
+      51,
+      51,
+      54,
+      54,
+      57,
+      57,
+      60
     ],
-    "note": "用户指定曲线 Day1~Day20（2026-03-23）"
+    "note": "用户指定曲线 Day1~Day30（2026-03-24）"
   },
   {
     "id": 3,
@@ -2397,6 +2407,46 @@
           0
         ],
         [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
           0.5,
           0.5,
           0.0,
@@ -2458,6 +2508,46 @@
         ],
         [
           0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
           0.5,
           0.5,
           0.0,
@@ -2519,48 +2609,68 @@
         [
           0.0,
           0.0,
-          0.5,
-          0.5,
+          1.0,
           0.0,
-          0.0,
-          0.0,
-          0
-        ],
-        [
-          0.0,
-          0.0,
-          0.5,
-          0.5,
           0.0,
           0.0,
           0.0,
           0
         ],
         [
-          0.0,
-          0.0,
-          0.5,
-          0.5,
-          0.0,
-          0.0,
-          0.0,
-          0
-        ],
-        [
-          0.0,
           0.0,
           0.0,
           1.0,
           0.0,
           0.0,
           0.0,
+          0.0,
           0
         ],
         [
           0.0,
           0.0,
+          0.5,
+          0.5,
           0.0,
-          1.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          0.5,
+          0.5,
+          0.0,
+          0.0,
+          0.0,
+          0
+        ],
+        [
+          0.0,
+          0.0,
+          0.5,
+          0.5,
           0.0,
           0.0,
           0.0,
@@ -3140,13 +3250,13 @@
       },
       "quickBuyFixedPrice": {
         "Bronze#1": 3,
-        "Silver#1": 6,
-        "Silver#2": 12,
-        "Gold#1": 24,
-        "Gold#2": 48,
-        "Diamond#1": 96,
-        "Diamond#2": 192,
-        "Bronze#2": 5
+        "Bronze#2": 6,
+        "Silver#1": 12,
+        "Silver#2": 24,
+        "Gold#1": 48,
+        "Gold#2": 96,
+        "Diamond#1": 192,
+        "Diamond#2": 384
       },
       "quickBuyQualityWeightsByLevel": {
         "Bronze": [
@@ -3419,6 +3529,7 @@
       "projectileScaleBottomY": 960,
       "projectileScaleMin": 0.6,
       "projectileScaleMax": 2,
+      "flyingEnemyLiftNear": 100,
       "enemyDeathFlyAngleMinDeg": 30,
       "enemyDeathFlyAngleMaxDeg": 35,
       "enemyDeathFlySpeedMin": 540,
@@ -3489,6 +3600,7 @@
           "attackIntervalMs": 2000,
           "attackDistance": 100,
           "attackType": "近战",
+          "projectileScale": 1,
           "icon": "enemy1",
           "enemyHpBarYOffset": -107,
           "enemyHpBarScale": 1,
@@ -3504,6 +3616,7 @@
           "attackIntervalMs": 2000,
           "attackDistance": 100,
           "attackType": "近战",
+          "projectileScale": 1,
           "icon": "enemy2",
           "enemyHpBarYOffset": -107,
           "enemyHpBarScale": 1,
@@ -3513,13 +3626,14 @@
         {
           "id": "enemy3",
           "name": "骷髅弓手",
-          "hp": 40,
+          "hp": 30,
           "attack": 10,
           "moveSpeed": 1,
           "attackIntervalMs": 4000,
-          "attackDistance": 400,
+          "attackDistance": 350,
           "attackType": "直线飞行",
-          "projectileIcon": "item4_a",
+          "projectileScale": 1,
+          "projectileIcon": "enemy3_a",
           "icon": "enemy3",
           "enemyHpBarYOffset": -107,
           "enemyHpBarScale": 1,
@@ -3529,27 +3643,30 @@
         {
           "id": "enemy4",
           "name": "蝙蝠小妖",
-          "hp": 40,
+          "hp": 20,
           "attack": 5,
-          "moveSpeed": 2,
-          "attackIntervalMs": 1000,
+          "moveSpeed": 2.5,
+          "attackIntervalMs": 2000,
           "attackDistance": 100,
           "attackType": "近战",
+          "projectileScale": 1,
+          "isFlying": true,
           "icon": "enemy4",
           "enemyHpBarYOffset": -107,
           "enemyHpBarScale": 1,
           "enemyShadowYOffset": -10,
-          "enemyShadowScale": 0.5
+          "enemyShadowScale": 0.35
         },
         {
           "id": "enemy5",
           "name": "灰色小妖",
-          "hp": 100,
-          "attack": 15,
-          "moveSpeed": 1,
+          "hp": 20,
+          "attack": 10,
+          "moveSpeed": 1.25,
           "attackIntervalMs": 2000,
           "attackDistance": 100,
           "attackType": "近战",
+          "projectileScale": 1,
           "icon": "enemy5",
           "enemyHpBarYOffset": -107,
           "enemyHpBarScale": 1,
@@ -3559,12 +3676,13 @@
         {
           "id": "enemy6",
           "name": "灰色小妖队长",
-          "hp": 250,
-          "attack": 25,
-          "moveSpeed": 1,
+          "hp": 100,
+          "attack": 20,
+          "moveSpeed": 1.25,
           "attackIntervalMs": 2000,
           "attackDistance": 100,
           "attackType": "近战",
+          "projectileScale": 1,
           "icon": "enemy6",
           "enemyHpBarYOffset": -132,
           "enemyHpBarScale": 1.2,
@@ -3572,16 +3690,157 @@
           "enemyShadowScale": 0.8
         },
         {
-          "id": "bossbattle",
-          "name": "首领",
-          "hp": 2000,
+          "id": "enemy7",
+          "name": "骷髅犬",
+          "hp": 20,
+          "attack": 5,
+          "moveSpeed": 2,
+          "attackIntervalMs": 1000,
+          "attackDistance": 100,
+          "attackType": "近战",
+          "projectileScale": 1,
+          "icon": "enemy7",
+          "enemyHpBarYOffset": -107,
+          "enemyHpBarScale": 1,
+          "enemyShadowYOffset": -10,
+          "enemyShadowScale": 0.7
+        },
+        {
+          "id": "enemy8",
+          "name": "灰色小妖弹弓",
+          "hp": 30,
+          "attack": 10,
+          "moveSpeed": 1.25,
+          "attackIntervalMs": 4000,
+          "attackDistance": 350,
+          "attackType": "直线飞行",
+          "projectileScale": 1,
+          "projectileIcon": "enemy8_a",
+          "icon": "enemy8",
+          "enemyHpBarYOffset": -107,
+          "enemyHpBarScale": 1,
+          "enemyShadowYOffset": -10,
+          "enemyShadowScale": 0.7
+        },
+        {
+          "id": "enemy9",
+          "name": "红色小恶魔",
+          "hp": 20,
+          "attack": 10,
+          "moveSpeed": 1.5,
+          "attackIntervalMs": 2000,
+          "attackDistance": 100,
+          "attackType": "近战",
+          "projectileScale": 1,
+          "icon": "enemy9",
+          "enemyHpBarYOffset": -107,
+          "enemyHpBarScale": 1,
+          "enemyShadowYOffset": -10,
+          "enemyShadowScale": 0.7
+        },
+        {
+          "id": "enemy10",
+          "name": "红色领主",
+          "hp": 100,
+          "attack": 20,
+          "moveSpeed": 1.5,
+          "attackIntervalMs": 2000,
+          "attackDistance": 100,
+          "attackType": "近战",
+          "projectileScale": 1,
+          "icon": "enemy10",
+          "enemyHpBarYOffset": -132,
+          "enemyHpBarScale": 1.2,
+          "enemyShadowYOffset": -10,
+          "enemyShadowScale": 0.8
+        },
+        {
+          "id": "enemy11",
+          "name": "红色魅魔",
+          "hp": 50,
+          "attack": 10,
+          "moveSpeed": 1.5,
+          "attackIntervalMs": 2000,
+          "attackDistance": 350,
+          "attackType": "旋转飞行",
+          "projectileScale": 1,
+          "projectileIcon": "enemy11_a",
+          "icon": "enemy11",
+          "enemyHpBarYOffset": -122,
+          "enemyHpBarScale": 1.1,
+          "enemyShadowYOffset": -10,
+          "enemyShadowScale": 0.7
+        },
+        {
+          "id": "enemy12",
+          "name": "红色飞龙",
+          "hp": 40,
+          "attack": 10,
+          "moveSpeed": 3,
+          "attackIntervalMs": 2000,
+          "attackDistance": 250,
+          "attackType": "直线飞行",
+          "projectileScale": 1,
+          "isFlying": true,
+          "projectileIcon": "enemy12_a",
+          "icon": "enemy12",
+          "enemyHpBarYOffset": -122,
+          "enemyHpBarScale": 1.1,
+          "enemyShadowYOffset": -10,
+          "enemyShadowScale": 0.45
+        },
+        {
+          "id": "boss2",
+          "name": "骷髅王",
+          "hp": 500,
           "attack": 50,
           "moveSpeed": 1,
           "attackIntervalMs": 4000,
           "attackDistance": 300,
           "laneOccupyCount": 3,
           "attackType": "旋转飞行",
-          "projectileIcon": "item49_a",
+          "projectileScale": 2.2,
+          "projectileIcon": "boss2_a",
+          "projectileFlyMs": 500,
+          "projectileReturnMs": 500,
+          "icon": "boss2",
+          "enemyHpBarYOffset": -230,
+          "enemyHpBarScale": 3,
+          "enemyShadowYOffset": -20,
+          "enemyShadowScale": 2
+        },
+        {
+          "id": "boss3",
+          "name": "双头食人魔",
+          "hp": 500,
+          "attack": 50,
+          "moveSpeed": 1.25,
+          "attackIntervalMs": 4000,
+          "attackDistance": 300,
+          "laneOccupyCount": 3,
+          "attackType": "旋转飞行",
+          "projectileScale": 2.2,
+          "projectileIcon": "boss3_a",
+          "projectileFlyMs": 500,
+          "projectileReturnMs": 500,
+          "icon": "boss3",
+          "enemyHpBarYOffset": -230,
+          "enemyHpBarScale": 3,
+          "enemyShadowYOffset": -20,
+          "enemyShadowScale": 2
+        },
+        {
+          "id": "boss",
+          "name": "撒旦首领",
+          "hp": 500,
+          "attack": 50,
+          "moveSpeed": 1,
+          "attackIntervalMs": 4000,
+          "attackDistance": 300,
+          "laneOccupyCount": 3,
+          "attackType": "旋转飞行",
+          "projectileScale": 2.2,
+          "projectileIcon": "boss_a",
           "projectileFlyMs": 500,
           "projectileReturnMs": 500,
           "icon": "boss",
@@ -3594,6 +3853,8 @@
       "dayWaves": [
         {
           "day": 1,
+          "hpMultiplier": 1,
+          "attackMultiplier": 1,
           "enemies": [
             {
               "id": "enemy1",
@@ -3603,6 +3864,8 @@
         },
         {
           "day": 2,
+          "hpMultiplier": 1.2,
+          "attackMultiplier": 1,
           "enemies": [
             {
               "id": "enemy1",
@@ -3616,6 +3879,8 @@
         },
         {
           "day": 3,
+          "hpMultiplier": 1.4,
+          "attackMultiplier": 1,
           "enemies": [
             {
               "id": "enemy1",
@@ -3629,86 +3894,80 @@
         },
         {
           "day": 4,
+          "hpMultiplier": 1.6,
+          "attackMultiplier": 1,
           "enemies": [
             {
               "id": "enemy1",
-              "count": 8
+              "count": 10
             },
             {
               "id": "enemy2",
-              "count": 2
+              "count": 5
             },
             {
               "id": "enemy3",
-              "count": 2
-            },
-            {
-              "id": "enemy4",
               "count": 5
             }
           ]
         },
         {
           "day": 5,
+          "hpMultiplier": 1.8,
+          "attackMultiplier": 1,
           "enemies": [
             {
               "id": "enemy1",
-              "count": 5
-            },
-            {
-              "id": "enemy4",
-              "count": 5
-            },
-            {
-              "id": "enemy5",
               "count": 10
+            },
+            {
+              "id": "enemy7",
+              "count": 5
             }
           ]
         },
         {
           "day": 6,
+          "hpMultiplier": 2,
+          "attackMultiplier": 1,
           "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
             {
               "id": "enemy2",
               "count": 5
             },
             {
-              "id": "enemy4",
+              "id": "enemy7",
               "count": 5
-            },
-            {
-              "id": "enemy5",
-              "count": 8
-            },
-            {
-              "id": "enemy6",
-              "count": 2
             }
           ]
         },
         {
           "day": 7,
+          "hpMultiplier": 2.5,
+          "attackMultiplier": 1,
           "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
             {
               "id": "enemy3",
               "count": 5
             },
             {
-              "id": "enemy4",
+              "id": "enemy7",
               "count": 5
-            },
-            {
-              "id": "enemy5",
-              "count": 8
-            },
-            {
-              "id": "enemy6",
-              "count": 2
             }
           ]
         },
         {
           "day": 8,
+          "hpMultiplier": 3,
+          "attackMultiplier": 1,
           "enemies": [
             {
               "id": "enemy2",
@@ -3719,46 +3978,15 @@
               "count": 5
             },
             {
-              "id": "enemy4",
-              "count": 5
-            },
-            {
-              "id": "enemy5",
-              "count": 8
-            },
-            {
-              "id": "enemy6",
-              "count": 2
+              "id": "enemy7",
+              "count": 10
             }
           ]
         },
         {
           "day": 9,
-          "enemies": [
-            {
-              "id": "enemy2",
-              "count": 5
-            },
-            {
-              "id": "enemy3",
-              "count": 5
-            },
-            {
-              "id": "enemy4",
-              "count": 10
-            },
-            {
-              "id": "enemy5",
-              "count": 8
-            },
-            {
-              "id": "enemy6",
-              "count": 2
-            }
-          ]
-        },
-        {
-          "day": 10,
+          "hpMultiplier": 3.5,
+          "attackMultiplier": 1,
           "enemies": [
             {
               "id": "enemy1",
@@ -3773,72 +4001,91 @@
               "count": 5
             },
             {
-              "id": "enemy4",
+              "id": "enemy7",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 10,
+          "hpMultiplier": 4,
+          "attackMultiplier": 1,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
               "count": 5
             },
             {
-              "id": "enemy5",
+              "id": "enemy3",
               "count": 5
             },
             {
-              "id": "enemy6",
-              "count": 2
+              "id": "enemy7",
+              "count": 5
             },
             {
-              "id": "bossbattle",
+              "id": "boss2",
               "count": 1
             }
           ]
         },
         {
           "day": 11,
+          "hpMultiplier": 5,
+          "attackMultiplier": 2,
           "enemies": [
             {
-              "id": "enemy1",
+              "id": "enemy5",
               "count": 10
             }
           ]
         },
         {
           "day": 12,
+          "hpMultiplier": 5.5,
+          "attackMultiplier": 2,
           "enemies": [
             {
-              "id": "enemy1",
+              "id": "enemy5",
               "count": 10
             },
             {
-              "id": "enemy2",
+              "id": "enemy8",
               "count": 5
             }
           ]
         },
         {
           "day": 13,
+          "hpMultiplier": 6,
+          "attackMultiplier": 2,
           "enemies": [
             {
-              "id": "enemy1",
+              "id": "enemy5",
               "count": 10
             },
             {
-              "id": "enemy3",
+              "id": "enemy4",
               "count": 5
             }
           ]
         },
         {
           "day": 14,
+          "hpMultiplier": 6.5,
+          "attackMultiplier": 2,
           "enemies": [
             {
-              "id": "enemy1",
-              "count": 8
+              "id": "enemy5",
+              "count": 10
             },
             {
-              "id": "enemy2",
-              "count": 2
-            },
-            {
-              "id": "enemy3",
-              "count": 2
+              "id": "enemy8",
+              "count": 5
             },
             {
               "id": "enemy4",
@@ -3848,126 +4095,110 @@
         },
         {
           "day": 15,
+          "hpMultiplier": 7,
+          "attackMultiplier": 2,
           "enemies": [
-            {
-              "id": "enemy1",
-              "count": 5
-            },
-            {
-              "id": "enemy4",
-              "count": 5
-            },
             {
               "id": "enemy5",
               "count": 10
+            },
+            {
+              "id": "enemy6",
+              "count": 2
             }
           ]
         },
         {
           "day": 16,
+          "hpMultiplier": 7.5,
+          "attackMultiplier": 2,
           "enemies": [
             {
-              "id": "enemy2",
-              "count": 5
-            },
-            {
-              "id": "enemy4",
-              "count": 5
-            },
-            {
               "id": "enemy5",
-              "count": 8
+              "count": 10
             },
             {
               "id": "enemy6",
               "count": 2
+            },
+            {
+              "id": "enemy4",
+              "count": 5
             }
           ]
         },
         {
           "day": 17,
+          "hpMultiplier": 8,
+          "attackMultiplier": 2,
           "enemies": [
             {
-              "id": "enemy3",
-              "count": 5
-            },
-            {
-              "id": "enemy4",
-              "count": 5
-            },
-            {
               "id": "enemy5",
-              "count": 8
+              "count": 10
             },
             {
               "id": "enemy6",
               "count": 2
+            },
+            {
+              "id": "enemy8",
+              "count": 5
             }
           ]
         },
         {
           "day": 18,
+          "hpMultiplier": 8.5,
+          "attackMultiplier": 2,
           "enemies": [
-            {
-              "id": "enemy2",
-              "count": 5
-            },
-            {
-              "id": "enemy3",
-              "count": 5
-            },
-            {
-              "id": "enemy4",
-              "count": 5
-            },
-            {
-              "id": "enemy5",
-              "count": 8
-            },
             {
               "id": "enemy6",
               "count": 2
+            },
+            {
+              "id": "enemy8",
+              "count": 10
+            },
+            {
+              "id": "enemy4",
+              "count": 10
             }
           ]
         },
         {
           "day": 19,
+          "hpMultiplier": 9,
+          "attackMultiplier": 2,
           "enemies": [
             {
-              "id": "enemy2",
-              "count": 5
-            },
-            {
-              "id": "enemy3",
-              "count": 5
-            },
-            {
-              "id": "enemy4",
+              "id": "enemy5",
               "count": 10
             },
             {
-              "id": "enemy5",
-              "count": 8
+              "id": "enemy6",
+              "count": 5
             },
             {
-              "id": "enemy6",
-              "count": 2
+              "id": "enemy8",
+              "count": 5
             }
           ]
         },
         {
           "day": 20,
+          "hpMultiplier": 10,
+          "attackMultiplier": 2,
           "enemies": [
             {
-              "id": "enemy1",
+              "id": "enemy5",
               "count": 10
             },
             {
-              "id": "enemy2",
+              "id": "enemy6",
               "count": 5
             },
             {
-              "id": "enemy3",
+              "id": "enemy8",
               "count": 5
             },
             {
@@ -3975,213 +4206,185 @@
               "count": 5
             },
             {
-              "id": "enemy5",
-              "count": 5
-            },
-            {
-              "id": "enemy6",
-              "count": 2
-            },
-            {
-              "id": "bossbattle",
+              "id": "boss3",
               "count": 1
             }
           ]
         },
         {
           "day": 21,
+          "hpMultiplier": 15,
+          "attackMultiplier": 4,
           "enemies": [
             {
-              "id": "enemy1",
+              "id": "enemy9",
               "count": 10
             }
           ]
         },
         {
           "day": 22,
+          "hpMultiplier": 16.5,
+          "attackMultiplier": 4,
           "enemies": [
             {
-              "id": "enemy1",
+              "id": "enemy9",
               "count": 10
             },
             {
-              "id": "enemy2",
+              "id": "enemy11",
               "count": 5
             }
           ]
         },
         {
           "day": 23,
+          "hpMultiplier": 18,
+          "attackMultiplier": 4,
           "enemies": [
             {
-              "id": "enemy1",
+              "id": "enemy9",
               "count": 10
             },
             {
-              "id": "enemy3",
+              "id": "enemy12",
               "count": 5
             }
           ]
         },
         {
           "day": 24,
+          "hpMultiplier": 19.5,
+          "attackMultiplier": 4,
           "enemies": [
             {
-              "id": "enemy1",
-              "count": 8
+              "id": "enemy9",
+              "count": 10
             },
             {
-              "id": "enemy2",
-              "count": 2
+              "id": "enemy11",
+              "count": 5
             },
             {
-              "id": "enemy3",
-              "count": 2
-            },
-            {
-              "id": "enemy4",
+              "id": "enemy12",
               "count": 5
             }
           ]
         },
         {
           "day": 25,
+          "hpMultiplier": 21,
+          "attackMultiplier": 4,
           "enemies": [
             {
-              "id": "enemy1",
-              "count": 5
-            },
-            {
-              "id": "enemy4",
-              "count": 5
-            },
-            {
-              "id": "enemy5",
+              "id": "enemy9",
               "count": 10
+            },
+            {
+              "id": "enemy10",
+              "count": 2
             }
           ]
         },
         {
           "day": 26,
+          "hpMultiplier": 22.5,
+          "attackMultiplier": 4,
           "enemies": [
             {
-              "id": "enemy2",
-              "count": 5
+              "id": "enemy9",
+              "count": 10
             },
             {
-              "id": "enemy4",
-              "count": 5
-            },
-            {
-              "id": "enemy5",
-              "count": 8
-            },
-            {
-              "id": "enemy6",
+              "id": "enemy10",
               "count": 2
+            },
+            {
+              "id": "enemy12",
+              "count": 5
             }
           ]
         },
         {
           "day": 27,
+          "hpMultiplier": 24,
+          "attackMultiplier": 4,
           "enemies": [
             {
-              "id": "enemy3",
-              "count": 5
+              "id": "enemy9",
+              "count": 10
             },
             {
-              "id": "enemy4",
-              "count": 5
-            },
-            {
-              "id": "enemy5",
-              "count": 8
-            },
-            {
-              "id": "enemy6",
+              "id": "enemy10",
               "count": 2
+            },
+            {
+              "id": "enemy11",
+              "count": 5
             }
           ]
         },
         {
           "day": 28,
+          "hpMultiplier": 25.5,
+          "attackMultiplier": 4,
           "enemies": [
             {
-              "id": "enemy2",
-              "count": 5
-            },
-            {
-              "id": "enemy3",
-              "count": 5
-            },
-            {
-              "id": "enemy4",
-              "count": 5
-            },
-            {
-              "id": "enemy5",
-              "count": 8
-            },
-            {
-              "id": "enemy6",
+              "id": "enemy10",
               "count": 2
+            },
+            {
+              "id": "enemy11",
+              "count": 10
+            },
+            {
+              "id": "enemy12",
+              "count": 10
             }
           ]
         },
         {
           "day": 29,
+          "hpMultiplier": 27,
+          "attackMultiplier": 4,
           "enemies": [
             {
-              "id": "enemy2",
-              "count": 5
-            },
-            {
-              "id": "enemy3",
-              "count": 5
-            },
-            {
-              "id": "enemy4",
+              "id": "enemy9",
               "count": 10
             },
             {
-              "id": "enemy5",
-              "count": 8
+              "id": "enemy10",
+              "count": 5
             },
             {
-              "id": "enemy6",
-              "count": 2
+              "id": "enemy11",
+              "count": 5
             }
           ]
         },
         {
           "day": 30,
+          "hpMultiplier": 30,
+          "attackMultiplier": 4,
           "enemies": [
             {
-              "id": "enemy1",
+              "id": "enemy9",
               "count": 10
             },
             {
-              "id": "enemy2",
+              "id": "enemy10",
               "count": 5
             },
             {
-              "id": "enemy3",
+              "id": "enemy11",
               "count": 5
             },
             {
-              "id": "enemy4",
+              "id": "enemy12",
               "count": 5
             },
             {
-              "id": "enemy5",
-              "count": 5
-            },
-            {
-              "id": "enemy6",
-              "count": 2
-            },
-            {
-              "id": "bossbattle",
+              "id": "boss",
               "count": 1
             }
           ]

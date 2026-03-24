@@ -538,6 +538,63 @@ async function ensureTowerEnemyAssetWarmup(): Promise<void> {
   await Promise.all(jobs)
 }
 
+function pickTowerWaveForDay(
+  waves: Array<{
+    day: number
+    spawnDurationMs?: number
+    hpMultiplier?: number
+    attackMultiplier?: number
+    enemies: Array<{ id: string; count: number }>
+  }>,
+  day: number,
+): {
+  day: number
+  spawnDurationMs?: number
+  hpMultiplier?: number
+  attackMultiplier?: number
+  enemies: Array<{ id: string; count: number }>
+} | null {
+  if (waves.length <= 0) return null
+  const sorted = [...waves].sort((a, b) => a.day - b.day)
+  const safeDay = Math.max(1, Math.min(30, Math.round(day || 1)))
+  const pickByDayAtMost = (targetDay: number): {
+    day: number
+    spawnDurationMs?: number
+    hpMultiplier?: number
+    attackMultiplier?: number
+    enemies: Array<{ id: string; count: number }>
+  } | null => {
+    let oneHit = sorted[0] ?? null
+    for (const one of sorted) {
+      if (one.day <= targetDay) oneHit = one
+      else break
+    }
+    return oneHit
+  }
+  return pickByDayAtMost(safeDay)
+}
+
+async function ensureTowerEnemyProjectileAssetWarmupForDay(day: number): Promise<void> {
+  const cfg = getGameCfg().towerDefenseRules
+  if (!cfg || cfg.enabled === false) return
+  const wave = pickTowerWaveForDay(cfg.dayWaves ?? [], day)
+  if (!wave) return
+
+  const enemyDefById = new Map((cfg.enemyDefs ?? []).map((it) => [it.id, it]))
+  const projectileIcons = new Set<string>()
+  for (const one of wave.enemies ?? []) {
+    if (Math.max(0, Math.round(one.count || 0)) <= 0) continue
+    const def = enemyDefById.get(one.id)
+    const icon = String(def?.projectileIcon || '').trim()
+    if (!icon) continue
+    projectileIcons.add(icon)
+  }
+  if (projectileIcons.size <= 0) return
+
+  const jobs = Array.from(projectileIcons).map((icon) => Assets.load<Texture>(getTowerBattleImageUrl(`${icon}.png`)).catch(() => null))
+  await Promise.all(jobs)
+}
+
 function ensureTowerEnemyAnimState(enemyUnitId: string): TowerEnemyAnimState {
   const prev = towerEnemyAnimStateById.get(enemyUnitId)
   if (prev) return prev
@@ -681,6 +738,8 @@ function syncTowerEnemyPresentation(activeCols: number): void {
     const unitHpBarYOffset = Number.isFinite(unitHpBarYOffsetRaw) ? unitHpBarYOffsetRaw : defaultEnemyHpBarYOffset
     const unitHpBarScaleRaw = Number(unitDef?.enemyHpBarScale)
     const unitHpBarScale = Math.max(0.2, Number.isFinite(unitHpBarScaleRaw) ? unitHpBarScaleRaw : defaultEnemyHpBarScale)
+    const flyingLiftNearRaw = Number(cfg.flyingEnemyLiftNear)
+    const flyingLiftNear = Math.max(0, Number.isFinite(flyingLiftNearRaw) ? flyingLiftNearRaw : 0)
     let spritePack = towerEnemySpriteById.get(one.id)
     if (!spritePack) {
       const rootNode = new Container()
@@ -731,6 +790,7 @@ function syncTowerEnemyPresentation(activeCols: number): void {
     const alpha = farAlpha + (1 - farAlpha) * alphaProgress
 
     const anim = ensureTowerEnemyAnimState(one.id)
+    const isFlying = (one as { isFlying?: boolean }).isFlying === true
     const isMoving = (one as { isMoving?: boolean }).isMoving === true
     const useStandAnim = !isMoving
     const moveWave = useStandAnim
@@ -740,6 +800,7 @@ function syncTowerEnemyPresentation(activeCols: number): void {
     let animYOff = moveWave.yOff
     let animRotRad = moveWave.rotDeg * (Math.PI / 180)
     let animXOff = 0
+    let flyingDiveP = 0
     let preparePulse = 0
 
     if (useStandAnim) {
@@ -794,6 +855,7 @@ function syncTowerEnemyPresentation(activeCols: number): void {
         const lungePx = Math.min(160, dist * 0.4)
         animXOff += (dx / dist) * lungePx * towardP
         animYOff += (dy / dist) * lungePx * towardP
+        if (isFlying) flyingDiveP = Math.max(flyingDiveP, towardP)
         animRotRad = 0
       } else {
         anim.meleeDashStartMs = -1
@@ -827,11 +889,13 @@ function syncTowerEnemyPresentation(activeCols: number): void {
     }
 
     const finalScale = scale * animScaleMul * hitScaleMul
+    const flyingLift = isFlying ? flyingLiftNear : 0
+    const effectiveFlyingLift = flyingLift * (1 - flyingDiveP)
     spritePack.root.visible = true
     spritePack.body.anchor.set(0.5, 1)
     spritePack.flash.anchor.set(0.5, 1)
-    spritePack.body.y = 0
-    spritePack.flash.y = 0
+    spritePack.body.y = -effectiveFlyingLift
+    spritePack.flash.y = -effectiveFlyingLift
     spritePack.root.x = laneX + animXOff
     spritePack.root.y = y + animYOff
     spritePack.root.scale.set(finalScale)
@@ -850,7 +914,7 @@ function syncTowerEnemyPresentation(activeCols: number): void {
       const barW = 52 * unitHpBarScale
       const barH = 8
       const radius = 4
-      const yOff = unitHpBarYOffset
+      const yOff = unitHpBarYOffset - effectiveFlyingLift
       spritePack.hpBg.clear()
       spritePack.hpBg.roundRect(-barW / 2, yOff, barW, barH, radius)
       spritePack.hpBg.fill({ color: 0x220000, alpha: 0.9 * alpha })
@@ -872,7 +936,7 @@ function syncTowerEnemyPresentation(activeCols: number): void {
     spritePack.body.tint = (red << 16) | (gb << 8) | gb
     towerEnemyPosById.set(one.id, {
       x: laneX + animXOff,
-      y: y + animYOff - 36 * finalScale,
+      y: y + animYOff - effectiveFlyingLift * finalScale - 36 * finalScale,
     })
   }
 
@@ -2121,6 +2185,7 @@ export const BattleScene: Scene = {
     damageStats.buildPanel(root)
 
     await ensureTowerEnemyAssetWarmup()
+    await ensureTowerEnemyProjectileAssetWarmupForDay(snapshot.day)
 
     engine = new TowerDefenseEngine()
     const renderRuntimeFlags = getRenderRuntimeFlags()
@@ -2308,6 +2373,7 @@ export const BattleScene: Scene = {
             fxPool.spawnProjectile(from, to, bulletColor, undefined, undefined, {
               fixedDurationMs: flyMs,
               projectileIconName: projectileIcon,
+              projectileScale: e.projectileScale,
               projectileStyle,
             })
           },
@@ -2319,6 +2385,7 @@ export const BattleScene: Scene = {
           fxPool.spawnProjectile(from, to, bulletColor, undefined, undefined, {
             fixedDurationMs: flyMs,
             projectileIconName: projectileIcon,
+            projectileScale: e.projectileScale,
             projectileStyle,
           })
         },

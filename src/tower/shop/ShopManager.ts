@@ -182,7 +182,7 @@ export class ShopManager {
 
   /** Debug/切天用：直接跳到指定天数并重滚卡池（不发金币；刷新价格重置为首档） */
   setDay(day: number): void {
-    this.day  = Math.max(1, Math.min(20, day))
+    this.day  = Math.max(1, Math.min(30, day))
     this.refreshIndex = 0
     this.pool = this.rollPool(false)
   }

@@ -1021,6 +1021,7 @@ function applyPhaseUiVisibility(ctx: ShopSceneCtx = _ctx): void {
   if (ctx.sellPopup) ctx.sellPopup.visible = inShop && ctx.currentSelection.kind !== 'none'
   if (ctx.hintToastCon && !inShop) ctx.hintToastCon.visible = false
   if (ctx.unlockRevealLayer) ctx.unlockRevealLayer.visible = inShop && ctx.unlockRevealActive
+  if (ctx.btnRow) ctx.btnRow.visible = inShop
 
   if (!inShop) {
     stopGridDragButtonFlash(ctx)

@@ -20,6 +20,7 @@ type EnemyDef = {
   laneOccupyCount?: number
   attackType?: string
   projectileIcon?: string
+  projectileScale?: number
   projectileFlyMs?: number
   projectileReturnMs?: number
   meleeDashOutMs?: number
@@ -29,6 +30,7 @@ type EnemyDef = {
   enemyHpBarScale?: number
   enemyShadowYOffset?: number
   enemyShadowScale?: number
+  isFlying?: boolean
 }
 
 type SpawnJob = {
@@ -68,6 +70,7 @@ type EnemyUnit = {
   enemyId: string
   icon: string
   lane: number
+  isFlying: boolean
   hp: number
   maxHp: number
   attack: number
@@ -77,6 +80,7 @@ type EnemyUnit = {
   laneOccupyCount: number
   attackType: 'melee' | 'line_projectile' | 'spin_projectile'
   projectileIcon: string
+  projectileScale: number
   projectileFlyMs: number
   projectileReturnMs: number
   meleeDashOutMs: number
@@ -118,6 +122,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
   private totalWaveHpKilled = 0
   private totalWaveCount = 0
   private waveHpMultiplier = 1
+  private waveAttackMultiplier = 1
   private allEnemiesSpawnedAtMs: number | null = null
   private runtimeCalls = 0
   private runtimeCacheHits = 0
@@ -160,6 +165,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
     this.totalWaveHpKilled = 0
     this.totalWaveCount = 0
     this.waveHpMultiplier = 1
+    this.waveAttackMultiplier = 1
     this.allEnemiesSpawnedAtMs = null
     this.runtimeCalls = 0
     this.runtimeCacheHits = 0
@@ -415,6 +421,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
         enemyId: it.enemyId,
         icon: it.icon,
         lane: it.lane,
+        isFlying: it.isFlying,
         hp: it.hp,
         maxHp: it.maxHp,
         distance: it.distance,
@@ -459,7 +466,9 @@ export class TowerDefenseEngine implements BattleEngineLike {
     if (!picked) return
     const wave = ('wave' in picked ? picked.wave : picked)
     const hpMultiplier = ('hpMultiplier' in picked ? picked.hpMultiplier : 1)
+    const attackMultiplier = ('attackMultiplier' in picked ? picked.attackMultiplier : 1)
     this.waveHpMultiplier = Math.max(1, hpMultiplier)
+    this.waveAttackMultiplier = Math.max(1, attackMultiplier)
     const spawnDurationMs = Math.max(100, Math.round(wave.spawnDurationMs ?? cfg.defaultSpawnDurationMs ?? 10000))
     const enemyById = new Map<string, EnemyDef>()
     for (const one of cfg.enemyDefs ?? []) {
@@ -547,10 +556,11 @@ export class TowerDefenseEngine implements BattleEngineLike {
     return Math.max(1, Number(cfg?.levelDistance) || 1000)
   }
 
-  private getBackDistanceForLaneIndex(laneIndex: number, lanes: number): number {
+  private getBackDistanceForLaneIndex(laneIndex: number, lanes: number, isFlying: boolean): number {
     let backDistance = Number.NEGATIVE_INFINITY
     for (const one of this.enemyUnits) {
       if (one.hp <= 0) continue
+      if (one.isFlying !== isFlying) continue
       const oneRange = this.getOccupiedLaneRange(one, lanes)
       if (laneIndex < oneRange.start || laneIndex > oneRange.end) continue
       if (one.distance > backDistance) backDistance = one.distance
@@ -558,12 +568,12 @@ export class TowerDefenseEngine implements BattleEngineLike {
     return backDistance
   }
 
-  private canSpawnAtLane(lane: number, laneOccupyCount: number, lanes: number): boolean {
+  private canSpawnAtLane(lane: number, laneOccupyCount: number, lanes: number, isFlying: boolean): boolean {
     const spawnRange = this.getLaneRangeByLaneAndOccupyCount(lane, laneOccupyCount, lanes)
     const spawnLine = this.getSpawnLineDistance()
     const requiredGap = this.getSpawnFrontGapDistance()
     for (let i = spawnRange.start; i <= spawnRange.end; i++) {
-      const backDistance = this.getBackDistanceForLaneIndex(i, lanes)
+      const backDistance = this.getBackDistanceForLaneIndex(i, lanes, isFlying)
       if (!Number.isFinite(backDistance)) continue
       if (spawnLine - backDistance < requiredGap) return false
     }
@@ -577,9 +587,10 @@ export class TowerDefenseEngine implements BattleEngineLike {
     if (!def) return null
     const lanes = Math.max(1, Math.round(cfg.spawnLanes || 5))
     const laneOccupyCount = this.resolveLaneOccupyCount(def, lanes)
+    const isFlying = this.isEnemyDefFlying(def)
     const laneCandidates = this.getSpawnLaneCandidates(lanes, laneOccupyCount)
     for (const lane of laneCandidates) {
-      if (!this.canSpawnAtLane(lane, laneOccupyCount, lanes)) continue
+      if (!this.canSpawnAtLane(lane, laneOccupyCount, lanes, isFlying)) continue
       return { lane, laneOccupyCount }
     }
     return null
@@ -600,15 +611,17 @@ export class TowerDefenseEngine implements BattleEngineLike {
       enemyId: def.id,
       icon: def.icon,
       lane,
+      isFlying: this.isEnemyDefFlying(def),
       maxHp: Math.max(1, Math.round(def.hp * this.waveHpMultiplier)),
       hp: Math.max(1, Math.round(def.hp * this.waveHpMultiplier)),
-      attack: Math.max(0, Math.round(def.attack * this.waveHpMultiplier)),
+      attack: Math.max(0, Math.round(def.attack * this.waveAttackMultiplier)),
       moveSpeed: Math.max(0, Number(def.moveSpeed) || 0),
       attackIntervalMs: Math.max(100, Math.round(def.attackIntervalMs || 1000)),
       attackDistance: Math.max(0, Number(def.attackDistance) || Number(cfg.attackDistance) || 120),
       laneOccupyCount,
       attackType: this.resolveEnemyAttackType(def),
       projectileIcon: String(def.projectileIcon || '').trim(),
+      projectileScale: this.resolveEnemyProjectileScale(def),
       projectileFlyMs: this.resolveEnemyProjectileFlyMs(def),
       projectileReturnMs: this.resolveEnemyProjectileReturnMs(def),
       meleeDashOutMs: this.resolveEnemyMeleeDashOutMs(def),
@@ -653,6 +666,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
       const enemyRange = this.getOccupiedLaneRange(enemy, lanes)
 
       for (const front of movedUnits) {
+        if (front.isFlying !== enemy.isFlying) continue
         const frontRange = this.getOccupiedLaneRange(front, lanes)
         if (!this.isLaneRangeOverlap(enemyRange.start, enemyRange.end, frontRange.start, frontRange.end)) continue
         const oneReach = front.distance + minLaneGap
@@ -704,12 +718,23 @@ export class TowerDefenseEngine implements BattleEngineLike {
     return 'melee'
   }
 
+  private isEnemyDefFlying(def: EnemyDef): boolean {
+    if (def.isFlying === true) return true
+    return def.id === 'enemy4' || def.id === 'enemy12'
+  }
+
   private resolveEnemyProjectileFlyMs(def: EnemyDef): number {
     const raw = Number((def as { projectileFlyMs?: number }).projectileFlyMs)
     if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.round(raw))
     const type = this.resolveEnemyAttackType(def)
     if (type === 'spin_projectile') return Math.max(1, Math.round(this.getPlayerProjectileFlyMs() * 2))
     return this.getPlayerProjectileFlyMs()
+  }
+
+  private resolveEnemyProjectileScale(def: EnemyDef): number {
+    const raw = Number((def as { projectileScale?: number }).projectileScale)
+    if (!Number.isFinite(raw)) return 1
+    return Math.max(0.1, raw)
   }
 
   private resolveEnemyProjectileReturnMs(def: EnemyDef): number {
@@ -740,6 +765,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
       targetSide: 'player',
       attackType: enemy.attackType,
       projectileIcon: enemy.projectileIcon || undefined,
+      projectileScale: enemy.projectileScale,
       projectileStyle: enemy.attackType === 'spin_projectile' ? 'spin' : 'linear',
       projectileFlyMs: enemy.projectileFlyMs,
       projectileReturnMs: enemy.projectileReturnMs,
@@ -1749,13 +1775,35 @@ export class TowerDefenseEngine implements BattleEngineLike {
   }
 
   private pickWaveByDay(
-    waves: Array<{ day: number; spawnDurationMs?: number; enemies: Array<{ id: string; count: number }> }>,
+    waves: Array<{
+      day: number
+      spawnDurationMs?: number
+      hpMultiplier?: number
+      attackMultiplier?: number
+      enemies: Array<{ id: string; count: number }>
+    }>,
     day: number,
-  ): { wave: { day: number; spawnDurationMs?: number; enemies: Array<{ id: string; count: number }> }; hpMultiplier: number } | null {
+  ): {
+    wave: {
+      day: number
+      spawnDurationMs?: number
+      hpMultiplier?: number
+      attackMultiplier?: number
+      enemies: Array<{ id: string; count: number }>
+    }
+    hpMultiplier: number
+    attackMultiplier: number
+  } | null {
     if (!waves.length) return null
     const sorted = [...waves].sort((a, b) => a.day - b.day)
-    const safeDay = Math.max(1, Math.round(day || 1))
-    const pickByDayAtMost = (targetDay: number): { day: number; spawnDurationMs?: number; enemies: Array<{ id: string; count: number }> } | null => {
+    const safeDay = Math.max(1, Math.min(30, Math.round(day || 1)))
+    const pickByDayAtMost = (targetDay: number): {
+      day: number
+      spawnDurationMs?: number
+      hpMultiplier?: number
+      attackMultiplier?: number
+      enemies: Array<{ id: string; count: number }>
+    } | null => {
       let oneHit = sorted[0] ?? null
       for (const one of sorted) {
         if (one.day <= targetDay) oneHit = one
@@ -1764,20 +1812,12 @@ export class TowerDefenseEngine implements BattleEngineLike {
       return oneHit
     }
 
-    let targetDay = safeDay
-    let hpMultiplier = 1
-
-    // 需求：11-15、16-20 ... 到100关都复用 6-10 关波次模板，
-    // 并且每 5 关数值倍率 +0.5（11-15 为 1.5x，16-20 为 2.0x ...）。
-    if (safeDay >= 11) {
-      const blockIdx = Math.floor((safeDay - 11) / 5)
-      const offsetInBlock = (safeDay - 11) % 5
-      targetDay = 6 + offsetInBlock
-      hpMultiplier = 1.5 + blockIdx * 0.5
-    }
-
-    const hit = pickByDayAtMost(targetDay)
+    const hit = pickByDayAtMost(safeDay)
     if (!hit) return null
-    return { wave: hit, hpMultiplier }
+    return {
+      wave: hit,
+      hpMultiplier: Math.max(1, Number(hit.hpMultiplier) || 1),
+      attackMultiplier: Math.max(1, Number(hit.attackMultiplier) || 1),
+    }
   }
 }

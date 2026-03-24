@@ -122,6 +122,8 @@
   "gameplaySameArchetypeDiffItemStoneSynthesis": 0,
   "gameplaySameArchetypeCrossSynthesisEnabled": 1,
   "gameplaySameArchetypeCrossSynthesisPickFromPair": 0,
+  "gameplaySameItemRandomSynthesis": 0,
+  "gameplayDefaultUpgradeHint": 1,
   "gameplayShowSimpleDescriptions": 0,
   "gameplaySkillDraftRerollEnabled": 0,
   "gameplayEventDraftRerollEnabled": 0,

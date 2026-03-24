@@ -55,6 +55,8 @@ const UPGRADE_ARROW_SCALE = 1.5
 const UPGRADE_ARROW_BASE_W = 40
 const UPGRADE_ARROW_BASE_H = 48
 const UPGRADE_ARROW_FILL_COLOR = 0xffd25a
+const DEFAULT_UPGRADE_HINT_W = 18
+const DEFAULT_UPGRADE_HINT_H = 20
 const SAME_ARROW_FILE = 'arrow2.png'
 const CROSS_ARROW_FILE = 'arrow1.png'
 const CONVERT_ARROW_FILE = 'arrow3.png'
@@ -175,9 +177,11 @@ interface ItemNode {
   enchantBadgeBg: Graphics
   enchantBadgeSp: Sprite
   enchantmentKey?: ItemEnchantmentKey
+  defaultUpgradeArrow: Graphics
   upgradeArrow: ArrowNodeView
   crossUpgradeArrow: ArrowNodeView
   upgradeBaseY: number
+  defaultUpgradeBaseY: number
   sprite:     Sprite | null
   defId:      string
   tier?:      string
@@ -425,6 +429,7 @@ export class GridZone extends Container {
   private itemFrameUseArchetypeColor = getDebugCfg('gameplayItemFrameColorByArchetype') >= 0.5
   private itemQualityMarkerEnabled = true
   private upgradeHintIds = new Set<string>()
+  private dragUpgradeHintIds = new Set<string>()
   private crossUpgradeHintIds = new Set<string>()
   private crossGuideArrowMode: 'cross' | 'convert' = 'cross'
   private upgradeHintTick: (() => void) | null = null
@@ -701,6 +706,16 @@ export class GridZone extends Container {
     qualitySparkle.eventMode = 'none'
     this.badgeLayer.addChild(qualitySparkle)
 
+    const defaultUpgradeArrow = new Graphics()
+    defaultUpgradeArrow.eventMode = 'none'
+    defaultUpgradeArrow.visible = false
+    const halfW = DEFAULT_UPGRADE_HINT_W / 2
+    defaultUpgradeArrow.moveTo(halfW, 0)
+    defaultUpgradeArrow.lineTo(DEFAULT_UPGRADE_HINT_W, DEFAULT_UPGRADE_HINT_H)
+    defaultUpgradeArrow.lineTo(0, DEFAULT_UPGRADE_HINT_H)
+    defaultUpgradeArrow.fill({ color: 0xffd25a, alpha: 0.98 })
+    defaultUpgradeArrow.stroke({ color: 0x1a1a2a, width: 3, alpha: 0.85 })
+
     const enchantBadge = new Container()
     enchantBadge.eventMode = 'none'
     enchantBadge.visible = false
@@ -721,6 +736,7 @@ export class GridZone extends Container {
     const sprite = new Sprite(Texture.WHITE)
     sprite.alpha  = 0
     visual.addChild(sprite)
+    visual.addChild(defaultUpgradeArrow)
     visual.addChild(upgradeArrow)
     visual.addChild(crossUpgradeArrow)
     visual.addChild(enchantBadge)
@@ -745,9 +761,11 @@ export class GridZone extends Container {
       enchantBadge,
       enchantBadgeBg,
       enchantBadgeSp,
+      defaultUpgradeArrow,
       upgradeArrow,
       crossUpgradeArrow,
       upgradeBaseY: 0,
+      defaultUpgradeBaseY: 0,
       sprite,
       defId,
       tier,
@@ -954,6 +972,7 @@ export class GridZone extends Container {
     if (this.dragNode === node) this.dragNode = null
     if (this.selectedId === instanceId) this.selectedId = null
     this.upgradeHintIds.delete(instanceId)
+    this.dragUpgradeHintIds.delete(instanceId)
     this.crossUpgradeHintIds.delete(instanceId)
     this.itemOffsetX.delete(instanceId)
     this.nodes.delete(instanceId)
@@ -989,6 +1008,7 @@ export class GridZone extends Container {
     node.starText.visible = false
     node.qualityDot.visible = false
     node.qualitySparkle.visible = false
+    node.defaultUpgradeArrow.visible = false
     node.upgradeArrow.visible = false
     node.crossUpgradeArrow.visible = false
 
@@ -1028,7 +1048,8 @@ export class GridZone extends Container {
     node.starBadgeBg.visible = showStarBadge
     node.starText.visible = showStarBadge
     this.updateNodeQualityDot(node)
-    node.upgradeArrow.visible = this.upgradeHintIds.has(instanceId)
+    node.defaultUpgradeArrow.visible = this.upgradeHintIds.has(instanceId)
+    node.upgradeArrow.visible = this.dragUpgradeHintIds.has(instanceId)
     node.crossUpgradeArrow.visible = this.crossUpgradeHintIds.has(instanceId)
     this.updateNodeAmmoBadge(node)
     this.updateStatBadgePosition(node)
@@ -1057,7 +1078,8 @@ export class GridZone extends Container {
     node.starBadgeBg.visible = showStarBadge
     node.starText.visible = showStarBadge
     this.updateNodeQualityDot(node)
-    node.upgradeArrow.visible = this.upgradeHintIds.has(instanceId)
+    node.defaultUpgradeArrow.visible = this.upgradeHintIds.has(instanceId)
+    node.upgradeArrow.visible = this.dragUpgradeHintIds.has(instanceId)
     node.crossUpgradeArrow.visible = this.crossUpgradeHintIds.has(instanceId)
     this.updateNodeAmmoBadge(node)
 
@@ -1091,6 +1113,7 @@ export class GridZone extends Container {
     if (node?.qualitySparkle.parent) node.qualitySparkle.parent.removeChild(node.qualitySparkle)
     node?.qualitySparkle.destroy()
     this.upgradeHintIds.delete(instanceId)
+    this.dragUpgradeHintIds.delete(instanceId)
     this.crossUpgradeHintIds.delete(instanceId)
     this.itemOffsetX.delete(instanceId)
     this.nodes.delete(instanceId)
@@ -1399,17 +1422,14 @@ export class GridZone extends Container {
 
   setUpgradeHints(instanceIds: string[]): void {
     this.upgradeHintIds = new Set(instanceIds.filter((id) => this.nodes.has(id)))
-    this.crossUpgradeHintIds = new Set()
     for (const [id, node] of this.nodes) {
-      node.upgradeArrow.visible = this.upgradeHintIds.has(id)
-      node.crossUpgradeArrow.visible = this.crossUpgradeHintIds.has(id)
-      if (!node.upgradeArrow.visible) {
-        node.upgradeArrow.y = node.upgradeBaseY
-        node.upgradeArrow.alpha = 1
-        node.upgradeArrow.scale.set(UPGRADE_ARROW_SCALE)
+      node.defaultUpgradeArrow.visible = this.upgradeHintIds.has(id)
+      if (!node.defaultUpgradeArrow.visible) {
+        node.defaultUpgradeArrow.y = node.defaultUpgradeBaseY
+        node.defaultUpgradeArrow.alpha = 1
       }
     }
-    if (this.upgradeHintIds.size > 0) this.startUpgradeHintAnim()
+    if (this.upgradeHintIds.size > 0 || this.dragUpgradeHintIds.size > 0 || this.crossUpgradeHintIds.size > 0) this.startUpgradeHintAnim()
     else this.stopUpgradeHintAnim()
   }
 
@@ -1417,7 +1437,7 @@ export class GridZone extends Container {
     if (this.crossGuideArrowMode !== crossMode) void this.setCrossGuideArrowMode(crossMode)
     const cross = new Set(crossInstanceIds.filter((id) => this.nodes.has(id)))
     const next = new Set(instanceIds.filter((id) => this.nodes.has(id) && !cross.has(id)))
-    this.upgradeHintIds = next
+    this.dragUpgradeHintIds = next
     this.crossUpgradeHintIds = cross
     for (const [id, node] of this.nodes) {
       const showDefault = next.has(id)
@@ -1433,7 +1453,7 @@ export class GridZone extends Container {
         node.crossUpgradeArrow.scale.set(UPGRADE_ARROW_SCALE)
       }
     }
-    if (next.size > 0 || cross.size > 0) this.startUpgradeHintAnim()
+    if (this.upgradeHintIds.size > 0 || next.size > 0 || cross.size > 0) this.startUpgradeHintAnim()
     else this.stopUpgradeHintAnim()
   }
 
@@ -1518,6 +1538,9 @@ export class GridZone extends Container {
     node.upgradeBaseY = frameInset + frameH / 2
     node.upgradeArrow.y = node.upgradeBaseY
     node.crossUpgradeArrow.y = node.upgradeBaseY
+    node.defaultUpgradeArrow.x = frameInset + 8
+    node.defaultUpgradeBaseY = frameInset + frameH - DEFAULT_UPGRADE_HINT_H - 8
+    node.defaultUpgradeArrow.y = node.defaultUpgradeBaseY
 
     if (node.selectedG.visible) this.redrawSelection(node)
   }
@@ -1843,6 +1866,8 @@ export class GridZone extends Container {
     Ticker.shared.remove(this.upgradeHintTick)
     this.upgradeHintTick = null
     for (const node of this.nodes.values()) {
+      node.defaultUpgradeArrow.y = node.defaultUpgradeBaseY
+      node.defaultUpgradeArrow.alpha = 1
       node.upgradeArrow.y = node.upgradeBaseY
       node.upgradeArrow.alpha = 1
       node.upgradeArrow.scale.set(UPGRADE_ARROW_SCALE)
@@ -1857,12 +1882,18 @@ export class GridZone extends Container {
     this.upgradeHintTick = () => {
       const p = (Date.now() % 640) / 640
       const bob = Math.sin(p * Math.PI * 2)
+      const defaultOffsetY = -2.5 * bob
       const offsetY = -8 * bob
       const scale = UPGRADE_ARROW_SCALE * (1 + 0.12 * bob)
       for (const [id, node] of this.nodes) {
-        const showDefault = this.upgradeHintIds.has(id) && node.upgradeArrow.visible
+        const showDefaultHint = this.upgradeHintIds.has(id) && node.defaultUpgradeArrow.visible
+        const showDefault = this.dragUpgradeHintIds.has(id) && node.upgradeArrow.visible
         const showCross = this.crossUpgradeHintIds.has(id) && node.crossUpgradeArrow.visible
-        if (!showDefault && !showCross) continue
+        if (!showDefaultHint && !showDefault && !showCross) continue
+        if (showDefaultHint) {
+          node.defaultUpgradeArrow.y = node.defaultUpgradeBaseY + defaultOffsetY
+          node.defaultUpgradeArrow.alpha = 1
+        }
         if (showDefault) {
           node.upgradeArrow.y = node.upgradeBaseY + offsetY
           node.upgradeArrow.alpha = 1

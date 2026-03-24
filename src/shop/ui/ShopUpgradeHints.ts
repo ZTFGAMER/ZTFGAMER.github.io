@@ -11,6 +11,7 @@ import {
   getItemDefById, getPrimaryArchetype, nextTierLevel,
 } from '../systems/ShopSynthesisLogic'
 import type { ShopSceneCtx } from '../ShopSceneContext'
+import { getConfig as getDebugCfg } from '@/config/debugConfig'
 
 export type UpgradeMatch = {
   shopSlots: number[]
@@ -116,7 +117,8 @@ export function computeUpgradeMatch(ctx: ShopSceneCtx): UpgradeMatch {
 
 export function refreshUpgradeHints(ctx: ShopSceneCtx): void {
   const match = computeUpgradeMatch(ctx)
-  ctx.shopPanel?.setUpgradeHints(match.shopSlots)
-  ctx.battleView?.setUpgradeHints(match.battleIds)
-  ctx.backpackView?.setUpgradeHints(match.backpackIds)
+  const showDefaultUpgradeHint = getDebugCfg('gameplayDefaultUpgradeHint') >= 0.5
+  ctx.shopPanel?.setUpgradeHints(showDefaultUpgradeHint ? match.shopSlots : [])
+  ctx.battleView?.setUpgradeHints(showDefaultUpgradeHint ? match.battleIds : [])
+  ctx.backpackView?.setUpgradeHints(showDefaultUpgradeHint ? match.backpackIds : [])
 }

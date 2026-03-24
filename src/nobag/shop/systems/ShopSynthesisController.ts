@@ -160,6 +160,9 @@ export function refreshBackpackSynthesisGuideArrows(
 ): void {
   if (!ctx.backpackView || !ctx.battleView) return
   const rewardView = ctx.levelQuickRewardView
+  const sameItemRandomSynthesis = getDebugCfg('gameplaySameItemRandomSynthesis') >= 0.5
+  const sameArchetypeCrossSynthesisEnabled = getDebugCfg('gameplaySameArchetypeCrossSynthesisEnabled') >= 0.5
+  const useSameArrowForCrossGuide = sameItemRandomSynthesis && sameArchetypeCrossSynthesisEnabled
   const canLv7Morph = !!defId && !!tier && canUseLv7MorphSynthesis(defId, defId, tier, star, tier, star)
   if (!defId || !tier || (!nextTierLevel(tier, star) && !canLv7Morph)) {
     ctx.backpackView.setDragGuideArrows([])
@@ -174,6 +177,12 @@ export function refreshBackpackSynthesisGuideArrows(
   if (canLv7Morph) {
     ctx.backpackView.setDragGuideArrows([], [...backpackGuide.sameIds, ...backpackGuide.crossIds], 'convert')
     ctx.battleView.setDragGuideArrows([], [...battleGuide.sameIds, ...battleGuide.crossIds], 'convert')
+    rewardView?.setDragGuideArrows([])
+    return
+  }
+  if (useSameArrowForCrossGuide) {
+    ctx.backpackView.setDragGuideArrows([...backpackGuide.sameIds, ...backpackGuide.crossIds], [])
+    ctx.battleView.setDragGuideArrows([...battleGuide.sameIds, ...battleGuide.crossIds], [])
     rewardView?.setDragGuideArrows([])
     return
   }
@@ -422,6 +431,7 @@ export function synthesizeTarget(
   const runPoolSet = new Set(getRunClassItemPoolIds())
 
   const isSameIdSynthesis = defId === targetItem.defId
+  const sameItemRandomSynthesis = getDebugCfg('gameplaySameItemRandomSynthesis') >= 0.5
   const forceSynthesisActive = !!(ctx.dayEventState.forceSynthesisArchetype && ctx.dayEventState.forceSynthesisRemaining > 0)
   const minStartingTier = getCrossSynthesisMinStartingTier(sourceDef, targetDef)
   let guaranteeNewUnlock = shouldGuaranteeNewUnlock(upgradeTo.tier, upgradeTo.star)
@@ -436,6 +446,7 @@ export function synthesizeTarget(
   }
   const filterCrossSynthesisPool = (list: ItemDef[]): ItemDef[] => {
     let out = list.filter((it) => it.id !== sourceDef.id && it.id !== targetDef.id)
+    if (sameItemRandomSynthesis) return out
     const sourceArch = toSkillArchetype(getPrimaryArchetype(sourceDef.tags))
     const targetArch = toSkillArchetype(getPrimaryArchetype(targetDef.tags))
     const shouldExcludeSameArch = (
@@ -454,10 +465,15 @@ export function synthesizeTarget(
     if (runPoolSet.size > 0) out = out.filter((it) => runPoolSet.has(it.id))
     return out
   }
+  const filterSameItemRandomPool = (list: ItemDef[]): ItemDef[] => {
+    return list.filter((it) => it.id !== sourceDef.id && it.id !== targetDef.id)
+  }
   const buildCandidates = (targetTierKey: TierKey) => {
     const allRaw = pickCrossIdEvolveCandidates(sourceDef, targetItem.size, targetTierKey, 'Bronze', false)
     const allByTier = filterByResultTierCeiling(allRaw, targetTierKey)
-    const all = isSameIdSynthesis ? allByTier : filterCrossSynthesisPool(allByTier)
+    const all = sameItemRandomSynthesis
+      ? filterSameItemRandomPool(allByTier)
+      : (isSameIdSynthesis ? allByTier : filterCrossSynthesisPool(allByTier))
     if (forceSynthesisActive) {
       const forced = all.filter((it) => toSkillArchetype(getPrimaryArchetype(it.tags)) === ctx.dayEventState.forceSynthesisArchetype)
       if (forced.length > 0) return forced
@@ -468,7 +484,10 @@ export function synthesizeTarget(
       if (all.length > 0) return all
       return isSameIdSynthesis ? [sourceDef] : []
     }
-    if (isSameIdSynthesis) return [sourceDef]
+    if (isSameIdSynthesis) {
+      if (sameItemRandomSynthesis) return all.length > 0 ? all : [sourceDef]
+      return [sourceDef]
+    }
     return all
   }
   let evolveCandidates = buildCandidates(upgradeTo.tier)

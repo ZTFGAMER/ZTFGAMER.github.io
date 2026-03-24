@@ -20,6 +20,7 @@ export type GameEvents = {
     attackType?: 'melee' | 'line_projectile' | 'spin_projectile' | 'melee_sweep';
     attackDistance?: number;
     projectileIcon?: string;
+    projectileScale?: number;
     projectileStyle?: 'linear' | 'spin';
     projectileReturnMs?: number;
     meleeDashOutMs?: number;

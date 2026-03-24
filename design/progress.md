@@ -1,5 +1,328 @@
 # 大巴扎 — 开发进度记录
 
+## 不同等级物品购买价格调整（2026-03-24）
+
+- 用户需求：购买价格按等级设置为 `3/6/12/24/48/96/192/384`。
+- 已完成：
+  - `data/tower_game_config.json`
+    - 更新 `shop_rules.quickBuyFixedPrice` 为：
+      - `Bronze#1=3`
+      - `Bronze#2=6`
+      - `Silver#1=12`
+      - `Silver#2=24`
+      - `Gold#1=48`
+      - `Gold#2=96`
+      - `Diamond#1=192`
+      - `Diamond#2=384`
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“等级购买价曲线”。
+
+## 塔防 Day10/Day20 跨区携带物品选择流程（2026-03-24）
+
+- 用户需求：
+  - Day10 / Day20 战斗结束回店后，不直接进入下一天；
+  - 进入“携带物品选择”阶段：隐藏购买/整理/战斗按钮，顶部显示携带槽位（Day10=3，Day20=5）；
+  - 仅当拖满指定槽位后显示“进入下一区域”按钮；
+  - 点击后只保留已选择物品并进入 Day11 / Day21。
+- 已完成：
+  - `src/tower/shop/ShopScene.ts`
+    - 新增 checkpoint carry 阶段状态与 UI（顶部提示、最多5个槽位、进度文案、进入按钮）；
+    - onEnter 恢复战斗返回时增加分支：若为 Day10/20 且 `pendingAdvanceToNextDay`，进入携带选择阶段，不立即 `setDay(+1)`；
+    - `applyPhaseUiVisibility()` 接入携带阶段：隐藏“购买/整理/战斗”按钮；
+    - “进入下一区域”确认逻辑：仅保留槽位中实例，其余物品移除，再推进下一天并结算延迟的 post-battle effect。
+  - `src/tower/shop/ui/ShopBattleZoneBuilder.ts`
+    - `onSpecialDrop` 顶部接入携带阶段专用分支：拖拽物品命中携带槽时只记录选择并回位；
+    - 携带阶段下屏蔽出售/合成等特殊拖放逻辑（非槽位拖放不触发 special drop）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收 Day10/20 携带选择流程（槽位拖拽、按钮显隐、仅保留所选物品）。
+
+- 验收追加修复（同日）：
+  - 用户反馈：结算面板遮挡详情；底部按钮未隐藏；点击“进入下一区域”后应回到正常商店流程。
+  - 已完成：
+    - `src/tower/shop/ShopScene.ts`
+      - 结算面板整体下移，避免遮挡中部信息；
+      - 携带阶段强制隐藏底部按钮行（整理/购买/战斗）；
+      - 携带阶段将上阵区与背包区整体下移到底部区域；
+      - 点击“进入下一区域”后关闭携带模式并恢复正常商店布局/按钮可见性；
+      - 携带槽位支持点击转发到真实物品（可查看详情）。
+  - 验证：`npm run build` 通过。
+
+- 验收追加修复（第2轮，同日）：
+  - 用户反馈：
+    - 携带槽拖放手感弱，无法稳定“拖入”；
+    - 结算面板仍遮挡详情信息；
+    - 上阵/背包下移过多；
+    - 可通过 Day 调试按钮绕过结算导致“进入 Day11 后未保留 3 件携带物品”的感知问题。
+  - 已完成：
+    - `src/tower/shop/ShopScene.ts`
+      - 携带槽命中改为本地坐标判定并扩大命中范围（拖入更稳定）；
+      - 结算面板缩短高度、降低不透明度并微调位置；
+      - 携带阶段上阵/背包下移量从 210 调整为 120；
+      - 携带阶段隐藏 Day 调试控件，避免绕过流程；
+      - 携带阶段若打开详情，确保详情层级在结算层之上。
+  - 验证：`npm run build` 通过。
+
+- 需求变更（同日）：
+  - 用户要求：彻底删除“前往下一区域携带物件”流程。
+  - 已完成删除：
+    - `src/tower/shop/ShopScene.ts`
+      - 移除 checkpoint carry 全部状态、UI、拖拽命中、布局偏移、按钮显隐分支；
+      - 恢复战斗回店后的原始流程：`pendingAdvanceToNextDay` 时直接 `setDay(+1)` 并执行战后效果；
+      - 移除 onEnter/onExit 中与 checkpoint carry 相关的创建与清理。
+    - `src/tower/shop/ui/ShopBattleZoneBuilder.ts`
+      - 移除 carry 专用回调类型与 `onSpecialDrop` 分支。
+
+## 怪物子弹缩放改为按敌人单独配置（2026-03-24）
+
+- 用户需求：不要代码写死；每个敌人单独配置子弹缩放，小怪 `1x`、Boss `3x`。
+- 已完成：
+  - `data/tower_game_config.json`
+    - `towerDefenseRules.enemyDefs` 为每个敌人新增 `projectileScale`：
+      - `enemy1~enemy12` 均为 `1`；
+      - `boss2/boss3/boss` 均为 `3`。
+  - `src/tower/common/items/ItemDef.ts`
+    - `enemyDefs` 类型新增 `projectileScale?: number`。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 读取并写入敌人运行态 `projectileScale`；
+    - 通过 `battle:item_fire` 事件透传 `projectileScale`。
+  - `src/tower/core/EventBus.ts`
+    - `battle:item_fire` 事件类型新增 `projectileScale?: number`。
+  - `src/tower/battle/BattleScene.ts`
+    - 怪物发射子弹时把 `projectileScale` 传给 FX 层。
+  - `src/tower/battle/BattleFXPool.ts`
+    - `spawnProjectile` 支持 `opts.projectileScale`，并按该倍率放大/缩小子弹尺寸。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“普通怪子弹 1x、Boss 子弹 3x”。
+
+## 塔防飞行单位分层与独立排队（2026-03-24）
+
+- 用户需求：
+  - 蝙蝠（`enemy4`）和红色飞龙（`enemy12`）作为空中单位；
+  - 影子保持地面；单位本体增加向上偏移，最近位置偏移150，且偏移受距离放缩影响；
+  - 飞行单位与地面单位分开排队（可理解为新增5列空中轨道）。
+- 已完成：
+  - `data/tower_game_config.json`
+    - `towerDefenseRules` 新增 `flyingEnemyLiftNear: 150`；
+    - `enemy4`、`enemy12` 增加 `isFlying: true`。
+  - `src/tower/common/items/ItemDef.ts`
+    - `towerDefenseRules` 类型新增 `flyingEnemyLiftNear`；
+    - `enemyDefs` 类型新增 `isFlying`。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 敌人实例新增 `isFlying` 字段并透出到 `getTowerEnemyUnits()`；
+    - 阻挡/排队与出生占位检测改为“仅同类（飞行/地面）互相影响”，实现独立5列队列效果。
+  - `src/tower/battle/BattleEngineTypes.ts`
+    - `TowerEnemyUnitView` 增加 `isFlying`。
+  - `src/tower/battle/BattleScene.ts`
+    - 飞行单位本体与闪光层应用向上位移，阴影仍贴地；
+    - 血条与命中目标点同步抬高；
+    - 位移由 `flyingEnemyLiftNear` 与单位最终缩放共同作用（近处约150，远处按透视缩放减小）。
+- 当前阶段：等待用户验收“飞行单位高度表现 + 空地独立排队”。
+
+- 验收追加（同日）：
+  - 用户需求：飞行单位进行近战攻击时，先向下俯冲，再向上飞回原高度。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 复用近战冲刺进度 `towardP` 驱动飞行高度插值；
+      - 近战冲刺期间将飞行抬升量从 `flyingEnemyLiftNear` 逐步降到更低，再在回程阶段恢复；
+      - 本体、闪光层、血条与命中参考点同步应用该动态高度。
+  - 当前阶段：等待用户验收“飞行近战俯冲-回升动作”。
+
+## 塔防 Day1~30 Hp/Atk 比例更新（2026-03-24）
+
+- 用户需求：按给定表更新关卡倍率：Day1~30 的 `Hp比例` 与 `Atk比例`。
+- 已完成：
+  - `data/tower_game_config.json`
+    - 更新 `towerDefenseRules.dayWaves` 中 Day1~30 的 `hpMultiplier/attackMultiplier`；
+    - 其中重点修正：
+      - Day12~20 的 `hpMultiplier` 调整为 `5.5~10`（原先偏高）；
+      - Day21~30 的 `hpMultiplier` 调整为 `15~30`（原先为 `25~100` 的激进曲线）；
+      - `attackMultiplier` 按表保持分段：Day1~10=`1`，Day11~20=`2`，Day21~30=`4`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收 Day1~30 塔防倍率曲线。
+
+## 塔防30关商店等级概率与金币曲线（2026-03-24）
+
+- 用户需求：按给定30关表更新“购买物品等级概率（Lv1~Lv7）”与“每日获得金币”。
+- 已完成：
+  - `data/tower_game_config.json`
+    - `daily_gold_by_day` 更新为 Day1~Day30，并按表填入金币：`6 ... 60`；
+    - `shop_rules.quickBuyLevelChancesByDay` 更新为30天：
+      - Day1~5: Lv1=1.0
+      - Day6~10: Lv1/Lv2=0.5/0.5
+      - Day11~15: Lv2=1.0
+      - Day16~20: Lv2/Lv3=0.5/0.5
+      - Day21~25: Lv3=1.0
+      - Day26~30: Lv3/Lv4=0.5/0.5
+      - 其余等级概率为0（含Lv7）。
+    - `daily_gold_by_day` 文案同步改为 Day1~Day30。
+  - `src/tower/shop/ShopManager.ts`
+    - `setDay()` 上限由20改为30，确保塔防30关调试/切天时按新曲线生效。
+- 数据校验：
+  - `daily_gold_by_day.length === 30`
+  - `quickBuyLevelChancesByDay.length === 30`
+- 当前阶段：等待用户验收“30关购买等级概率与金币发放”。
+
+## 塔防怪物扩充与30关波次重做（2026-03-24）
+
+- 用户需求：扩充怪物种类；怪物子弹图标改为怪物目录资源；按给定表格重做30关（逐关Hp/Atk倍率+怪物数量）。
+- 已完成：
+  - `data/tower_game_config.json`
+    - 扩充 `towerDefenseRules.enemyDefs`：新增 `enemy7~enemy12`、`boss2`、`boss3`、`boss`，并更新既有怪物基础值；
+    - 远程/首领子弹改为怪物资源命名（如 `enemy3_a`、`enemy8_a`、`boss2_a` 等）；
+    - 重做 `dayWaves` 第1~30关，新增每关 `hpMultiplier` 与 `attackMultiplier`，并按表配置敌人数量。
+  - `src/tower/common/items/ItemDef.ts`
+    - `dayWaves` 类型新增 `hpMultiplier`、`attackMultiplier`。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 读取并应用 `dayWaves.hpMultiplier/attackMultiplier`；
+    - 攻击倍率独立于血量倍率；
+    - 关卡读取上限改为30（30关后按30关处理）。
+  - `src/tower/battle/BattleScene.ts`
+    - 波次预热选关规则同步为30关上限；
+    - 怪物子弹预热改为从 `towerbattle` 目录加载。
+  - `src/tower/battle/BattleFXPool.ts`
+    - 显式子弹图加载优先走 `towerbattle/{icon}.png`，并保留 itemicon 兜底。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“怪物扩充 + 子弹图路径 + 30关波次/倍率”。
+
+## 本关怪物子弹贴图预热（2026-03-24）
+
+- 用户需求：仅预热“本关会出现的怪物子弹贴图”。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增按关卡日选择波次的工具函数（与塔防引擎选波规则一致：11关起复用6-10模板）；
+    - 新增 `ensureTowerEnemyProjectileAssetWarmupForDay(day)`：
+      - 从本关波次敌人 ID 反查 `enemyDefs`；
+      - 收集 `projectileIcon` 去重；
+      - 仅对这些子弹图执行 `Assets.load(getItemIconUrlByName(...))` 预热。
+    - 战斗初始化中在创建引擎前执行：`await ensureTowerEnemyProjectileAssetWarmupForDay(snapshot.day)`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实机验证“本关怪物子弹首发是否无加载抖动/无警告”。
+
+## 塔防子弹贴图缓存警告修复（2026-03-24）
+
+- 用户反馈：战斗中出现 Pixi warning：`[Assets] Asset id ... was not found in the Cache`，堆栈指向 `BattleFXPool.spawnProjectile()`。
+- 根因：显式子弹图标分支调用 `Assets.get(url)` 直接查缓存；当资源尚未进入 Pixi Cache 时会触发 warning。
+- 已完成：
+  - `src/tower/battle/BattleFXPool.ts`
+    - 移除 `spawnProjectile()` 中的 `Assets.get(...)` 直查分支；
+    - 统一走已有的 `projectileTextureCache + resolveProjectileTexture()` 预热/异步加载路径，避免未命中缓存时打 warning。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测战斗中该 warning 是否消失。
+
+## 玩法数值新增“默认提示升级”开关（2026-03-24）
+
+- 用户需求：在“玩法数值”里新增开关“默认提示升级”；默认开启时，商店中所有可升级物品在左下角显示小向上箭头，关闭后不显示；且该提示与“选中的升级提示”互不冲突，可同时存在。
+- 已完成：
+  - `src/config/debugConfig.ts`
+  - `src/nobag/config/debugConfig.ts`
+  - `src/tower/config/debugConfig.ts`
+    - 新增配置项 `gameplayDefaultUpgradeHint`（默认 `1`，标签“默认提示升级”）。
+  - `src/debug/DebugPage.ts`
+    - 将 `gameplayDefaultUpgradeHint` 加入“玩法数值”复选项分组。
+  - `data/debug_defaults.json`
+  - `data/nobag_debug_defaults.json`
+  - `data/tower_debug_defaults.json`
+    - 新增默认值 `"gameplayDefaultUpgradeHint": 1`。
+  - `src/shop/ui/ShopUpgradeHints.ts`
+  - `src/nobag/shop/ui/ShopUpgradeHints.ts`
+  - `src/tower/shop/ui/ShopUpgradeHints.ts`
+    - 商店默认升级提示受 `gameplayDefaultUpgradeHint` 控制（仅控制商店默认提示，不影响拖拽选中时的目标引导箭头）。
+  - `src/shop/ui/ShopPanelView.ts`
+  - `src/nobag/shop/ui/ShopPanelView.ts`
+  - `src/tower/shop/ui/ShopPanelView.ts`
+    - 商店升级提示箭头改为左下角小向上箭头；与选中框/选中态提示分离显示，互不覆盖语义。
+- 当前阶段：等待用户验收“默认提示升级开关 + 商店左下角小箭头 + 与选中升级提示并行显示”。
+
+- 验收追加修复（同日）：
+  - 用户反馈：上阵区与背包区未看到新增提示。
+  - 已完成：
+    - `src/common/grid/GridZone.ts`
+    - `src/nobag/common/grid/GridZone.ts`
+    - `src/tower/common/grid/GridZone.ts`
+      - 新增“默认升级提示”专用左下角小向上箭头（与拖拽选中引导箭头分离）；
+      - 默认提示与拖拽引导可并行显示，互不覆盖。
+    - `src/shop/ui/ShopUpgradeHints.ts`
+    - `src/nobag/shop/ui/ShopUpgradeHints.ts`
+    - `src/tower/shop/ui/ShopUpgradeHints.ts`
+      - `gameplayDefaultUpgradeHint` 关闭时同时隐藏商店/上阵区/背包区默认提示；开启时三处统一显示。
+  - 当前阶段：等待用户复测“商店+上阵区+背包区默认提示可见，且与选中引导并行显示”。
+
+- 验收样式微调（同日）：
+  - 用户需求：小箭头改为纯三角形，且描边与大箭头一致。
+  - 已完成：
+    - `src/shop/ui/ShopPanelView.ts`
+    - `src/nobag/shop/ui/ShopPanelView.ts`
+    - `src/tower/shop/ui/ShopPanelView.ts`
+    - `src/common/grid/GridZone.ts`
+    - `src/nobag/common/grid/GridZone.ts`
+    - `src/tower/common/grid/GridZone.ts`
+      - 左下角默认提示箭头由“箭头带杆”改为“纯三角形”；
+      - 描边统一为 `color 0x1a1a2a / width 3 / alpha 0.85`，与大箭头描边风格一致。
+  - 当前阶段：等待用户验收三角形小箭头视觉。
+
+- 验收规则调整（同日）：
+  - 用户需求：当勾选“同物品合成结果随机”且存在同职业异物合成时，同物品/异物两条路径统一走同一随机目标池；不再额外排除“本职业物品”，仅排除参与合成的物品（同物品排除1个，异物排除2个）。
+  - 已完成：
+    - `src/shop/systems/ShopSynthesisController.ts`
+    - `src/nobag/shop/systems/ShopSynthesisController.ts`
+    - `src/tower/shop/systems/ShopSynthesisController.ts`
+      - 当 `gameplaySameItemRandomSynthesis=1` 时，合成候选池统一改为 `filterSameItemRandomPool`：仅排除参与合成的 source/target 物品；
+      - 同职业异物合成分支在该模式下不再执行“排除同职业目标”限制，也不再走 pair-only 特殊分支（nobag）。
+  - 当前阶段：等待用户验收“同物品随机池与同职业异物随机池统一”。
+
+- 验收引导箭头规则补充（同日）：
+  - 用户需求：当“同物品合成结果随机”和“同职业异物可合成”同时开启时，两类合成的提示箭头统一使用 `arrow2`。
+  - 已完成：
+    - `src/shop/systems/ShopSynthesisController.ts`
+    - `src/nobag/shop/systems/ShopSynthesisController.ts`
+    - `src/tower/shop/systems/ShopSynthesisController.ts`
+      - 在 `refreshBackpackSynthesisGuideArrows` 中增加双开关判断；命中时将 same/cross 引导 ID 合并到默认箭头通道，cross 通道清空，使两类引导都走 `arrow2`。
+  - 验收修正：
+      - 触发条件从 `gameplaySameArchetypeDiffItemStoneSynthesis` 修正为 `gameplaySameArchetypeCrossSynthesisEnabled`（对应页面文案“同职业异物可合成”）。
+  - 当前阶段：等待用户验收“双开关时同/异物引导箭头统一为 arrow2”。
+
+## 同物品随机合成悬停文案与CD显示修正（2026-03-24）
+
+- 用户验收反馈：
+  - 勾选“同物品合成结果随机”后，拖到可升级同物品时应显示“升级为随机物品”；
+  - 随机合成详情不应显示 CD（同物品随机与异物随机都不显示）。
+- 已完成：
+  - `src/shop/panels/SynthesisPanel.ts`
+  - `src/nobag/shop/panels/SynthesisPanel.ts`
+  - `src/tower/shop/panels/SynthesisPanel.ts`
+    - 同物品合成悬停逻辑接入 `gameplaySameItemRandomSynthesis`：
+      - 开关开启时，悬停提示改为“升级为随机物品”（问号图标样式）；
+      - 开关关闭时，保持原“固定升级本物品”预览。
+    - 为随机合成详情统一设置 `hideCooldownBadge: true`：
+      - 同物品随机合成提示；
+      - 异物合成随机提示（含同职异物石化文案分支）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“随机合成悬停文案与CD隐藏”。
+
+## 同物品合成新增“结果随机”开关（2026-03-24）
+
+- 用户需求：在网页“玩法数值”中新增开关；默认关闭时保持“同物品合成固定升本物品”；开启后改为“升1级后在除本物品外的候选中随机”，并沿用异物合成的品质桶概率再随机具体物品。
+- 已完成：
+  - `src/config/debugConfig.ts`
+  - `src/nobag/config/debugConfig.ts`
+  - `src/tower/config/debugConfig.ts`
+    - 新增配置项 `gameplaySameItemRandomSynthesis`（默认 `0`，标签“同物品合成结果随机”）。
+  - `src/debug/DebugPage.ts`
+    - 将新开关加入“玩法数值”复选项分组。
+  - `src/shop/systems/ShopSynthesisController.ts`
+  - `src/nobag/shop/systems/ShopSynthesisController.ts`
+  - `src/tower/shop/systems/ShopSynthesisController.ts`
+    - 同物品合成分支接入新开关：
+      - 关闭：保持原逻辑（固定升级为本物品）；
+      - 开启：候选池改为“同尺寸且不高于目标品质、且排除本物品”，先按 `pickQualityByPseudoRandomBag` 抽品质桶，再在桶内随机具体物品。
+  - `data/debug_defaults.json`
+  - `data/nobag_debug_defaults.json`
+  - `data/tower_debug_defaults.json`
+    - 新增默认值 `"gameplaySameItemRandomSynthesis": 0`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“玩法数值开关显示 + 同物品合成随机规则”。
+- 待确认/技术债：当前“随机候选”按同尺寸非中立物品池（并排除本物品）执行，若后续需要再收敛为“仅本局运行池”可继续加开关细分。
+
 ## 塔防商店顶部红心彻底隐藏修复（2026-03-24）
 
 - 用户反馈：塔防模式商店右上角仍会出现 `❤️ 5/5`。

@@ -269,6 +269,8 @@ const GAMEPLAY_CHECKBOX_KEYS = [
   'gameplaySameArchetypeDiffItemStoneSynthesis',
   'gameplaySameArchetypeCrossSynthesisEnabled',
   'gameplaySameArchetypeCrossSynthesisPickFromPair',
+  'gameplaySameItemRandomSynthesis',
+  'gameplayDefaultUpgradeHint',
   'gameplayShowSimpleDescriptions',
   'gameplaySkillDraftRerollEnabled',
   'gameplayEventDraftRerollEnabled',

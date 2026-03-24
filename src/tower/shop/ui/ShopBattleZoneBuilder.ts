@@ -311,6 +311,8 @@ export function buildBattleZoneUI(
     if (!ctx.shopManager) return false
     const item = getItemDefById(defId)
     if (!item) return false
+    const fromTier = getInstanceTier(instanceId) ?? 'Bronze'
+    const fromStar = getInstanceTierStar(instanceId)
 
     const sourceDef = getItemDefById(defId)
     const sourceLevel = getInstanceLevel(instanceId)
@@ -354,9 +356,6 @@ export function buildBattleZoneUI(
       refreshShopUI()
       return true
     }
-
-    const fromTier = getInstanceTier(instanceId) ?? 'Bronze'
-    const fromStar = getInstanceTierStar(instanceId)
 
     if (
       isBattleZoneNoSynthesisEnabled()

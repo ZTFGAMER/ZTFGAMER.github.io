@@ -379,6 +379,7 @@ export interface GameConfig {
     enemyHpBarScale?: number
     enemyShadowYOffset?: number
     enemyShadowScale?: number
+    flyingEnemyLiftNear?: number
     projectileScaleTopY?: number
     projectileScaleBottomY?: number
     projectileScaleMin?: number
@@ -436,6 +437,7 @@ export interface GameConfig {
       laneOccupyCount?: number
       attackType?: string
       projectileIcon?: string
+      projectileScale?: number
       projectileFlyMs?: number
       projectileReturnMs?: number
       meleeDashOutMs?: number
@@ -445,10 +447,13 @@ export interface GameConfig {
       enemyHpBarScale?: number
       enemyShadowYOffset?: number
       enemyShadowScale?: number
+      isFlying?: boolean
     }>
     dayWaves: Array<{
       day: number
       spawnDurationMs?: number
+      hpMultiplier?: number
+      attackMultiplier?: number
       enemies: Array<{
         id: string
         count: number

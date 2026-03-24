@@ -6,6 +6,7 @@ export type TowerEnemyUnitView = {
   enemyId: string
   icon: string
   lane: number
+  isFlying?: boolean
   hp: number
   maxHp: number
   distance: number

@@ -1,7 +1,7 @@
 import { Assets, Container, Graphics, Sprite, Texture, Text } from 'pixi.js'
 import { getConfig as getDebugCfg } from '@/tower/config/debugConfig'
 import { getBattleOrbColor } from '@/tower/config/colorPalette'
-import { getItemIconUrl, getItemIconUrlByName } from '@/tower/core/AssetPath'
+import { getItemIconUrl, getItemIconUrlByName, getTowerBattleImageUrl } from '@/tower/core/AssetPath'
 import { getAllItemsRaw, getConfig as getGameCfg } from '@/tower/core/DataLoader'
 import { CELL_SIZE, CELL_HEIGHT, type GridZone } from '@/tower/common/grid/GridZone'
 import type { ItemDef } from '@/tower/common/items/ItemDef'
@@ -620,6 +620,7 @@ export class BattleFXPool {
       forceDot?: boolean
       fixedDurationMs?: number
       projectileIconName?: string
+      projectileScale?: number
       projectileStyle?: 'linear' | 'spin'
     },
   ): void {
@@ -642,20 +643,16 @@ export class BattleFXPool {
     const canUseSprite = canUseExplicitSprite || canUseSourceSprite
     const loadEpoch = this.textureLoadEpoch
     const spriteUrls = canUseExplicitSprite
-      ? [getItemIconUrlByName(explicitProjectileIconName)]
+      ? [
+        getTowerBattleImageUrl(`${explicitProjectileIconName}.png`),
+        getItemIconUrlByName(explicitProjectileIconName),
+      ]
       : (canUseSourceSprite && sourceDef
       ? this.collectProjectileIconUrls(sourceDef, sourceItemId)
       : [])
     let spriteTexture: Texture | null = null
     if (spriteUrls.length > 0) {
       spriteTexture = this.getCachedProjectileTexture(spriteUrls)
-      if (!spriteTexture && canUseExplicitSprite) {
-        const direct = (Assets as typeof Assets & { get?: (key: string) => Texture | null | undefined }).get?.(spriteUrls[0]!)
-        if (direct) {
-          spriteTexture = direct
-          this.projectileTextureCache.set(spriteUrls[0]!, direct)
-        }
-      }
       if (!spriteTexture) {
         void this.resolveProjectileTexture(spriteUrls, loadEpoch)
       }
@@ -673,7 +670,9 @@ export class BattleFXPool {
     const travelDy = to.y - from.y
     const sourceSide = sourceItemId ? this.resolveItemSide(sourceItemId) : null
     const sourceItemScale = sourceSide === 'enemy' ? getDebugCfg('enemyAreaScale') : getDebugCfg('battleItemScale')
-    const px = Math.max(8, Math.round(getDebugCfg('battleProjectileItemSizePx') * Math.max(0.25, sourceItemScale)))
+    const explicitProjectileScaleRaw = Number(opts?.projectileScale)
+    const explicitProjectileScale = Number.isFinite(explicitProjectileScaleRaw) ? Math.max(0.1, explicitProjectileScaleRaw) : 1
+    const px = Math.max(8, Math.round(getDebugCfg('battleProjectileItemSizePx') * Math.max(0.25, sourceItemScale) * explicitProjectileScale))
     if (useSprite) {
       const sprite = this.acquireProjectileSprite(from)
       sprite.width = px

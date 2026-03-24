@@ -27,6 +27,8 @@ const CARD_GAP_MAX = 4
 // 统一底部区域（名称 + 价格）
 const BOTTOM_H = 72
 const SHOP_DRAG_START_PX = 8
+const SHOP_UPGRADE_HINT_W = 18
+const SHOP_UPGRADE_HINT_H = 20
 
 function parseTierName(raw: string): string {
   if (raw.includes('Silver')) return 'Silver'
@@ -401,19 +403,15 @@ export class ShopPanelView extends Container {
     const upArrow = new Graphics()
     upArrow.name = 'shop-upgrade-arrow'
     upArrow.visible = this.upgradeHintSlots.has(slotIndex)
-    // 2x 放大箭头（40x48）
-    upArrow.moveTo(0, 24)
-    upArrow.lineTo(20, 0)
-    upArrow.lineTo(40, 24)
-    upArrow.lineTo(28, 24)
-    upArrow.lineTo(28, 48)
-    upArrow.lineTo(12, 48)
-    upArrow.lineTo(12, 24)
-    upArrow.fill({ color: 0xffffff, alpha: 0.95 })
+    const halfW = SHOP_UPGRADE_HINT_W / 2
+    upArrow.moveTo(halfW, 0)
+    upArrow.lineTo(SHOP_UPGRADE_HINT_W, SHOP_UPGRADE_HINT_H)
+    upArrow.lineTo(0, SHOP_UPGRADE_HINT_H)
+    upArrow.fill({ color: 0xffd25a, alpha: 0.98 })
     upArrow.stroke({ color: 0x1a1a2a, width: 3, alpha: 0.85 })
-    // 箭头位于物品可视区域中心
-    upArrow.x = iconX + iconW / 2 - 20
-    upArrow.y = iconY + iconH / 2 - 24
+    // 小箭头固定在物品可视区域左下角，避免与选中框语义冲突
+    upArrow.x = iconX + frameInset + 8
+    upArrow.y = iconY + frameInset + frameH - SHOP_UPGRADE_HINT_H - 8
     ;(upArrow as any)._baseY = upArrow.y
     card.addChild(upArrow)
 
@@ -480,9 +478,9 @@ export class ShopPanelView extends Container {
       for (const idx of this.upgradeHintSlots) {
         const arrow = this.cards[idx]?.getChildByName('shop-upgrade-arrow') as Graphics | null
         if (!arrow) continue
-        arrow.alpha = 0.55 + wave * 0.45
+        arrow.alpha = 0.7 + wave * 0.3
         const baseY = (arrow as any)._baseY ?? arrow.y
-        arrow.y = baseY + Math.sin(this.upgradeHintT * 1.6 + idx) * 6
+        arrow.y = baseY + Math.sin(this.upgradeHintT * 1.6 + idx) * 2.5
       }
     }
     Ticker.shared.add(this.upgradeHintTick)
