@@ -3457,7 +3457,7 @@
       "playerItemBaseBounceByIcon": {},
       "playerBounceProjectileFlyMs": 200,
       "playerBounceProjectileSpeedPxPerSec": 500,
-      "enemyAttackDoubleAfterAllSpawnMs": 20000,
+      "enemyAttackDoubleAfterAllSpawnMs": 40000,
       "playerMeleeSweepHitStepMs": 30,
       "playerMeleeSweepOriginOffsetX": 0,
       "playerMeleeSweepOriginOffsetY": -250,
@@ -3481,7 +3481,7 @@
         {
           "id": "enemy1",
           "name": "骷髅小兵",
-          "hp": 30,
+          "hp": 20,
           "attack": 10,
           "moveSpeed": 1,
           "attackIntervalMs": 2000,
@@ -3496,7 +3496,7 @@
         {
           "id": "enemy2",
           "name": "骷髅战士",
-          "hp": 75,
+          "hp": 60,
           "attack": 10,
           "moveSpeed": 1,
           "attackIntervalMs": 2000,

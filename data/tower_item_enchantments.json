@@ -54,8 +54,8 @@
   "items": {
     "短剑": "damage_item",
     "圆盾": "shield_item",
-    "弹药袋": "support_active",
     "木弓": "damage_item",
+    "弹药袋": "support_active",
     "匕首": "damage_item",
     "连发镖": "damage_item",
     "长盾": "shield_item",

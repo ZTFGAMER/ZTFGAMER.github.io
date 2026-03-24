@@ -10,12 +10,16 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 3000,
-    "cooldown_tiers": "3000|2700|2400|2200|2000|1800|1600|1400",
+    "cooldown": 5000,
+    "cooldown_tiers": "5000|4500|4100|3600|3300|3000|2700|2400",
     "skills": [
       {
         "en": "",
         "cn": "攻击造成5|7|9|12|17|22|30|41伤害。"
+      },
+      {
+        "en": "",
+        "cn": "攻击距离:16"
       },
       {
         "en": "",
@@ -41,8 +45,8 @@
     "heroes": "",
     "tags": "战士",
     "position": "",
-    "cooldown": 5000,
-    "cooldown_tiers": "5000|4500|4100|3600|3300|3000|2700|2400",
+    "cooldown": 7000,
+    "cooldown_tiers": "7000|6300|5700|5100|4600|4100|3700|3400",
     "skills": [
       {
         "en": "",
@@ -57,6 +61,37 @@
     "attack_style": "旋转飞行",
     "simple_desc": "每次使用后近战武器伤害提升",
     "simple_desc_tiered": "每次使用后近战武器伤害+1"
+  },
+  {
+    "id": "16e55d6c-d856-4820-a337-5f73332b8fe4",
+    "name_en": "",
+    "name_cn": "木弓",
+    "type": "Item / 物品",
+    "size": "Small / 小型",
+    "starting_tier": "Bronze / 青铜",
+    "available_tiers": "Bronze",
+    "heroes": "",
+    "tags": "弓手",
+    "position": "",
+    "cooldown": 4000,
+    "cooldown_tiers": "4000|3600|3200|2900|2600|2400|2100|1900",
+    "skills": [
+      {
+        "en": "",
+        "cn": "攻击造成3|4|5|7|10|13|18|25伤害。"
+      },
+      {
+        "en": "",
+        "cn": "每次使用后伤害+1。"
+      }
+    ],
+    "icon": "item4",
+    "attack_style": "直线飞行",
+    "attack_variants": [
+      "item4_a"
+    ],
+    "simple_desc": "每次使用后伤害提升",
+    "simple_desc_tiered": "每次使用后伤害+1"
   },
   {
     "id": "0c6beae3-3f07-4496-957b-447dde815ffb",
@@ -74,44 +109,13 @@
     "skills": [
       {
         "en": "",
-        "cn": "所有物品伤害+2|3|4|5|7|9|12|16，弓手物品额外+1连发次数。"
+        "cn": "所有物品伤害+2|3|4|5|7|9|12|16，左侧的弓手物品连发次数+1。"
       }
     ],
     "icon": "item3",
     "attack_style": "不飞行",
-    "simple_desc": "所有物品伤害提升，弓手额外连发",
-    "simple_desc_tiered": "所有物品伤害+2|3|4|5|7|9|12|16，弓手物品额外+1连发次数"
-  },
-  {
-    "id": "16e55d6c-d856-4820-a337-5f73332b8fe4",
-    "name_en": "",
-    "name_cn": "木弓",
-    "type": "Item / 物品",
-    "size": "Small / 小型",
-    "starting_tier": "Bronze / 青铜",
-    "available_tiers": "Bronze",
-    "heroes": "",
-    "tags": "弓手",
-    "position": "",
-    "cooldown": 6000,
-    "cooldown_tiers": "6000|5400|4900|4400|3900|3500|3200|2900",
-    "skills": [
-      {
-        "en": "",
-        "cn": "攻击造成5|7|9|12|17|22|30|41伤害。"
-      },
-      {
-        "en": "",
-        "cn": "每次使用后伤害+1。"
-      }
-    ],
-    "icon": "item4",
-    "attack_style": "直线飞行",
-    "attack_variants": [
-      "item4_a"
-    ],
-    "simple_desc": "每次使用后伤害提升",
-    "simple_desc_tiered": "每次使用后伤害+1"
+    "simple_desc": "所有物品伤害提升，弓手翻倍",
+    "simple_desc_tiered": "所有物品伤害+2|3|4|5|7|9|12|16，左侧的弓手物品连发次数+1"
   },
   {
     "id": "aa05e315-afdd-40ba-8149-3fd3fd3617ce",
@@ -161,7 +165,7 @@
       },
       {
         "en": "",
-        "cn": "连发次数等于弹射次数。"
+        "cn": "连发次数=弹射次数+1。"
       }
     ],
     "icon": "item6",
@@ -169,8 +173,8 @@
     "attack_variants": [
       "item6_a"
     ],
-    "simple_desc": "连发次数等于弹射次数",
-    "simple_desc_tiered": "连发次数等于弹射次数"
+    "simple_desc": "连发次数=弹射次数+1",
+    "simple_desc_tiered": "连发次数=弹射次数+1"
   },
   {
     "id": "2f0448e7-58d2-4304-9819-d48f3c877858",
@@ -211,8 +215,8 @@
     "heroes": "",
     "tags": "弓手",
     "position": "",
-    "cooldown": 3200,
-    "cooldown_tiers": "3200|2900|2600|2400|2100|1900",
+    "cooldown": 7300,
+    "cooldown_tiers": "7300|6600|5900|5300|4800|4300",
     "skills": [
       {
         "en": "",
@@ -220,7 +224,7 @@
       },
       {
         "en": "",
-        "cn": "每次使用后伤害+3。"
+        "cn": "每次使用后伤害+1。"
       }
     ],
     "icon": "item9",
@@ -229,7 +233,7 @@
       "item9_a"
     ],
     "simple_desc": "每次使用后伤害提升",
-    "simple_desc_tiered": "每次使用后伤害+3"
+    "simple_desc_tiered": "每次使用后伤害+1"
   },
   {
     "id": "2d974fec-6038-417d-8831-1e7ea8d2fcde",
@@ -453,13 +457,13 @@
       },
       {
         "en": "",
-        "cn": "刺客物品每次弹射后伤害+1|2|3|4|6|8。"
+        "cn": "刺客物品每次弹射后伤害不变。"
       }
     ],
     "icon": "item21",
     "attack_style": "旋转飞行",
-    "simple_desc": "刺客物品每次弹射后伤害提升",
-    "simple_desc_tiered": "刺客物品每次弹射后伤害+1|2|3|4|6|8"
+    "simple_desc": "刺客物品每次弹射后伤害不变",
+    "simple_desc_tiered": "刺客物品每次弹射后伤害不变"
   },
   {
     "id": "fd21e723-cacf-40a0-b7fb-4078d6697a37",

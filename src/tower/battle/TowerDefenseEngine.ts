@@ -6,7 +6,7 @@ import { CANVAS_W } from '@/tower/config/layoutConstants'
 import type { CombatBoardItem, CombatItemRuntimeState, CombatResult } from '@/tower/battle/CombatEngine'
 import type { CombatItemRunner } from '@/tower/battle/CombatTypes'
 import { toRunner } from '@/tower/battle/EnemyBuilder'
-import { findItemDef, isAdjacentByFootprint, itemArchetype, pickTierSeriesValue, skillLines, tierIndexFromRaw, tierValueFromLine } from '@/tower/battle/CombatHelpers'
+import { findItemDef, isAdjacentByFootprint, itemArchetype, itemWidth, pickTierSeriesValue, skillLines, tierIndexFromRaw, tierValueFromLine } from '@/tower/battle/CombatHelpers'
 import type { BattleEngineLike, BattleQueuePerfStats, BattleRuntimeCachePerfStats, TowerClassAttackDistanceView, TowerEnemyStatsView, TowerEnemyUnitView } from '@/tower/battle/BattleEngineTypes'
 
 type EnemyDef = {
@@ -133,6 +133,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
   private playerBounceCountByItemId = new Map<string, number>()
   private playerFirstBounceSplitBonus = 0
   private playerBounceDamageBonusPerHopByItemId = new Map<string, number>()
+  private playerBounceDamageFactorByItemId = new Map<string, number>()
 
   start(snapshot: BattleSnapshotBundle): void {
     this.day = Math.max(1, Math.round(snapshot.day || 1))
@@ -173,6 +174,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
     this.playerBounceCountByItemId.clear()
     this.playerFirstBounceSplitBonus = 0
     this.playerBounceDamageBonusPerHopByItemId.clear()
+    this.playerBounceDamageFactorByItemId.clear()
     for (const item of this.playerItems) {
       const attackDistance = this.resolvePlayerItemAttackDistance(item)
       if (attackDistance > 0) this.playerAttackDistanceByItemId.set(item.id, attackDistance)
@@ -303,26 +305,41 @@ export class TowerDefenseEngine implements BattleEngineLike {
       const lines = skillLines(auraDef)
       if (lines.length <= 0) continue
       const tierIndex = tierIndexFromRaw(auraDef, aura.tier)
-      const auraLine = lines.find((line) => /物品伤害\+/.test(line) && /弓手物品/.test(line) && /连发次数/.test(line))
+      const auraLine = lines.find((line) => /物品伤害\+/.test(line) && /弓手物品/.test(line))
       if (!auraLine) continue
 
       const damageMatch = auraLine.match(/物品伤害\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/)
       const multicastMatch = auraLine.match(/弓手物品.*?\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)\s*连发次数/)
+      const multicastAfterLabelMatch = auraLine.match(/弓手物品.*?连发次数\s*\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/)
       const damageBonus = damageMatch?.[1] ? Math.max(0, Math.round(pickTierSeriesValue(damageMatch[1], tierIndex))) : 0
-      const multicastBonus = multicastMatch?.[1] ? Math.max(0, Math.round(pickTierSeriesValue(multicastMatch[1], tierIndex))) : 0
+      const multicastSeries = multicastMatch?.[1] || multicastAfterLabelMatch?.[1] || ''
+      const multicastBonus = multicastSeries ? Math.max(0, Math.round(pickTierSeriesValue(multicastSeries, tierIndex))) : 0
       if (damageBonus <= 0 && multicastBonus <= 0) continue
       const isGlobalAura = /所有物品/.test(auraLine)
+      const archerDamageDouble = /弓手物品.*翻倍/.test(auraLine)
+      const multicastLeftAdjacentOnly = /左侧/.test(auraLine)
+      const multicastAdjacentOnly = multicastLeftAdjacentOnly || /相邻/.test(auraLine)
 
       for (const target of this.playerItems) {
+        const targetEnd = target.col + itemWidth(target.size) - 1
+        const isLeftAdjacentTarget = aura.col === targetEnd + 1
+        const isAdjacentTarget = isAdjacentByFootprint(aura, target)
         if (!isGlobalAura) {
           if (target.id === aura.id) continue
-          if (!isAdjacentByFootprint(aura, target)) continue
+          if (!isAdjacentTarget) continue
         }
+        const targetDef = findItemDef(target.defId)
         if (damageBonus > 0) {
-          if (target.baseStats.damage > 0) target.baseStats.damage += damageBonus
+          if (target.baseStats.damage > 0) {
+            const add = archerDamageDouble && itemArchetype(targetDef) === '弓手'
+              ? damageBonus * 2
+              : damageBonus
+            target.baseStats.damage += add
+          }
         }
         if (multicastBonus > 0) {
-          const targetDef = findItemDef(target.defId)
+          if (multicastLeftAdjacentOnly && !isLeftAdjacentTarget) continue
+          if (multicastAdjacentOnly && !isAdjacentTarget) continue
           if (itemArchetype(targetDef) === '弓手') {
             target.baseStats.multicast = Math.max(1, target.baseStats.multicast + multicastBonus)
           }
@@ -925,10 +942,11 @@ export class TowerDefenseEngine implements BattleEngineLike {
 
   private getPlayerItemMulticast(item: CombatItemRunner): number {
     const baseMulticast = Math.max(1, Math.round(item.baseStats.multicast || 1))
+    if (this.getItemIcon(item) === 'item9') return Math.max(baseMulticast, 3)
     if (this.getItemIcon(item) !== 'item6') return baseMulticast
     const bounceCount = Math.max(0, Math.round(this.playerBounceCountByItemId.get(item.id) ?? 0))
-    // item6: 连发次数随弹射成长，基础单发 + 弹射次数
-    return Math.max(1, baseMulticast + bounceCount)
+    // item6: 连发次数按弹射次数驱动，含当前发射本体（弹射1 => 连发2）
+    return Math.max(1, bounceCount + 1)
   }
 
   private resolveFinalShotDamage(source: CombatItemRunner, target: EnemyUnit, baseDamage: number, attackDistance?: number): number {
@@ -1184,6 +1202,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
     this.playerBounceCountByItemId.clear()
     this.playerFirstBounceSplitBonus = 0
     this.playerBounceDamageBonusPerHopByItemId.clear()
+    this.playerBounceDamageFactorByItemId.clear()
 
     const cfg = getConfig().towerDefenseRules
     const baseBounceByIcon = cfg?.playerItemBaseBounceByIcon
@@ -1196,6 +1215,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
       baseBounceByItemId.set(item.id, base)
       this.playerBounceCountByItemId.set(item.id, base)
       this.playerBounceDamageBonusPerHopByItemId.set(item.id, 0)
+      this.playerBounceDamageFactorByItemId.set(item.id, this.isAssassinDamageItem(item) ? 0.75 : 1)
     }
 
     let globalAssassinExtraBounce = 0
@@ -1209,6 +1229,10 @@ export class TowerDefenseEngine implements BattleEngineLike {
         this.playerFirstBounceSplitBonus += Math.max(0, this.resolveTieredValueFromItem(item, /首次弹射时[，,]?分裂数量\+\d+/))
       }
       if (icon === 'item21') {
+        for (const ally of this.playerItems) {
+          if (!this.isAssassinDamageItem(ally)) continue
+          this.playerBounceDamageFactorByItemId.set(ally.id, 1)
+        }
         const bonus = Math.max(0, this.resolveTieredValueFromItem(item, /弹射后伤害\+\d+(?:[\/|]\d+)*/))
         if (bonus > 0) {
           for (const ally of this.playerItems) {
@@ -1559,7 +1583,10 @@ export class TowerDefenseEngine implements BattleEngineLike {
     const picked = this.pickNearestBounceTargets(currentTarget, new Set(currentHit.chainedEnemyUnitIds), branchCount)
     if (picked.length <= 0) return
     for (const one of picked) {
-      const nextDamage = Math.max(0, Math.round(currentHit.baseDamage + currentHit.bounceDamageBonusPerHop * nextHop))
+      const decayFactor = Math.max(0, this.playerBounceDamageFactorByItemId.get(source.id) ?? 1)
+      const bounced = Math.max(0, Math.round(currentHit.damage * decayFactor))
+      const bonus = Math.max(0, Math.round(currentHit.bounceDamageBonusPerHop * nextHop))
+      const nextDamage = Math.max(0, bounced + bonus)
       if (nextDamage <= 0) continue
       EventBus.emit('battle:item_fire', {
         itemId: source.defId,
