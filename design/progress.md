@@ -1,5 +1,25 @@
 # 大巴扎 — 开发进度记录
 
+## Git 同步 + TF/Android 打包（2026-03-24）
+
+- 用户指令：同步 git，并执行 TestFlight 与 Android 打包。
+- 已完成：
+  - Git：已提交并推送 `main`。
+    - commit: `8da6cd0`
+    - message: `同步塔防本轮迭代并移除跨区携带结算流程`
+  - iOS TestFlight：执行 `npm run release:tf` 成功。
+    - 关键结果：`UPLOAD SUCCEEDED with no errors`
+    - Delivery UUID: `47f9c4b9-99af-42f1-8e49-f0a8f2a4f682`
+    - Build number: `34 -> 35`
+    - 产物：`ios/build/export-testflight/App.ipa`
+  - Android：执行 `npm run build:android-web` + `npm run android:sync` + `./gradlew assembleRelease && ./gradlew bundleRelease`。
+    - 首次失败：`无效的源发行版：21`
+    - 处理：临时将 `android/app/capacitor.build.gradle` 编译目标切到 `VERSION_17` 后重试成功。
+    - 产物：
+      - APK：`android/app/build/outputs/apk/release/app-release.apk`
+      - AAB：`android/app/build/outputs/bundle/release/app-release.aab`
+- 当前阶段：发包完成，等待用户下一步（如验包、上架或继续功能开发）。
+
 ## 不同等级物品购买价格调整（2026-03-24）
 
 - 用户需求：购买价格按等级设置为 `3/6/12/24/48/96/192/384`。
