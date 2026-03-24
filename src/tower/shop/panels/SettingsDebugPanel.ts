@@ -947,6 +947,7 @@ export class SettingsDebugPanel extends Container {
 
     const seenSet = ctx.runSeenItemIds
     const pendingDotSet = ctx.runPendingCompendiumDotItemIds
+    const forceRevealFixedPool = getConfig().runRules?.firstRunsFixedItemPool?.revealInCompendiumAtStart === true
 
     const suppressRow = new Container()
     suppressRow.x = 0
@@ -1035,7 +1036,8 @@ export class SettingsDebugPanel extends Container {
       for (let c = 0; c < visibleTiers.length; c++) {
         const tier = visibleTiers[c]!
         const inTier = classItems.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === tier.key)
-        for (let i = 0; i < tier.count; i++) {
+        const slotCount = forceRevealFixedPool ? inTier.length : tier.count
+        for (let i = 0; i < slotCount; i++) {
           const slotItem = inTier[i] ?? null
           const x = gridLeft + c * (cellSize + cellGapX)
           const y = rowY + i * (cellSize + cellGapY)
@@ -1053,7 +1055,7 @@ export class SettingsDebugPanel extends Container {
               : tier.key === 'Gold'
                 ? 0xb7913e
                 : 0x3f79c9
-          const seen = !!(slotItem && ((parseTierName(slotItem.starting_tier) ?? 'Bronze') === 'Bronze' || seenSet.has(slotItem.id)))
+          const seen = !!(slotItem && (forceRevealFixedPool || (parseTierName(slotItem.starting_tier) ?? 'Bronze') === 'Bronze' || seenSet.has(slotItem.id)))
 
           const bg = new Graphics()
           bg.roundRect(0, 0, cellSize, cellSize, 14)

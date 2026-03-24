@@ -399,8 +399,9 @@ function buildRunClassItemPoolIds(): string[] {
 
 function buildFixedRunClassItemPoolIds(runIndex: number): string[] {
   const cfg = getConfig().runRules?.firstRunsFixedItemPool
+  const alwaysEnabled = cfg?.alwaysEnabled === true
   const enabledRunCount = Math.max(0, Math.round(Number(cfg?.enabledRunCount ?? 0)))
-  if (enabledRunCount <= 0 || runIndex <= 0 || runIndex > enabledRunCount) return []
+  if (!alwaysEnabled && (enabledRunCount <= 0 || runIndex <= 0 || runIndex > enabledRunCount)) return []
   const names = Array.isArray(cfg?.itemNamesCn) ? cfg.itemNamesCn : []
   if (names.length <= 0) return []
   const all = getAllItemsRaw().filter((it) => !isNeutralItemDef(it))
@@ -410,10 +411,16 @@ function buildFixedRunClassItemPoolIds(runIndex: number): string[] {
     if (!key || byName.has(key)) continue
     byName.set(key, it.id)
   }
+  const legacyNameAlias: Record<string, string> = {
+    黄金弩机: '弹弓',
+    切割镰刀: '吸血镰刀',
+  }
   const out: string[] = []
   const used = new Set<string>()
   for (const name of names) {
-    const id = byName.get(String(name || '').trim())
+    const key = String(name || '').trim()
+    const alias = legacyNameAlias[key]
+    const id = byName.get(key) ?? (alias ? byName.get(alias) : undefined)
     if (!id || used.has(id)) continue
     used.add(id)
     out.push(id)
@@ -1087,6 +1094,9 @@ export function seedInitialUnlockPoolByStarterClass(
   ctx.starterTutorialShieldBuyCount = 0
   ctx.starterTutorialHintStep = null
   for (const id of runClassItemPoolIds) ctx.unlockedItemIds.add(id)
+  if (getConfig().runRules?.firstRunsFixedItemPool?.revealInCompendiumAtStart === true) {
+    for (const id of runClassItemPoolIds) ctx.runSeenItemIds.add(id)
+  }
   callbacks.syncUnlockPoolToManager()
 }
 

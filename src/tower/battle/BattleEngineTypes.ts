@@ -35,6 +35,12 @@ export type TowerEnemyStatsView = {
   totalCount: number
 }
 
+export type TowerClassAttackDistanceView = {
+  swordsman: number
+  archer: number
+  assassin: number
+}
+
 export interface BattleEngineLike {
   start(snapshot: BattleSnapshotBundle, options?: {
     enemyDisabled?: boolean
@@ -62,4 +68,5 @@ export interface BattleEngineLike {
   getRuntimeCachePerfStats(): BattleRuntimeCachePerfStats
   getTowerEnemyUnits?(): TowerEnemyUnitView[]
   getTowerEnemyStats?(): TowerEnemyStatsView
+  getTowerClassAttackDistances?(): TowerClassAttackDistanceView
 }

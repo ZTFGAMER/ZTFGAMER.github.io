@@ -183,7 +183,7 @@ let battlePresentationMs = 0
 let chargeUiElapsedSinceTickMs = 0
 let ammoReloadUiElapsedSinceTickMs = 0
 const damageStats = new BattleDamageStats()
-const BATTLE_SPEED_STEPS = [1, 1.3, 1.6, 2] as const
+const BATTLE_SPEED_STEPS = [1, 2, 3, 4] as const
 const TOP_ACTION_BTN_H = 58
 const TOP_ACTION_BTN_HALF_H = TOP_ACTION_BTN_H / 2
 const TOP_ACTION_BTN_SAFE_PAD = 8
@@ -274,12 +274,15 @@ type TowerEnemyDeathFlyState = {
 }
 
 let towerEnemyLayer: Container | null = null
+let towerClassRangeLayer: Container | null = null
 const towerEnemyTexByIcon = new Map<string, Texture>()
 const towerEnemySpriteById = new Map<string, TowerEnemySpritePack>()
 const towerEnemyAnimStateById = new Map<string, TowerEnemyAnimState>()
 const towerEnemyPosById = new Map<string, { x: number; y: number }>()
 const towerEnemyDeathFlyById = new Map<string, TowerEnemyDeathFlyState>()
 const towerEnemyLastHitDirById = new Map<string, { x: number; y: number }>()
+const towerClassRangeLineByRole = new Map<'swordsman' | 'archer' | 'assassin', Graphics>()
+let towerClassRangeLastLogSignature = ''
 
 function resetBattleRandomSession(): void {
   replayRandomCursor = 0
@@ -955,6 +958,65 @@ function syncTowerEnemyPresentation(activeCols: number): void {
     one.shadow.alpha = 0
     one.body.tint = 0xffffff
     towerEnemyPosById.set(id, { x: death.x, y: death.y - 36 * flyScale })
+  }
+}
+
+function drawTowerClassAttackDistanceGuides(): void {
+  if (!towerClassRangeLayer) return
+  const distances = engine?.getTowerClassAttackDistances?.()
+  const cfg = getGameCfg().towerDefenseRules
+  if (!isTowerDefenseBattle() || !cfg || cfg.enabled === false || !distances) {
+    towerClassRangeLayer.visible = false
+    return
+  }
+  const farY = Number(cfg.farY) || 320
+  const nearY = Number(cfg.nearY) || 940
+  const maxDistance = Math.max(1, Number(cfg.levelDistance) || 1000)
+  const farWidthRatio = Math.max(0.1, Math.min(1.2, Number(cfg.roadFarWidthRatio) || 0.5))
+  const nearWidthRatio = Math.max(0.2, Math.min(1.4, Number(cfg.roadNearWidthRatio) || 1))
+  const roadFarCenterX = Number(cfg.roadFarCenterX) || CANVAS_W / 2
+  const roadNearCenterX = Number(cfg.roadNearCenterX) || CANVAS_W / 2
+  const meterToDistance = Math.max(1, Number(cfg.moveDistancePerSecAtSpeed1) || 1)
+  const lineWidthScale = Math.max(0.5, Number((cfg as { classRangeGuideWidthScale?: number }).classRangeGuideWidthScale) || 1.5)
+  const nearThicknessPx = Math.max(1, Number((cfg as { classRangeGuideNearThicknessPx?: number }).classRangeGuideNearThicknessPx) || 10)
+  const roles: Array<{ key: 'swordsman' | 'archer' | 'assassin'; cn: string; color: number }> = [
+    { key: 'swordsman', cn: '战士', color: 0xe25555 },
+    { key: 'archer', cn: '弓手', color: 0x43c86f },
+    { key: 'assassin', cn: '刺客', color: 0x4d8fff },
+  ]
+  let hasVisible = false
+  const logParts: string[] = []
+  for (const role of roles) {
+    const line = towerClassRangeLineByRole.get(role.key)
+    if (!line) continue
+    const distance = Math.max(0, Math.round(distances[role.key] || 0))
+    if (distance <= 0) {
+      line.visible = false
+      logParts.push(`${role.cn}=0m`)
+      continue
+    }
+    const progress = Math.max(0, Math.min(1, 1 - distance / maxDistance))
+    const y = farY + (nearY - farY) * progress
+    const roadWidthRatio = farWidthRatio + (nearWidthRatio - farWidthRatio) * progress
+    const roadCenterX = roadFarCenterX + (roadNearCenterX - roadFarCenterX) * progress
+    const halfW = Math.max(20, CANVAS_W * roadWidthRatio * 0.5 * lineWidthScale)
+    const thicknessPx = Math.max(1, Math.round(nearThicknessPx * (roadWidthRatio / Math.max(0.01, nearWidthRatio))))
+    const lineHalf = Math.floor(thicknessPx / 2)
+    const yPx = Math.round(y)
+    const xPx = Math.round(roadCenterX - halfW)
+    const wPx = Math.max(1, Math.round(halfW * 2))
+    line.clear()
+    line.rect(xPx, yPx - lineHalf, wPx, thicknessPx)
+    line.fill({ color: role.color, alpha: 0.75 })
+    line.visible = true
+    hasVisible = true
+    logParts.push(`${role.cn}=${(distance / meterToDistance).toFixed(1)}m`)
+  }
+  towerClassRangeLayer.visible = hasVisible
+  const signature = logParts.join('|')
+  if (signature && signature !== towerClassRangeLastLogSignature) {
+    towerClassRangeLastLogSignature = signature
+    console.log(`[TowerRange] ${signature}`)
   }
 }
 
@@ -1703,6 +1765,7 @@ export const BattleScene: Scene = {
     battleEnemyHeroVisualId = null
     battleReplaySaved = false
     towerEnemyLayer = null
+    towerClassRangeLayer = null
     for (const one of towerEnemySpriteById.values()) {
       one.root.destroy({ children: true })
     }
@@ -1712,6 +1775,8 @@ export const BattleScene: Scene = {
     towerEnemyDeathFlyById.clear()
     towerEnemyLastHitDirById.clear()
     towerEnemyTexByIcon.clear()
+    towerClassRangeLineByRole.clear()
+    towerClassRangeLastLogSignature = ''
     const cleanupCfg = getGameCfg().runRules?.battleCacheCleanup
     await purgeMobileBattleAssetCacheIfEnabled()
     if (cleanupCfg?.enabled && cleanupCfg?.forceTextureGcOnBattleEnter) runRendererTextureGcNow()
@@ -1917,6 +1982,16 @@ export const BattleScene: Scene = {
     towerEnemyLayer.sortableChildren = true
     towerEnemyLayer.eventMode = 'none'
     root.addChild(towerEnemyLayer)
+    towerClassRangeLayer = new Container()
+    towerClassRangeLayer.zIndex = 29
+    towerClassRangeLayer.eventMode = 'none'
+    root.addChild(towerClassRangeLayer)
+    towerClassRangeLineByRole.clear()
+    for (const key of ['swordsman', 'archer', 'assassin'] as const) {
+      const line = new Graphics()
+      towerClassRangeLayer.addChild(line)
+      towerClassRangeLineByRole.set(key, line)
+    }
     const meleeSweepLayerContainer = new Container()
     meleeSweepLayerContainer.zIndex = 34
     meleeSweepLayerContainer.eventMode = 'none'
@@ -2097,6 +2172,7 @@ export const BattleScene: Scene = {
     await mountZoneItems(playerZone, board.items.filter((it) => it.side === 'player'))
     await mountZoneItems(enemyZone, board.items.filter((it) => it.side === 'enemy'))
     syncTowerEnemyPresentation(activeCols)
+    drawTowerClassAttackDistanceGuides()
     drawTowerRemainingBar()
 
     enemyZone.makeItemsInteractive((id, e) => {
@@ -2723,6 +2799,7 @@ export const BattleScene: Scene = {
     }
     const layoutCostMs = performance.now() - layoutStartMs
     syncTowerEnemyPresentation(activeCols)
+    drawTowerClassAttackDistanceGuides()
     if (isTowerDefenseBattle()) {
       drawTowerRemainingBar()
       if (towerRemainBarG) towerRemainBarG.visible = true

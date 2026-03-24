@@ -2245,23 +2245,34 @@
         4
       ],
       "firstRunsFixedItemPool": {
+        "alwaysEnabled": true,
+        "revealInCompendiumAtStart": true,
         "enabledRunCount": 1,
         "itemNamesCn": [
-          "回旋镖",
-          "黄金袖箭",
           "匕首",
           "连发镖",
-          "切割镰刀",
-          "手弩",
-          "黄金弩机",
-          "弹药袋",
+          "回旋镖",
+          "飞刃",
+          "黄金袖箭",
+          "暗影斗篷",
+          "吸血镰刀",
+          "万剑之王",
           "木弓",
+          "弹药袋",
+          "弹弓",
+          "手弩",
+          "瞄准镜",
+          "狙击步枪",
+          "重型机枪",
           "超级手雷",
-          "长盾",
-          "尖刺金盾",
           "短剑",
           "圆盾",
-          "皇家佩剑"
+          "长盾",
+          "战锤",
+          "尖刺金盾",
+          "充能巨剑",
+          "皇家佩剑",
+          "巨龙之心"
         ]
       }
     },
@@ -3314,44 +3325,44 @@
       },
       "synthesisMinTierDropWeightsByResultLevel": {
         "Bronze": [
-          1.0,
-          1.0,
-          0.6,
+          1,
+          1,
           0.5,
           0.4,
           0.3,
           0.2,
+          0.1,
           0
         ],
         "Silver": [
-          0.0,
-          0.0,
-          0.4,
+          0,
+          0,
           0.5,
-          0.3,
+          0.6,
           0.4,
-          0.2,
-          0
+          0.3,
+          0.3,
+          0.2
         ],
         "Gold": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          0,
+          0,
           0.3,
+          0.5,
           0.4,
-          0.3,
-          0
+          0.3
         ],
         "Diamond": [
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.3,
-          0
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0.2,
+          0.5
         ]
       },
       "crossIdSynthesisRequireConfirm": false,
@@ -3396,6 +3407,8 @@
       "fullAlphaDistance": 620,
       "roadFarWidthRatio": 0.3,
       "roadNearWidthRatio": 0.8,
+      "classRangeGuideWidthScale": 1.35,
+      "classRangeGuideNearThicknessPx": 10,
       "roadFarCenterX": 320,
       "roadNearCenterX": 320,
       "enemyHpBarYOffset": -107,
@@ -3431,21 +3444,17 @@
         "item17": 28,
         "item18": 28,
         "item40": 28,
-        "item4": 40,
-        "item20": 16,
-        "item9": 28,
-        "item44": 40,
-        "item48": 28,
-        "item15": 28,
+        "item4": 36,
+        "item20": 36,
+        "item9": 36,
+        "item44": 36,
+        "item48": 36,
+        "item15": 36,
         "item50": 16,
         "item52": 16,
         "item13": 16
       },
-      "playerItemBaseBounceByIcon": {
-        "item11": 1,
-        "item21": 1,
-        "item17": 1
-      },
+      "playerItemBaseBounceByIcon": {},
       "playerBounceProjectileFlyMs": 200,
       "playerBounceProjectileSpeedPxPerSec": 500,
       "enemyAttackDoubleAfterAllSpawnMs": 20000,
@@ -3472,7 +3481,7 @@
         {
           "id": "enemy1",
           "name": "骷髅小兵",
-          "hp": 20,
+          "hp": 30,
           "attack": 10,
           "moveSpeed": 1,
           "attackIntervalMs": 2000,
@@ -3487,7 +3496,7 @@
         {
           "id": "enemy2",
           "name": "骷髅战士",
-          "hp": 50,
+          "hp": 75,
           "attack": 10,
           "moveSpeed": 1,
           "attackIntervalMs": 2000,
@@ -3502,7 +3511,7 @@
         {
           "id": "enemy3",
           "name": "骷髅弓手",
-          "hp": 30,
+          "hp": 40,
           "attack": 10,
           "moveSpeed": 1,
           "attackIntervalMs": 4000,
@@ -3518,7 +3527,7 @@
         {
           "id": "enemy4",
           "name": "蝙蝠小妖",
-          "hp": 25,
+          "hp": 40,
           "attack": 5,
           "moveSpeed": 2,
           "attackIntervalMs": 1000,
@@ -3533,7 +3542,7 @@
         {
           "id": "enemy5",
           "name": "灰色小妖",
-          "hp": 40,
+          "hp": 100,
           "attack": 15,
           "moveSpeed": 1,
           "attackIntervalMs": 2000,
@@ -3548,7 +3557,7 @@
         {
           "id": "enemy6",
           "name": "灰色小妖队长",
-          "hp": 150,
+          "hp": 250,
           "attack": 25,
           "moveSpeed": 1,
           "attackIntervalMs": 2000,
@@ -3563,7 +3572,7 @@
         {
           "id": "bossbattle",
           "name": "首领",
-          "hp": 1200,
+          "hp": 2000,
           "attack": 50,
           "moveSpeed": 1,
           "attackIntervalMs": 4000,
@@ -3581,106 +3590,1986 @@
         }
       ],
       "dayWaves": [
-        { "day": 1, "enemies": [{ "id": "enemy1", "count": 10 }] },
-        { "day": 2, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
-        { "day": 3, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
-        { "day": 4, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
-        { "day": 5, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
-        { "day": 6, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 7, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 8, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 9, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 10, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
-        { "day": 11, "enemies": [{ "id": "enemy1", "count": 10 }] },
-        { "day": 12, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
-        { "day": 13, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
-        { "day": 14, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
-        { "day": 15, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
-        { "day": 16, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 17, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 18, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 19, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 20, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
-        { "day": 21, "enemies": [{ "id": "enemy1", "count": 10 }] },
-        { "day": 22, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
-        { "day": 23, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
-        { "day": 24, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
-        { "day": 25, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
-        { "day": 26, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 27, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 28, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 29, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 30, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
-        { "day": 31, "enemies": [{ "id": "enemy1", "count": 10 }] },
-        { "day": 32, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
-        { "day": 33, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
-        { "day": 34, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
-        { "day": 35, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
-        { "day": 36, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 37, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 38, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 39, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 40, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
-        { "day": 41, "enemies": [{ "id": "enemy1", "count": 10 }] },
-        { "day": 42, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
-        { "day": 43, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
-        { "day": 44, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
-        { "day": 45, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
-        { "day": 46, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 47, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 48, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 49, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 50, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
-        { "day": 51, "enemies": [{ "id": "enemy1", "count": 10 }] },
-        { "day": 52, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
-        { "day": 53, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
-        { "day": 54, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
-        { "day": 55, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
-        { "day": 56, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 57, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 58, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 59, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 60, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
-        { "day": 61, "enemies": [{ "id": "enemy1", "count": 10 }] },
-        { "day": 62, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
-        { "day": 63, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
-        { "day": 64, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
-        { "day": 65, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
-        { "day": 66, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 67, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 68, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 69, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 70, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
-        { "day": 71, "enemies": [{ "id": "enemy1", "count": 10 }] },
-        { "day": 72, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
-        { "day": 73, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
-        { "day": 74, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
-        { "day": 75, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
-        { "day": 76, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 77, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 78, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 79, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 80, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
-        { "day": 81, "enemies": [{ "id": "enemy1", "count": 10 }] },
-        { "day": 82, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
-        { "day": 83, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
-        { "day": 84, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
-        { "day": 85, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
-        { "day": 86, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 87, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 88, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 89, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 90, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] },
-        { "day": 91, "enemies": [{ "id": "enemy1", "count": 10 }] },
-        { "day": 92, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }] },
-        { "day": 93, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy3", "count": 5 }] },
-        { "day": 94, "enemies": [{ "id": "enemy1", "count": 8 }, { "id": "enemy2", "count": 2 }, { "id": "enemy3", "count": 2 }, { "id": "enemy4", "count": 5 }] },
-        { "day": 95, "enemies": [{ "id": "enemy1", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 10 }] },
-        { "day": 96, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 97, "enemies": [{ "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 98, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 99, "enemies": [{ "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 10 }, { "id": "enemy5", "count": 8 }, { "id": "enemy6", "count": 2 }] },
-        { "day": 100, "enemies": [{ "id": "enemy1", "count": 10 }, { "id": "enemy2", "count": 5 }, { "id": "enemy3", "count": 5 }, { "id": "enemy4", "count": 5 }, { "id": "enemy5", "count": 5 }, { "id": "enemy6", "count": 2 }, { "id": "bossbattle", "count": 1 }] }
+        {
+          "day": 1,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 2,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 3,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 4,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 8
+            },
+            {
+              "id": "enemy2",
+              "count": 2
+            },
+            {
+              "id": "enemy3",
+              "count": 2
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 5,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 6,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 7,
+          "enemies": [
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 8,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 9,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 10
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 10,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 5
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            },
+            {
+              "id": "bossbattle",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "day": 11,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 12,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 13,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 14,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 8
+            },
+            {
+              "id": "enemy2",
+              "count": 2
+            },
+            {
+              "id": "enemy3",
+              "count": 2
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 15,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 16,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 17,
+          "enemies": [
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 18,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 19,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 10
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 20,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 5
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            },
+            {
+              "id": "bossbattle",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "day": 21,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 22,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 23,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 24,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 8
+            },
+            {
+              "id": "enemy2",
+              "count": 2
+            },
+            {
+              "id": "enemy3",
+              "count": 2
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 25,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 26,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 27,
+          "enemies": [
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 28,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 29,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 10
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 30,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 5
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            },
+            {
+              "id": "bossbattle",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "day": 31,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 32,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 33,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 34,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 8
+            },
+            {
+              "id": "enemy2",
+              "count": 2
+            },
+            {
+              "id": "enemy3",
+              "count": 2
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 35,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 36,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 37,
+          "enemies": [
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 38,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 39,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 10
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 40,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 5
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            },
+            {
+              "id": "bossbattle",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "day": 41,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 42,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 43,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 44,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 8
+            },
+            {
+              "id": "enemy2",
+              "count": 2
+            },
+            {
+              "id": "enemy3",
+              "count": 2
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 45,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 46,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 47,
+          "enemies": [
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 48,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 49,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 10
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 50,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 5
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            },
+            {
+              "id": "bossbattle",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "day": 51,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 52,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 53,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 54,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 8
+            },
+            {
+              "id": "enemy2",
+              "count": 2
+            },
+            {
+              "id": "enemy3",
+              "count": 2
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 55,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 56,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 57,
+          "enemies": [
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 58,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 59,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 10
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 60,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 5
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            },
+            {
+              "id": "bossbattle",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "day": 61,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 62,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 63,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 64,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 8
+            },
+            {
+              "id": "enemy2",
+              "count": 2
+            },
+            {
+              "id": "enemy3",
+              "count": 2
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 65,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 66,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 67,
+          "enemies": [
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 68,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 69,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 10
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 70,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 5
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            },
+            {
+              "id": "bossbattle",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "day": 71,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 72,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 73,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 74,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 8
+            },
+            {
+              "id": "enemy2",
+              "count": 2
+            },
+            {
+              "id": "enemy3",
+              "count": 2
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 75,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 76,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 77,
+          "enemies": [
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 78,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 79,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 10
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 80,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 5
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            },
+            {
+              "id": "bossbattle",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "day": 81,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 82,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 83,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 84,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 8
+            },
+            {
+              "id": "enemy2",
+              "count": 2
+            },
+            {
+              "id": "enemy3",
+              "count": 2
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 85,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 86,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 87,
+          "enemies": [
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 88,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 89,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 10
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 90,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 5
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            },
+            {
+              "id": "bossbattle",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "day": 91,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 92,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 93,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 94,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 8
+            },
+            {
+              "id": "enemy2",
+              "count": 2
+            },
+            {
+              "id": "enemy3",
+              "count": 2
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 95,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 96,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 97,
+          "enemies": [
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 98,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 99,
+          "enemies": [
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 10
+            },
+            {
+              "id": "enemy5",
+              "count": 8
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "day": 100,
+          "enemies": [
+            {
+              "id": "enemy1",
+              "count": 10
+            },
+            {
+              "id": "enemy2",
+              "count": 5
+            },
+            {
+              "id": "enemy3",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "enemy5",
+              "count": 5
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            },
+            {
+              "id": "bossbattle",
+              "count": 1
+            }
+          ]
+        }
       ]
     }
   }

@@ -161,6 +161,8 @@ export interface GameConfig {
     firstRunsFixedItemPool?: {
       enabledRunCount?: number
       itemNamesCn?: string[]
+      alwaysEnabled?: boolean
+      revealInCompendiumAtStart?: boolean
     }
   }
   skillSystem?: {
@@ -371,6 +373,8 @@ export interface GameConfig {
     roadNearWidthRatio?: number
     roadFarCenterX?: number
     roadNearCenterX?: number
+    classRangeGuideWidthScale?: number
+    classRangeGuideNearThicknessPx?: number
     enemyHpBarYOffset?: number
     enemyHpBarScale?: number
     enemyShadowYOffset?: number
