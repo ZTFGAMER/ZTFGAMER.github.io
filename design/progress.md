@@ -1,5 +1,44 @@
 # 大巴扎 — 开发进度记录
 
+## 塔防商店顶部红心彻底隐藏修复（2026-03-24）
+
+- 用户反馈：塔防模式商店右上角仍会出现 `❤️ 5/5`。
+- 根因：阶段切换可见性逻辑 `applyPhaseUiVisibility()` 会无条件把 `livesText.visible` 设为 `inShop`，覆盖前面的塔防隐藏设置。
+- 已完成：
+  - `src/tower/shop/ShopScene.ts`
+    - 在 `applyPhaseUiVisibility()` 增加塔防模式判断；
+    - `livesText.visible` 改为 `inShop && !towerMode`，避免被后续流程重新点亮。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收塔防商店右上角不再出现红心。
+
+## 塔防近战挥动新增X轴平移（2026-03-24）
+
+- 用户需求：近战挥动在旋转同时进行平移；新增可配置“起点offsetX”和“终点offsetX”，平移动画时长与挥动表现时长一致。
+- 已完成：
+  - `src/tower/battle/BattleFXPool.ts`
+    - `spawnMeleeSweep()` 新增参数：`startOffsetX`、`endOffsetX`；
+    - 挥动过程中按 `durationMs` 线性插值 `x`，实现“同时间旋转+平移”。
+  - `src/tower/battle/BattleScene.ts`
+    - 从 `tower_defense_rules` 读取 `playerMeleeSweepStartOffsetX / playerMeleeSweepEndOffsetX` 并传入特效层。
+  - `src/tower/common/items/ItemDef.ts`
+    - `towerDefenseRules` 增加类型字段：`playerMeleeSweepStartOffsetX?`、`playerMeleeSweepEndOffsetX?`。
+  - `data/tower_game_config.json`
+    - 新增默认配置：
+      - `playerMeleeSweepStartOffsetX: 0`
+      - `playerMeleeSweepEndOffsetX: 0`
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户按手感调参（建议先从 `-80 -> 80` 开始）。
+
+## 塔防物品出售价格按等级重设（2026-03-24）
+
+- 用户需求：塔防模式下物品出售价格（按等级）改为 `2, 4, 8, 16, 32, 64, 128, 256`。
+- 已完成：
+  - `src/tower/shop/ui/ShopBattleZoneBuilder.ts`
+    - `DRAG_SELL_PRICE_BY_LEVEL` 从 `[1, 2, 4, 8, 16, 32, 64]` 调整为 `[2, 4, 8, 16, 32, 64, 128, 256]`；
+    - 卖出提示与实际金币结算同步使用该映射。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收各等级出售回收金币。
+
 ## 弹药袋改为“左侧相邻弓手+1连发”（2026-03-24）
 
 - 用户需求：
@@ -13,6 +52,16 @@
     - 连发加成仅对满足左侧相邻条件的弓手生效；
     - 仍保留“所有物品伤害+X”全局伤害加成。
 - 验证：`npm run build` 通过。
+
+- 验收补充修复（同日）：
+  - 现象：局外手弩介绍未体现连发变化，箭袋（弹药袋）连发加成看起来未生效；
+  - 根因：商店被动预览（`refreshBattlePassiveStatBadges`）未接入弹药袋“左侧弓手+连发”逻辑；
+  - 处理：
+    - `src/tower/shop/systems/ShopHeroSystem.ts` 新增弹药袋被动预览结算：
+      - 全局武器伤害 `+X`；
+      - 左侧相邻弓手 `multicast +1`（按尺寸占位计算相邻）；
+    - 局外面板可实时展示被动影响后的连发与伤害。
+  - 验证：`npm run build` 通过。
 
 ## 连发镖连发公式修正为“弹射+1”（2026-03-23）
 

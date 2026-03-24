@@ -407,6 +407,8 @@ export interface GameConfig {
     playerMeleeSweepHitStepMs?: number
     playerMeleeSweepOriginOffsetX?: number
     playerMeleeSweepOriginOffsetY?: number
+    playerMeleeSweepStartOffsetX?: number
+    playerMeleeSweepEndOffsetX?: number
     playerMeleeSweepDurationMs?: number
     playerMeleeSweepStartAngleDeg?: number
     playerMeleeSweepEndAngleDeg?: number

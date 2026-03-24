@@ -942,7 +942,6 @@ export class TowerDefenseEngine implements BattleEngineLike {
 
   private getPlayerItemMulticast(item: CombatItemRunner): number {
     const baseMulticast = Math.max(1, Math.round(item.baseStats.multicast || 1))
-    if (this.getItemIcon(item) === 'item9') return Math.max(baseMulticast, 3)
     if (this.getItemIcon(item) !== 'item6') return baseMulticast
     const bounceCount = Math.max(0, Math.round(this.playerBounceCountByItemId.get(item.id) ?? 0))
     // item6: 连发次数按弹射次数驱动，含当前发射本体（弹射1 => 连发2）

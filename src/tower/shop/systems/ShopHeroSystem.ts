@@ -945,6 +945,16 @@ export function refreshBattlePassiveStatBadges(
   const isWeapon = (id: string): boolean => (next.get(id)?.damage ?? 0) > 0
   const isShield = (id: string): boolean => (next.get(id)?.shield ?? 0) > 0
   const isDamageBonusEligible = (id: string): boolean => isWeapon(id) && !isShield(id)
+  const widthByItem = (instanceId: string): number => {
+    const placedItem = placed.find((it) => it.instanceId === instanceId)
+    if (!placedItem) return 1
+    const def = byId.get(placedItem.defId)
+    if (!def) return 1
+    const size = normalizeSize(def.size)
+    if (size === '3x1') return 3
+    if (size === '2x1') return 2
+    return 1
+  }
 
   for (const owner of placed) {
     const def = byId.get(owner.defId)
@@ -1004,6 +1014,37 @@ export function refreshBattlePassiveStatBadges(
           if (!st || st.ammoMax <= 0) continue
           st.ammoMax += v
           st.ammoCurrent = Math.min(st.ammoMax, st.ammoCurrent + v)
+        }
+      }
+    }
+
+    const ammoBagAuraLine = lines.find((s) => /所有物品伤害\+/.test(s) && /弓手物品/.test(s) && /连发次数/.test(s))
+    if (ammoBagAuraLine) {
+      const damageSeries = ammoBagAuraLine.match(/所有物品伤害\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/)?.[1] || ''
+      const multicastSeries = ammoBagAuraLine.match(/弓手物品.*?(?:\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)\s*连发次数|连发次数\s*\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*) )/)?.[1]
+        || ammoBagAuraLine.match(/弓手物品.*?连发次数\s*\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/)?.[1]
+        || ''
+      const damageBonus = damageSeries ? Math.max(0, Math.round(tierValueFromSkillLineByStar(def, tier, star, `所有物品伤害+${damageSeries}`))) : 0
+      const multicastBonus = multicastSeries ? Math.max(0, Math.round(tierValueFromSkillLineByStar(def, tier, star, `连发次数+${multicastSeries}`))) : 0
+
+      if (damageBonus > 0) {
+        for (const st of next.values()) {
+          if (st.damage <= 0) continue
+          st.damage += damageBonus
+        }
+      }
+
+      if (multicastBonus > 0) {
+        for (const target of placed) {
+          if (target.instanceId === owner.instanceId) continue
+          const targetDef = byId.get(target.defId)
+          if (getPrimaryArchetype(targetDef?.tags ?? '') !== '弓手') continue
+          const targetEnd = target.col + widthByItem(target.instanceId) - 1
+          const isLeftAdjacent = owner.col === targetEnd + 1
+          if (!isLeftAdjacent) continue
+          const st = next.get(target.instanceId)
+          if (!st) continue
+          st.multicast = Math.max(1, st.multicast + multicastBonus)
         }
       }
     }

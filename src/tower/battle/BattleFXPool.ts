@@ -522,6 +522,8 @@ export class BattleFXPool {
       durationMs?: number
       startAngleDeg?: number
       endAngleDeg?: number
+      startOffsetX?: number
+      endOffsetX?: number
       alphaStart?: number
       alphaMid?: number
       alphaEnd?: number
@@ -575,11 +577,17 @@ export class BattleFXPool {
     const alphaStartRaw = Number(opts?.alphaStart)
     const alphaMidRaw = Number(opts?.alphaMid)
     const alphaEndRaw = Number(opts?.alphaEnd)
+    const startOffsetXRaw = Number(opts?.startOffsetX)
+    const endOffsetXRaw = Number(opts?.endOffsetX)
+    const startOffsetX = Number.isFinite(startOffsetXRaw) ? startOffsetXRaw : 0
+    const endOffsetX = Number.isFinite(endOffsetXRaw) ? endOffsetXRaw : 0
     const alphaStart = Number.isFinite(alphaStartRaw) ? Math.max(0, Math.min(1, alphaStartRaw)) : 0.35
     const alphaMid = Number.isFinite(alphaMidRaw) ? Math.max(0, Math.min(1, alphaMidRaw)) : 0.75
     const alphaEnd = Number.isFinite(alphaEndRaw) ? Math.max(0, Math.min(1, alphaEndRaw)) : 0.25
     sprite.rotation = startRad
     sprite.alpha = alphaStart
+    sprite.x = origin.x + startOffsetX
+    sprite.y = origin.y
     layer.addChild(sprite)
 
     let elapsed = 0
@@ -587,6 +595,7 @@ export class BattleFXPool {
       elapsed += dtMs
       const p = Math.max(0, Math.min(1, elapsed / durationMs))
       sprite.rotation = lerp(startRad, endRad, p)
+      sprite.x = origin.x + lerp(startOffsetX, endOffsetX, p)
       if (p <= 0.5) {
         sprite.alpha = lerp(alphaStart, alphaMid, p / 0.5)
       } else {

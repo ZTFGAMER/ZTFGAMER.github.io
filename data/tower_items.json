@@ -224,7 +224,7 @@
       },
       {
         "en": "",
-        "cn": "每次使用后伤害+1。"
+        "cn": "每次使用后伤害+1。连发次数:3。"
       }
     ],
     "icon": "item9",
@@ -232,8 +232,8 @@
     "attack_variants": [
       "item9_a"
     ],
-    "simple_desc": "每次使用后伤害提升",
-    "simple_desc_tiered": "每次使用后伤害+1"
+    "simple_desc": "每次使用后伤害提升。连发次数:3。",
+    "simple_desc_tiered": "每次使用后伤害+1。连发次数:3。"
   },
   {
     "id": "2d974fec-6038-417d-8831-1e7ea8d2fcde",

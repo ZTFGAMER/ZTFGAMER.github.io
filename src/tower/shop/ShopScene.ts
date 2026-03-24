@@ -979,6 +979,7 @@ function updatePhaseToggleButton(ctx: ShopSceneCtx = _ctx): void {
 
 function applyPhaseUiVisibility(ctx: ShopSceneCtx = _ctx): void {
   const inShop = isShopInputEnabled(ctx)
+  const towerMode = getConfig().towerDefenseRules?.enabled === true
 
   if (!inShop) {
     ctx.showingBackpack = true
@@ -1013,7 +1014,7 @@ function applyPhaseUiVisibility(ctx: ShopSceneCtx = _ctx): void {
 
   if (ctx.refreshCostText) ctx.refreshCostText.visible = inShop
   if (ctx.goldText) ctx.goldText.visible = inShop
-  if (ctx.livesText) ctx.livesText.visible = inShop
+  if (ctx.livesText) ctx.livesText.visible = inShop && !towerMode
   if (ctx.playerStatusCon) ctx.playerStatusCon.visible = inShop
   if (ctx.miniMapCon) ctx.miniMapCon.visible = inShop
   if (ctx.dayDebugCon) ctx.dayDebugCon.visible = inShop

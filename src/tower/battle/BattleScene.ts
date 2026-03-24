@@ -2205,8 +2205,12 @@ export const BattleScene: Scene = {
           const heroPos = portraitFX.getPlayerHitPoint() ?? getHeroBarCenter('player')
           const originOffsetXRaw = Number(cfg?.playerMeleeSweepOriginOffsetX)
           const originOffsetYRaw = Number(cfg?.playerMeleeSweepOriginOffsetY)
+          const startOffsetXRaw = Number(cfg?.playerMeleeSweepStartOffsetX)
+          const endOffsetXRaw = Number(cfg?.playerMeleeSweepEndOffsetX)
           const originOffsetX = Number.isFinite(originOffsetXRaw) ? originOffsetXRaw : 92
           const originOffsetY = Number.isFinite(originOffsetYRaw) ? originOffsetYRaw : -36
+          const startOffsetX = Number.isFinite(startOffsetXRaw) ? startOffsetXRaw : 0
+          const endOffsetX = Number.isFinite(endOffsetXRaw) ? endOffsetXRaw : 0
           const durationRaw = Number(cfg?.playerMeleeSweepDurationMs)
           const durationMs = Number.isFinite(durationRaw) ? Math.max(1, durationRaw) : 260
           const startAngleRaw = Number(cfg?.playerMeleeSweepStartAngleDeg)
@@ -2242,6 +2246,8 @@ export const BattleScene: Scene = {
                   durationMs,
                   startAngleDeg,
                   endAngleDeg,
+                  startOffsetX,
+                  endOffsetX,
                   alphaStart,
                   alphaMid,
                   alphaEnd,

@@ -76,7 +76,7 @@ import { restoreDraggedItemToZone } from '../systems/ShopGridInventory'
 import type { ShopSceneCtx } from '../ShopSceneContext'
 import { isSkillItemDefId } from '@/tower/common/skills/SkillItemDefs'
 
-const DRAG_SELL_PRICE_BY_LEVEL = [1, 2, 4, 8, 16, 32, 64] as const
+const DRAG_SELL_PRICE_BY_LEVEL = [2, 4, 8, 16, 32, 64, 128, 256] as const
 
 function getDragSellPriceByLevel(level: number | null | undefined): number {
   const lv = Number.isFinite(level) ? Math.max(1, Math.min(8, Math.round(level as number))) : 1
