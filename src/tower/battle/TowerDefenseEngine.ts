@@ -131,6 +131,8 @@ export class TowerDefenseEngine implements BattleEngineLike {
   private pendingPlayerFires: PendingPlayerFire[] = []
   private pendingPlayerHits: PendingPlayerHit[] = []
   private pendingEnemyHits: PendingEnemyHit[] = []
+  private pendingPlayerMeleeTriggers: string[] = []
+  private nextPlayerMeleeTriggerAtMs = -1
   private playerAttackDistanceByItemId = new Map<string, number>()
   private towerClassAttackDistances: TowerClassAttackDistanceView = { swordsman: 0, archer: 0, assassin: 0 }
   private playerUseDamageBonusByItemId = new Map<string, number>()
@@ -174,22 +176,9 @@ export class TowerDefenseEngine implements BattleEngineLike {
     this.pendingPlayerFires = []
     this.pendingPlayerHits = []
     this.pendingEnemyHits = []
-    this.playerAttackDistanceByItemId.clear()
-    this.playerUseDamageBonusByItemId.clear()
-    this.playerRangeBlockedByItemId.clear()
-    this.playerBounceCountByItemId.clear()
-    this.playerFirstBounceSplitBonus = 0
-    this.playerBounceDamageBonusPerHopByItemId.clear()
-    this.playerBounceDamageFactorByItemId.clear()
-    for (const item of this.playerItems) {
-      const attackDistance = this.resolvePlayerItemAttackDistance(item)
-      if (attackDistance > 0) this.playerAttackDistanceByItemId.set(item.id, attackDistance)
-      const useDamageBonus = this.resolvePlayerItemUseDamageBonus(item)
-      if (useDamageBonus > 0) this.playerUseDamageBonusByItemId.set(item.id, useDamageBonus)
-      this.playerRangeBlockedByItemId.set(item.id, false)
-    }
-    this.recomputeTowerClassAttackDistances()
-    this.rebuildPlayerBounceParams()
+    this.pendingPlayerMeleeTriggers = []
+    this.nextPlayerMeleeTriggerAtMs = -1
+    this.rebuildPlayerDerivedParams()
 
     const cfg = getConfig()
     const playerHpByDay = cfg.dailyPlayerHealth ?? cfg.dailyHealth
@@ -200,6 +189,45 @@ export class TowerDefenseEngine implements BattleEngineLike {
 
     this.buildSpawnPlan()
     this.refreshEnemyHeroHp()
+  }
+
+  syncPlayerEntities(entities: BattleSnapshotBundle['entities'], options?: { resetChargeIds?: string[] }): void {
+    const resetIds = new Set(options?.resetChargeIds ?? [])
+    const oldById = new Map(this.playerItems.map((it) => [it.id, it] as const))
+    this.playerItems = entities.map((it, idx) => {
+      const runner = toRunner(it, `P-${idx}`)
+      runner.side = 'player'
+      const old = oldById.get(runner.id)
+      if (old) {
+        runner.runtime.currentChargeMs = old.runtime.currentChargeMs
+        runner.runtime.pendingChargeMs = old.runtime.pendingChargeMs
+        runner.runtime.executeCount = old.runtime.executeCount
+        runner.runtime.tempDamageBonus = old.runtime.tempDamageBonus
+        runner.runtime.ammoAutoReloadRemainingMs = old.runtime.ammoAutoReloadRemainingMs
+        runner.runtime.modifiers.freezeMs = old.runtime.modifiers.freezeMs
+        runner.runtime.modifiers.slowMs = old.runtime.modifiers.slowMs
+        runner.runtime.modifiers.hasteMs = old.runtime.modifiers.hasteMs
+        runner.runtime.ammoCurrent = old.runtime.ammoCurrent
+        runner.runtime.ammoMax = old.runtime.ammoMax
+      }
+      if (resetIds.has(runner.id)) {
+        runner.runtime.currentChargeMs = 0
+        runner.runtime.pendingChargeMs = 0
+      }
+      return runner
+    })
+
+    const validIds = new Set(this.playerItems.map((it) => it.id))
+    this.pendingPlayerFires = this.pendingPlayerFires.filter((it) => validIds.has(it.sourceItemId))
+    this.pendingPlayerHits = this.pendingPlayerHits.filter((it) => validIds.has(it.sourceItemId))
+    this.pendingPlayerMeleeTriggers = this.pendingPlayerMeleeTriggers.filter((id) => validIds.has(id))
+    if (this.pendingPlayerMeleeTriggers.length <= 0) this.nextPlayerMeleeTriggerAtMs = -1
+
+    // 战斗中阵容变化后，按“在场即生效”口径重算被动（购买/合成/移动/消失都即时生效）
+    this.applyPassiveAurasOnBattleStart()
+    this.rebuildPlayerDerivedParams()
+    this.lastRuntimeTick = -1
+    this.runtimeCache = []
   }
 
   update(dt: number): void {
@@ -287,21 +315,39 @@ export class TowerDefenseEngine implements BattleEngineLike {
     const reducedCooldownMinMs = Math.max(100, Math.round(Number(getConfig().towerDefenseRules?.reducedCooldownMinMs) || 500))
     for (const aura of this.playerItems) {
       if (this.getItemIcon(aura) === 'item46') {
+        const auraDef = findItemDef(aura.defId)
+        const intervalLine = auraDef ? skillLines(auraDef).find((line) => /(所有物品|弓手物品)间隔缩短/.test(line)) : undefined
+        const archerOnlyReduce = Boolean(intervalLine && /弓手物品间隔缩短/.test(intervalLine) && !/所有物品间隔缩短/.test(intervalLine))
         const pctBase = Math.max(0, this.resolveNumericValueFromItemLine(
           aura,
-          /所有物品间隔缩短\s*([+\-]?\d+(?:\.\d+)?(?:%?[\/|][+\-]?\d+(?:\.\d+)?%?)*)\s*%?/,
+          /(?:所有物品|弓手物品)间隔缩短\s*([+\-]?\d+(?:\.\d+)?(?:%?[\/|][+\-]?\d+(?:\.\d+)?%?)*)\s*%?/,
         )) / 100
         if (pctBase > 0) {
           for (const target of this.playerItems) {
             if (target.baseStats.cooldownMs <= 0) continue
             const targetDef = findItemDef(target.defId)
             const isArcher = itemArchetype(targetDef) === '弓手'
-            const pct = Math.min(0.95, pctBase * (isArcher ? 2 : 1))
+            if (archerOnlyReduce && !isArcher) continue
+            const pct = Math.min(0.95, pctBase * (archerOnlyReduce ? 1 : (isArcher ? 2 : 1)))
             if (pct <= 0) continue
             target.baseStats.cooldownMs = Math.max(
               reducedCooldownMinMs,
               Math.round(target.baseStats.cooldownMs * (1 - pct)),
             )
+          }
+        }
+        continue
+      }
+      if (this.getItemIcon(aura) === 'item2') {
+        const meleeBonus = Math.max(0, this.resolveNumericValueFromItemLine(
+          aura,
+          /近战武器伤害\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/,
+        ))
+        if (meleeBonus > 0) {
+          for (const target of this.playerItems) {
+            if (this.resolvePlayerAttackType(target) !== 'melee_sweep') continue
+            if (target.baseStats.damage <= 0) continue
+            target.baseStats.damage += Math.round(meleeBonus)
           }
         }
         continue
@@ -321,7 +367,8 @@ export class TowerDefenseEngine implements BattleEngineLike {
       const multicastSeries = multicastMatch?.[1] || multicastAfterLabelMatch?.[1] || ''
       const multicastBonus = multicastSeries ? Math.max(0, Math.round(pickTierSeriesValue(multicastSeries, tierIndex))) : 0
       if (damageBonus <= 0 && multicastBonus <= 0) continue
-      const isGlobalAura = /所有物品/.test(auraLine)
+      const isGlobalAura = /所有物品/.test(auraLine) || /(?:^|，|,)\s*弓手物品伤害\+/.test(auraLine) || /所有弓手物品/.test(auraLine)
+      const archerOnlyGlobalAura = !/所有物品/.test(auraLine) && /弓手物品伤害\+/.test(auraLine)
       const archerDamageDouble = /弓手物品.*翻倍/.test(auraLine)
       const multicastLeftAdjacentOnly = /左侧/.test(auraLine)
       const multicastAdjacentOnly = multicastLeftAdjacentOnly || /相邻/.test(auraLine)
@@ -337,6 +384,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
         const targetDef = findItemDef(target.defId)
         if (damageBonus > 0) {
           if (target.baseStats.damage > 0) {
+            if (archerOnlyGlobalAura && itemArchetype(targetDef) !== '弓手') continue
             const add = archerDamageDouble && itemArchetype(targetDef) === '弓手'
               ? damageBonus * 2
               : damageBonus
@@ -352,8 +400,9 @@ export class TowerDefenseEngine implements BattleEngineLike {
         }
       }
 
-      const globalIntervalReduceLine = lines.find((line) => /所有物品间隔缩短/.test(line))
+      const globalIntervalReduceLine = lines.find((line) => /(所有物品|弓手物品)间隔缩短/.test(line))
       if (globalIntervalReduceLine) {
+        const archerOnlyReduce = /弓手物品间隔缩短/.test(globalIntervalReduceLine) && !/所有物品间隔缩短/.test(globalIntervalReduceLine)
         const pctMatch = globalIntervalReduceLine.match(/缩短\s*([+\-]?\d+(?:\.\d+)?(?:%?\s*[\/|]\s*[+\-]?\d+(?:\.\d+)?)*%?)\s*%?/)
         const pctSeries = (pctMatch?.[1] || '').replace(/%/g, '')
         const pctBase = pctSeries
@@ -364,7 +413,8 @@ export class TowerDefenseEngine implements BattleEngineLike {
             if (target.baseStats.cooldownMs <= 0) continue
             const targetDef = findItemDef(target.defId)
             const isArcher = itemArchetype(targetDef) === '弓手'
-            const pct = Math.min(0.95, pctBase * (isArcher ? 2 : 1))
+            if (archerOnlyReduce && !isArcher) continue
+            const pct = Math.min(0.95, pctBase * (archerOnlyReduce ? 1 : (isArcher ? 2 : 1)))
             if (pct <= 0) continue
             target.baseStats.cooldownMs = Math.max(
               reducedCooldownMinMs,
@@ -881,89 +931,105 @@ export class TowerDefenseEngine implements BattleEngineLike {
       let triggerCount = Math.floor(item.runtime.currentChargeMs / cooldown)
       if (triggerCount <= 0) continue
       if (triggerCount > 4) triggerCount = 4
-      for (let i = 0; i < triggerCount; i++) {
-        const attackType = this.resolvePlayerAttackType(item)
-        if (attackType === 'melee_sweep') {
-          if (!hasAliveEnemy) break
-          item.runtime.currentChargeMs -= cooldown
-          item.runtime.executeCount += 1
-          const multicast = this.getPlayerItemMulticast(item)
-          EventBus.emit('battle:item_trigger', {
-            itemId: item.defId,
-            sourceItemId: item.id,
-            side: 'player',
-            triggerCount: 1,
-            multicast,
-            extraTriggered: false,
-          })
-          this.enqueuePlayerFireBurst(item.id, multicast)
-          const shieldGain = Math.max(0, Math.round(item.baseStats.shield))
-          if (shieldGain > 0 && this.playerHero.hp > 0) {
-            this.gainPlayerShield(item.id, shieldGain)
-          }
-          const heal = Math.max(0, Math.round(item.baseStats.heal))
-          if (heal > 0 && this.playerHero.hp > 0) {
-            const realHeal = Math.max(0, Math.min(this.playerHero.maxHp - this.playerHero.hp, heal))
-            if (realHeal > 0) {
-              this.playerHero.hp += realHeal
-              EventBus.emit('battle:heal', {
-                targetId: this.playerHero.id,
-                sourceItemId: item.id,
-                amount: realHeal,
-                isRegen: false,
-                targetType: 'hero',
-                targetSide: 'player',
-                sourceType: 'item',
-                sourceSide: 'player',
-              })
-            }
-          }
+      const attackType = this.resolvePlayerAttackType(item)
+      if (attackType === 'melee_sweep') {
+        if (!hasAliveEnemy) {
+          if (item.runtime.currentChargeMs > cooldown) item.runtime.currentChargeMs = cooldown
           continue
         }
-        const target = this.pickNearestEnemy(attackDistance)
-        if (!target) {
+        for (let i = 0; i < triggerCount; i++) {
+          item.runtime.currentChargeMs -= cooldown
+          this.pendingPlayerMeleeTriggers.push(item.id)
+        }
+        if (item.runtime.currentChargeMs > cooldown) item.runtime.currentChargeMs = cooldown
+        continue
+      }
+      for (let i = 0; i < triggerCount; i++) {
+        const hasTargetInRange = Boolean(this.pickNearestEnemy(attackDistance))
+        if (!hasTargetInRange) {
           if (hasAliveEnemy) this.playerRangeBlockedByItemId.set(item.id, true)
-          break
         }
         item.runtime.currentChargeMs -= cooldown
-        item.runtime.executeCount += 1
-        const multicast = this.getPlayerItemMulticast(item)
-
-        EventBus.emit('battle:item_trigger', {
-          itemId: item.defId,
-          sourceItemId: item.id,
-          side: 'player',
-          triggerCount: 1,
-          multicast,
-          extraTriggered: false,
-        })
-
-        this.enqueuePlayerFireBurst(item.id, multicast)
-
-        const shieldGain = Math.max(0, Math.round(item.baseStats.shield))
-        if (shieldGain > 0 && this.playerHero.hp > 0) {
-          this.gainPlayerShield(item.id, shieldGain)
-        }
-        const heal = Math.max(0, Math.round(item.baseStats.heal))
-        if (heal > 0 && this.playerHero.hp > 0) {
-          const realHeal = Math.max(0, Math.min(this.playerHero.maxHp - this.playerHero.hp, heal))
-          if (realHeal > 0) {
-            this.playerHero.hp += realHeal
-            EventBus.emit('battle:heal', {
-              targetId: this.playerHero.id,
-              sourceItemId: item.id,
-              amount: realHeal,
-              isRegen: false,
-              targetType: 'hero',
-              targetSide: 'player',
-              sourceType: 'item',
-              sourceSide: 'player',
-            })
-          }
-        }
+        this.firePlayerItemTrigger(item)
       }
       if (item.runtime.currentChargeMs > cooldown) item.runtime.currentChargeMs = cooldown
     }
+    this.consumePendingPlayerMeleeTriggers()
+  }
+
+  private getPlayerMeleeQueueTriggerIntervalMs(): number {
+    const cfg = getConfig().towerDefenseRules
+    const raw = Number(cfg?.playerMeleeQueueTriggerIntervalMs)
+    if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.round(raw))
+    return this.getLogicTickMs()
+  }
+
+  private consumePendingPlayerMeleeTriggers(): void {
+    if (this.pendingPlayerMeleeTriggers.length <= 0) {
+      this.nextPlayerMeleeTriggerAtMs = -1
+      return
+    }
+    const stepMs = this.getPlayerMeleeQueueTriggerIntervalMs()
+    if (this.nextPlayerMeleeTriggerAtMs < 0) this.nextPlayerMeleeTriggerAtMs = this.elapsedMs
+    while (this.pendingPlayerMeleeTriggers.length > 0 && this.elapsedMs >= this.nextPlayerMeleeTriggerAtMs) {
+      const sourceItemId = this.pendingPlayerMeleeTriggers.shift()
+      if (!sourceItemId) break
+      const source = this.playerItems.find((it) => it.id === sourceItemId)
+      if (source) this.firePlayerItemTrigger(source)
+      this.nextPlayerMeleeTriggerAtMs += stepMs
+    }
+  }
+
+  private firePlayerItemTrigger(item: CombatItemRunner): void {
+    item.runtime.executeCount += 1
+    const multicast = this.getPlayerItemMulticast(item)
+    EventBus.emit('battle:item_trigger', {
+      itemId: item.defId,
+      sourceItemId: item.id,
+      side: 'player',
+      triggerCount: 1,
+      multicast,
+      extraTriggered: false,
+    })
+    this.enqueuePlayerFireBurst(item.id, multicast)
+    const shieldGain = Math.max(0, Math.round(item.baseStats.shield))
+    if (shieldGain > 0 && this.playerHero.hp > 0) {
+      this.gainPlayerShield(item.id, shieldGain)
+    }
+    const heal = Math.max(0, Math.round(item.baseStats.heal))
+    if (heal <= 0 || this.playerHero.hp <= 0) return
+    const realHeal = Math.max(0, Math.min(this.playerHero.maxHp - this.playerHero.hp, heal))
+    if (realHeal <= 0) return
+    this.playerHero.hp += realHeal
+    EventBus.emit('battle:heal', {
+      targetId: this.playerHero.id,
+      sourceItemId: item.id,
+      amount: realHeal,
+      isRegen: false,
+      targetType: 'hero',
+      targetSide: 'player',
+      sourceType: 'item',
+      sourceSide: 'player',
+    })
+  }
+
+  private rebuildPlayerDerivedParams(): void {
+    this.playerAttackDistanceByItemId.clear()
+    this.playerUseDamageBonusByItemId.clear()
+    this.playerRangeBlockedByItemId.clear()
+    this.playerBounceCountByItemId.clear()
+    this.playerFirstBounceSplitBonus = 0
+    this.playerBounceDamageBonusPerHopByItemId.clear()
+    this.playerBounceDamageFactorByItemId.clear()
+    for (const item of this.playerItems) {
+      const attackDistance = this.resolvePlayerItemAttackDistance(item)
+      if (attackDistance > 0) this.playerAttackDistanceByItemId.set(item.id, attackDistance)
+      const useDamageBonus = this.resolvePlayerItemUseDamageBonus(item)
+      if (useDamageBonus > 0) this.playerUseDamageBonusByItemId.set(item.id, useDamageBonus)
+      this.playerRangeBlockedByItemId.set(item.id, false)
+    }
+    this.recomputeTowerClassAttackDistances()
+    this.rebuildPlayerBounceParams()
   }
 
   private getPlayerItemMulticast(item: CombatItemRunner): number {
@@ -982,6 +1048,13 @@ export class TowerDefenseEngine implements BattleEngineLike {
       const clamped = Math.max(4, Math.min(maxDistance, Number(target.distance) || 0))
       const p = maxDistance <= 4 ? 1 : (clamped - 4) / (maxDistance - 4)
       const mul = 1 + 2 * Math.max(0, Math.min(1, p))
+      out = Math.max(0, Math.round(out * mul))
+    }
+    if (this.getItemIcon(source) === 'item44') {
+      const maxDistance = Math.max(4, Number(attackDistance) || 60)
+      const clamped = Math.max(4, Math.min(maxDistance, Number(target.distance) || 0))
+      const p = maxDistance <= 4 ? 1 : (clamped - 4) / (maxDistance - 4)
+      const mul = 1 + 4 * Math.max(0, Math.min(1, p))
       out = Math.max(0, Math.round(out * mul))
     }
     return out
@@ -1100,7 +1173,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
   private onPlayerGainShield(): void {
     for (const charger of this.getPlayerItemsByIcon('item52')) {
       const sec = this.resolveNumericValueFromItemLine(charger, /获得护盾时为此物品充能\s*([+\-]?\d+(?:\.\d+)?)\s*秒/)
-      const chargeMs = Math.max(0, Math.round((sec > 0 ? sec : 2) * 1000))
+      const chargeMs = Math.max(0, Math.round((sec > 0 ? sec : 1) * 1000))
       this.addChargeToItem(charger, chargeMs)
     }
   }
@@ -1249,9 +1322,19 @@ export class TowerDefenseEngine implements BattleEngineLike {
       const icon = this.getItemIcon(item)
       if (icon === 'item24') {
         globalAssassinExtraBounce += Math.max(0, this.resolveTieredValueFromItem(item, /额外\+\d+(?:[\/|]\+\d+)*弹射次数/))
+        const minBounce = Math.max(0, this.resolveTieredValueFromItem(item, /弹射次数至少为\d+(?:[\/|]\d+)*/))
+        if (minBounce > 0) {
+          for (const ally of this.playerItems) {
+            if (!this.isAssassinDamageItem(ally)) continue
+            const now = this.playerBounceCountByItemId.get(ally.id) ?? 0
+            this.playerBounceCountByItemId.set(ally.id, Math.max(now, minBounce))
+          }
+        }
       }
       if (icon === 'item17') {
-        this.playerFirstBounceSplitBonus += Math.max(0, this.resolveTieredValueFromItem(item, /首次弹射时[，,]?分裂数量\+\d+/))
+        const splitOld = Math.max(0, this.resolveTieredValueFromItem(item, /首次弹射时[，,]?分裂数量\+\d+/))
+        const splitMin = Math.max(0, this.resolveTieredValueFromItem(item, /首次弹射时[，,]?至少分裂\d+(?:[\/|]\d+)*次/))
+        this.playerFirstBounceSplitBonus += Math.max(splitOld, splitMin)
       }
       if (icon === 'item21') {
         for (const ally of this.playerItems) {
@@ -1269,6 +1352,14 @@ export class TowerDefenseEngine implements BattleEngineLike {
       }
       if (icon === 'item11') {
         globalBoomerangExtraBounce += Math.max(0, this.resolveTieredValueFromItem(item, /回旋镖弹射次数\+\d+(?:[\/|]\+?\d+)*/))
+        const boomerangMin = Math.max(0, this.resolveTieredValueFromItem(item, /回旋镖弹射次数至少为\d+(?:[\/|]\d+)*/))
+        if (boomerangMin > 0) {
+          for (const ally of this.playerItems) {
+            if (this.getItemIcon(ally) !== 'item11') continue
+            const now = this.playerBounceCountByItemId.get(ally.id) ?? 0
+            this.playerBounceCountByItemId.set(ally.id, Math.max(now, boomerangMin))
+          }
+        }
       }
     }
 
@@ -1290,10 +1381,14 @@ export class TowerDefenseEngine implements BattleEngineLike {
 
     for (const source of this.playerItems) {
       if (this.getItemIcon(source) !== 'item5') continue
+      const sourceMinBounce = Math.max(0, this.resolveNumericValueFromItemLine(source, /弹射次数至少为\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/))
+      const sourceExtraBounce = Math.max(0, this.resolveNumericValueFromItemLine(source, /额外\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)\s*弹射次数/))
       for (const ally of this.playerItems) {
         if (!this.isAssassinDamageItem(ally)) continue
         const now = this.playerBounceCountByItemId.get(ally.id) ?? 0
-        this.playerBounceCountByItemId.set(ally.id, now + 1)
+        const raised = now + sourceExtraBounce
+        const finalBounce = sourceMinBounce > 0 ? Math.max(raised, sourceMinBounce) : raised
+        this.playerBounceCountByItemId.set(ally.id, finalBounce)
       }
     }
 
@@ -1509,7 +1604,25 @@ export class TowerDefenseEngine implements BattleEngineLike {
         }
       } else {
         const target = this.pickNearestEnemyByPredictedHp(predictedHpById, attackDistance)
-        if (!target) continue
+        if (!target) {
+          EventBus.emit('battle:item_fire', {
+            itemId: source.defId,
+            sourceItemId: source.id,
+            side: 'player',
+            multicast: 1,
+            targetSide: 'enemy',
+            projectileFlyMs: this.getPlayerProjectileFlyMs(),
+            attackType,
+            attackDistance,
+          })
+          this.applyPostItemUseEffects(source)
+          this.applyPostPlayerFireEffects(source)
+          const useDamageBonus = this.playerUseDamageBonusByItemId.get(source.id)
+          if (useDamageBonus && useDamageBonus > 0) {
+            source.baseStats.damage += useDamageBonus
+          }
+          continue
+        }
         const shotDamage = this.resolveFinalShotDamage(source, target, damage, attackDistance)
         if (shotDamage <= 0) continue
         const flyMs = this.getPlayerProjectileFlyMs()
@@ -1594,10 +1707,6 @@ export class TowerDefenseEngine implements BattleEngineLike {
   private resolveSourceDamageForThisFire(source: CombatItemRunner): number {
     let damage = Math.max(0, Math.round(source.baseStats.damage + source.runtime.tempDamageBonus))
     if (damage <= 0) return 0
-    if (this.getItemIcon(source) === 'item44') {
-      const damageItemCount = this.playerItems.filter((it) => Math.max(0, Math.round(it.baseStats.damage + it.runtime.tempDamageBonus)) > 0).length
-      if (damageItemCount <= 1) damage *= 3
-    }
     return Math.max(0, Math.round(damage))
   }
 

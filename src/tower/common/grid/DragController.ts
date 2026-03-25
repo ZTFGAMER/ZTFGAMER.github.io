@@ -64,6 +64,17 @@ export interface SpecialDropPayload {
   defId: string
 }
 
+export interface MergeDropPayload {
+  sourceInstanceId: string
+  targetInstanceId: string
+  col: number
+  row: number
+  homeSystem: GridSystem
+  homeView: GridZone
+  targetSystem: GridSystem
+  targetView: GridZone
+}
+
 // ============================================================
 export class DragController {
   private pairs: ZonePair[] = []
@@ -72,11 +83,13 @@ export class DragController {
   onDragStart: (instanceId: string) => void = () => {}
   onDragMove:  (payload: DragMovePayload) => void = () => {}
   onSpecialDrop: (payload: SpecialDropPayload) => boolean = () => false
+  onMergeDrop: (payload: MergeDropPayload) => boolean = () => false
   onDropCellLocked: (payload: { view: GridZone; col: number; row: number; size: ItemSizeNorm; instanceId: string }) => boolean = () => false
   onItemPlaced: (payload: { view: GridZone; instanceId: string }) => void = () => {}
   shouldShowLockedHighlight: (payload: { view: GridZone; col: number; row: number; size: ItemSizeNorm; instanceId: string }) => boolean = () => true
   onDragEnd:   ()               => void = () => {}
   private suppressSqueeze = false
+  private suppressRearrange = false
   private inSpecialDropDispatch = false
 
   /** 顶层拖拽容器：构造时添加到 stage 末尾，确保最高 z-order */
@@ -164,6 +177,11 @@ export class DragController {
   setSqueezeSuppressed(suppressed: boolean, rollbackCommitted = false): void {
     this.suppressSqueeze = suppressed
     if (suppressed) this.clearSqueezePreview(rollbackCommitted)
+  }
+
+  setRearrangeSuppressed(suppressed: boolean): void {
+    this.suppressRearrange = suppressed
+    if (suppressed) this.clearSqueezePreview()
   }
 
   // ---- 事件处理 ----
@@ -331,6 +349,32 @@ export class DragController {
 
     // 行号按命中格 cell.row 走（背包 2 行允许自由重排）
     const finalRow = cell.row
+
+    const hitInstanceId = targetPair.system.getCellInstanceId(cell.col, finalRow)
+    if (hitInstanceId && hitInstanceId !== id) {
+      const merged = this.onMergeDrop({
+        sourceInstanceId: id,
+        targetInstanceId: hitInstanceId,
+        col: cell.col,
+        row: finalRow,
+        homeSystem: home.system,
+        homeView: home.view,
+        targetSystem: targetPair.system,
+        targetView: targetPair.view,
+      })
+      if (merged) {
+        this.clearSqueezePreview()
+        const dragged = this.dragContainer
+        if (dragged && !(dragged as { destroyed?: boolean }).destroyed) {
+          if (dragged.parent) dragged.parent.removeChild(dragged)
+          dragged.destroy({ children: true })
+        }
+        home.view.forgetDraggedItem(id)
+        if (this.dragContainer === dragged) this.dragContainer = null
+        this.onDragEnd()
+        return
+      }
+    }
     if (this.onDropCellLocked({ view: targetPair.view, col: cell.col, row: finalRow, size: item.size, instanceId: id })) {
       this.doSnapBack()
       return
@@ -366,6 +410,10 @@ export class DragController {
     let plannedDropCol = cell.col
     let plannedDropRow = finalRow
     if (!canDrop) {
+      if (this.suppressRearrange) {
+        this.doSnapBack()
+        return
+      }
       const squeezeEnabled = getConfig('dragSqueezeEnabled') >= 0.5 && !this.suppressSqueeze
       const backpackToBattle = home.system.getActiveRows() > 1 && targetPair.system.getActiveRows() === 1
       const allowCrossSqueeze = !backpackToBattle
@@ -712,6 +760,11 @@ export class DragController {
         if (other !== pair) other.view.clearHighlight()
 
       if (!canDrop) {
+        if (this.suppressRearrange) {
+          this.clearSqueezePreview()
+          pair.view.highlightCells(cell.col, finalRow, item.size, false)
+          return
+        }
         const squeezeEnabled = getConfig('dragSqueezeEnabled') >= 0.5 && !this.suppressSqueeze
         const backpackToBattle = this.homeZone.system.getActiveRows() > 1 && pair.system.getActiveRows() === 1
         const allowCrossSqueeze = !backpackToBattle

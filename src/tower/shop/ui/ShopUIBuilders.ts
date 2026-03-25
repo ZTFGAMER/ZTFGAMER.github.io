@@ -42,7 +42,6 @@ import {
   applySellButtonState,
   setSellButtonPrice,
   clearSelection,
-  sortBackpackItemsByRule,
   onShopDragMove as _onShopDragMove,
   onShopDragEnd as _onShopDragEnd,
 } from '../systems/ShopDragSystem'
@@ -311,19 +310,11 @@ export function buildButtonRowUI(
   ctx.refreshCostText = null
   ctx.goldText = null
 
-  // 整理按钮
-  const sellBtn = makeCircleBtn(getDebugCfg('sellBtnX'), getDebugCfg('sellBtnY'), '整理', 0x3b74ff, 0x3b74ff)
-  sellBtn.container.on('pointerdown', () => {
-    if (!isShopInputEnabled(ctx)) return
-    if (ctx.selectedSellAction) ctx.selectedSellAction = null
-    clearSelection(ctx, callbacks.dragDeps)
-    sortBackpackItemsByRule(ctx, callbacks.dragDeps)
-  })
-  ctx.sellBtnHandle = sellBtn
-  ctx.btnRow.addChild(sellBtn.container)
+  // 塔防模式下移除「整理」按钮（仍保留拖拽出售）
+  ctx.sellBtnHandle = null
 
   // 战斗切换按钮
-  const phaseBtn = makeCircleBtn(getDebugCfg('phaseBtnX'), getDebugCfg('phaseBtnY'), '战斗', 0xffcc44, 0xffcc44, cfg.textSizes.shopButtonLabel)
+  const phaseBtn = makeCircleBtn(getDebugCfg('phaseBtnX'), getDebugCfg('phaseBtnY'), '开始挑战', 0xffcc44, 0xffcc44, cfg.textSizes.shopButtonLabel)
   phaseBtn.container.on('pointerdown', () => {
     if (!isShopInputEnabled(ctx)) { SceneManager.goto('tower-shop'); return }
     if (ctx.battleStartTransition) return
@@ -364,6 +355,7 @@ export function buildButtonRowUI(
   })
   ctx.phaseBtnHandle = phaseBtn
   ctx.btnRow.addChild(phaseBtn.container)
+  phaseBtn.setCenter(CANVAS_W / 2, 92 + getTopLeftControlYOffset())
 
   ctx.miniMapGfx = null
   ctx.miniMapCon = null

@@ -67,6 +67,7 @@ export interface BattleEngineLike {
   getResult(): CombatResult | null
   getQueuePerfStats(): BattleQueuePerfStats
   getRuntimeCachePerfStats(): BattleRuntimeCachePerfStats
+  syncPlayerEntities?(entities: BattleSnapshotBundle['entities'], options?: { resetChargeIds?: string[] }): void
   getTowerEnemyUnits?(): TowerEnemyUnitView[]
   getTowerEnemyStats?(): TowerEnemyStatsView
   getTowerClassAttackDistances?(): TowerClassAttackDistanceView

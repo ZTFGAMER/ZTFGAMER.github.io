@@ -58,6 +58,7 @@ export function toVisualTier(tier?: TierKey, star?: 1 | 2): string | undefined {
 // ── 坐标 / 布局计算 ───────────────────────────────────────────
 
 export function getDayActiveCols(day: number): number {
+  if (getConfig().towerDefenseRules?.enabled === true) return 6
   const slots = getConfig().dailyBattleSlots
   if (day <= 2) return slots[0] ?? 4
   if (day <= 4) return slots[1] ?? 5
@@ -69,6 +70,7 @@ export function getShopItemScale(): number {
 }
 
 export function getBattleItemScale(ctx: ShopSceneCtx): number {
+  if (getConfig().towerDefenseRules?.enabled === true) return getDebugCfg('battleItemScale')
   return ctx.showingBackpack
     ? getDebugCfg('battleItemScaleBackpackOpen')
     : getDebugCfg('battleItemScale')
@@ -88,14 +90,26 @@ export function getBackpackRowsByDay(day: number): number {
   return 3
 }
 
+export function getTowerBattleRowsByDay(day: number): number {
+  const d = Math.max(1, Math.round(day || 1))
+  if (d <= 2) return 1
+  if (d <= 8) return 2
+  return 3
+}
+
 export function getAdjustedBattleZoneY(day: number): number {
   const baseY = getDebugCfg('battleZoneY')
+  if (getConfig().towerDefenseRules?.enabled === true) {
+    const rows = getTowerBattleRowsByDay(day)
+    return baseY + (3 - rows) * 120
+  }
   const rows = getBackpackRowsByDay(day)
   return baseY + (3 - rows) * 120
 }
 
 export function getAdjustedBattleZoneYInBattleOffset(day: number): number {
   const baseOffset = getDebugCfg('battleZoneYInBattleOffset')
+  if (getConfig().towerDefenseRules?.enabled === true) return baseOffset
   const rows = getBackpackRowsByDay(day)
   return baseOffset - (3 - rows) * 120
 }

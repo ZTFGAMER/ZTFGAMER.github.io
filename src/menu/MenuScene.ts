@@ -7,10 +7,29 @@ import { SceneManager } from '@/core/SceneManager'
 import { getApp } from '@/core/AppContext'
 import { Container, Graphics, Text } from 'pixi.js'
 import { CANVAS_W, CANVAS_H } from '@/config/layoutConstants'
+import { SHOP_STATE_STORAGE_KEY as TOWER_SHOP_STATE_STORAGE_KEY } from '@/tower/core/RunState'
 
 let root: Container | null = null
 let fadeAlpha = 0
 let fadeIn = true
+
+function hasTowerStarterClass(): boolean {
+  try {
+    const raw = localStorage.getItem(TOWER_SHOP_STATE_STORAGE_KEY)
+    if (!raw) return false
+    const parsed = JSON.parse(raw) as { state?: { starterClass?: unknown }; starterClass?: unknown } | null
+    const stateObj = (parsed && typeof parsed === 'object' && 'state' in parsed && parsed.state && typeof parsed.state === 'object')
+      ? parsed.state
+      : parsed
+    return String((stateObj as { starterClass?: unknown } | null | undefined)?.starterClass ?? '').trim().length > 0
+  } catch {
+    return false
+  }
+}
+
+function enterTowerMode(): void {
+  SceneManager.goto(hasTowerStarterClass() ? 'tower-battle' : 'tower-shop')
+}
 
 // ----------------------------------------------------------------
 // 绘制工具
@@ -213,7 +232,7 @@ export const MenuScene: Scene = {
       0x3a2413,
       0xffa64d,
       CANVAS_H * 0.54 + 432,
-      () => SceneManager.goto('tower-shop'),
+      () => enterTowerMode(),
     )
     root.addChild(towerDefenseBtn)
 

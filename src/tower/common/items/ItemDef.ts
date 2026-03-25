@@ -406,6 +406,7 @@ export interface GameConfig {
     enemyAttackDoubleAfterAllSpawnMs?: number
     playerBounceProjectileSpeedPxPerSec?: number
     playerMeleeSweepHitStepMs?: number
+    playerMeleeQueueTriggerIntervalMs?: number
     playerMeleeSweepOriginOffsetX?: number
     playerMeleeSweepOriginOffsetY?: number
     playerMeleeSweepStartOffsetX?: number
@@ -424,6 +425,11 @@ export interface GameConfig {
     playerMeleeSweepScaleMax?: number
     laneEnemyMinGapDistance?: number
     spawnFrontGapDistance?: number
+    nextWaveAutoStartMs?: number
+    enemyKillGold: number
+    enemyKillGoldBoss: number
+    enemyKillGoldFxMs: number
+    enemyKillGoldFxRisePx: number
     spawnLanes: number
     defaultSpawnDurationMs: number
     enemyDefs: Array<{
@@ -448,6 +454,7 @@ export interface GameConfig {
       enemyShadowYOffset?: number
       enemyShadowScale?: number
       isFlying?: boolean
+      killGold?: number
     }>
     dayWaves: Array<{
       day: number

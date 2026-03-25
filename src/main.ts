@@ -36,6 +36,7 @@ import { CANVAS_W as BASE_W, CANVAS_H as BASE_H } from '@/config/layoutConstants
 import { EventBus, type SceneName } from '@/core/EventBus'
 import { PerfReporter, resolvePerfReporterConfig } from '@/perf/PerfReporter'
 import { markAssetUrlLoaded } from '@/core/AssetRuntimeTracker'
+import { SHOP_STATE_STORAGE_KEY as TOWER_SHOP_STATE_STORAGE_KEY } from '@/tower/core/RunState'
 import {
   isMobileImageDownscaleBypassed,
   loadImageTextureDownscaled,
@@ -67,6 +68,20 @@ type ItemBattleTarget = {
   id: string
   name_cn: string
   tier: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
+}
+
+function hasTowerStarterClassSelected(): boolean {
+  try {
+    const raw = localStorage.getItem(TOWER_SHOP_STATE_STORAGE_KEY)
+    if (!raw) return false
+    const parsed = JSON.parse(raw) as { state?: { starterClass?: unknown }; starterClass?: unknown } | null
+    const stateObj = (parsed && typeof parsed === 'object' && 'state' in parsed && parsed.state && typeof parsed.state === 'object')
+      ? parsed.state
+      : parsed
+    return String((stateObj as { starterClass?: unknown } | null | undefined)?.starterClass ?? '').trim().length > 0
+  } catch {
+    return false
+  }
 }
 
 let soakRoundTimer: number | null = null
@@ -834,7 +849,7 @@ async function bootstrap(): Promise<void> {
     if (mode === 'nobag') {
       SceneManager.goto('nobag-shop')
     } else if (mode === 'tower' || mode === 'towerdefense' || mode === 'td') {
-      SceneManager.goto('tower-shop')
+      SceneManager.goto(hasTowerStarterClassSelected() ? 'tower-battle' : 'tower-shop')
     } else if (mode === 'normal' || mode === 'adventure') {
       SceneManager.goto('shop')
     }

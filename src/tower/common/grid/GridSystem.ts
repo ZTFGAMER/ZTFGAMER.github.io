@@ -111,6 +111,11 @@ export class GridSystem {
     return this.items.get(instanceId)
   }
 
+  getCellInstanceId(col: number, row: number): string | null {
+    if (col < 0 || row < 0 || col >= this.cols || row >= this.activeRows) return null
+    return this.grid[col]?.[row] ?? null
+  }
+
   getAllItems(): PlacedItem[] {
     return Array.from(this.items.values())
   }

@@ -5,6 +5,7 @@
 // ============================================================
 
 import type { ShopSceneCtx } from '../ShopSceneContext'
+import { getConfig } from '@/tower/core/DataLoader'
 import { GridSystem } from '@/tower/common/grid/GridSystem'
 import type { ItemSizeNorm, PlacedItem } from '@/tower/common/grid/GridSystem'
 import { GridZone } from '@/tower/common/grid/GridZone'
@@ -50,6 +51,7 @@ export type GridInventoryCallbacks = {
 // ---- 格位查找 ----
 
 export function findFirstBackpackPlace(size: ItemSizeNorm, ctx: ShopSceneCtx): { col: number; row: number } | null {
+  if (getConfig().towerDefenseRules?.enabled === true) return null
   if (!ctx.backpackSystem || !ctx.backpackView) return null
   for (let row = 0; row < ctx.backpackSystem.getActiveRows(); row++) {
     for (let col = 0; col < ctx.backpackView.activeColCount; col++) {
@@ -120,9 +122,10 @@ export function placeItemToInventoryOrBattle(
   callbacks: GridInventoryCallbacks,
 ): boolean {
   if (!ctx.battleSystem || !ctx.battleView || !ctx.backpackSystem || !ctx.backpackView) return false
+  const towerMode = getConfig().towerDefenseRules?.enabled === true
   const size = normalizeSize(def.size)
   const battleSlot = findFirstBattlePlace(size, ctx)
-  const backpackSlot = battleSlot ? null : findFirstBackpackPlace(size, ctx)
+  const backpackSlot = towerMode ? null : (battleSlot ? null : findFirstBackpackPlace(size, ctx))
   if (!battleSlot && !backpackSlot) return false
 
   const id = nextId()

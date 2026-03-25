@@ -43,6 +43,7 @@ import {
   getBackpackZoneX,
   getBackpackZoneYByBattle,
   getBackpackRowsByDay,
+  getTowerBattleRowsByDay,
   getAdjustedBattleZoneY,
 } from '../ShopMathHelpers'
 import {
@@ -200,9 +201,12 @@ export function buildBattleZoneUI(
 
   // 格子系统
   const compactMode = cfg.gameplayModeValues?.compactMode
-  const activeCols = compactMode?.enabled
-    ? (compactMode.battleCols ?? 6)
-    : (cfg.dailyBattleSlots[0] ?? 4)
+  const towerMode = cfg.towerDefenseRules?.enabled === true
+  const activeCols = towerMode
+    ? 6
+    : (compactMode?.enabled
+      ? (compactMode.battleCols ?? 6)
+      : (cfg.dailyBattleSlots[0] ?? 4))
   const fallbackRows = compactMode?.enabled
     ? (compactMode.backpackRows ?? 3)
     : 3
@@ -212,9 +216,10 @@ export function buildBattleZoneUI(
   const maxBackpackRows = dynamicBackpackRows ? 3 : manualBackpackRows
   const backpackRows = getBackpackRowsByDay(ctx.currentDay || 1)
   const backpackCols = Math.max(3, Math.min(6, Math.round(getDebugCfg('gameplayBackpackCols') || fallbackCols)))
-  ctx.battleSystem   = new GridSystem(6)
+  const battleRows = towerMode ? getTowerBattleRowsByDay(ctx.currentDay || 1) : 1
+  ctx.battleSystem   = new GridSystem(6, battleRows)
   ctx.backpackSystem = new GridSystem(backpackCols, maxBackpackRows)
-  ctx.battleView     = new GridZone('上阵区', 6, activeCols, 1)
+  ctx.battleView     = new GridZone('上阵区', 6, activeCols, battleRows)
   ctx.backpackView   = new GridZone('背包', backpackCols, backpackCols, maxBackpackRows)
   ctx.backpackSystem.setActiveRows(backpackRows)
   ctx.backpackView.setActiveRowCount(backpackRows)

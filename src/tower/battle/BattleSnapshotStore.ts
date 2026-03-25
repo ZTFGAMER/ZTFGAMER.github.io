@@ -2,6 +2,8 @@ import type { CombatEntity } from '@/tower/common/grid/GridSystem'
 import type { TierKey } from '@/tower/shop/ShopManager'
 import type { ItemEnchantmentKey } from '@/tower/common/items/ItemEnchantment'
 
+const TOWER_BATTLE_SNAPSHOT_STORAGE_KEY = 'bigbazzar_tower_battle_snapshot_v1'
+
 export interface BattleSnapshotEntity extends CombatEntity {
   tier: TierKey
   tierStar?: 1 | 2
@@ -53,8 +55,8 @@ export interface BattleSnapshotBundle {
 
 let currentSnapshot: BattleSnapshotBundle | null = null
 
-export function setBattleSnapshot(snapshot: BattleSnapshotBundle): void {
-  currentSnapshot = {
+function cloneSnapshot(snapshot: BattleSnapshotBundle): BattleSnapshotBundle {
+  return {
     day: snapshot.day,
     activeColCount: snapshot.activeColCount,
     createdAtMs: snapshot.createdAtMs,
@@ -76,35 +78,45 @@ export function setBattleSnapshot(snapshot: BattleSnapshotBundle): void {
     ownerLevel: typeof snapshot.ownerLevel === 'number' ? Math.max(1, Math.round(snapshot.ownerLevel)) : undefined,
     pvpEnemyHeroId: snapshot.pvpEnemyHeroId,
   }
+}
+
+function saveSnapshotToStorage(snapshot: BattleSnapshotBundle): void {
+  try {
+    localStorage.setItem(TOWER_BATTLE_SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot))
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function loadSnapshotFromStorage(): BattleSnapshotBundle | null {
+  try {
+    const raw = localStorage.getItem(TOWER_BATTLE_SNAPSHOT_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as BattleSnapshotBundle | null
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.entities)) return null
+    return cloneSnapshot(parsed)
+  } catch {
+    return null
+  }
+}
+
+export function setBattleSnapshot(snapshot: BattleSnapshotBundle): void {
+  currentSnapshot = cloneSnapshot(snapshot)
+  saveSnapshotToStorage(currentSnapshot)
   console.log('[Snapshot] setBattleSnapshot day=' + snapshot.day + ' entities=' + snapshot.entities.length + ' pvpEnemyEntities=' + (snapshot.pvpEnemyEntities?.length ?? 'none'))
 }
 
 export function getBattleSnapshot(): BattleSnapshotBundle | null {
+  if (!currentSnapshot) currentSnapshot = loadSnapshotFromStorage()
   if (!currentSnapshot) return null
-  return {
-    day: currentSnapshot.day,
-    activeColCount: currentSnapshot.activeColCount,
-    createdAtMs: currentSnapshot.createdAtMs,
-    skillBarMoveStartAtMs: typeof currentSnapshot.skillBarMoveStartAtMs === 'number' ? currentSnapshot.skillBarMoveStartAtMs : undefined,
-    playerBackpackItemCount: typeof currentSnapshot.playerBackpackItemCount === 'number' ? Math.max(0, Math.round(currentSnapshot.playerBackpackItemCount)) : undefined,
-    playerGold: typeof currentSnapshot.playerGold === 'number' ? Math.max(0, Math.round(currentSnapshot.playerGold)) : undefined,
-    playerTrophyWins: typeof currentSnapshot.playerTrophyWins === 'number' ? Math.max(0, Math.round(currentSnapshot.playerTrophyWins)) : undefined,
-    playerBattleHp: typeof currentSnapshot.playerBattleHp === 'number' ? Math.max(1, Math.round(currentSnapshot.playerBattleHp)) : undefined,
-    showBasicSynthesisGuide: currentSnapshot.showBasicSynthesisGuide === true,
-    entities: currentSnapshot.entities.map((it) => ({ ...it })),
-    ownerSkillIds: currentSnapshot.ownerSkillIds ? [...currentSnapshot.ownerSkillIds] : undefined,
-    pvpEnemyEntities: currentSnapshot.pvpEnemyEntities?.map((it) => ({ ...it })),
-    pvpEnemySkillIds: currentSnapshot.pvpEnemySkillIds ? [...currentSnapshot.pvpEnemySkillIds] : undefined,
-    pvpEnemyBackpackItemCount: currentSnapshot.pvpEnemyBackpackItemCount,
-    pvpEnemyGold: currentSnapshot.pvpEnemyGold,
-    pvpEnemyTrophyWins: currentSnapshot.pvpEnemyTrophyWins,
-    pvpEnemyBattleHp: currentSnapshot.pvpEnemyBattleHp,
-    ownerHeroId: currentSnapshot.ownerHeroId,
-    ownerLevel: currentSnapshot.ownerLevel,
-    pvpEnemyHeroId: currentSnapshot.pvpEnemyHeroId,
-  }
+  return cloneSnapshot(currentSnapshot)
 }
 
 export function clearBattleSnapshot(): void {
   currentSnapshot = null
+  try {
+    localStorage.removeItem(TOWER_BATTLE_SNAPSHOT_STORAGE_KEY)
+  } catch {
+    // ignore storage failures
+  }
 }

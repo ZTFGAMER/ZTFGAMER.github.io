@@ -1982,6 +1982,15 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     step: 4,
     unit: 'px',
   },
+  itemRoundStatFontSize: {
+    labelCn:      '物品中心统计字号',
+    description:  '战斗中物品中心累计伤害/护盾统计字体大小',
+    defaultValue: 32,
+    min:  8,
+    max:  72,
+    step: 4,
+    unit: 'px',
+  },
   itemTierStarFontSize: {
     labelCn:      '物品星级字号',
     description:  '物品底部星级（★/★★）字体大小',

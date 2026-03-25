@@ -9,6 +9,7 @@ import type { CircleBtnHandle } from '../ShopSceneContext'
 import { CANVAS_W, BTN_RADIUS } from '@/tower/config/layoutConstants'
 import { CELL_SIZE, CELL_HEIGHT } from '@/tower/common/grid/GridZone'
 import { getConfig as getDebugCfg } from '@/tower/config/debugConfig'
+import { getConfig as getGameCfg } from '@/tower/core/DataLoader'
 import { Text } from 'pixi.js'
 import {
   getBattleItemScale,
@@ -179,6 +180,7 @@ export function applyAreaLabelLeftAlign(ctx: ShopSceneCtx): void {
 }
 
 export function applyLayoutFromDebug(ctx: ShopSceneCtx, callbacks: DebugLayoutCallbacks): void {
+  const towerMode = getGameCfg().towerDefenseRules?.enabled === true
   const topSafeYOffset = getTopLeftControlYOffset()
   const s = getBattleItemScale(ctx)
   const shopScale = getShopItemScale()
@@ -198,7 +200,7 @@ export function applyLayoutFromDebug(ctx: ShopSceneCtx, callbacks: DebugLayoutCa
     ctx.battleView.setCornerRadius(getDebugCfg('gridItemCornerRadius'))
     ctx.battleView.setCellBorderWidth(getDebugCfg('gridCellBorderWidth'))
   }
-  if (ctx.backpackView) {
+  if (ctx.backpackView && !towerMode) {
     const activeRows = getBackpackRowsByDay(ctx.currentDay)
     ctx.backpackSystem?.setActiveRows(activeRows)
     ctx.backpackView.setActiveRowCount(activeRows)
@@ -214,7 +216,7 @@ export function applyLayoutFromDebug(ctx: ShopSceneCtx, callbacks: DebugLayoutCa
     ctx.battleZoneTitleText.x = ctx.battleView.x + (ctx.battleView.activeColCount * CELL_SIZE * s) / 2
     ctx.battleZoneTitleText.y = ctx.battleView.y - BATTLE_ZONE_TITLE_TOP_GAP
   }
-  if (ctx.backpackZoneTitleText && ctx.backpackView) {
+  if (ctx.backpackZoneTitleText && ctx.backpackView && !towerMode) {
     ctx.backpackZoneTitleText.x = ctx.backpackView.x + (ctx.backpackView.activeColCount * CELL_SIZE * s) / 2
     ctx.backpackZoneTitleText.y = ctx.backpackView.y - BACKPACK_ZONE_TITLE_TOP_GAP
   }
@@ -228,7 +230,8 @@ export function applyLayoutFromDebug(ctx: ShopSceneCtx, callbacks: DebugLayoutCa
     ctx.refreshBtnHandle.setCenter(getDebugCfg('refreshBtnX'), getDebugCfg('refreshBtnY'))
   }
   if (ctx.phaseBtnHandle) {
-    ctx.phaseBtnHandle.setCenter(getDebugCfg('phaseBtnX'), getDebugCfg('phaseBtnY'))
+    if (towerMode) ctx.phaseBtnHandle.setCenter(CANVAS_W / 2, 92 + topSafeYOffset)
+    else ctx.phaseBtnHandle.setCenter(getDebugCfg('phaseBtnX'), getDebugCfg('phaseBtnY'))
   }
   if (ctx.goldText) {
     ctx.goldText.x = getDebugCfg('goldTextCenterX') - ctx.goldText.width / 2

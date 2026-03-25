@@ -267,6 +267,14 @@ export class BattleFXPool {
     }
   }
 
+  refreshSourceDefMap(): void {
+    this.sourceDefIdByInstanceId.clear()
+    if (!this.engine) return
+    for (const it of this.engine.getBoardState().items) {
+      this.sourceDefIdByInstanceId.set(it.id, it.defId)
+    }
+  }
+
   private getCachedProjectileTexture(urls: string[]): Texture | null {
     for (let i = 0; i < urls.length; i++) {
       const url = urls[i]!
@@ -622,6 +630,7 @@ export class BattleFXPool {
       projectileIconName?: string
       projectileScale?: number
       projectileStyle?: 'linear' | 'spin'
+      fadeOutMs?: number
     },
   ): void {
     this.attemptedProjectileCount += 1
@@ -756,6 +765,10 @@ export class BattleFXPool {
     const maxScale = Math.max(minScale, Number.isFinite(maxScaleRaw) ? maxScaleRaw : 1.15)
     const scaleYMin = Math.min(topY, bottomY)
     const scaleYMax = Math.max(topY, bottomY)
+    const fadeOutMsRaw = Number(opts?.fadeOutMs)
+    const fadeOutMs = Number.isFinite(fadeOutMsRaw) && fadeOutMsRaw > 0
+      ? Math.max(1, fadeOutMsRaw)
+      : 0
     let t = 0
     this.activeFx.push((dtMs) => {
       t += dtMs
@@ -781,6 +794,14 @@ export class BattleFXPool {
         visual.rotation += spinRadPerSec * spinDir * (dtMs / 1000)
       } else if (lockFacingRad !== null) {
         visual.rotation = lockFacingRad
+      }
+      if (fadeOutMs > 0) {
+        const remain = Math.max(0, duration - t)
+        if (remain <= fadeOutMs) {
+          visual.alpha = Math.max(0, remain / fadeOutMs)
+        } else {
+          visual.alpha = 1
+        }
       }
 
       if (p >= 1) {

@@ -40,6 +40,9 @@ import { clampPlayerLevel, getPlayerMaxLifeByLevel } from '../ui/PlayerStatusUI'
 import { getItemInfoPanelBottomAnchorByBattle } from '../ShopMathHelpers'
 import { getAllowedLevelsByStartingTier, levelToTierStar, pickQualityByPseudoRandomBag } from './QuickBuySystem'
 import { PvpContext } from '@/tower/pvp/PvpContext'
+import { SceneManager } from '@/tower/core/SceneManager'
+import { buildBattleSnapshot } from '../ShopBattleSnapshot'
+import { setBattleSnapshot } from '@/tower/battle/BattleSnapshotStore'
 
 // ============================================================
 // 本地常量
@@ -873,6 +876,10 @@ export function spawnPassiveJumpText(
   const risePx = 42
   const total = Math.max(1, moveMs + holdMs + fadeMs)
   const tick = () => {
+    if (label.destroyed || !ctx.passiveJumpLayer || ctx.passiveJumpLayer.destroyed) {
+      Ticker.shared.remove(tick)
+      return
+    }
     const elapsed = Date.now() - start
     if (elapsed <= moveMs) {
       const p = moveMs <= 0 ? 1 : Math.min(1, elapsed / moveMs)
@@ -1162,15 +1169,35 @@ export function grantStarterItemsByClass(
   },
 ): void {
   if (!ctx.battleSystem || !ctx.battleView || !ctx.backpackSystem || !ctx.backpackView) return
-  const classTag = pick === 'swordsman' ? '战士' : pick === 'archer' ? '弓手' : pick === 'assassin' ? '刺客' : ''
-  if (!classTag) return
-  const grantList: Array<{ item: ItemDef; tier: TierKey; star: 1 | 2 }> = getAllItems()
-    .filter((it) => {
-      if (isNeutralItemDef(it)) return false
-      if ((parseTierName(it.starting_tier) ?? 'Bronze') !== 'Bronze') return false
-      return getPrimaryArchetype(it.tags) === classTag
-    })
-    .map((it) => ({ item: it, tier: 'Bronze' as TierKey, star: 1 as const }))
+  const preset = STARTER_CLASS_PRESETS[pick]
+  if (!preset) return
+  const byNameCn = new Map<string, ItemDef>()
+  for (const it of getAllItems()) {
+    const key = `${it.name_cn ?? ''}`.trim()
+    if (!key || byNameCn.has(key)) continue
+    byNameCn.set(key, it)
+  }
+  const giftNames = Array.from(new Set(preset.gifts.map((name) => `${name}`.trim()).filter((name) => name.length > 0)))
+  let grantList: Array<{ item: ItemDef; tier: TierKey; star: 1 | 2 }> = giftNames
+    .map((name) => byNameCn.get(name))
+    .filter((item): item is ItemDef => Boolean(item))
+    .map((item) => ({
+      item,
+      tier: parseTierName(item.starting_tier) ?? 'Bronze',
+      star: 1 as const,
+    }))
+
+  if (grantList.length <= 0) {
+    const classTag = pick === 'swordsman' ? '战士' : pick === 'archer' ? '弓手' : pick === 'assassin' ? '刺客' : ''
+    if (!classTag) return
+    grantList = getAllItems()
+      .filter((it) => {
+        if (isNeutralItemDef(it)) return false
+        if ((parseTierName(it.starting_tier) ?? 'Bronze') !== 'Bronze') return false
+        return getPrimaryArchetype(it.tags) === classTag
+      })
+      .map((it) => ({ item: it, tier: 'Bronze' as TierKey, star: 1 as const }))
+  }
 
   for (const grant of grantList) {
     const item = grant.item
@@ -1184,15 +1211,23 @@ export function grantStarterItemsByClass(
     const visualTier = callbacks.toVisualTier(grant.tier, grant.star)
     if (battleSlot) {
       ctx.battleSystem.place(battleSlot.col, battleSlot.row, size, item.id, id)
-      void ctx.battleView.addItem(id, item.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
-        ctx.battleView!.setItemTier(id, visualTier)
-        ctx.drag?.refreshZone(ctx.battleView!)
+      const battleView = ctx.battleView
+      void battleView.addItem(id, item.id, size, battleSlot.col, battleSlot.row, visualTier).then(() => {
+        if (!ctx.battleView || ctx.battleView !== battleView || battleView.destroyed) return
+        battleView.setItemTier(id, visualTier)
+        ctx.drag?.refreshZone(battleView)
+      }).catch(() => {
+        // ignore async addItem cancellation during scene transition
       })
     } else if (backpackSlot) {
       ctx.backpackSystem.place(backpackSlot.col, backpackSlot.row, size, item.id, id)
-      void ctx.backpackView.addItem(id, item.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
-        ctx.backpackView!.setItemTier(id, visualTier)
-        ctx.drag?.refreshZone(ctx.backpackView!)
+      const backpackView = ctx.backpackView
+      void backpackView.addItem(id, item.id, size, backpackSlot.col, backpackSlot.row, visualTier).then(() => {
+        if (!ctx.backpackView || ctx.backpackView !== backpackView || backpackView.destroyed) return
+        backpackView.setItemTier(id, visualTier)
+        ctx.drag?.refreshZone(backpackView)
+      }).catch(() => {
+        // ignore async addItem cancellation during scene transition
       })
     }
 
@@ -1580,6 +1615,12 @@ export function ensureStarterClassSelection(
     callbacks.applyPhaseInputLock()
     callbacks.refreshShopUI()
     callbacks.ensureDailyChoiceSelection(stage)
+    if (getConfig().towerDefenseRules?.enabled === true) {
+      const snapshot = buildBattleSnapshot(ctx)
+      if (snapshot) setBattleSnapshot(snapshot)
+      ctx.pendingBattleTransition = true
+      SceneManager.goto('tower-battle')
+    }
   }
 
   const redrawCards = () => {

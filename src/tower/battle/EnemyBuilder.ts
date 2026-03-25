@@ -19,7 +19,7 @@ import {
 
 // ── 玩家快照 → CombatItemRunner ──────────────────────────────
 
-export function toRunner(entity: BattleSnapshotEntity, idPrefix: string): CombatItemRunner {
+export function toRunner(entity: BattleSnapshotEntity, _idPrefix: string): CombatItemRunner {
   const def = findItemDef(entity.defId)
   const level = Math.max(1, Math.min(8, Math.round(entity.level ?? 0)))
   const tierStarFromLevel = qualityScoreToTierStar(level)
@@ -41,7 +41,7 @@ export function toRunner(entity: BattleSnapshotEntity, idPrefix: string): Combat
     ? Math.max(0, entity.permanentDamageBonus)
     : 0
   return {
-    id: `${idPrefix}-${entity.instanceId}`,
+    id: entity.instanceId,
     side: 'player',
     defId: entity.defId,
     baseStats: {

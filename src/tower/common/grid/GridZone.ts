@@ -462,6 +462,7 @@ export class GridZone extends Container {
     this.itemLayer = new Container()
     this.hlOverlay = new Graphics()
     this.badgeLayer = new Container()
+    this.badgeLayer.sortableChildren = true
 
     this.addChild(this.cellBg)
     this.addChild(this.itemLayer)
@@ -625,6 +626,7 @@ export class GridZone extends Container {
 
      // 视觉层：整体缩放并居中留白
     const visual = new Container()
+    visual.sortableChildren = true
     visual.scale.set(visualScale)
     visual.pivot.set(pw / 2, ph / 2)
     visual.x = pw / 2
@@ -709,6 +711,7 @@ export class GridZone extends Container {
     const defaultUpgradeArrow = new Graphics()
     defaultUpgradeArrow.eventMode = 'none'
     defaultUpgradeArrow.visible = false
+    defaultUpgradeArrow.zIndex = 999
     const halfW = DEFAULT_UPGRADE_HINT_W / 2
     defaultUpgradeArrow.moveTo(halfW, 0)
     defaultUpgradeArrow.lineTo(DEFAULT_UPGRADE_HINT_W, DEFAULT_UPGRADE_HINT_H)
@@ -727,18 +730,20 @@ export class GridZone extends Container {
     visual.addChild(enchantBadge)
 
     const upgradeArrow = createArrowNode()
+    upgradeArrow.zIndex = 1000
     upgradeArrow.scale.set(UPGRADE_ARROW_SCALE)
 
     const crossUpgradeArrow = createArrowNode()
+    crossUpgradeArrow.zIndex = 1000
     crossUpgradeArrow.scale.set(UPGRADE_ARROW_SCALE)
 
     // 占位 Sprite（异步替换为真实图片）
     const sprite = new Sprite(Texture.WHITE)
     sprite.alpha  = 0
     visual.addChild(sprite)
-    visual.addChild(defaultUpgradeArrow)
-    visual.addChild(upgradeArrow)
-    visual.addChild(crossUpgradeArrow)
+    this.badgeLayer.addChild(defaultUpgradeArrow)
+    this.badgeLayer.addChild(upgradeArrow)
+    this.badgeLayer.addChild(crossUpgradeArrow)
     visual.addChild(enchantBadge)
 
     this.itemLayer.addChild(container)
@@ -969,6 +974,12 @@ export class GridZone extends Container {
     node.qualityDot.destroy()
     if (node.qualitySparkle.parent) node.qualitySparkle.parent.removeChild(node.qualitySparkle)
     node.qualitySparkle.destroy()
+    if (node.defaultUpgradeArrow.parent) node.defaultUpgradeArrow.parent.removeChild(node.defaultUpgradeArrow)
+    node.defaultUpgradeArrow.destroy()
+    if (node.upgradeArrow.parent) node.upgradeArrow.parent.removeChild(node.upgradeArrow)
+    node.upgradeArrow.destroy({ children: true })
+    if (node.crossUpgradeArrow.parent) node.crossUpgradeArrow.parent.removeChild(node.crossUpgradeArrow)
+    node.crossUpgradeArrow.destroy({ children: true })
     if (this.dragNode === node) this.dragNode = null
     if (this.selectedId === instanceId) this.selectedId = null
     this.upgradeHintIds.delete(instanceId)
@@ -1512,34 +1523,23 @@ export class GridZone extends Container {
     this.updateStatBadgePosition(node)
 
     const levelText = tierToLevelLabel(node.tier)
-    node.starText.text = this.itemFrameUseArchetypeColor
-      ? (arch.showLevel ? levelText : '')
-      : (arch.showLevel ? `${arch.label}${levelText}` : arch.label)
-    node.starText.style.fill = 0xffffff
-    node.starText.style.stroke = { color: 0x000000, width: 2 }
-    node.starText.style.fontSize = this.statBadgeFontSize
+    node.starText.text = arch.showLevel ? levelText : ''
+    node.starText.style.fill = arch.color
+    node.starText.style.stroke = { color: 0x000000, width: 5 }
+    node.starText.style.fontSize = 48
     node.starBadgeBg.clear()
-    const padX = 8
-    const padY = 3
-    const badgeW = Math.max(44, node.starText.width + padX * 2)
-    const badgeH = Math.max(16, node.starText.height + padY * 2)
-    node.starBadgeBg.roundRect(0, 0, badgeW, badgeH, 6)
-    node.starBadgeBg.fill({ color: arch.color, alpha: 0.95 })
-    node.starBadgeBg.roundRect(0, 0, badgeW, badgeH, 6)
-    node.starBadgeBg.stroke({ color: 0x000000, width: 2, alpha: 0.88 })
-    const showStarBadge = this.tierBadgeVisible && this.statBadgeMode !== 'archetype' && node.starText.text.length > 0
-    node.starBadgeBg.visible = showStarBadge
-    node.starText.visible = showStarBadge
+    node.starBadgeBg.visible = false
+    node.starText.visible = this.tierBadgeVisible && node.starText.text.length > 0
     this.updateNodeQualityDot(node)
 
     // 箭头位于物品可视区域中心
-    node.upgradeArrow.x = frameInset + frameW / 2
-    node.crossUpgradeArrow.x = frameInset + frameW / 2
-    node.upgradeBaseY = frameInset + frameH / 2
+    node.upgradeArrow.x = node.container.x + frameInset + frameW / 2
+    node.crossUpgradeArrow.x = node.container.x + frameInset + frameW / 2
+    node.upgradeBaseY = node.container.y + frameInset + frameH / 2
     node.upgradeArrow.y = node.upgradeBaseY
     node.crossUpgradeArrow.y = node.upgradeBaseY
-    node.defaultUpgradeArrow.x = frameInset + 8
-    node.defaultUpgradeBaseY = frameInset + frameH - DEFAULT_UPGRADE_HINT_H - 8
+    node.defaultUpgradeArrow.x = node.container.x + frameInset + 8
+    node.defaultUpgradeBaseY = node.container.y + frameInset + frameH - DEFAULT_UPGRADE_HINT_H - 8
     node.defaultUpgradeArrow.y = node.defaultUpgradeBaseY
 
     if (node.selectedG.visible) this.redrawSelection(node)
@@ -2037,10 +2037,11 @@ export class GridZone extends Container {
     const badgeH = node.starBadgeBg.height
     node.starBadgeBg.x = node.container.x + frameInset + frameW / 2 - badgeW / 2 + this.tierStarOffsetX
     node.starBadgeBg.y = node.container.y + frameInset + frameH - badgeH - 1 + this.tierStarOffsetY
-    node.starText.x = node.starBadgeBg.x + (badgeW - node.starText.width) / 2
-    node.starText.y = node.starBadgeBg.y + (badgeH - node.starText.height) / 2
+    node.starText.x = node.container.x + frameInset + 8 + this.tierStarOffsetX
+    node.starText.y = node.container.y + frameInset + frameH - node.starText.height - 6 + this.tierStarOffsetY
     const ammoBaseY = node.container.y + frameInset + frameH - node.ammoBadge.height - 4 + this.ammoBadgeOffsetY
-    const ammoMaxY = node.starBadgeBg.y - node.ammoBadge.height - 4
+    const levelTopY = node.starText.visible ? node.starText.y : node.starBadgeBg.y
+    const ammoMaxY = levelTopY - node.ammoBadge.height - 4
     node.ammoBadge.x = node.container.x + frameInset + (frameW - node.ammoBadge.width) / 2
     node.ammoBadge.y = node.starBadgeBg.visible ? Math.min(ammoBaseY, ammoMaxY) : ammoBaseY
     node.reloadText.x = node.ammoBadge.x + (node.ammoBadge.width - node.reloadText.width) / 2

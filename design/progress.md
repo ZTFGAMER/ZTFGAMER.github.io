@@ -1,5 +1,739 @@
 # 大巴扎 — 开发进度记录
 
+## 可升级上箭头提升到 CD/统计文本之上（2026-03-25）
+
+- 用户反馈：上箭头仍被 CD 遮罩和伤害统计数字盖住。
+- 已完成：
+  - `src/tower/common/grid/GridZone.ts`
+    - 将升级箭头（默认/拖拽同物品/拖拽跨物品）从物品 `visual` 层迁移到 `badgeLayer`；
+    - `badgeLayer` 开启 `sortableChildren`，箭头继续保持高 `zIndex`；
+    - 箭头坐标改为基于 `node.container` 的区内绝对坐标，确保位置与物品同步；
+    - 物品删除时补充箭头节点销毁，避免悬挂。
+  - `src/tower/battle/BattleScene.ts`
+    - 战斗中在挂载 CD/冻结/状态/统计层后再次调用 `bringStatBadgesToFront()`，保证包含升级箭头的层始终在最上。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“上箭头压住 CD 与统计文本”。
+
+## 可升级上箭头渲染层级提升为最高（2026-03-25）
+
+- 用户需求：战斗中的可升级上箭头渲染层级改为最高。
+- 已完成：
+  - `src/tower/common/grid/GridZone.ts`
+    - 物品视觉容器 `visual` 开启 `sortableChildren = true`；
+    - 默认升级箭头 `defaultUpgradeArrow` 设为高层级 `zIndex=999`；
+    - 可拖拽升级箭头 `upgradeArrow/crossUpgradeArrow` 设为最高层 `zIndex=1000`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“上箭头始终压在物品表现最上层”。
+
+## 验收优化追加（2026-03-25，购买按钮改为两行“购买 + 金币x/x”）
+
+- 用户需求：购买按钮显示“购买”字样，并换行显示“金币图标 + x/x”。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增 `formatTowerBattleBuyButtonText(gold, cost)`，统一生成两行文案：`购买\n💰x/x`；
+    - `makeBuyButton()` 初始文案改为两行居中显示；
+    - 每帧刷新逻辑同步改为两行文案，确保金币变化时实时更新。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收购买按钮两行样式与实时更新表现。
+
+## 塔防可升级提示统一为正向上箭头（2026-03-25）
+
+- 用户需求：战斗中的可升级提示全部使用正向上箭头，不同物品可合成时也要显示同款上箭头。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `refreshBattleSynthesisGuideArrows()` 改为不再区分同物品/不同物品箭头；
+    - 所有可合成目标统一进入默认升级提示集合，统一显示正向上箭头。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“同物品/不同物品均显示上箭头”。
+
+## 验收优化追加（2026-03-25，塔防非近战武器无目标也释放上抛表现）
+
+- 用户需求：塔防模式下，除近战武器外，其它武器在攻击距离内没有敌人时也要立即释放；朝正上方飞到攻击距离位置后消失；消失前 `0.1s` 渐隐；仅表现不造成伤害。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 非近战武器在“无目标”时不再卡住冷却，改为照常触发一次攻击流程（消耗冷却并触发 `battle:item_fire`）；
+    - 该次触发不入伤害队列，仅发射表现事件（无 `targetId`），保持“只有表现没有伤害”；
+    - 保持“有敌人但都在射程外”时的 `rangeBlocked` 标记，便于现有调试/显示口径不变。
+  - `src/tower/battle/BattleScene.ts`
+    - 处理玩家 `battle:item_fire` 的无目标分支：投射物从物品位置沿正上方飞行；
+    - 飞行终点按攻击距离映射到塔防透视纵深（`nearY/farY/levelDistance`），到达后结束。
+  - `src/tower/battle/BattleFXPool.ts`
+    - `spawnProjectile` 新增可选 `fadeOutMs`，用于末段淡出；
+    - 本需求分支传入 `fadeOutMs=100`，实现消失前 `0.1s` 渐隐。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“非近战无目标上抛发射 + 末段0.1秒半透消失 + 无伤害”。
+
+- 验收追加修正（同日，飞行终点未到最远射程）：
+  - 用户反馈：无目标上抛未飞到攻击距离最远位置。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 无目标上抛终点从“基于起点减去位移”改为“按塔防透视坐标直接映射攻击距离最远点”：
+        - `y = farY + (nearY - farY) * (1 - clamp(attackDistance, 0..levelDistance)/levelDistance)`；
+      - 保持 `x` 不变，继续沿正上方飞行；超出关卡纵深的射程按 `farY` 钳制。
+  - 当前阶段：等待用户复测“无目标子弹是否稳定飞到该武器攻击距离最远位置”。
+
+- 验收追加修正（同日，要求无目标分支改直线并体现透视内收）：
+  - 用户反馈：希望无目标发射不要抛物线，而是直线飞行；受近大远小透视影响应略向道路中心内收（看起来斜着向中心飞）。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 无目标分支终点 `x` 从固定 `from.x` 改为按道路透视映射：基于 `roadNearCenterX/roadFarCenterX` 与 `roadNearWidthRatio/roadFarWidthRatio` 计算同车道在最远射程处的 `x`；
+      - 发射样式强制为 `projectileStyle: 'linear'`，禁用抛物线弧线轨迹；
+      - 保持终点 `y` 仍由攻击距离映射，末段 `0.1s` 渐隐。
+  - 当前阶段：等待用户复测“无目标发射是否为直线且随透视向中心收拢”。
+
+## 验收优化追加（2026-03-25，整理/倍速按钮再收窄与倍速文案）
+
+- 用户反馈：整理和倍速按钮横向仍偏长，要求缩小 50%；倍速按钮显示为“倍速:1x”。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 顶部动作按钮宽度由 `BTN_RADIUS * 4` 调整为 `BTN_RADIUS * 2`（收窄 50%）；
+    - 倍速按钮文案统一为 `倍速:${battleSpeed}x`（初始即 `倍速:1x`，切换时实时更新）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“按钮宽度”和“倍速文案”表现。
+
+## 物品中心统计字号可配置 + 数值缩写 + 合成后重置（2026-03-25）
+
+- 用户需求：
+  - 物品中心伤害/护盾统计字号可配置，默认 `32px`；
+  - 文本不超过物品框宽度；`>1000` 显示 `x.xK`，`>1000000` 显示 `x.xM`；
+  - 参与合成的物品统计文本应清掉并重新累计。
+- 已完成：
+  - `src/tower/config/debugConfig.ts`
+    - 新增可调参数 `itemRoundStatFontSize`（默认 `32`，范围 `8~72`）。
+  - `data/tower_debug_defaults.json`
+    - 新增 `itemRoundStatFontSize: 32`。
+  - `src/tower/battle/BattleScene.ts`
+    - 物品中心统计文本字号改为读取 `itemRoundStatFontSize`；
+    - 新增数值缩写格式：`>1,000 => x.xK`，`>1,000,000 => x.xM`；
+    - 增加宽度约束：文本超出物品框时按 X 方向缩放，保证不越框；
+    - 合成成功后清理参与合成的两个实例统计（伤害/护盾与中心文本），从新物品重新累计。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“字号配置、缩写显示、合成后重置统计”。
+
+## 验收优化追加（2026-03-25，近战武器共享触发队列）
+
+- 用户需求：塔防模式下近战武器共享触发节奏；多个近战武器同时转好 CD 时先入队，再由队列按固定间隔（期望 0.1 秒）顺序释放。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 新增近战触发队列：近战武器 CD 转好后不再立即释放，而是将触发请求写入 `pendingPlayerMeleeTriggers`；
+    - 新增队列消费时序：`consumePendingPlayerMeleeTriggers()` 按统一间隔顺序触发，支持同帧多次补发；
+    - 新增统一触发入口 `firePlayerItemTrigger()`，复用 `item_trigger`、连发入列、护盾/治疗等逻辑，保持近战与远程触发副作用一致；
+    - 在 `start()/syncPlayerEntities()` 中接入队列状态清理与过滤，避免阵容热更新后残留无效触发。
+  - `src/tower/common/items/ItemDef.ts`
+    - 扩展塔防配置类型：新增 `towerDefenseRules.playerMeleeQueueTriggerIntervalMs?: number`。
+  - `data/tower_game_config.json`
+    - 新增 `tower_defense_rules.playerMeleeQueueTriggerIntervalMs = 100`（0.1 秒）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“近战武器共享队列 + 每 0.1 秒顺序释放”实机表现。
+
+## 验收优化追加（2026-03-25，战斗顶部“统计”改“整理”并统一按钮形态）
+
+- 用户需求：
+  - 左侧“统计”按钮改为“整理”按钮；
+  - 规则/样式同商店背包整理按钮；
+  - 整理作用于上阵区，按职业+等级排序；
+  - 右侧倍速按钮按整理按钮的大小与形式统一。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 移除战斗内左上“统计”入口，新增“整理”按钮；
+    - 新增 `organizeBattleZoneItemsByRule()`：对上阵区物品按职业顺序（战士/弓手/刺客/功能/其他）与等级降序排序，并用 AutoPack 重排到当前可用列；
+    - 新增统一按钮构建 `makeTopRectActionButton()`：采用与商店矩形操作按钮一致的描边/填充/圆角视觉；
+    - 右侧倍速按钮改为同款尺寸与样式（与整理按钮一致）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“整理排序结果”和“左右按钮样式统一”表现。
+
+## 塔防物品表按新清单更新（2026-03-25）
+
+- 用户需求：按提供清单更新刺客/弓手/战士物品；圆盾改为默认加成；其余“至少为”语义按新表执行。
+- 已完成：
+  - `data/tower_items.json`
+    - 调整条目：`item2 item3 item5 item11 item13 item17 item18 item24 item40 item44 item46 item52 item56`；
+    - 重点变更：
+      - 将弹射/分裂相关文案切换为“至少为”语义（`item5 item11 item17 item24`）；
+      - `item44` 伤害档改为 `50|67|91|123`，描述改为“距离越远最高 5 倍”；
+      - `item18` 与 `item56` 冷却档改为 `30000|24000`；
+      - 圆盾描述改为默认近战增伤（不再“每次使用后”）。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 适配新文案语义：
+      - 识别“弹射次数至少为…”与“首次弹射时至少分裂…”；
+      - 圆盾改为开战被动加成近战伤害；
+      - 弓手专属间隔缩短/伤害加成行适配新文案（不再依赖旧“所有物品…弓手翻倍”唯一写法）；
+      - 狙击步枪改为距离倍率逻辑（最高 5 倍），移除旧“唯一伤害物品 3 倍”逻辑；
+      - 充能巨剑护盾充能默认回退值改为 `1s`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“新物品表 + 新语义在塔防战斗中的实际表现”。
+
+- 验收追加修正（同日，禁用换位/挤出）：
+  - 用户需求：塔防战斗上阵区拖拽时不要任何换位逻辑和挤出逻辑。
+  - 已完成：
+    - `src/tower/common/grid/DragController.ts`
+      - 新增 `setRearrangeSuppressed(true/false)`；
+      - 开启时：落点不可放置即直接回弹，不再触发 squeeze/swap/repack；
+      - 高亮阶段同样不再进入换位/挤出规划。
+    - `src/tower/battle/BattleScene.ts`
+      - 塔防战斗编辑拖拽初始化时启用 `setRearrangeSuppressed(true)`；
+      - 拖拽开始时继续抑制 squeeze 预览，保证行为一致。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“塔防战斗拖拽仅移动/合成，不换位不挤出”。
+
+- 验收追加修正（同日，上阵区行数按天数）：
+  - 用户需求：塔防上阵区按天数扩展行数：
+    - Day1-2：1 行（6 格）
+    - Day3-8：2 行
+    - Day9+：3 行
+    且在 1/2 行时，战斗区与我方血条整体下移（参考其他模式高度变化）。
+  - 已完成：
+    - `src/tower/shop/ShopMathHelpers.ts`
+      - 新增 `getTowerBattleRowsByDay(day)`；
+      - 塔防模式 `getAdjustedBattleZoneY(day)` 按行数返回动态下移后的 Y。
+    - `src/tower/shop/ui/ShopBattleZoneBuilder.ts`
+      - 塔防上阵区初始行数改为 `getTowerBattleRowsByDay(currentDay)`。
+    - `src/tower/shop/ShopScene.ts`
+      - `setDay()` 时同步更新塔防 `battleSystem`/`battleView` 活跃行数，并刷新拖拽区域。
+    - `src/tower/battle/BattleScene.ts`
+      - 战斗场景玩家区初始行数改为按天数动态计算；
+      - 原地进入下一波时同步刷新玩家区行数与布局；
+      - 我方血条 Y 按同口径在 1/2 行时下移。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“1/2/3行分段扩展 + 战斗区/我方血条随行数下移”。
+
+- 验收追加修正（同日，在场生效口径）：
+  - 用户反馈：购买/合成后有时效果不生效（示例：双剑双盾时只部分生效）。
+  - 根因：战斗内 `syncPlayerEntities()` 会保留旧 baseStats，导致阵容变化后被动加成未按“当前在场”重新结算。
+  - 已完成：
+    - `src/tower/battle/TowerDefenseEngine.ts`
+      - `syncPlayerEntities()` 改为阵容同步后统一 `applyPassiveAurasOnBattleStart()`，保证购买/合成/移除/移动后即时重算在场被动；
+      - 新物品文案语义适配（至少为/弓手专属/狙击距离倍率/圆盾默认增伤等）同步生效。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“在场即生效/离场即失效”与双剑双盾案例。
+
+## 塔防过关按钮改“开始下一波”并增加5秒自动开波（2026-03-25）
+
+- 用户需求：
+  - 过关后按钮文案改为“开始下一波”；
+  - 默认 5 秒倒计时，倒计时结束自动开始下一波。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 结算后按钮文案改为“开始下一波”；
+    - 塔防胜利结算后进入自动倒计时，按钮实时显示 `开始下一波 (N)`；
+    - 倒计时到 0 自动触发下一波，无需手点；
+    - 点击按钮仍可立即开始下一波（提前跳过倒计时）；
+    - 新增倒计时状态清理，避免跨波/离场残留。
+  - `src/tower/common/items/ItemDef.ts`
+    - 扩展塔防配置类型：`nextWaveAutoStartMs`。
+  - `data/tower_game_config.json`
+    - 新增 `tower_defense_rules.nextWaveAutoStartMs = 5000`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“开始下一波文案 + 5秒自动开波”。
+
+## 验收优化追加（2026-03-25，物品中心累计数值按波次清零）
+
+- 用户反馈：物品中心显示的累计伤害/护盾应在进入下一波时清零重新统计。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增 `clearItemRoundStatTracking()`，统一清空本轮累计映射并隐藏中心文本；
+    - 在战斗场景首次启动与“战斗内原地开下一波”流程都调用该方法，确保每一波从 0 开始累计。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“切下一波后中心累计数字归零”。
+
+## 验收优化追加（2026-03-25，物品中心显示本轮总伤害/总护盾）
+
+- 用户需求：在物品图标中心实时显示本轮累计数值（伤害或护盾）；样式为字号 24、黑色描边 3px，伤害红色、护盾黄色。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增按物品累计映射：分别记录我方/敌方物品本轮总伤害与总护盾；
+    - 接入实时事件：
+      - 在 `battle:take_damage` 中累计来源物品总伤害；
+      - 在 `battle:gain_shield` 中累计来源物品总护盾；
+    - 新增中心文本层渲染：每帧按当前棋盘物品位置更新中心文本，实时刷新显示；
+    - 文本样式：`fontSize=24`、`stroke=0x000000 width=3`、伤害 `0xff4b4b`、护盾 `0xffd84d`；
+    - 显示规则：优先显示伤害累计（>0），否则显示护盾累计（>0）；拖拽离开格子时隐藏。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“中心累计数字样式与实时刷新”表现。
+
+## 塔防合成预览隐藏物品名（2026-03-25）
+
+- 用户反馈：合成预览里不该显示原物品名称（结果一定不是该物品）。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `showBattleSynthesisPreviewInfo()` 的自定义展示增加 `hideName: true`；
+    - 现在仅显示问号图标与“升级为随机物品（Tier#Star）”文案，不再显示来源物品名。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“合成预览去掉物品名称”。
+
+## 塔防改为“击杀掉金币”经济与购买展示（2026-03-25）
+
+- 用户需求：
+  - 每天不再发默认金币；
+  - 怪物死亡掉金币，并在怪物位置显示“金币图标 +x 跳字”；
+  - 购买按钮显示为“当前金币/价格”，并带金币图标（示例 `30/3`）。
+- 已完成：
+  - `data/tower_game_config.json`
+    - 为 `tower_defense_rules.enemyDefs` 增加 `killGold` 配置，并按你给的表逐个填写：
+      - `enemy1=1`, `enemy2=2`, `enemy3=2`, `enemy7=2`, `boss2=20`,
+      - `enemy5=2`, `enemy6=4`, `enemy8=4`, `enemy4=4`, `boss3=40`,
+      - `enemy9=3`, `enemy10=6`, `enemy11=6`, `enemy12=6`, `boss=60`。
+    - 增加金币掉落表现参数：`enemyKillGoldFxMs`、`enemyKillGoldFxRisePx`。
+  - `src/tower/common/items/ItemDef.ts`
+    - 扩展塔防配置类型：新增 `enemyKillGold / enemyKillGoldBoss / enemyKillGoldFxMs / enemyKillGoldFxRisePx` 与 `enemyDefs[].killGold`。
+  - `src/tower/battle/BattleScene.ts`
+    - 塔防敌人死亡事件中发放金币到战斗内 `editableGold`；
+    - 在敌人当前位置生成“💰 +x”上浮淡出表现；
+    - 每次击杀加金后即时回写战斗快照，刷新不丢金币；
+    - 下一波开始不再叠加“按天默认金币”；
+    - 底部购买按钮文案改为 `💰 当前金币/价格`（如 `💰 30/3`）；
+    - 购买价格改为读取 `shopRules.quickBuyFixedPrice['Bronze#1']`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“击杀掉金 + 金币跳字 + 购买按钮文案 + 无每日默认金币”。
+
+## 验收优化追加（2026-03-25，拖拽中隐藏白色选中边框）
+
+- 用户反馈：拖拽中的物品仍出现白色边框，不希望在拖拽时显示。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 在 `editableDrag.onDragStart` 与 `editableDrag.onDragMove` 的信息弹窗刷新后，立即清理 `playerZone` 选中态；
+    - 保留拖拽时物品信息面板更新，但不再给拖拽物品显示白色选中边框。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“拖拽中无白色边框、落格后按常规选中逻辑显示”。
+
+## 验收优化追加（2026-03-25，回退拖拽 CD 尺寸改动并改为拖拽时不显示 CD）
+
+- 用户反馈：上一版“拖拽中 CD 对齐修复”影响了基础状态下 CD 大小。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 回退到原本按格子绘制的 CD 尺寸/圆角逻辑，恢复基础显示一致性；
+    - 新增规则：若物品当前不在所属 `GridZone` 树内（即拖拽中被移到 dragLayer），则不绘制该物品 CD 覆盖层；
+    - 结果为“只有在格子里显示 CD，拖动中不显示 CD，放下后恢复显示”。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“拖拽中隐藏 CD、落格后恢复且大小正确”。
+
+## 塔防过关后“开始挑战”改为战斗内无黑屏直开下一波（2026-03-25）
+
+- 用户反馈：过关后点击“开始挑战”会黑屏并有重新加载感；希望留在战斗内直接开下一波（敌人直接出现）。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - “开始挑战”按钮在塔防模式下不再走 `transition.beginExit()` 场景切换；
+    - 新增战斗内原地开波流程 `startNextTowerWaveInPlace()`：
+      - 基于当前编队快照直接推进到下一天/下一波；
+      - 按原规则结算过关金币（胜利时加 `dailyGoldByDay[nextDay]`）；
+      - 原地重启引擎并刷新可编辑编队，不触发黑屏转场；
+      - 清理上一波敌人表现层状态，避免残留飞行/死亡动画对象。
+    - 新增波次切换中保护位 `towerWaveAdvanceInProgress`，防止重复点击触发。
+  - `src/tower/battle/BattleSettlement.ts`
+    - 新增 `prepareForNextWave()`，用于原地开波前清理结算态与面板可见性，不销毁面板结构。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“点击开始挑战后无黑屏、战斗内直接刷下一波”。
+
+## 验收优化追加（2026-03-25，拖拽中 CD 与框体尺寸/中心对齐）
+
+- 用户反馈：拖拽中的物品 CD 覆盖层与物品框体尺寸不一致，且中心未对齐。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 重写 `drawCooldownOverlay()` 的拖拽坐标换算：改为基于物品容器当前父节点的全局坐标，推导实时矩形后再转换回 zone 坐标；
+    - CD 覆盖层的 inset 与圆角改为按实时矩形缩放，匹配物品框体视觉尺寸；
+    - 进度线/辉光也同步使用实时尺寸与中心计算，避免拖拽时偏移。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“拖拽中 CD 覆盖层与框体中心、大小一致”。
+
+## 验收优化追加（2026-03-25，塔防拖拽时 CD 覆盖层跟随物品）
+
+- 用户反馈：塔防模式下，拖拽中的物品若处于冷却中，CD 覆盖层仍停留在原格子，没有跟随拖拽物品。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 调整 `drawCooldownOverlay()` 的位置来源：优先使用 `GridZone` 当前节点容器的实时坐标（通过全局坐标转换回 zone 本地）绘制 CD 覆盖层；
+    - 保留逻辑格子坐标作为兜底（节点不存在时）。
+- 结果：拖拽过程中，冷却覆盖层会跟随物品实时移动，不再残留在原格子。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“拖拽中 CD 覆盖层跟随”表现。
+
+## 塔防拖拽后战斗内成长属性丢失修复（2026-03-25）
+
+- 用户反馈：战斗中拖动物品后，物品在战斗中累计的额外属性会丢失（如木弓“每次攻击后伤害+1”）。
+- 根因：
+  - 拖拽后会触发 `syncPlayerEntities()` 重建运行态；
+  - 重建时 `toRunner()` 重新按配置初始化 `baseStats`，覆盖了战斗中累计到 `baseStats` 的成长值。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 在 `syncPlayerEntities()` 中对“同一物品身份（id/defId/tier/tierStar 不变）”保留旧 `baseStats`；
+    - 这样仅换位/拖拽时会继承战斗内累计成长，不再被重建清零；
+    - 升级/变更品级时仍走新配置重建，避免错误继承。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“拖拽换位后成长属性仍保留”。
+
+## 塔防战斗购买按钮样式与商店统一（2026-03-25）
+
+- 用户需求：战斗中底部“购买”按钮与商店购买按钮完全一致（样式和大小）。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 战斗内购买按钮尺寸改为与商店一致：`BTN_RADIUS * 4` × `BTN_RADIUS * 2`；
+    - 圆角逻辑与商店一致（基于 `gridItemCornerRadius + 8`）；
+    - 描边/填充改为商店同款：`stroke 0x44aaff width 3` + `fill 0x44aaff alpha 0.18`；
+    - 文本样式改为商店同款：颜色 `0x44aaff`，字号 `textSizes.phaseButtonLabel`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“战斗内购买按钮与商店购买按钮一致性”。
+
+## 验收优化追加（2026-03-25，修复初始赠送图标与 ShopHeroSystem 空指针）
+
+- 用户反馈：
+  - 塔防模式初始选择职业后，赠送的两个物品图标不符合预期；
+  - 控制台报错：
+    - `ShopHeroSystem.ts:883`：`Cannot set properties of null (setting 'y')`
+    - `ShopHeroSystem.ts:1191`：`Cannot read properties of null (reading 'setItemTier')`
+- 已完成：
+  - `src/tower/shop/systems/ShopHeroSystem.ts`
+    - 修复被动跳字 ticker 生命周期：当节点/图层已销毁时先移除 ticker 并提前返回，避免销毁后继续写 `label.y`；
+    - 修复初始授予物品逻辑：优先按 `STARTER_CLASS_PRESETS[pick].gifts` 的两件礼物（按中文名）发放，避免“职业池全量筛选”导致首发图标偏移；
+    - 修复异步加物品后的空引用：`addItem(...).then(...)` 中增加 `battleView/backpackView` 实例一致性与销毁态校验，避免场景切换后读取空对象；
+    - 为 `addItem` 异步链增加兜底 `catch`，避免转场取消导致 Promise 冒泡报错。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“职业初始赠送图标”和“进入战斗转场时报错”是否已消失。
+
+## 塔防战斗左上角新增“重新开始”按钮（2026-03-25）
+
+- 用户需求：在塔防模式战斗中（非商店）左上角增加“重新开始”按钮。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增顶部左上角 `重新开始` 按钮（塔防战斗内显示）；
+    - 点击后执行重开流程：清理当前运行状态/生命/胜场、清空战斗快照与结算结果，并刷新页面；
+    - 按钮在回放模式或场景过渡中自动隐藏。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“战斗中左上角重开按钮”交互。
+
+## 塔防刷新后保留战斗物品与进度（2026-03-25）
+
+- 用户反馈：塔防模式刷新页面后，战斗内物品与进度未保留。
+- 已完成：
+  - `src/tower/battle/BattleSnapshotStore.ts`
+    - 为塔防战斗快照新增 localStorage 持久化键：`bigbazzar_tower_battle_snapshot_v1`；
+    - `setBattleSnapshot()` 时自动写入本地存储；
+    - `getBattleSnapshot()` 在内存为空时自动从本地存储恢复；
+    - `clearBattleSnapshot()` 同步清理本地存储，避免旧局残留。
+- 结果：刷新页面后会恢复上次塔防战斗快照（含物品、天数、金币等）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“塔防刷新后保留战斗状态”表现。
+
+- 验收追加修正（同日）：
+  - 用户反馈：刷新后仍未保留。
+  - 根因：战斗内购买/拖拽/合成/出售后的最新编队只同步到引擎内存，未在每次编辑后回写 `BattleSnapshotStore`，导致刷新读取到旧快照。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 在 `syncEngineWithEditable()` 中新增 `setBattleSnapshot(snap)`；
+      - 现在每次战斗内编辑后都会立即持久化最新快照（物品、等级、金币、布局）。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户复测“战斗中改动后立刻刷新仍保留”。
+
+## 塔防入口改为“选职业后直入战斗”+ 移除战斗设置按钮（2026-03-25）
+
+- 用户需求：
+  - 进入塔防模式时不要进入商店，选完职业后直接进入战斗；
+  - 去掉塔防战斗中的“设置”按钮。
+- 已完成：
+  - `src/menu/MenuScene.ts`
+    - 塔防入口改为分流：若已有塔防职业存档则直接进 `tower-battle`；否则先进 `tower-shop` 仅用于职业选择。
+  - `src/tower/shop/systems/ShopHeroSystem.ts`
+    - 职业选择确认后，塔防模式下立即构建战斗快照并跳转 `tower-battle`，不再停留商店。
+  - `src/main.ts`
+    - URL 模式 `?mode=tower|towerdefense|td` 同步为“有职业直入战斗，无职业进职业选择页”的分流逻辑。
+  - `src/tower/battle/BattleScene.ts`
+    - 移除“设置”按钮相关创建、布局与逻辑，战斗界面不再显示该按钮。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“塔防入口路径 + 职业选择后直入战斗 + 设置按钮移除”。
+
+## 塔防改为战斗主界面流程（2026-03-25）
+
+- 用户确认口径：
+  - 波次推进：`1a`（点击开始挑战进入下一天/下一波）；
+  - 开始时机：`2a`（上一波结束后再开始下一波）；
+  - 胜负结算：`3a`（保留现有结算与失败规则）；
+  - 空间策略：`4a`（满格购买失败，不走背包兜底）；
+  - 底部按钮：保留购买与拖拽出售，移除整理与底部战斗按钮；
+  - 新建/合成 CD：`6a`（从 0 开始计时）；
+  - 等级数字显示范围：`7a`（塔防上阵区）；
+  - 等级样式：`8`（48px、职业色、黑描边 5px）。
+- 已完成：
+  - `src/tower/shop/ui/ShopBattleZoneBuilder.ts`
+    - 塔防模式上阵区改为 `3行×6列`（`GridSystem(6, 3)` + `GridZone(..., zoneRows=3)`）。
+  - `src/tower/shop/systems/ShopGridInventory.ts`
+    - 塔防模式禁用背包落位；购买/发放仅尝试上阵区，满格直接失败。
+  - `src/tower/shop/ShopScene.ts`
+    - 塔防模式 UI 改为战斗主界面：隐藏商店面板与背包区，仅显示上阵区；
+    - 阶段按钮文案固定为“开始挑战”；
+    - 进入场景时默认不展示背包；
+    - `setDay()` 在塔防模式下不再驱动背包区布局。
+  - `src/tower/shop/ui/ShopUIBuilders.ts`
+    - 移除“整理”按钮；
+    - “开始挑战”按钮上移到顶部中间。
+  - `src/tower/shop/ui/ShopDebugLayout.ts`
+    - 塔防模式下调试布局不再重排背包区；
+    - “开始挑战”按钮固定顶部中间位置。
+  - `src/tower/battle/BattleScene.ts`
+    - 玩家战斗区行数按快照实体最大 `row` 自动推导（支持 3 行显示）。
+  - `src/tower/common/grid/GridZone.ts`
+    - 物品等级数字改为左下角显示：`48px`、职业色、黑描边 `5px`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“3×6上阵区 + 无背包 + 顶部开始挑战 + 等级左下显示”整体手感。
+
+- 验收追加修正（同日）：
+  - 用户反馈：上阵区显示成 `3×5`；位置会受不同天数（原背包高度逻辑）影响；且不希望切换到战斗场景。
+  - 已完成：
+    - `src/tower/shop/ShopMathHelpers.ts`
+      - 塔防模式 `getDayActiveCols()` 固定返回 `6`；
+      - 塔防模式 `getAdjustedBattleZoneY()` 改为固定 `battleZoneY`，不再随天数/背包行数偏移；
+      - 塔防模式 `getBattleItemScale()` 固定走 `battleItemScale`，不受背包开关影响。
+    - `src/tower/shop/ui/ShopBattleZoneBuilder.ts`
+      - 塔防模式上阵区活跃列固定为 `6`。
+    - `src/tower/shop/ShopScene.ts`
+      - 塔防模式 `setDay()` 固定使用 `6` 列（不再按天数缩放为 4/5/6）。
+    - `src/tower/shop/ui/ShopUIBuilders.ts`
+      - 塔防模式点击“开始挑战”改为仅刷新到下一天（下一波）并留在当前场景，不再触发场景跳转。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“上阵区固定 3×6 + 固定位置 + 不切场景推进波次”。
+
+- 验收追加修正（同日，按钮无效问题）：
+  - 用户反馈：点击“开始挑战”无效果，期望始终在战斗中。
+  - 已完成：
+    - `src/tower/shop/ui/ShopUIBuilders.ts`
+      - “开始挑战”恢复为真正开战流程（生成战斗快照并进入战斗场景），不再只改 Day 数字。
+    - `src/tower/battle/BattleTransition.ts`
+      - 塔防模式战斗结算后不再回商店，改为直接重新进入 `tower-battle`；
+      - 进入下一轮前自动把战斗快照 `day + 1`，用于刷新下一波。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“开始挑战可正常开战 + 结算后留在战斗循环”。
+
+- 验收追加修正（同日，战斗常驻诉求）：
+  - 用户反馈：战斗里仍是 `1×5`；默认仍在商店；希望战斗结束顶部出现“继续战斗”圆角矩形按钮。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 塔防模式战斗区列数固定 `6`（不再按 day 走 `4/5/6`）；
+      - 塔防模式玩家战斗区行数固定 `3`（不再因快照行数降为 `1`）；
+      - 当缺少战斗快照时，塔防模式会自动创建默认快照并直接进入战斗（不再回商店）；
+      - 新增顶部“继续战斗”圆角矩形按钮，战斗结算后显示，点击进入下一波。
+    - `src/menu/MenuScene.ts`
+      - 菜单“塔防模式”入口改为直接进入 `tower-battle`。
+    - `src/main.ts`
+      - URL 参数 `?mode=tower|towerdefense|td` 改为直接进入 `tower-battle`。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“默认战斗入口 + 3×6固定战斗区 + 顶部继续战斗按钮”。
+
+- 验收追加实现（同日，战斗内编队能力）：
+- 用户指令：把购买/拖拽/合成/出售能力放到战斗中。
+
+- 验收追加（同日，战斗区等级字样式）：
+  - 用户需求：塔防战斗中的物品在左下角显示等级，颜色与职业边框一致，字号 `56`，黑色描边 `5px`。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 塔防模式下战斗区强制显示等级数字（左下角）；
+      - 等级字号固定为 `56`，描边固定 `5px`；
+      - 物品边框强制使用职业色，等级数字沿用同职业色，确保“数字色=职业边框色”。
+  - 验证：`npm run build` 未通过（当前分支存在既有 TS6133：`settingsBtn` / `makeBattleSettingsButton` 未使用告警升级为错误，与本次改动无直接关联）。
+  - 当前阶段：等待用户验收“战斗区等级字显示与样式”。
+  - 已完成（当前版本：波间编辑）
+    - `src/tower/battle/BattleScene.ts`
+      - 新增波间编辑模式：结算后、点击继续战斗前，可在战斗场景内进行购买/拖拽/合成/出售；
+      - 顶部新增“购买 -3”按钮（随机购买并上阵到首个空位）；
+      - 底部新增出售投放区（拖拽物品到该区域出售）；
+      - 支持拖拽同类同等级物品合成升级（拖到目标物品上触发）；
+      - 编辑结果会写回下一波快照并随“继续战斗”进入下一波。
+    - `src/tower/common/grid/GridSystem.ts`
+      - 新增 `getCellInstanceId(col,row)`，用于拖拽命中目标识别。
+    - `src/tower/common/grid/DragController.ts`
+      - 新增 `onMergeDrop` 回调，支持“拖到物品上”的合成落点语义。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“战斗场景内（波间）购买/拖拽/合成/出售”交互手感。
+
+- 验收追加实现（同日，打通实时战斗编辑）：
+  - 用户确认：继续“打通”战斗中实时编辑。
+  - 已完成：
+    - `src/tower/battle/TowerDefenseEngine.ts`
+      - 新增 `syncPlayerEntities()`：支持战斗进行中热更新玩家卡牌列表；
+      - 支持按 `resetChargeIds` 将新建/合成物品 CD 置 0；
+      - 同步后重建攻击距离/连发弹射等运行时派生参数。
+    - `src/tower/battle/BattleEngineTypes.ts`
+      - `BattleEngineLike` 新增可选接口 `syncPlayerEntities()`。
+    - `src/tower/battle/BattleScene.ts`
+      - 购买、拖拽移动、拖拽合成、拖拽出售在战斗进行中即可使用（不再仅限波间）；
+      - 每次编辑都会即时同步到引擎（当前波次立刻生效）；
+      - 新建/合成物品同步时按规则从 0 开始计算 CD。
+    - `src/tower/common/grid/GridSystem.ts`
+      - 新增 `getCellInstanceId()`，用于拖拽命中目标识别。
+    - `src/tower/common/grid/DragController.ts`
+      - 新增 `onMergeDrop` 合并落点回调，支持“拖到目标物品上合成”。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“战斗进行中实时购买/拖拽/合成/出售 + 即时战斗生效”。
+
+- 验收追加修正（同日，购买无反馈）：
+  - 用户反馈：点击购买无效果，怀疑没钱。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 缺少快照时创建的默认战斗快照补充初始金币（取 `dailyGoldByDay/day1`，回退 `dailyGold`）；
+      - 编辑金币初始化从快照金币回退到同一初始金币口径，避免 0 金币开局；
+      - 购买按钮文案实时显示当前金币：`购买 -3 (当前金币)`；
+      - 金币不足时显示提示“金币不足”；上阵区满时显示“上阵区已满”；
+      - 金币不足时按钮半透明并禁用手型，避免“点击无反馈”误解。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“购买可见金币与不足提示”交互。
+
+- 验收追加修正（同日，战斗内交互细化）：
+  - 用户反馈：可购买但无法拖动；购买应遵循天数等级/品质桶；购买按钮需居中；底部红色区域不要常显；胜利不应弹结算；过关应加钱。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 修复拖动失效：避免在塔防模式下覆盖 DragController 的玩家区交互回调；
+      - 购买掉落改为按天数等级权重与可用品质池抽取（不再固定 Bronze#1 随机）；
+      - 购买按钮移动到底部居中；
+      - 出售投放区仅在“拖拽中”显示，平时隐藏（去掉常驻红框）；
+      - 继续挑战按钮仅在胜利后显示，失败不显示。
+    - `src/tower/battle/BattleSettlement.ts`
+      - 塔防胜利时隐藏结算面板，仅失败时显示失败结算。
+    - `src/tower/battle/BattleTransition.ts`
+      - 塔防胜利后进入下一天时按天数发放金币（沿用 `getDailyGoldForDay` 口径），并写入下一波快照。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“可拖动 + 天数抽卡 + 胜利无结算 + 过关加钱”。
+
+- 验收追加修正（同日，胜利态与新购交互）：
+  - 用户反馈：胜利后继续战斗按钮位置不对且屏幕发黑；本天新购物品无法点详情/拖动。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 继续战斗按钮固定到顶部安全区（不再跟随速度按钮坐标落到底部）；
+      - 胜利态关闭全屏黑色遮罩（失败仍保留失败态表现）；
+      - 新购物品创建后立即刷新拖拽交互绑定，恢复点击详情与拖动。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“顶部继续挑战 + 无黑屏 + 新购物品可点可拖”。
+
+- 验收追加修正（同日，入口与详情交互）：
+  - 用户反馈：新购物品可拖但不可点详情；塔防应先选职业再开第一关；继续挑战文案/位置需调整；战斗内需要设置按钮。
+  - 已完成：
+    - `src/tower/battle/EnemyBuilder.ts`
+      - 玩家 runner id 改为直接使用 `instanceId`（不再追加 `P-idx-` 前缀），修复战斗内点击详情与拖拽 id 不一致问题。
+    - `src/menu/MenuScene.ts`
+      - 塔防入口改回 `tower-shop`，恢复开局职业选择流程。
+    - `src/main.ts`
+      - `?mode=tower|towerdefense|td` 改回进入 `tower-shop`，首关需点击开始挑战进入。
+    - `src/tower/battle/BattleScene.ts`
+      - 胜利按钮文案改为“开始挑战”；
+      - 胜利按钮在顶部基准下移 `150px`；
+      - 新增塔防战斗内“设置”按钮（位于左上）。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“新购物品可点详情 + 开局先选职业 + 胜利按钮新样式/位置 + 战斗内设置按钮”。
+
+- 验收追加修正（同日，合成与提示）：
+  - 用户反馈：战斗中物品可拖动但无法合成，且缺少可合成提示；要求移除战斗中出售逻辑。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 新增战斗内合成判定工具（同类、同尺寸、同等级且 `<8`）；
+      - 拖拽中实时探测合成目标，命中时高亮目标并提示“可合成”；
+      - 点击选中物品时，若存在可合成对象，显示“可合成：拖到同级同类物品上”；
+      - 合成回调统一复用同一判定，保证拖拽落点即可完成合成升级；
+      - 移除战斗内出售逻辑：禁用拖拽特殊出售处理，且不再显示出售区域。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“战斗内可合成 + 选中/拖拽提示 + 无出售逻辑”。
+
+- 验收追加修正（同日，合成未触发热修）：
+  - 用户反馈：实测仍无法合成。
+  - 根因定位：拖拽开始后 `DragController` 会先把来源物品从 `GridSystem` 移除，旧合成判定依赖 `editableSystem.getItem(sourceId)` 导致恒失败。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 扩展 `editableMeta` 记录 `defId/size`；
+      - 合成判定改为基于 `editableMeta`（不再依赖来源物品仍在 grid）；
+      - 初始载入与购买新增都写入 `defId/size` 元数据。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户复测“拖拽到同级同类目标即合成”。
+
+- 验收追加修正（同日，参考商店合成探测）：
+  - 用户反馈：仍无法合成，要求参考商店做法。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 引入与商店一致的双通道探测：
+        - 指针命中目标物品包围盒（AtPointer）；
+        - 拖拽占位 footprint 重叠（ByFootprint）；
+        - 并追加 `dragYOffset` 探针重试；
+      - `onSpecialDrop` 改为优先走上述合成探测并直接执行合成（不依赖单格命中）；
+      - `onMergeDrop` 与 `onSpecialDrop` 统一复用 `applyBattleSynthesis()`；
+      - 增加同商店风格的可合成引导箭头：
+        - 选中物品时显示可合成目标箭头；
+        - 拖拽中持续刷新可合成目标箭头；
+        - 结束拖拽/清空选择时清理箭头。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户复测“拖拽覆盖同类同级目标可稳定合成 + 选中/拖拽提示”。
+
+- 验收追加实现（同日，复刻商店合成主逻辑）：
+  - 用户要求：战斗中合成逻辑需完整复刻商店（同物品合成、同职业跨物品合成、拖拽目标背景变化、合成提示）。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 合成配对校验改为直接复用 `canSynthesizePair(...)`（与商店同源规则）；
+      - 合成结果计算复用商店核心流程：
+        - `pickCrossIdEvolveCandidates(...)`
+        - `pickCrossSynthesisResultWithCycle(...)`
+        - 同时保留商店同款过滤（结果品质上限、同职业跨物品过滤、Run 池过滤、同物品随机合成开关）；
+      - 拖拽命中时增加商店同款视觉反馈：目标格 `highlight` 背景色 + 升级箭头引导（同物品/跨物品分组）；
+      - 选中物品时同步展示可合成目标箭头与提示；
+      - 合成执行改为真正替换目标物品 def（跨物品合成结果生效），并保留目标实例位置信息与等级提升规则。
+  - 继续保持：战斗中出售逻辑已移除（无出售触发、无出售区展示）。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“战斗内合成规则/表现与商店一致”。
+
+- 验收追加修正（同日，拖拽详情/子弹更新）：
+  - 用户反馈：
+    - 拖动中应显示物品详情；
+    - 拖到可合成目标时拾取框需黄色、详情显示“升级为随机物品”；
+    - 合成后子弹表现仍像合成前物品。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 拖拽开始时显示当前物品详情；
+      - 拖拽命中可合成目标时高亮改为黄色（`shop gold`），并显示“升级为随机物品（目标品阶）”详情预览；
+      - 合成探测失焦时恢复当前拖拽物品详情。
+    - `src/tower/battle/BattleFXPool.ts`
+      - 新增 `refreshSourceDefMap()`；
+      - 战斗内合成/同步后刷新 instanceId->defId 缓存，保证投射物外观按新物品更新。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“拖拽详情 + 黄色合成高亮 + 合成后子弹外观更新”。
+
+- 验收追加修正（同日，合成悬停状态清理）：
+  - 用户反馈：离开合成目标后“随机升级提示”未恢复；松手后提示应清空；可合成目标仍出现红色选中框；toast 可关闭。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 拖拽离开目标时强制恢复为当前拖拽物品详情（不再残留“随机升级提示”）；
+      - 松手后调用 `clearBattleItemSelection()`，关闭详情弹窗与高亮；
+      - 拖拽悬停目标时取消 `setSelected` 红框，仅保留黄色高亮框；
+      - 移除战斗内合成相关 toast（拖拽中“可合成”与点选提示）。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“离开目标恢复详情 + 松手清空 + 黄色高亮 + 无toast”。
+
+- 验收追加修正（同日，目标高亮与提示行为）：
+  - 用户反馈：可合成目标格子仍显示红色。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 每帧在拖拽悬停目标上强制覆盖为黄色 `highlight`（避免 DragController 的红色无效落点高亮覆盖）；
+      - 拖拽离开目标时恢复为当前拖拽物品详情（`keepMode=false`），并在松手后清空详情；
+      - 继续保持不显示合成相关 toast。
+    - `src/tower/battle/BattleFXPool.ts`
+      - 合成后继续刷新 source def 映射，确保投射物样式同步。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“目标格稳定黄色高亮 + 拖拽详情切换正确”。
+
+- 验收追加修正（同日，塔防战斗等级展示）：
+  - 用户需求：塔防战斗中图标上方显示等级（同商店样式），不再显示战斗数值；左下角等级隐藏。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 塔防模式战斗区 `GridZone` 统一切换为 `archetype` 徽标模式（顶部显示等级徽标，样式同商店）；
+      - 塔防模式关闭底部 tier 徽标（隐藏左下角等级）。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“顶部等级徽标替代战斗数值 + 左下等级隐藏”。
+
+## 交付执行（2026-03-25，TestFlight + Android 打包）
+
+- 用户指令：`打tf包，打android包`。
+- 已完成：
+  - iOS TestFlight：执行 `npm run release:tf` 成功。
+    - 关键日志：`ARCHIVE SUCCEEDED`、`EXPORT SUCCEEDED`、`Upload succeeded.`；
+    - 当前构建号：`CURRENT_PROJECT_VERSION=37`。
+  - Android：执行 `npm run build:android-web` + `npm run android:sync` + `./gradlew assembleRelease` + `./gradlew bundleRelease`。
+    - 首次失败：`无效的源发行版：21`（默认 `JAVA_HOME` 指向 OpenJDK 17）；
+    - 处理：使用 JDK 21 重新执行（`JAVA_HOME=/opt/homebrew/opt/openjdk@21`）后成功。
+    - 产物：
+      - APK：`android/app/build/outputs/apk/release/app-release.apk`
+      - AAB：`android/app/build/outputs/bundle/release/app-release.aab`
+- 当前阶段：等待用户在 TestFlight 与 Play Console 侧验收构建处理状态。
+
 ## 塔防物品表二次对齐（2026-03-24）
 
 - 用户需求：按最新清单再次同步刺客/弓手/战士物品数值与文案（含攻击距离、词条数值、连发与弹射描述）。

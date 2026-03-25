@@ -125,6 +125,7 @@ import {
   getDayActiveCols,
   getBattleItemScale, getBattleZoneX, getBackpackZoneX, getBackpackZoneYByBattle,
   getBackpackRowsByDay,
+  getTowerBattleRowsByDay,
   getAdjustedBattleZoneY,
   getAdjustedBattleZoneYInBattleOffset,
 } from './ShopMathHelpers'
@@ -970,6 +971,12 @@ function canAffordQuickBuyNow(ctx: ShopSceneCtx = _ctx): boolean {
 
 function updatePhaseToggleButton(ctx: ShopSceneCtx = _ctx): void {
   if (!ctx.phaseBtnHandle) return
+  const towerMode = getConfig().towerDefenseRules?.enabled === true
+  if (towerMode) {
+    ctx.phaseBtnHandle.setLabel('开始挑战')
+    ctx.phaseBtnHandle.redraw(true)
+    return
+  }
   const inShop = isShopInputEnabled(ctx)
   // PVP 模式下用「准备」替代「战斗」，语义更清晰
   const battleLabel = PvpContext.isActive() ? '准备' : '战斗'
@@ -980,6 +987,42 @@ function updatePhaseToggleButton(ctx: ShopSceneCtx = _ctx): void {
 function applyPhaseUiVisibility(ctx: ShopSceneCtx = _ctx): void {
   const inShop = isShopInputEnabled(ctx)
   const towerMode = getConfig().towerDefenseRules?.enabled === true
+
+  if (towerMode) {
+    if (ctx.shopPanel) ctx.shopPanel.visible = false
+    if (ctx.backpackView) ctx.backpackView.visible = false
+    if (ctx.shopAreaBg) ctx.shopAreaBg.visible = false
+    if (ctx.backpackAreaBg) ctx.backpackAreaBg.visible = false
+    if (ctx.battleAreaBg) ctx.battleAreaBg.visible = true
+    if (ctx.battleZoneTitleText) {
+      ctx.battleZoneTitleText.visible = true
+      ctx.battleZoneTitleText.alpha = 1
+    }
+    if (ctx.backpackZoneTitleText) ctx.backpackZoneTitleText.visible = false
+
+    if (ctx.specialShopBackpackViewActive) {
+      if (ctx.refreshBtnHandle) ctx.refreshBtnHandle.container.visible = false
+      if (ctx.phaseBtnHandle) ctx.phaseBtnHandle.container.visible = false
+    } else {
+      if (ctx.refreshBtnHandle) ctx.refreshBtnHandle.container.visible = true
+      if (ctx.phaseBtnHandle) ctx.phaseBtnHandle.container.visible = true
+    }
+    if (ctx.sellBtnHandle) ctx.sellBtnHandle.container.visible = false
+    if (ctx.bpBtnHandle) ctx.bpBtnHandle.container.visible = false
+
+    if (ctx.refreshCostText) ctx.refreshCostText.visible = true
+    if (ctx.goldText) ctx.goldText.visible = true
+    if (ctx.livesText) ctx.livesText.visible = false
+    if (ctx.playerStatusCon) ctx.playerStatusCon.visible = true
+    if (ctx.miniMapCon) ctx.miniMapCon.visible = false
+    if (ctx.dayDebugCon) ctx.dayDebugCon.visible = true
+    if (ctx.sellPopup) ctx.sellPopup.visible = ctx.currentSelection.kind !== 'none'
+    if (ctx.unlockRevealLayer) ctx.unlockRevealLayer.visible = ctx.unlockRevealActive
+    if (ctx.btnRow) ctx.btnRow.visible = true
+
+    updatePhaseToggleButton(ctx)
+    return
+  }
 
   if (!inShop) {
     ctx.showingBackpack = true
@@ -1480,6 +1523,7 @@ function synthesizeTarget(
 
 
 function findFirstBackpackPlace(size: ItemSizeNorm, ctx: ShopSceneCtx = _ctx): { col: number; row: number } | null {
+  if (getConfig().towerDefenseRules?.enabled === true) return null
   return GridInventory.findFirstBackpackPlace(size, ctx)
 }
 
@@ -1912,6 +1956,7 @@ function buildNamedPoolCandidate(nameCn: string): PoolCandidate | null {
 
 
 function setDay(day: number, ctx: ShopSceneCtx = _ctx): void {
+  const towerMode = getConfig().towerDefenseRules?.enabled === true
   const prevDay = ctx.currentDay
   ctx.currentDay = Math.max(1, Math.round(day || 1))
   if (ctx.currentDay !== prevDay) {
@@ -1925,12 +1970,18 @@ function setDay(day: number, ctx: ShopSceneCtx = _ctx): void {
     QUICK_BUY_LEVEL_PSEUDO_RANDOM_STATE.clear()
     ctx.nextQuickBuyOffer = null
   }
-  const newCols = getDayActiveCols(ctx.currentDay)
+  const newCols = towerMode ? 6 : getDayActiveCols(ctx.currentDay)
   const newBackpackRows = getBackpackRowsByDay(ctx.currentDay)
+  const newBattleRows = towerMode ? getTowerBattleRowsByDay(ctx.currentDay) : 1
   refreshBasicSynthesisGuideVisibility(ctx)
 
-  if (ctx.backpackSystem) ctx.backpackSystem.setActiveRows(newBackpackRows)
-  if (ctx.backpackView) ctx.backpackView.setActiveRowCount(newBackpackRows)
+  if (ctx.battleSystem) ctx.battleSystem.setActiveRows(newBattleRows)
+  if (ctx.battleView) ctx.battleView.setActiveRowCount(newBattleRows)
+
+  if (!towerMode) {
+    if (ctx.backpackSystem) ctx.backpackSystem.setActiveRows(newBackpackRows)
+    if (ctx.backpackView) ctx.backpackView.setActiveRowCount(newBackpackRows)
+  }
 
   // 1. 更新 GridZone 格子背景（立即重绘）
   if (ctx.battleView) ctx.battleView.setActiveColCount(newCols)
@@ -1960,9 +2011,10 @@ function setDay(day: number, ctx: ShopSceneCtx = _ctx): void {
       applyAreaLabelLeftAlign(ctx)
       skillDraftPanel?.layoutSkillIconBar()
     }
+    ctx.drag?.refreshZone(ctx.battleView)
   }
 
-  if (ctx.backpackView) {
+  if (!towerMode && ctx.backpackView) {
     ctx.backpackView.x = getBackpackZoneX(ctx.backpackView.activeColCount, ctx)
     ctx.backpackView.y = getBackpackZoneYByBattle(ctx)
     ctx.backpackView.setLabelGlobalTop(ctx.backpackView.y - 60)
@@ -1973,7 +2025,7 @@ function setDay(day: number, ctx: ShopSceneCtx = _ctx): void {
     ctx.battleZoneTitleText.x = ctx.battleView.x + (ctx.battleView.activeColCount * CELL_SIZE * s) / 2
     ctx.battleZoneTitleText.y = ctx.battleView.y - 28
   }
-  if (ctx.backpackZoneTitleText && ctx.backpackView) {
+  if (!towerMode && ctx.backpackZoneTitleText && ctx.backpackView) {
     const s = getBattleItemScale(ctx)
     ctx.backpackZoneTitleText.x = ctx.backpackView.x + (ctx.backpackView.activeColCount * CELL_SIZE * s) / 2
     ctx.backpackZoneTitleText.y = ctx.backpackView.y - 22
@@ -2136,6 +2188,10 @@ export const ShopScene: Scene = {
     buildBasicSynthesisGuide(stage)
 
     buildBattleZoneUI(stage, cfg)
+
+    if (cfg.towerDefenseRules?.enabled === true) {
+      _ctx.showingBackpack = false
+    }
 
     buildButtonRowUI(stage, cfg)
 

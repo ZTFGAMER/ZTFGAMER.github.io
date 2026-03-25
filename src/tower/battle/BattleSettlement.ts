@@ -504,11 +504,12 @@ export class BattleSettlement {
   }
 
   updateVisibility(): void {
+    const towerWinHidePanel = this.settlementTowerMode && this.settlementResolved && !this.settlementGameOver
     if (this.settlementPanel) {
-      this.settlementPanel.visible = this.settlementResolved
+      this.settlementPanel.visible = this.settlementResolved && !towerWinHidePanel
     }
     if (this.settlementReplayBtn) {
-      this.settlementReplayBtn.visible = this.settlementResolved && !this.settlementGameOver && !this.settlementFinalVictory
+      this.settlementReplayBtn.visible = this.settlementResolved && !this.settlementGameOver && !this.settlementFinalVictory && !towerWinHidePanel
       this.settlementReplayBtn.eventMode = this.settlementReplayBtn.visible ? 'static' : 'none'
       this.settlementReplayBtn.cursor = this.settlementReplayBtn.visible ? 'pointer' : 'default'
     }
@@ -516,7 +517,7 @@ export class BattleSettlement {
       this.settlementReplayLabel.text = this.replayMode ? '再次重放' : '重放本局'
     }
     if (this.settlementStatsBtn) {
-      this.settlementStatsBtn.visible = this.settlementResolved
+      this.settlementStatsBtn.visible = this.settlementResolved && !towerWinHidePanel
     }
     this.layoutSettlementButtons()
     this.tickCounterAnimations()
@@ -524,6 +525,24 @@ export class BattleSettlement {
 
   getPanel(): Container | null {
     return this.settlementPanel
+  }
+
+  prepareForNextWave(): void {
+    this.settlementResolved = false
+    this.settlementGameOver = false
+    this.settlementFinalVictory = false
+    this.settlementRevealAtMs = null
+    this.lifeCounterAnim = null
+    this.trophyCounterAnim = null
+    if (this.settlementLifeDeltaText) this.settlementLifeDeltaText.visible = false
+    if (this.settlementTrophyDeltaText) this.settlementTrophyDeltaText.visible = false
+    if (this.settlementPanel) this.settlementPanel.visible = false
+    if (this.settlementReplayBtn) {
+      this.settlementReplayBtn.visible = false
+      this.settlementReplayBtn.eventMode = 'none'
+      this.settlementReplayBtn.cursor = 'default'
+    }
+    if (this.settlementStatsBtn) this.settlementStatsBtn.visible = false
   }
 
   reset(): void {

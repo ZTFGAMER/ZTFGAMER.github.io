@@ -1,8 +1,11 @@
 import { Graphics } from 'pixi.js'
 import { getConfig as getDebugCfg } from '@/tower/config/debugConfig'
+import { getConfig } from '@/tower/core/DataLoader'
+import { getDailyGoldForDay } from '@/tower/shop/ShopManager'
 import { PvpContext } from '@/tower/pvp/PvpContext'
 import { SceneManager } from '@/tower/core/SceneManager'
 import { setBattleOutcome } from './BattleOutcomeStore'
+import { setBattleSnapshot } from './BattleSnapshotStore'
 import type { Container } from 'pixi.js'
 import type { BattleEngineLike } from './BattleEngineTypes'
 import type { getBattleSnapshot } from './BattleSnapshotStore'
@@ -52,6 +55,18 @@ export class BattleTransition {
     speedBtn: Container | null,
   ): void {
     if (this.battleExitTransitionDurationMs > 0) return
+    const towerMode = getConfig().towerDefenseRules?.enabled === true
+    if (towerMode && snapshot) {
+      const winner = engine?.getResult()?.winner ?? null
+      const nextDay = Math.max(1, Math.round((snapshot.day || 1) + 1))
+      const rewardGold = winner === 'player' ? getDailyGoldForDay(getConfig(), nextDay) : 0
+      setBattleSnapshot({
+        ...snapshot,
+        day: nextDay,
+        createdAtMs: Date.now(),
+        playerGold: Math.max(0, Math.round((snapshot.playerGold ?? 0) + rewardGold)),
+      })
+    }
     setBattleOutcome({
       result: engine?.getResult() ?? null,
       snapshot,
@@ -84,7 +99,8 @@ export class BattleTransition {
       if (PvpContext.isActive()) {
         PvpContext.onBattleComplete()
       } else {
-        SceneManager.goto('tower-shop')
+        const towerMode = getConfig().towerDefenseRules?.enabled === true
+        SceneManager.goto(towerMode ? 'tower-battle' : 'tower-shop')
       }
       return true
     }
