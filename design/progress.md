@@ -23526,3 +23526,17 @@ ShopSceneContext.ts、ShopStateStorage.ts、SynthesisLogic.ts、NeutralItemPanel
     - Agent 结论：`PASS`。
 - 备注：尝试按规程执行 `npm run agent:new -- --topic="enchantment multiplier regression"` 时，因缺失模板 `agent-sessions/_templates/report.md` 失败；不影响本次代码与测试结果。
 - 当前阶段：该附魔阶段进入验收，等待用户确认“相邻+50% 与翻倍附魔按最终乘区加算且测试通过”。
+
+## 塔防品质桶概率改为 5 级配置（2026-03-25）
+
+- 用户需求：塔防模式下将物品品质桶按 5 级重配为：
+  - 青铜：`[1, 0.4, 0.2, 0.1, 0]`
+  - 白银：`[0, 0.6, 0.4, 0.3, 0.2]`
+  - 黄金：`[0, 0, 0.4, 0.3, 0.4]`
+  - 钻石：`[0, 0, 0, 0.3, 0.4]`
+- 已完成：
+  - `data/tower_game_config.json`
+    - 更新 `shopRules.quickBuyQualityWeightsByLevel` 为上述目标分布；
+    - 同步更新当前生效字段 `shopRules.qualityPseudoRandomWeightsByLevel` 为同口径分布；
+    - 考虑历史 8 位数组读取口径，Lv6~Lv8 采用 Lv5 延续值或 0（青铜）以确保越界兼容不改变主要 5 级分布目标。
+- 当前阶段：等待用户验收“塔防 Lv1~Lv5 品质桶概率是否符合预期”。
