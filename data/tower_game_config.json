@@ -3529,7 +3529,7 @@
       "projectileScaleBottomY": 960,
       "projectileScaleMin": 0.6,
       "projectileScaleMax": 2,
-      "flyingEnemyLiftNear": 100,
+      "flyingEnemyLiftNear": 80,
       "enemyDeathFlyAngleMinDeg": 30,
       "enemyDeathFlyAngleMaxDeg": 35,
       "enemyDeathFlySpeedMin": 540,
@@ -3548,19 +3548,19 @@
       "moveDistancePerSecAtSpeed1": 25,
       "playerItemAttackDistanceByIcon": {
         "item1": 16,
-        "item5": 28,
-        "item6": 28,
-        "item11": 28,
-        "item21": 28,
-        "item17": 28,
-        "item18": 28,
-        "item40": 28,
-        "item4": 36,
-        "item20": 36,
-        "item9": 36,
-        "item44": 36,
-        "item48": 36,
-        "item15": 36,
+        "item5": 36,
+        "item6": 36,
+        "item11": 36,
+        "item21": 36,
+        "item17": 36,
+        "item18": 36,
+        "item40": 36,
+        "item4": 60,
+        "item20": 60,
+        "item9": 60,
+        "item44": 60,
+        "item48": 60,
+        "item15": 60,
         "item50": 16,
         "item52": 16,
         "item13": 16
@@ -3571,7 +3571,7 @@
       "enemyAttackDoubleAfterAllSpawnMs": 40000,
       "playerMeleeSweepHitStepMs": 30,
       "playerMeleeSweepOriginOffsetX": 0,
-      "playerMeleeSweepOriginOffsetY": -100,
+      "playerMeleeSweepOriginOffsetY": -150,
       "playerMeleeSweepStartOffsetX": -200,
       "playerMeleeSweepEndOffsetX": 200,
       "playerMeleeSweepDurationMs": 240,
@@ -3655,7 +3655,7 @@
           "enemyHpBarYOffset": -107,
           "enemyHpBarScale": 1,
           "enemyShadowYOffset": -10,
-          "enemyShadowScale": 0.35
+          "enemyShadowScale": 0
         },
         {
           "id": "enemy5",
@@ -3787,7 +3787,7 @@
           "enemyHpBarYOffset": -122,
           "enemyHpBarScale": 1.1,
           "enemyShadowYOffset": -10,
-          "enemyShadowScale": 0.45
+          "enemyShadowScale": 0
         },
         {
           "id": "boss2",

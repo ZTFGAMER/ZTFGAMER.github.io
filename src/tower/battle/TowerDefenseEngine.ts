@@ -970,8 +970,8 @@ export class TowerDefenseEngine implements BattleEngineLike {
     const baseMulticast = Math.max(1, Math.round(item.baseStats.multicast || 1))
     if (this.getItemIcon(item) !== 'item6') return baseMulticast
     const bounceCount = Math.max(0, Math.round(this.playerBounceCountByItemId.get(item.id) ?? 0))
-    // item6: 连发次数按弹射次数驱动，含当前发射本体（弹射1 => 连发2）
-    return Math.max(1, bounceCount + 1)
+    if (bounceCount <= 0) return baseMulticast
+    return Math.max(baseMulticast, 3)
   }
 
   private resolveFinalShotDamage(source: CombatItemRunner, target: EnemyUnit, baseDamage: number, attackDistance?: number): number {
@@ -1258,7 +1258,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
           if (!this.isAssassinDamageItem(ally)) continue
           this.playerBounceDamageFactorByItemId.set(ally.id, 1)
         }
-        const bonus = Math.max(0, this.resolveTieredValueFromItem(item, /弹射后伤害\+\d+(?:[\/|]\d+)*/))
+        const bonus = Math.max(0, this.resolveTieredValueFromItem(item, /每次弹射伤害(?:额外)?\+\d+(?:[\/|]\+?\d+)*/))
         if (bonus > 0) {
           for (const ally of this.playerItems) {
             if (!this.isAssassinDamageItem(ally)) continue

@@ -694,6 +694,17 @@ function getTowerEnemyMoveWave(nowMs: number, offsetMs: number): { rotDeg: numbe
   }
 }
 
+function getTowerEnemyFlyingMoveWave(nowMs: number, offsetMs: number): { rotDeg: number; yOff: number; scaleMul: number } {
+  const loopMs = 1333
+  const p = ((nowMs + offsetMs) % loopMs) / loopMs
+  const swing = Math.sin(p * Math.PI * 2)
+  return {
+    rotDeg: 0,
+    yOff: -14 * swing,
+    scaleMul: 1,
+  }
+}
+
 function syncTowerEnemyPresentation(activeCols: number): void {
   if (!towerEnemyLayer || !engine?.getTowerEnemyUnits) return
   const cfg = getGameCfg().towerDefenseRules
@@ -795,7 +806,9 @@ function syncTowerEnemyPresentation(activeCols: number): void {
     const useStandAnim = !isMoving
     const moveWave = useStandAnim
       ? { rotDeg: 0, yOff: 0, scaleMul: 1 }
-      : getTowerEnemyMoveWave(battlePresentationMs, anim.moveOffsetMs)
+      : (isFlying
+        ? getTowerEnemyFlyingMoveWave(battlePresentationMs, anim.moveOffsetMs)
+        : getTowerEnemyMoveWave(battlePresentationMs, anim.moveOffsetMs))
     let animScaleMul = moveWave.scaleMul
     let animYOff = moveWave.yOff
     let animRotRad = moveWave.rotDeg * (Math.PI / 180)
@@ -905,9 +918,18 @@ function syncTowerEnemyPresentation(activeCols: number): void {
     const isFrontRow = (one as { isBlockedByFront?: boolean }).isBlockedByFront !== true
     const useDashDepthSort = isFrontRow && anim.meleeDashStartMs >= 0
     spritePack.root.zIndex = Math.round((useDashDepthSort ? (y + animYOff) : y) * 1000)
-    spritePack.shadow.scale.set(unitShadowScale)
-    spritePack.shadow.y = unitShadowYOffset
-    spritePack.shadow.alpha = 0.4 * alpha
+    const showShadow = !isFlying
+    spritePack.shadow.visible = showShadow
+    if (showShadow) {
+      const animScaleSafe = Math.max(0.01, animScaleMul * hitScaleMul)
+      const shadowSizeByLift = Math.max(0.72, Math.min(1.28, 1 + animYOff * 0.012))
+      const shadowWorldYOffset = scale * unitShadowYOffset
+      spritePack.shadow.x = -animXOff / Math.max(0.01, finalScale)
+      spritePack.shadow.y = (shadowWorldYOffset - animYOff) / Math.max(0.01, finalScale)
+      spritePack.shadow.scale.set((unitShadowScale * shadowSizeByLift) / animScaleSafe)
+      spritePack.shadow.rotation = 0
+      spritePack.shadow.alpha = 0.4 * alpha
+    }
     const hpRatio = one.maxHp > 0 ? Math.max(0, Math.min(1, one.hp / one.maxHp)) : 0
     const showHpBar = one.hp > 0 && one.maxHp > 0 && one.hp < one.maxHp
     if (showHpBar) {
