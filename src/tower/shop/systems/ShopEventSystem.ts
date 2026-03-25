@@ -142,8 +142,9 @@ function getOwnedArchetypeSet(ctx: ShopSceneCtx): Set<EventArchetype> {
     for (const it of system.getAllItems()) {
       const def = getItemDefById(it.defId)
       const archetype = toSkillArchetype(getPrimaryArchetype(def?.tags ?? ''))
-      if (!archetype || archetype === 'utility') continue
-      out.add(archetype)
+      if (archetype === 'warrior' || archetype === 'archer' || archetype === 'assassin') {
+        out.add(archetype)
+      }
     }
   }
   collect(ctx.battleSystem)

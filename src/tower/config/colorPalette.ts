@@ -58,8 +58,9 @@ export function getShopUiColor(key: 'gold' | 'danger' | 'highlight'): number {
 }
 
 export function getClassColor(className: string): number {
-  if (className === 'Warrior' || className === '战士') return clampColor(getConfig('classColorWarrior'))
+  if (className === 'Warrior' || className === '战士' || className === '剑士') return clampColor(getConfig('classColorWarrior'))
   if (className === 'Archer'  || className === '弓手') return clampColor(getConfig('classColorArcher'))
-  if (className === 'Assassin'|| className === '刺客') return clampColor(getConfig('classColorAssassin'))
+  if (className === 'Assassin'|| className === '刺客' || className === '忍者') return clampColor(getConfig('classColorAssassin'))
+  if (className === 'Mage' || className === '冰法师') return clampColor(getConfig('classColorMage'))
   return clampColor(getConfig('classColorNeutral'))
 }

@@ -41,6 +41,14 @@ function lerpNumber(a: number, b: number, t: number): number {
   return a + (b - a) * t
 }
 
+function getTowerFinalDay(): number {
+  const cfg = getGameCfg().towerDefenseRules
+  const byConfig = Number(cfg?.finalDay)
+  if (Number.isFinite(byConfig) && byConfig > 0) return Math.max(1, Math.round(byConfig))
+  const maxWaveDay = Math.max(1, ...(cfg?.dayWaves ?? []).map((w) => Math.max(1, Math.round(Number(w.day) || 1))))
+  return maxWaveDay
+}
+
 export class BattleSettlement {
   private settlementPanel: Container | null = null
   private settlementTitleText: Text | null = null
@@ -348,6 +356,7 @@ export class BattleSettlement {
       console.warn('[BattleSettlement] PVP 权威结果未到达，使用本地结果:', localWinner)
     }
     const towerMode = getGameCfg().towerDefenseRules?.enabled === true
+    const towerFinalDay = getTowerFinalDay()
     this.settlementTowerMode = towerMode
     const before = getLifeState()
     const roundLifeDamage = Math.max(1, Math.min(8, Math.round(day)))
@@ -380,7 +389,10 @@ export class BattleSettlement {
         ? winner === 'enemy'
         : (winner === 'enemy' && after.current <= 0 && !pveLastStandTriggered))
       : false
-    this.settlementFinalVictory = applyRunState && !PvpContext.isActive() && !towerMode && winner === 'player' && trophyAfter.wins >= trophyAfter.target
+    this.settlementFinalVictory = applyRunState && !PvpContext.isActive() && (
+      (!towerMode && winner === 'player' && trophyAfter.wins >= trophyAfter.target)
+      || (towerMode && winner === 'player' && day >= towerFinalDay)
+    )
 
     if (!this.settlementTitleText || !this.settlementLifeText || !this.settlementTrophyText || !this.settlementDescText || !this.settlementActionLabel) return
 
@@ -451,7 +463,11 @@ export class BattleSettlement {
     }
 
     if (towerMode) {
-      if (this.settlementGameOver) {
+      if (this.settlementFinalVictory) {
+        this.settlementDescText.text = `通关成功！\n已完成第${day}关`
+        this.settlementDescText.visible = true
+        this.settlementActionLabel.text = '重新开始'
+      } else if (this.settlementGameOver) {
         this.settlementDescText.text = `本次止步第${day}关\n最高关卡：${endlessRecordAfter.bestDay}`
         this.settlementDescText.visible = true
         this.settlementActionLabel.text = '重新开始'
@@ -504,7 +520,7 @@ export class BattleSettlement {
   }
 
   updateVisibility(): void {
-    const towerWinHidePanel = this.settlementTowerMode && this.settlementResolved && !this.settlementGameOver
+    const towerWinHidePanel = this.settlementTowerMode && this.settlementResolved && !this.settlementGameOver && !this.settlementFinalVictory
     if (this.settlementPanel) {
       this.settlementPanel.visible = this.settlementResolved && !towerWinHidePanel
     }

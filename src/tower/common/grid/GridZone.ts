@@ -128,12 +128,6 @@ function ensureTierCache(): void {
   }
 }
 
-function getTier(defId: string, tierOverride?: string): string {
-  if (tierOverride) return tierOverride.split('#')[0] ?? tierOverride
-  ensureTierCache()
-  return tierByDefId!.get(defId) ?? 'Bronze'
-}
-
 function getBaseTier(defId: string): string {
   ensureTierCache()
   return tierByDefId!.get(defId) ?? 'Bronze'
@@ -147,13 +141,21 @@ function parseTierStar(tierRaw?: string): number {
   return Number.isFinite(n) ? Math.max(1, Math.min(2, Math.round(n))) : 1
 }
 
-function tierToLevelLabel(tierRaw?: string): string {
-  const tier = getTier('', tierRaw)
+function tierToLevelLabel(tierRaw?: string, defId?: string): string {
+  const rank = (tier: string): number => {
+    if (tier === 'Silver') return 2
+    if (tier === 'Gold') return 3
+    if (tier === 'Diamond') return 4
+    return 1
+  }
+  const tierFromRuntime = parseTierName(tierRaw ?? 'Bronze')
+  const baseTier = defId ? parseTierName(getBaseTier(defId)) : tierFromRuntime
+  const effectiveTier = rank(baseTier) > rank(tierFromRuntime) ? baseTier : tierFromRuntime
   const star = parseTierStar(tierRaw)
-  if (tier === 'Bronze') return String(star)
-  if (tier === 'Silver') return String(star + 2)
-  if (tier === 'Gold') return String(star + 4)
-  return String(star + 6)
+  if (effectiveTier === 'Bronze') return '1'
+  if (effectiveTier === 'Silver') return '2'
+  if (effectiveTier === 'Gold') return '3'
+  return (effectiveTier === tierFromRuntime && star >= 2) ? '5' : '4'
 }
 
 // ---- ItemNode ----
@@ -197,15 +199,16 @@ interface ItemNode {
   origY:      number
 }
 
-function getArchetypeBadgeByDefId(defId: string): { label: string; className: '战士' | '弓手' | '刺客' | '中立'; color: number; showLevel: boolean } {
+function getArchetypeBadgeByDefId(defId: string): { label: string; className: '剑士' | '弓手' | '忍者' | '冰法师' | '中立'; color: number; showLevel: boolean } {
   if (isSkillItemDefId(defId)) {
     return { label: '技', className: '中立', color: 0x8f6bff, showLevel: false }
   }
   const item = getDefById(defId)
   const tags = `${item?.tags ?? ''}`
-  if (tags.includes('战士')) return { label: '战', className: '战士', color: getClassColor('战士'), showLevel: true }
+  if (tags.includes('剑士') || tags.includes('战士')) return { label: '剑', className: '剑士', color: getClassColor('剑士'), showLevel: true }
   if (tags.includes('弓手')) return { label: '弓', className: '弓手', color: getClassColor('弓手'), showLevel: true }
-  if (tags.includes('刺客')) return { label: '刺', className: '刺客', color: getClassColor('刺客'), showLevel: true }
+  if (tags.includes('忍者') || tags.includes('刺客')) return { label: '忍', className: '忍者', color: getClassColor('忍者'), showLevel: true }
+  if (tags.includes('冰法师')) return { label: '冰', className: '冰法师', color: getClassColor('冰法师'), showLevel: true }
   if (tags.includes('中立')) return { label: '中立', className: '中立', color: getClassColor('中立'), showLevel: false }
   return { label: '?', className: '中立', color: getClassColor('中立'), showLevel: true }
 }
@@ -226,22 +229,6 @@ function drawRegularPolygon(g: Graphics, sides: number, radius: number, rotation
     if (i === 0) g.moveTo(x, y)
     else g.lineTo(x, y)
   }
-  g.closePath()
-}
-
-function drawGemShape(g: Graphics, radius: number): void {
-  if (radius <= 0) return
-  const topY = radius
-  const upperY = radius * 0.35
-  const midY = -radius * 0.18
-  const bottomY = -radius
-  g.moveTo(0, topY)
-  g.lineTo(radius * 0.58, upperY)
-  g.lineTo(radius * 0.96, midY)
-  g.lineTo(radius * 0.42, bottomY)
-  g.lineTo(-radius * 0.42, bottomY)
-  g.lineTo(-radius * 0.96, midY)
-  g.lineTo(-radius * 0.58, upperY)
   g.closePath()
 }
 
@@ -427,7 +414,9 @@ export class GridZone extends Container {
   private tierBadgeVisible = true
   private ammoBadgeOffsetY = 0
   private itemFrameUseArchetypeColor = getDebugCfg('gameplayItemFrameColorByArchetype') >= 0.5
+  private archetypeBadgeShowClassPrefix = false
   private itemQualityMarkerEnabled = true
+  private qualityDiamondMarkerScale = 1
   private upgradeHintIds = new Set<string>()
   private dragUpgradeHintIds = new Set<string>()
   private crossUpgradeHintIds = new Set<string>()
@@ -702,11 +691,13 @@ export class GridZone extends Container {
 
     const qualityDot = new Graphics()
     qualityDot.eventMode = 'none'
-    this.badgeLayer.addChild(qualityDot)
+    qualityDot.zIndex = 1200
+    visual.addChild(qualityDot)
 
     const qualitySparkle = new Graphics()
     qualitySparkle.eventMode = 'none'
-    this.badgeLayer.addChild(qualitySparkle)
+    qualitySparkle.zIndex = 1201
+    visual.addChild(qualitySparkle)
 
     const defaultUpgradeArrow = new Graphics()
     defaultUpgradeArrow.eventMode = 'none'
@@ -1301,8 +1292,23 @@ export class GridZone extends Container {
     }
   }
 
+  setArchetypeBadgeShowClassPrefix(enabled: boolean): void {
+    this.archetypeBadgeShowClassPrefix = enabled
+    for (const node of this.nodes.values()) {
+      this.redrawItemBorder(node)
+    }
+  }
+
   setItemQualityMarkerEnabled(enabled: boolean): void {
     this.itemQualityMarkerEnabled = enabled
+    for (const node of this.nodes.values()) {
+      this.redrawItemBorder(node)
+    }
+  }
+
+  setQualityDiamondMarkerScale(scale: number): void {
+    const n = Number(scale)
+    this.qualityDiamondMarkerScale = Number.isFinite(n) ? Math.max(0.2, Math.min(2, n)) : 1
     for (const node of this.nodes.values()) {
       this.redrawItemBorder(node)
     }
@@ -1522,7 +1528,7 @@ export class GridZone extends Container {
     this.updateNodeEnchantmentBadge(node)
     this.updateStatBadgePosition(node)
 
-    const levelText = tierToLevelLabel(node.tier)
+    const levelText = tierToLevelLabel(node.tier, node.defId)
     node.starText.text = arch.showLevel ? levelText : ''
     node.starText.style.fill = arch.color
     node.starText.style.stroke = { color: 0x000000, width: 5 }
@@ -1555,8 +1561,6 @@ export class GridZone extends Container {
       return
     }
 
-    // 品质圆点严格跟“品质”走，不跟等级/旧 TierStar 映射走。
-    // 例如：青铜Lv2 仍视为青铜，不显示白银圆点。
     const quality = parseTierName(getBaseTier(node.defId))
     if (quality === 'Bronze') {
       this.ensureQualityDotAnimState()
@@ -1565,16 +1569,15 @@ export class GridZone extends Container {
 
     const isDiamond = quality === 'Diamond'
     const color = quality === 'Silver' ? 0xdbe6ff : quality === 'Gold' ? 0xffd45a : 0x8beaff
-    const baseRadius = 12
     const radius = isDiamond
-      ? Math.round(baseRadius * 0.88)  // 在现有基础上放大 10%
-      : Math.round(baseRadius * 1.2)   // 白银/黄金放大 20%
+      ? Math.max(5, Math.round(13 * this.qualityDiamondMarkerScale))
+      : 12
     if (quality === 'Silver') {
       drawRegularPolygon(node.qualityDot, 4, radius, Math.PI / 2)
     } else if (quality === 'Gold') {
       drawRegularPolygon(node.qualityDot, 6, radius, Math.PI / 6)
     } else {
-      drawGemShape(node.qualityDot, radius)
+      drawRegularPolygon(node.qualityDot, 8, radius, Math.PI / 8)
     }
     node.qualityDot.fill({ color, alpha: 0.95 })
     if (quality === 'Silver') {
@@ -1582,12 +1585,24 @@ export class GridZone extends Container {
     } else if (quality === 'Gold') {
       drawRegularPolygon(node.qualityDot, 6, radius, Math.PI / 6)
     } else {
-      drawGemShape(node.qualityDot, radius)
+      drawRegularPolygon(node.qualityDot, 8, radius, Math.PI / 8)
     }
     node.qualityDot.stroke({ color: isDiamond ? 0xf4feff : 0x111827, width: 5, alpha: 0.95 })
     if (isDiamond) {
-      // 仅保留基础宝石形状：无内层高光、无闪烁发光
-      node.qualitySparkle.visible = false
+      drawRegularPolygon(node.qualityDot, 8, radius - 5, Math.PI / 8)
+      node.qualityDot.fill({ color: 0xffffff, alpha: 0.45 })
+      const sparkleOuter = Math.max(9, Math.round(18 * this.qualityDiamondMarkerScale))
+      const sparkleInner = Math.max(6, Math.round(12 * this.qualityDiamondMarkerScale))
+      node.qualitySparkle.moveTo(-sparkleOuter, 0)
+      node.qualitySparkle.lineTo(sparkleOuter, 0)
+      node.qualitySparkle.moveTo(0, -sparkleOuter)
+      node.qualitySparkle.lineTo(0, sparkleOuter)
+      node.qualitySparkle.moveTo(-sparkleInner, -sparkleInner)
+      node.qualitySparkle.lineTo(sparkleInner, sparkleInner)
+      node.qualitySparkle.moveTo(sparkleInner, -sparkleInner)
+      node.qualitySparkle.lineTo(-sparkleInner, sparkleInner)
+      node.qualitySparkle.stroke({ color: 0xe8ffff, width: 5, alpha: 0.75 })
+      node.qualitySparkle.visible = true
     }
     node.qualityDot.visible = true
     this.ensureQualityDotAnimState()
@@ -1667,8 +1682,8 @@ export class GridZone extends Container {
         },
         this.statBadgeMode,
         {
-          archetypeSuffix: this.statBadgeMode === 'archetype' ? tierToLevelLabel(node.tier) : '',
-          archetypeLevelOnly: this.itemFrameUseArchetypeColor,
+          archetypeSuffix: this.statBadgeMode === 'archetype' ? tierToLevelLabel(node.tier, node.defId) : '',
+          archetypeLevelOnly: this.itemFrameUseArchetypeColor && !this.archetypeBadgeShowClassPrefix,
           hideNeutralArchetype: this.itemFrameUseArchetypeColor,
         },
       )
@@ -2030,6 +2045,11 @@ export class GridZone extends Container {
     const frameInset = this.getItemFrameInset()
     const frameW = Math.max(1, pw - frameInset * 2)
     const frameH = Math.max(1, ph - frameInset * 2)
+    const oldUpgradeBaseY = node.upgradeBaseY
+    const oldDefaultUpgradeBaseY = node.defaultUpgradeBaseY
+    const upgradeDeltaY = node.upgradeArrow.y - oldUpgradeBaseY
+    const crossUpgradeDeltaY = node.crossUpgradeArrow.y - oldUpgradeBaseY
+    const defaultUpgradeDeltaY = node.defaultUpgradeArrow.y - oldDefaultUpgradeBaseY
     const badgeYOffset = this.statBadgeMode === 'archetype' ? 14 : 0
     node.statBadges.x = node.container.x + pw / 2
     node.statBadges.y = node.container.y + this.statBadgeOffsetY + badgeYOffset
@@ -2046,11 +2066,21 @@ export class GridZone extends Container {
     node.ammoBadge.y = node.starBadgeBg.visible ? Math.min(ammoBaseY, ammoMaxY) : ammoBaseY
     node.reloadText.x = node.ammoBadge.x + (node.ammoBadge.width - node.reloadText.width) / 2
     node.reloadText.y = node.ammoBadge.y - node.reloadText.height - 2
-    const dotY = node.container.y + frameInset + frameH - Math.max(7, Math.round(this.tierBorderWidth * 0.8)) - 12
-    node.qualityDot.x = node.container.x + frameInset + frameW / 2 + 40
+    const dotInset = Math.max(8, Math.round(this.tierBorderWidth * 0.9)) + 20
+    const dotY = frameInset + frameH - dotInset
+    node.qualityDot.x = frameInset + frameW - dotInset
     node.qualityDot.y = dotY
     node.qualitySparkle.x = node.qualityDot.x
     node.qualitySparkle.y = dotY
+
+    node.upgradeArrow.x = node.container.x + frameInset + frameW / 2
+    node.crossUpgradeArrow.x = node.container.x + frameInset + frameW / 2
+    node.upgradeBaseY = node.container.y + frameInset + frameH / 2
+    node.upgradeArrow.y = node.upgradeBaseY + upgradeDeltaY
+    node.crossUpgradeArrow.y = node.upgradeBaseY + crossUpgradeDeltaY
+    node.defaultUpgradeArrow.x = node.container.x + frameInset + 8
+    node.defaultUpgradeBaseY = node.container.y + frameInset + frameH - DEFAULT_UPGRADE_HINT_H - 8
+    node.defaultUpgradeArrow.y = node.defaultUpgradeBaseY + defaultUpgradeDeltaY
   }
 
   override destroy(options?: DestroyOptions): void {

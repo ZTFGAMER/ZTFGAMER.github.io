@@ -25,6 +25,7 @@ export type GameEvents = {
     projectileReturnMs?: number;
     meleeDashOutMs?: number;
     meleeDashBackMs?: number;
+    meleeSweepDirection?: 'ltr' | 'rtl';
   };
   'battle:item_effect_trigger': {
     sourceItemId: string;

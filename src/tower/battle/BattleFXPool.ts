@@ -537,6 +537,7 @@ export class BattleFXPool {
       alphaEnd?: number
       sizePx?: number
       scale?: number
+      flipX?: boolean
     },
   ): void {
     this.attemptedProjectileCount += 1
@@ -551,7 +552,12 @@ export class BattleFXPool {
     ;(sprite as Sprite & { __fxUseId?: number }).__fxUseId = useId
     const sourceDef = sourceItemId ? this.getDefBySourceInstance(sourceItemId) : null
     const loadEpoch = this.textureLoadEpoch
-    const sourceIconUrl = sourceDef ? getItemIconUrl(sourceDef.id) : ''
+    const forceSwordSweepIcon = Boolean(sourceDef)
+      && String(sourceDef?.tags ?? '').includes('剑士')
+      && String(sourceDef?.attack_style ?? '').includes('近战挥动')
+    const sourceIconUrl = sourceDef
+      ? (forceSwordSweepIcon ? getItemIconUrlByName('toweritem19') : getItemIconUrl(sourceDef.id))
+      : ''
     const sourceIconTex = sourceIconUrl ? this.projectileTextureCache.get(sourceIconUrl) ?? null : null
     if (sourceIconTex) {
       sprite.texture = sourceIconTex
@@ -570,9 +576,10 @@ export class BattleFXPool {
     const sizePx = Number.isFinite(sizePxRaw) ? Math.max(8, sizePxRaw) : 180
     const scaleRaw = Number(opts?.scale)
     const scale = Number.isFinite(scaleRaw) ? Math.max(0.1, scaleRaw) : 1
+    const flipX = opts?.flipX === true
     sprite.width = sizePx
     sprite.height = sizePx
-    sprite.scale.set(scale)
+    sprite.scale.set(flipX ? -scale : scale, scale)
 
     const durationRaw = Number(opts?.durationMs)
     const durationMs = Number.isFinite(durationRaw) ? Math.max(1, durationRaw) : 260

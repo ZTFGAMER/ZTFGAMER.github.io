@@ -172,6 +172,7 @@ import type { BattleZoneUICallbacks } from './ui/ShopBattleZoneBuilder'
 import { getTopLeftControlYOffset } from './ui/ShopSafeArea'
 
 // ---- 場景共享狀態上下文 ----
+const TOWER_AUTO_START_ON_ENTER_FLAG_KEY = 'bigbazzar_tower_auto_start_on_enter_once'
 const _ctx: ShopSceneCtx = createShopSceneCtx()
 let fpsHudText: Text | null = null
 let fpsSampleElapsedMs = 0
@@ -596,6 +597,10 @@ function toggleHeroPassiveDetailPopup(ctx: ShopSceneCtx = _ctx): void {
 }
 
 function ensureStarterClassSelection(stage: Container, ctx: ShopSceneCtx = _ctx): void {
+  if (getConfig().towerDefenseRules?.enabled === true) {
+    ctx.starterClass = null
+    return
+  }
   HeroSystem.ensureStarterClassSelection(ctx, stage, {
     setTransitionInputEnabled: (enabled) => setTransitionInputEnabled(enabled, ctx),
     applyPhaseInputLock: () => applyPhaseInputLock(ctx),
@@ -948,6 +953,15 @@ function restartRunFromBeginning(ctx: ShopSceneCtx = _ctx): void {
   ctx.pendingBattleTransition = false
   ctx.pendingAdvanceToNextDay = false
   ctx.pvpReadyLocked = false
+  if (getConfig().towerDefenseRules?.enabled === true) {
+    try {
+      sessionStorage.setItem(TOWER_AUTO_START_ON_ENTER_FLAG_KEY, '1')
+    } catch {
+      // ignore
+    }
+    SceneManager.goto('tower-battle')
+    return
+  }
   window.location.reload()
 }
 

@@ -217,10 +217,13 @@ export function buildBattleZoneUI(
   const backpackRows = getBackpackRowsByDay(ctx.currentDay || 1)
   const backpackCols = Math.max(3, Math.min(6, Math.round(getDebugCfg('gameplayBackpackCols') || fallbackCols)))
   const battleRows = towerMode ? getTowerBattleRowsByDay(ctx.currentDay || 1) : 1
-  ctx.battleSystem   = new GridSystem(6, battleRows)
+  const battleMaxRows = towerMode ? 3 : 1
+  ctx.battleSystem   = new GridSystem(6, battleMaxRows)
   ctx.backpackSystem = new GridSystem(backpackCols, maxBackpackRows)
-  ctx.battleView     = new GridZone('上阵区', 6, activeCols, battleRows)
+  ctx.battleView     = new GridZone('上阵区', 6, activeCols, battleMaxRows)
   ctx.backpackView   = new GridZone('背包', backpackCols, backpackCols, maxBackpackRows)
+  ctx.battleSystem.setActiveRows(battleRows)
+  ctx.battleView.setActiveRowCount(battleRows)
   ctx.backpackSystem.setActiveRows(backpackRows)
   ctx.backpackView.setActiveRowCount(backpackRows)
   ctx.backpackView.setAutoPackEnabled(false)

@@ -10,7 +10,7 @@ export interface SkillText {
 export type ItemTier = 'Bronze' | 'Silver' | 'Gold' | 'Diamond'
 export type ItemSizeRaw = 'Small / 小型' | 'Medium / 中型' | 'Large / 大型'
 export type ItemSizeNorm = '1x1' | '2x1' | '3x1'
-export type SkillArchetype = 'warrior' | 'archer' | 'assassin' | 'utility'
+export type SkillArchetype = 'warrior' | 'archer' | 'assassin' | 'mage' | 'utility'
 export type SkillTier = 'bronze' | 'silver' | 'gold'
 
 export interface ItemDef {
@@ -404,6 +404,7 @@ export interface GameConfig {
     playerItemBaseBounceByIcon?: Record<string, number>
     playerBounceProjectileFlyMs?: number
     enemyAttackDoubleAfterAllSpawnMs?: number
+    enemyForceNextWaveAfterAllSpawnMs?: number
     playerBounceProjectileSpeedPxPerSec?: number
     playerMeleeSweepHitStepMs?: number
     playerMeleeQueueTriggerIntervalMs?: number
@@ -411,9 +412,13 @@ export interface GameConfig {
     playerMeleeSweepOriginOffsetY?: number
     playerMeleeSweepStartOffsetX?: number
     playerMeleeSweepEndOffsetX?: number
+    playerMeleeSweepMirrorStartOffsetX?: number
+    playerMeleeSweepMirrorEndOffsetX?: number
     playerMeleeSweepDurationMs?: number
     playerMeleeSweepStartAngleDeg?: number
     playerMeleeSweepEndAngleDeg?: number
+    playerMeleeSweepMirrorStartAngleDeg?: number
+    playerMeleeSweepMirrorEndAngleDeg?: number
     playerMeleeSweepAlphaStart?: number
     playerMeleeSweepAlphaMid?: number
     playerMeleeSweepAlphaEnd?: number
@@ -425,7 +430,9 @@ export interface GameConfig {
     playerMeleeSweepScaleMax?: number
     laneEnemyMinGapDistance?: number
     spawnFrontGapDistance?: number
+    battleBuyCostByPurchaseCount?: number[]
     nextWaveAutoStartMs?: number
+    finalDay?: number
     enemyKillGold: number
     enemyKillGoldBoss: number
     enemyKillGoldFxMs: number

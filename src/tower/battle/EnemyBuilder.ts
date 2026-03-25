@@ -21,13 +21,28 @@ import {
 
 export function toRunner(entity: BattleSnapshotEntity, _idPrefix: string): CombatItemRunner {
   const def = findItemDef(entity.defId)
+  const explicitTierRaw = `${entity.tier ?? ''}`.trim()
+  const hasExplicitTier = explicitTierRaw.length > 0
+  const parseTierKey = (raw: string): EnemyTier => {
+    if (raw.includes('Diamond')) return 'Diamond'
+    if (raw.includes('Gold')) return 'Gold'
+    if (raw.includes('Silver')) return 'Silver'
+    return 'Bronze'
+  }
+  const parseTierStar = (raw: string): EnemyStar => {
+    const m = raw.match(/#(\d+)/)
+    const n = Number(m?.[1])
+    return n >= 2 ? 2 : 1
+  }
   const level = Math.max(1, Math.min(8, Math.round(entity.level ?? 0)))
   const tierStarFromLevel = qualityScoreToTierStar(level)
-  const fallbackTierStar: { tier: EnemyTier; star: EnemyStar } = {
-    tier: (entity.tier ?? 'Bronze') as EnemyTier,
-    star: (entity.tier === 'Bronze' ? 1 : (entity.tierStar === 2 ? 2 : 1)) as EnemyStar,
+  const tierStarFromSnapshot: { tier: EnemyTier; star: EnemyStar } = {
+    tier: hasExplicitTier ? parseTierKey(explicitTierRaw) : 'Bronze',
+    star: entity.tierStar === 2 ? 2 : (hasExplicitTier ? parseTierStar(explicitTierRaw) : 1),
   }
-  const tierStarResolved = entity.level ? tierStarFromLevel : fallbackTierStar
+  const tierStarResolved = hasExplicitTier
+    ? tierStarFromSnapshot
+    : (entity.level ? tierStarFromLevel : tierStarFromSnapshot)
   const tierStar: 1 | 2 = tierStarResolved.star
   const tierRaw = `${tierStarResolved.tier}#${tierStarResolved.star}`
   const snapBase = entity.baseStats

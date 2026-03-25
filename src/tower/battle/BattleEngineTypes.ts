@@ -34,12 +34,16 @@ export type BattleRuntimeCachePerfStats = {
 export type TowerEnemyStatsView = {
   remainingCount: number
   totalCount: number
+  allEnemiesSpawnedAtMs?: number | null
+  elapsedMs?: number
+  currentWaveHasBoss?: boolean
 }
 
 export type TowerClassAttackDistanceView = {
   swordsman: number
   archer: number
   assassin: number
+  mage: number
 }
 
 export interface BattleEngineLike {
@@ -68,6 +72,7 @@ export interface BattleEngineLike {
   getQueuePerfStats(): BattleQueuePerfStats
   getRuntimeCachePerfStats(): BattleRuntimeCachePerfStats
   syncPlayerEntities?(entities: BattleSnapshotBundle['entities'], options?: { resetChargeIds?: string[] }): void
+  queueNextTowerWave?(nextDay: number): void
   getTowerEnemyUnits?(): TowerEnemyUnitView[]
   getTowerEnemyStats?(): TowerEnemyStatsView
   getTowerClassAttackDistances?(): TowerClassAttackDistanceView

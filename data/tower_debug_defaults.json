@@ -87,7 +87,7 @@
   "battleEnemyPortraitFlashAlpha": 1,
   "battleEnemyPortraitDeathFadeMs": 600,
   "battlePlayerPortraitWidthRatio": 1.25,
-  "battlePlayerPortraitOffsetY": -130,
+  "battlePlayerPortraitOffsetY": -80,
   "battlePlayerPortraitHitYFactor": 0.42,
   "battlePlayerPortraitHitScaleMax": 1.03,
   "battlePlayerPortraitHitPulseMs": 140,
@@ -115,6 +115,7 @@
   "levelQuickRewardOffsetY": -200,
   "gameplayGrantAllClassItems": 0,
   "gameplayShowSpeedButton": 1,
+  "gameplayShowTowerClassAttackDistance": 0,
   "gameplayPvpDisableSpeedup": 1,
   "gameplayCrossSynthesisConfirm": 0,
   "gameplayShowStarterSynthesisGuide": 0,
@@ -129,7 +130,8 @@
   "gameplayEventDraftRerollEnabled": 0,
   "gameplayStarterHeroShowAll": 0,
   "gameplayItemFrameColorByArchetype": 1,
-  "gameplayBaseBuyBronzeOnly": 1,
+  "gameplayShowClassName": 0,
+  "gameplayBaseBuyBronzeOnly": 0,
   "gameplayRunClassPoolBronzeCount": 2,
   "gameplayRunClassPoolSilverCount": 2,
   "gameplayRunClassPoolGoldCount": 2,
@@ -266,5 +268,6 @@
   "classColorWarrior": 12929610,
   "classColorArcher": 2919248,
   "classColorAssassin": 4153266,
+  "classColorMage": 10185727,
   "classColorNeutral": 9267759
 }

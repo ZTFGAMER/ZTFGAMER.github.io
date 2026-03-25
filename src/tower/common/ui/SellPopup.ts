@@ -54,6 +54,11 @@ export interface ItemInfoCustomDisplay {
   hideName?: boolean
   centerRichLineInFrame?: boolean
   hideCooldownBadge?: boolean
+  iconFrameColorOverride?: number
+  iconFrameWidthOverride?: number
+  iconRoleBadgeLabel?: string
+  iconRoleBadgeBgColor?: number
+  iconRoleBadgeFontSize?: number
 }
 
 export interface ItemInfoEnchantmentDisplay {
@@ -437,6 +442,8 @@ export class SellPopup extends Container {
   private iconSp:  Sprite
   private iconQuestionT: Text
   private iconFrame: Graphics
+  private iconRoleBadgeBg: Graphics
+  private iconRoleBadgeT: Text
   private iconEnchantBadge: Container
   private iconEnchantBadgeBg: Graphics
   private iconEnchantBadgeSp: Sprite
@@ -515,6 +522,23 @@ export class SellPopup extends Container {
 
     this.iconFrame = new Graphics()
     this.panel.addChild(this.iconFrame)
+
+    this.iconRoleBadgeBg = new Graphics()
+    this.iconRoleBadgeBg.visible = false
+    this.panel.addChild(this.iconRoleBadgeBg)
+
+    this.iconRoleBadgeT = new Text({
+      text: '',
+      style: {
+        fontSize: 32,
+        fill: 0xffffff,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+      },
+    })
+    this.iconRoleBadgeT.anchor.set(0.5)
+    this.iconRoleBadgeT.visible = false
+    this.panel.addChild(this.iconRoleBadgeT)
 
     this.iconEnchantBadge = new Container()
     this.iconEnchantBadge.visible = false
@@ -707,7 +731,7 @@ export class SellPopup extends Container {
     const tier = parseTierName(tierRaw) || 'Bronze'
     const baseTier = parseTierName(item.starting_tier || 'Bronze') || 'Bronze'
     const tierColor = getTierColor(baseTier)
-    const isClassItem = !isSkillItemDefId(item.id) && /战士|弓手|刺客/.test(String(item.tags || ''))
+    const isClassItem = !isSkillItemDefId(item.id) && /战士|剑士|弓手|刺客|忍者|冰法师/.test(String(item.tags || ''))
     const tierLabel = isClassItem ? formatTierLabelWithLevel(baseTier, tierRaw) : formatTierQualityLabel(baseTier)
     const fromTierBase = parseTierName(upgradeFromTier ?? tierRaw) || baseTier
     const fromTierLabel = isClassItem
@@ -901,10 +925,37 @@ export class SellPopup extends Container {
     this.iconQuestionT.x = frameX + frameW / 2
     this.iconQuestionT.y = frameY + frameH / 2
 
+    const frameColor = customDisplay?.iconFrameColorOverride ?? tierColor
+    const frameWidth = Math.max(1, Math.round(customDisplay?.iconFrameWidthOverride ?? 4))
     this.iconFrame.clear()
     this.iconFrame.roundRect(frameX, frameY, frameW, frameH, this.cornerRadius)
-    this.iconFrame.stroke({ color: tierColor, width: 4, alpha: 0.98 })
+    this.iconFrame.stroke({ color: frameColor, width: frameWidth, alpha: 0.98 })
     this.iconFrame.visible = true
+
+    const roleBadgeLabel = `${customDisplay?.iconRoleBadgeLabel ?? ''}`.trim()
+    if (roleBadgeLabel) {
+      const roleBgColor = Number(customDisplay?.iconRoleBadgeBgColor ?? frameColor)
+      const roleFontSize = Math.max(12, Math.round(customDisplay?.iconRoleBadgeFontSize ?? 32))
+      this.iconRoleBadgeT.text = roleBadgeLabel
+      this.iconRoleBadgeT.style.fontSize = roleFontSize
+      this.iconRoleBadgeT.style.fill = 0xffffff
+      this.iconRoleBadgeT.visible = true
+      const badgePadX = Math.max(10, Math.round(roleFontSize * 0.5))
+      const badgePadY = Math.max(4, Math.round(roleFontSize * 0.22))
+      const badgeW = this.iconRoleBadgeT.width + badgePadX * 2
+      const badgeH = this.iconRoleBadgeT.height + badgePadY * 2
+      const badgeX = frameX + frameW / 2
+      const badgeY = frameY + frameH + badgeH / 2 - 24
+      this.iconRoleBadgeBg.clear()
+      this.iconRoleBadgeBg.roundRect(badgeX - badgeW / 2, badgeY - badgeH / 2, badgeW, badgeH, Math.max(8, Math.round(badgeH * 0.3)))
+      this.iconRoleBadgeBg.fill({ color: roleBgColor, alpha: 0.98 })
+      this.iconRoleBadgeBg.visible = true
+      this.iconRoleBadgeT.x = badgeX
+      this.iconRoleBadgeT.y = badgeY
+    } else {
+      this.iconRoleBadgeBg.visible = false
+      this.iconRoleBadgeT.visible = false
+    }
 
     if (enchantmentDisplay?.icon) {
       const badgeSize = Math.max(44, Math.round(Math.min(frameW, frameH) * 0.48))

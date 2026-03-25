@@ -39,9 +39,10 @@ function parseTierName(raw: string): string {
 
 function getItemClassColor(tagsRaw: string): number {
   const tags = String(tagsRaw)
-  if (tags.includes('战士')) return getClassColor('战士')
+  if (tags.includes('剑士') || tags.includes('战士')) return getClassColor('剑士')
   if (tags.includes('弓手')) return getClassColor('弓手')
-  if (tags.includes('刺客')) return getClassColor('刺客')
+  if (tags.includes('忍者') || tags.includes('刺客')) return getClassColor('忍者')
+  if (tags.includes('冰法师')) return getClassColor('冰法师')
   return getClassColor('中立')
 }
 

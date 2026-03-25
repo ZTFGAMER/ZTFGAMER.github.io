@@ -2377,303 +2377,303 @@
       ],
       "quickBuyLevelChancesByDay": [
         [
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0
-        ],
-        [
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0
-        ],
-        [
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
           0.5,
           0.5,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
           0.5,
           0.5,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
           0.5,
           0.5,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.5,
-          0.5,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.5,
-          0.5,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0.5,
+          0.5,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0.5,
+          0.5,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0.5,
+          0.5,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
+          0,
           0.5,
           0.5,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          0.5,
-          0.5,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          0.5,
-          0.5,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          0.5,
-          0.5,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          0.5,
-          0.5,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          0.0,
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          0.0,
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          0.5,
+          0.5,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          0.0,
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          0.5,
+          0.5,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          0.0,
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          0.5,
+          0.5,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          0.0,
-          1.0,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          0.5,
+          0.5,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          0.0,
+          0,
+          0,
           0.5,
           0.5,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          0.0,
-          0.5,
-          0.5,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          0.0,
-          0.5,
-          0.5,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          0.0,
-          0.5,
-          0.5,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
           0
         ],
         [
-          0.0,
-          0.0,
-          0.5,
-          0.5,
-          0.0,
-          0.0,
-          0.0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
           0
         ]
       ],
@@ -3509,7 +3509,7 @@
       "levelDistance": 1300,
       "attackDistance": 100,
       "farY": 220,
-      "nearY": 660,
+      "nearY": 710,
       "farScale": 0.55,
       "farAlpha": 0,
       "nearScale": 2.3,
@@ -3526,7 +3526,7 @@
       "enemyShadowYOffset": -10,
       "enemyShadowScale": 0.7,
       "projectileScaleTopY": 220,
-      "projectileScaleBottomY": 660,
+      "projectileScaleBottomY": 710,
       "projectileScaleMin": 1,
       "projectileScaleMax": 2.2,
       "flyingEnemyLiftNear": 80,
@@ -3547,37 +3547,49 @@
       "reducedCooldownMinMs": 500,
       "moveDistancePerSecAtSpeed1": 25,
       "playerItemAttackDistanceByIcon": {
-        "item1": 16,
-        "item5": 36,
-        "item6": 36,
-        "item11": 36,
-        "item21": 36,
-        "item17": 36,
-        "item18": 36,
-        "item40": 36,
-        "item4": 60,
-        "item20": 60,
-        "item9": 60,
-        "item44": 60,
-        "item48": 60,
-        "item15": 60,
-        "item50": 16,
-        "item52": 16,
-        "item13": 16
+        "toweritem1": 40,
+        "toweritem2": 40,
+        "toweritem3": 40,
+        "toweritem4": 40,
+        "toweritem5": 40,
+        "toweritem6": 40,
+        "toweritem7": 60,
+        "toweritem8": 60,
+        "toweritem9": 60,
+        "toweritem10": 60,
+        "toweritem11": 60,
+        "toweritem12": 60,
+        "toweritem13": 50,
+        "toweritem14": 50,
+        "toweritem15": 50,
+        "toweritem16": 50,
+        "toweritem17": 50,
+        "toweritem18": 50,
+        "toweritem19": 16,
+        "toweritem20": 16,
+        "toweritem21": 16,
+        "toweritem22": 16,
+        "toweritem23": 16,
+        "toweritem24": 16
       },
       "playerItemBaseBounceByIcon": {},
       "playerBounceProjectileFlyMs": 200,
       "playerBounceProjectileSpeedPxPerSec": 500,
       "enemyAttackDoubleAfterAllSpawnMs": 40000,
+      "enemyForceNextWaveAfterAllSpawnMs": 35000,
       "playerMeleeSweepHitStepMs": 30,
       "playerMeleeQueueTriggerIntervalMs": 100,
       "playerMeleeSweepOriginOffsetX": 0,
       "playerMeleeSweepOriginOffsetY": -150,
-      "playerMeleeSweepStartOffsetX": -200,
+      "playerMeleeSweepStartOffsetX": -150,
       "playerMeleeSweepEndOffsetX": 200,
+      "playerMeleeSweepMirrorStartOffsetX": 150,
+      "playerMeleeSweepMirrorEndOffsetX": -200,
       "playerMeleeSweepDurationMs": 240,
       "playerMeleeSweepStartAngleDeg": -90,
       "playerMeleeSweepEndAngleDeg": -10,
+      "playerMeleeSweepMirrorStartAngleDeg": 90,
+      "playerMeleeSweepMirrorEndAngleDeg": 10,
       "playerMeleeSweepAlphaStart": 1,
       "playerMeleeSweepAlphaMid": 1,
       "playerMeleeSweepAlphaEnd": 1,
@@ -3589,7 +3601,110 @@
       "playerMeleeSweepScaleMax": 4,
       "laneEnemyMinGapDistance": 4,
       "spawnFrontGapDistance": 6,
+      "battleBuyCostByPurchaseCount": [
+        2,
+        2,
+        3,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        8,
+        9,
+        9,
+        10,
+        10,
+        11,
+        11,
+        12,
+        12,
+        13,
+        14,
+        14,
+        15,
+        16,
+        17,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        25,
+        26,
+        27,
+        28,
+        30,
+        31,
+        33,
+        35,
+        36,
+        38,
+        40,
+        42,
+        44,
+        46,
+        49,
+        51,
+        54,
+        56,
+        59,
+        62,
+        65,
+        68,
+        72,
+        75,
+        79,
+        83,
+        87,
+        92,
+        96,
+        101,
+        106,
+        112,
+        117,
+        123,
+        129,
+        136,
+        142,
+        149,
+        157,
+        165,
+        173,
+        182,
+        191,
+        200,
+        210,
+        221,
+        232,
+        243,
+        256,
+        268,
+        282,
+        296,
+        311,
+        326,
+        343,
+        360,
+        378,
+        396,
+        416,
+        437,
+        459,
+        482,
+        506,
+        531,
+        558,
+        586,
+        615,
+        646,
+        678
+      ],
       "nextWaveAutoStartMs": 5000,
+      "finalDay": 15,
       "enemyKillGold": 1,
       "enemyKillGoldBoss": 3,
       "enemyKillGoldFxMs": 700,
@@ -3609,7 +3724,7 @@
           "killGold": 1,
           "projectileScale": 1,
           "icon": "enemy1",
-          "enemyHpBarYOffset": -107,
+          "enemyHpBarYOffset": -110,
           "enemyHpBarScale": 1,
           "enemyShadowYOffset": -10,
           "enemyShadowScale": 0.7
@@ -3626,7 +3741,7 @@
           "killGold": 2,
           "projectileScale": 1,
           "icon": "enemy2",
-          "enemyHpBarYOffset": -107,
+          "enemyHpBarYOffset": -120,
           "enemyHpBarScale": 1,
           "enemyShadowYOffset": -10,
           "enemyShadowScale": 0.7
@@ -3644,7 +3759,7 @@
           "projectileScale": 1,
           "projectileIcon": "enemy3_a",
           "icon": "enemy3",
-          "enemyHpBarYOffset": -107,
+          "enemyHpBarYOffset": -115,
           "enemyHpBarScale": 1,
           "enemyShadowYOffset": -10,
           "enemyShadowScale": 0.7
@@ -3662,7 +3777,7 @@
           "projectileScale": 1,
           "isFlying": true,
           "icon": "enemy4",
-          "enemyHpBarYOffset": -107,
+          "enemyHpBarYOffset": -115,
           "enemyHpBarScale": 1,
           "enemyShadowYOffset": -10,
           "enemyShadowScale": 0
@@ -3679,7 +3794,7 @@
           "killGold": 2,
           "projectileScale": 1,
           "icon": "enemy5",
-          "enemyHpBarYOffset": -107,
+          "enemyHpBarYOffset": -115,
           "enemyHpBarScale": 1,
           "enemyShadowYOffset": -10,
           "enemyShadowScale": 0.7
@@ -3693,10 +3808,10 @@
           "attackIntervalMs": 2000,
           "attackDistance": 100,
           "attackType": "近战",
-          "killGold": 4,
+          "killGold": 8,
           "projectileScale": 1,
           "icon": "enemy6",
-          "enemyHpBarYOffset": -132,
+          "enemyHpBarYOffset": -145,
           "enemyHpBarScale": 1.2,
           "enemyShadowYOffset": -10,
           "enemyShadowScale": 0.8
@@ -3713,7 +3828,7 @@
           "killGold": 2,
           "projectileScale": 1,
           "icon": "enemy7",
-          "enemyHpBarYOffset": -107,
+          "enemyHpBarYOffset": -120,
           "enemyHpBarScale": 1,
           "enemyShadowYOffset": -10,
           "enemyShadowScale": 0.7
@@ -3731,7 +3846,7 @@
           "projectileScale": 1,
           "projectileIcon": "enemy8_a",
           "icon": "enemy8",
-          "enemyHpBarYOffset": -107,
+          "enemyHpBarYOffset": -120,
           "enemyHpBarScale": 1,
           "enemyShadowYOffset": -10,
           "enemyShadowScale": 0.7
@@ -3745,10 +3860,10 @@
           "attackIntervalMs": 2000,
           "attackDistance": 100,
           "attackType": "近战",
-          "killGold": 3,
+          "killGold": 8,
           "projectileScale": 1,
           "icon": "enemy9",
-          "enemyHpBarYOffset": -107,
+          "enemyHpBarYOffset": -115,
           "enemyHpBarScale": 1,
           "enemyShadowYOffset": -10,
           "enemyShadowScale": 0.7
@@ -3762,10 +3877,10 @@
           "attackIntervalMs": 2000,
           "attackDistance": 100,
           "attackType": "近战",
-          "killGold": 6,
+          "killGold": 20,
           "projectileScale": 1,
           "icon": "enemy10",
-          "enemyHpBarYOffset": -132,
+          "enemyHpBarYOffset": -120,
           "enemyHpBarScale": 1.2,
           "enemyShadowYOffset": -10,
           "enemyShadowScale": 0.8
@@ -3779,11 +3894,11 @@
           "attackIntervalMs": 2000,
           "attackDistance": 350,
           "attackType": "旋转飞行",
-          "killGold": 6,
+          "killGold": 20,
           "projectileScale": 1,
           "projectileIcon": "enemy11_a",
           "icon": "enemy11",
-          "enemyHpBarYOffset": -122,
+          "enemyHpBarYOffset": -125,
           "enemyHpBarScale": 1.1,
           "enemyShadowYOffset": -10,
           "enemyShadowScale": 0.7
@@ -3797,12 +3912,12 @@
           "attackIntervalMs": 2000,
           "attackDistance": 250,
           "attackType": "直线飞行",
-          "killGold": 6,
+          "killGold": 20,
           "projectileScale": 1,
           "isFlying": true,
           "projectileIcon": "enemy12_a",
           "icon": "enemy12",
-          "enemyHpBarYOffset": -122,
+          "enemyHpBarYOffset": -120,
           "enemyHpBarScale": 1.1,
           "enemyShadowYOffset": -10,
           "enemyShadowScale": 0
@@ -3859,7 +3974,7 @@
           "attackDistance": 300,
           "laneOccupyCount": 3,
           "attackType": "旋转飞行",
-          "killGold": 60,
+          "killGold": 80,
           "projectileScale": 2.2,
           "projectileIcon": "boss_a",
           "projectileFlyMs": 500,
@@ -3909,7 +4024,7 @@
             },
             {
               "id": "enemy3",
-              "count": 5
+              "count": 8
             }
           ]
         },
@@ -3923,113 +4038,14 @@
               "count": 10
             },
             {
-              "id": "enemy2",
-              "count": 5
-            },
-            {
-              "id": "enemy3",
-              "count": 5
+              "id": "enemy7",
+              "count": 10
             }
           ]
         },
         {
           "day": 5,
-          "hpMultiplier": 1.8,
-          "attackMultiplier": 1,
-          "enemies": [
-            {
-              "id": "enemy1",
-              "count": 10
-            },
-            {
-              "id": "enemy7",
-              "count": 5
-            }
-          ]
-        },
-        {
-          "day": 6,
           "hpMultiplier": 2,
-          "attackMultiplier": 1,
-          "enemies": [
-            {
-              "id": "enemy1",
-              "count": 10
-            },
-            {
-              "id": "enemy2",
-              "count": 5
-            },
-            {
-              "id": "enemy7",
-              "count": 5
-            }
-          ]
-        },
-        {
-          "day": 7,
-          "hpMultiplier": 2.5,
-          "attackMultiplier": 1,
-          "enemies": [
-            {
-              "id": "enemy1",
-              "count": 10
-            },
-            {
-              "id": "enemy3",
-              "count": 5
-            },
-            {
-              "id": "enemy7",
-              "count": 5
-            }
-          ]
-        },
-        {
-          "day": 8,
-          "hpMultiplier": 3,
-          "attackMultiplier": 1,
-          "enemies": [
-            {
-              "id": "enemy2",
-              "count": 5
-            },
-            {
-              "id": "enemy3",
-              "count": 5
-            },
-            {
-              "id": "enemy7",
-              "count": 10
-            }
-          ]
-        },
-        {
-          "day": 9,
-          "hpMultiplier": 3.5,
-          "attackMultiplier": 1,
-          "enemies": [
-            {
-              "id": "enemy1",
-              "count": 10
-            },
-            {
-              "id": "enemy2",
-              "count": 5
-            },
-            {
-              "id": "enemy3",
-              "count": 5
-            },
-            {
-              "id": "enemy7",
-              "count": 10
-            }
-          ]
-        },
-        {
-          "day": 10,
-          "hpMultiplier": 4,
           "attackMultiplier": 1,
           "enemies": [
             {
@@ -4055,20 +4071,20 @@
           ]
         },
         {
-          "day": 11,
-          "hpMultiplier": 5,
-          "attackMultiplier": 2,
+          "day": 6,
+          "hpMultiplier": 3,
+          "attackMultiplier": 1.5,
           "enemies": [
             {
               "id": "enemy5",
-              "count": 10
+              "count": 20
             }
           ]
         },
         {
-          "day": 12,
-          "hpMultiplier": 5.5,
-          "attackMultiplier": 2,
+          "day": 7,
+          "hpMultiplier": 4,
+          "attackMultiplier": 1.5,
           "enemies": [
             {
               "id": "enemy5",
@@ -4076,56 +4092,147 @@
             },
             {
               "id": "enemy8",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 8,
+          "hpMultiplier": 5,
+          "attackMultiplier": 1.5,
+          "enemies": [
+            {
+              "id": "enemy5",
+              "count": 10
+            },
+            {
+              "id": "enemy4",
+              "count": 10
+            }
+          ]
+        },
+        {
+          "day": 9,
+          "hpMultiplier": 6,
+          "attackMultiplier": 1.5,
+          "enemies": [
+            {
+              "id": "enemy5",
+              "count": 15
+            },
+            {
+              "id": "enemy6",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "day": 10,
+          "hpMultiplier": 8,
+          "attackMultiplier": 1.5,
+          "enemies": [
+            {
+              "id": "enemy5",
+              "count": 15
+            },
+            {
+              "id": "enemy6",
+              "count": 2
+            },
+            {
+              "id": "enemy8",
+              "count": 5
+            },
+            {
+              "id": "enemy4",
+              "count": 5
+            },
+            {
+              "id": "boss3",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "day": 11,
+          "hpMultiplier": 10,
+          "attackMultiplier": 2,
+          "enemies": [
+            {
+              "id": "enemy9",
+              "count": 20
+            }
+          ]
+        },
+        {
+          "day": 12,
+          "hpMultiplier": 12,
+          "attackMultiplier": 2,
+          "enemies": [
+            {
+              "id": "enemy9",
+              "count": 15
+            },
+            {
+              "id": "enemy11",
               "count": 5
             }
           ]
         },
         {
           "day": 13,
-          "hpMultiplier": 6,
+          "hpMultiplier": 14,
           "attackMultiplier": 2,
           "enemies": [
             {
-              "id": "enemy5",
-              "count": 10
+              "id": "enemy9",
+              "count": 15
             },
             {
-              "id": "enemy4",
+              "id": "enemy10",
               "count": 5
             }
           ]
         },
         {
           "day": 14,
-          "hpMultiplier": 6.5,
+          "hpMultiplier": 16,
           "attackMultiplier": 2,
           "enemies": [
             {
-              "id": "enemy5",
-              "count": 10
+              "id": "enemy9",
+              "count": 15
             },
             {
-              "id": "enemy8",
-              "count": 5
-            },
-            {
-              "id": "enemy4",
+              "id": "enemy12",
               "count": 5
             }
           ]
         },
         {
           "day": 15,
-          "hpMultiplier": 7,
+          "hpMultiplier": 20,
           "attackMultiplier": 2,
           "enemies": [
             {
-              "id": "enemy5",
-              "count": 10
+              "id": "enemy9",
+              "count": 15
             },
             {
-              "id": "enemy6",
-              "count": 2
+              "id": "enemy10",
+              "count": 5
+            },
+            {
+              "id": "enemy11",
+              "count": 5
+            },
+            {
+              "id": "enemy12",
+              "count": 5
+            },
+            {
+              "id": "boss",
+              "count": 1
             }
           ]
         },

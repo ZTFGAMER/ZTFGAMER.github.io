@@ -43,9 +43,10 @@ export function getPrimaryArchetype(rawTags: string): string {
 
 export function toSkillArchetype(raw: string): SkillArchetype | null {
   const key = String(raw || '').trim().toLowerCase()
-  if (key === 'warrior'  || key === '战士') return 'warrior'
+  if (key === 'warrior'  || key === '战士' || key === '剑士') return 'warrior'
   if (key === 'archer'   || key === '弓手') return 'archer'
-  if (key === 'assassin' || key === '刺客') return 'assassin'
+  if (key === 'assassin' || key === '刺客' || key === '忍者') return 'assassin'
+  if (key === 'mage' || key === '冰法师') return 'mage'
   if (key === 'utility'  || key === '通用') return 'utility'
   return null
 }
@@ -158,8 +159,8 @@ export function canUseLv7MorphSynthesis(
   if (getDebugCfg('gameplaySameArchetypeCrossSynthesisEnabled') < 0.5) return false
   const sourceArch = toSkillArchetype(getPrimaryArchetype(sourceDef.tags))
   const targetArch = toSkillArchetype(getPrimaryArchetype(targetDef.tags))
-  if (sourceArch !== 'warrior' && sourceArch !== 'archer' && sourceArch !== 'assassin') return false
-  if (targetArch !== 'warrior' && targetArch !== 'archer' && targetArch !== 'assassin') return false
+  if (sourceArch !== 'warrior' && sourceArch !== 'archer' && sourceArch !== 'assassin' && sourceArch !== 'mage') return false
+  if (targetArch !== 'warrior' && targetArch !== 'archer' && targetArch !== 'assassin' && targetArch !== 'mage') return false
   return sourceArch === targetArch
 }
 

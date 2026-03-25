@@ -92,7 +92,7 @@ export function getBackpackRowsByDay(day: number): number {
 
 export function getTowerBattleRowsByDay(day: number): number {
   const d = Math.max(1, Math.round(day || 1))
-  if (d <= 2) return 1
+  if (d <= 3) return 1
   if (d <= 8) return 2
   return 3
 }

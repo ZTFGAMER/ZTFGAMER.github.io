@@ -1279,9 +1279,10 @@ function pickGuideSameArchetypeResultItem(_pick: StarterClass, sourceItem: ItemD
 
 function getGuideArchetypeBadge(item: ItemDef): { text: string; color: number } {
   const tags = `${item.tags ?? ''}`
-  if (tags.includes('战')) return { text: '战', color: 0xc74444 }
-  if (tags.includes('弓')) return { text: '弓', color: 0x4d9e52 }
-  if (tags.includes('刺')) return { text: '刺', color: 0x3f73bf }
+  if (tags.includes('剑') || tags.includes('战')) return { text: '剑', color: getClassColor('剑士') }
+  if (tags.includes('弓')) return { text: '弓', color: getClassColor('弓手') }
+  if (tags.includes('忍') || tags.includes('刺')) return { text: '忍', color: getClassColor('忍者') }
+  if (tags.includes('冰')) return { text: '冰', color: getClassColor('冰法师') }
   return { text: '通', color: 0x7b6ad2 }
 }
 
@@ -1312,9 +1313,10 @@ export function createGuideItemCard(item: ItemDef, levelText: string, tierForFra
   const tierColor = useArchetypeFrame
     ? (() => {
       const tags = String(item.tags ?? '')
-      if (tags.includes('战') || /warrior/i.test(tags)) return getClassColor('战士')
+      if (tags.includes('剑') || tags.includes('战') || /warrior/i.test(tags)) return getClassColor('剑士')
       if (tags.includes('弓') || /archer/i.test(tags)) return getClassColor('弓手')
-      if (tags.includes('刺') || /assassin/i.test(tags)) return getClassColor('刺客')
+      if (tags.includes('忍') || tags.includes('刺') || /assassin/i.test(tags)) return getClassColor('忍者')
+      if (tags.includes('冰') || /mage/i.test(tags)) return getClassColor('冰法师')
       return getClassColor('中立')
     })()
     : getTierColor(tierForFrame)

@@ -263,6 +263,7 @@ const GAMEPLAY_KEYS = [
 const GAMEPLAY_CHECKBOX_KEYS = [
   'gameplayGrantAllClassItems',
   'gameplayShowSpeedButton',
+  'gameplayShowTowerClassAttackDistance',
   'gameplayPvpDisableSpeedup',
   'gameplayCrossSynthesisConfirm',
   'gameplayBattleZoneNoSynthesis',
@@ -272,6 +273,7 @@ const GAMEPLAY_CHECKBOX_KEYS = [
   'gameplaySameItemRandomSynthesis',
   'gameplayDefaultUpgradeHint',
   'gameplayShowSimpleDescriptions',
+  'gameplayShowClassName',
   'gameplaySkillDraftRerollEnabled',
   'gameplayEventDraftRerollEnabled',
   'gameplayStarterHeroShowAll',
@@ -332,6 +334,7 @@ const COLOR_KEYS = [
   'classColorWarrior',
   'classColorArcher',
   'classColorAssassin',
+  'classColorMage',
   'classColorNeutral',
 ]
 const DRAG_KEYS = Object.keys(CONFIG_DEFS).filter((key) => !LAYOUT_KEYS.includes(key) && !PERSPECTIVE_KEYS.includes(key) && !TOAST_KEYS.includes(key) && !TOAST_PARAM_KEYS.includes(key) && !BATTLE_VFX_KEYS.includes(key) && !GAMEPLAY_KEYS.includes(key) && !GAMEPLAY_CHECKBOX_KEYS.includes(key) && !ENEMY_DATA_PARAM_KEYS.includes(key) && !ENEMY_DATA_CHECKBOX_KEYS.includes(key) && !COLOR_KEYS.includes(key) && !ANIM_TIMING_KEYS.includes(key) && !key.startsWith('gameplay') && !FORCE_GAMEPLAY_KEYS.has(key))

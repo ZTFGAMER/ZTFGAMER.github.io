@@ -11,7 +11,7 @@ function getItemIconBasePath(): string {
     const path = typeof window !== 'undefined' ? window.location.pathname : ''
     base = path.includes('/dist-ios/') ? '../resource' : './resource'
   }
-  return `${base}/itemicon/vanessa`
+  return `${base}/toweritem`
 }
 
 function getResourceBasePath(): string {

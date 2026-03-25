@@ -1,5 +1,1200 @@
 # 大巴扎 — 开发进度记录
 
+## 冰锥多发改为“分锁目标”而非“同目标连射”（2026-03-25）
+
+- 用户需求：当冰锥同时发射数量为 `N` 时，应锁定 `N` 个不同目标；若目标不足则按实际目标数发射，不要对同一目标多发。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 扩展 `PendingPlayerFire`：新增 `burstCount` 与 `splitTargets`；
+    - 冰法师在 `multicast > 1` 时改为单次触发“分锁目标模式”（`splitTargets=true`），不再拆成逐 tick 连发队列；
+    - 新增 `pickNearestEnemiesByPredictedHp()`，按距离选取多个不同活目标；
+    - 结算时对每个被锁目标各发 1 次投射并各自结算伤害；若目标不足则只发实际数量。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“多发冰锥优先分配到不同目标”。
+
+## 验收追加修正（2026-03-25，关卡Hp/Atk比例更新 Day1~15）
+
+- 用户需求：按新表更新关卡倍率（Day1~15）。
+- 已完成：
+  - `data/tower_game_config.json`
+    - `tower_defense_rules.value.dayWaves` 中 Day1~15 的 `hpMultiplier/attackMultiplier` 已更新为：
+      - 1:(1,1)
+      - 2:(1.2,1)
+      - 3:(1.4,1)
+      - 4:(1.6,1)
+      - 5:(2,1)
+      - 6:(3,1.5)
+      - 7:(4,1.5)
+      - 8:(5,1.5)
+      - 9:(6,1.5)
+      - 10:(8,1.5)
+      - 11:(10,2)
+      - 12:(12,2)
+      - 13:(14,2)
+      - 14:(16,2)
+      - 15:(20,2)
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收关卡节奏与强度曲线。
+
+## 验收追加修正（2026-03-25，新波切换时拖拽不中断）
+
+- 用户反馈：新波次刷新瞬间若正在拖拽物品，物品会弹回且随后无法再次拖动。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `startNextTowerWaveInPlace()` 增加拖拽保护：`draggingPlayerItemId` 非空时不执行切波；
+    - 自动倒计时到 0 时若仍在拖拽，延后 `250ms` 重试，不打断当前拖拽态。
+- 结果：拖拽过程中不会被强制弹回，松手后才会进入下一波。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“切波不打断拖拽且可继续拖动”。
+
+## 验收追加修正（2026-03-25，拖拽中发射点固定为原位置）
+
+- 用户需求：拖动中的武器发射子弹时，发射点应保持在拖拽开始前的原格子位置（不跟随手指）。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 保留 `onDragStart` 记录的 `draggingPlayerItemFirePoint` 作为拖拽期间发射源；
+    - 移除 `onDragMove` 中实时更新发射点的逻辑。
+- 结果：拖拽过程中触发攻击，子弹从原位置发射。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“拖拽中发射点固定原位置”。
+
+## 验收优化追加（2026-03-25，双持长剑伤害倍率从4x修正为2x）
+
+- 用户反馈：双持长剑“左右同时施展”后总伤害变成 `x4`，期望应为 `x2`。
+- 根因定位：
+  - 双持效果在两处叠加：
+    - 被动阶段给所有剑士 `multicast +1`；
+    - 出手阶段再按左右两个方向各打一轮；
+  - 二者叠加导致总倍率从预期 `2x` 膨胀到 `4x`。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 移除双持长剑在被动阶段的 `multicast +1` 叠加；
+    - 保留“左右两侧同时施展”这一条实现（即总伤害为 `x2`）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户实战验收双持长剑总伤害倍率是否恢复为2倍。
+
+## 验收优化追加（2026-03-25，塔防购买价格表再次更新为新1~100次）
+
+- 用户需求：按最新提供表再次覆盖第 1~100 次购买价格。
+- 已完成：
+  - `data/tower_game_config.json`
+    - `towerDefenseRules.battleBuyCostByPurchaseCount` 已替换为最新 100 项；
+    - 关键点：第 1/10/50/100 次分别为 `2/8/59/678`。
+- 验证：
+  - `npm run build` 通过。
+- 当前阶段：
+  - 等待用户验收战斗内实际扣费与最新表完全一致。
+
+## 验收优化追加（2026-03-25，品质标识层级提升到图标上方）
+
+- 用户需求：白银/黄金/钻石标识需渲染在物品图标上方。
+- 已完成：
+  - `src/tower/common/grid/GridZone.ts`
+    - `qualityDot.zIndex` 调整为 `1200`；
+    - `qualitySparkle.zIndex` 调整为 `1201`；
+    - 在 `visual.sortableChildren=true` 下确保品质标识层级高于物品图标。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收品质标识覆盖层级是否符合预期。
+
+## 塔防上阵区第9天起切为3行（2026-03-25）
+
+- 用户需求：第9天上阵区改为三行。
+- 已完成：
+  - `src/tower/shop/ShopMathHelpers.ts`
+    - `getTowerBattleRowsByDay(day)` 调整为分段：
+      - `1~3天 = 1行`
+      - `4~8天 = 2行`
+      - `9天及以后 = 3行`
+    - 该函数被商店准备态与战斗态共用，因此第9天起两处显示都同步为3行。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收第9天上阵区行数变化。
+
+## 塔防初始金币调整为5（2026-03-25）
+
+- 用户需求：塔防开局初始金币从 10 改为 5。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `getEditableStartGold(day)` 中塔防 Day1 初始金币改为 `5`（其余天维持 `0`）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收开局金币显示应为 `5/价格`。
+
+## 验收优化追加（2026-03-25，塔防购买价格表更新为1~100次）
+
+- 用户需求：按新表更新塔防战斗内购买价格（第1~100次）。
+- 已完成：
+  - `data/tower_game_config.json`
+    - `towerDefenseRules.battleBuyCostByPurchaseCount` 已替换为你提供的 100 项新序列；
+    - 前段示例：`2,2,3,3,4,4,5,5...`；末段示例：`399,418,439,461,484,509`。
+- 验证：
+  - `npm run build` 通过。
+- 当前阶段：
+  - 等待用户验收战斗内第 N 次购买实际扣费是否与新表一致。
+
+## 验收追加修正（2026-03-25，拖拽物品发射点跟随手指）
+
+- 用户反馈：拖动中的物品发射子弹时，起点跑到屏幕下方异常位置。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增拖拽发射点缓存 `draggingPlayerItemFirePoint`；
+    - `onDragStart` 初始化为该物品当前中心，`onDragMove` 持续更新为拖拽锚点，`onDragEnd` 清空；
+    - 玩家 `battle:item_fire` 在拖拽该物品时优先使用该缓存作为 projectile `from`。
+- 效果：拖拽中触发攻击时，子弹从当前拖拽位置发射。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“拖拽发射点与手指位置一致”。
+
+## 验收优化追加（2026-03-25，战斗加速档位调整）
+
+- 用户需求：战斗加速改为 `1x / 1.3x / 1.8x / 2.5x`。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `BATTLE_SPEED_STEPS` 由 `[1, 2, 3, 4]` 调整为 `[1, 1.3, 1.8, 2.5]`；
+    - 倍速按钮轮转与文案同步按新档位显示。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收战斗倍速轮转是否为 `1x → 1.3x → 1.8x → 2.5x`。
+
+## 验收优化追加（2026-03-25，第4天开启2行上阵区）
+
+- 用户需求：塔防上阵区在第4天才开启第2行。
+- 已完成：
+  - `src/tower/shop/ShopMathHelpers.ts`
+    - `getTowerBattleRowsByDay()` 规则从“day<=2 为 1 行”改为“day<=3 为 1 行”；
+    - 即第 1~3 天 1 行，第 4 天起 2 行。
+- 验证：
+  - `npm run build` 通过。
+- 当前阶段：
+  - 等待用户验收第3天仍为1行、第4天切2行是否符合预期。
+
+## 验收优化追加（2026-03-25，冰锥系伤害按新表同步）
+
+- 用户需求：更新冰锥系 6 件物品伤害数值。
+- 已完成：
+  - `data/tower_items.json`
+    - 冰锥：`10|16|26|41|66`
+    - 减速冰锥：`16|26|41|66`
+    - 多发冰锥：`26|41|66`
+    - 冰冻冰锥：`26|41|66`
+    - 爆炸冰锥：`41|66`
+    - 反击冰锥：`41|66`
+- 验证：
+  - `tower_items.json` JSON 语法校验通过；
+  - `npm run build` 通过。
+- 当前阶段：等待用户验收冰锥系实战伤害表现。
+
+## 验收追加修正（2026-03-25，塔防护盾每秒衰减改为向下取整）
+
+- 用户需求：护盾每秒下降按 `1/10` 向下取整；护盾小于 `10` 时不下降。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - `tickPlayerShieldDecay()` 中每秒衰减由 `Math.round(...*0.1)` 改为 `Math.floor(...*0.1)`；
+    - 当衰减值为 `0`（即护盾 `<10`）时跳过本秒扣减。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“护盾<10不掉、其余按向下取整衰减”规则。
+
+## 塔防初始金币调整为10（2026-03-25）
+
+- 用户需求：塔防模式初始金币提高到 `10`。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `getEditableStartGold(day)` 中塔防 Day1 初始金币由 `6` 调整为 `10`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收开局购买按钮金币显示应为 `10/x`。
+
+## 验收追加修正（2026-03-25，触发逻辑改为本波开始计时 + 同关单次）
+
+- 用户要求：
+  - 不再按“最后一只刷新”计时，改为按本波开始刷新时刻计时；
+  - 超时触发与清场触发同关互斥，触发其一后另一种不再触发。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增 `towerWaveStartAtMs`，在进入战斗与每次开新波时重置；
+    - 新增 `towerWaveTriggerConsumed`，同关只触发一次自动倒计时；
+    - 自动触发条件改为 `battlePresentationMs - towerWaveStartAtMs >= enemyForceNextWaveAfterAllSpawnMs`（普通关）；
+    - 清场触发同样会占用触发位，避免同关重复触发。
+  - 保持规则：首领关清关后仅手动“开始下一波”，不自动倒计时。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“同关只触发一次且不连跳”。
+
+## 验收追加修正（2026-03-25，开始下一波按钮上移100px）
+
+- 用户需求：将“开始下一波”按钮整体上移 `100px`。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 初始化位置由 `92 + topSafeYOffset + 150` 调整为 `92 + topSafeYOffset + 50`；
+    - 每帧更新位置同样调整为 `+50`，避免进入/刷新后回弹。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收按钮新位置。
+
+## 塔防物品效果文案对齐配置（补齐“所有”字样）（2026-03-25）
+
+- 用户反馈：塔防物品效果描述未严格对齐配置，尤其多处缺少“所有”字样。
+- 已完成：
+  - `data/tower_items.json`
+    - 批量对齐 `simple_desc` / `simple_desc_tiered` 到配置表口径，补齐“所有弓箭/所有冰锥/所有长剑”等全局作用范围；
+    - 同步补齐关键状态解释文案：
+      - 中毒弓箭：补“中毒：受到持续伤害”；
+      - 冰冻冰锥：补“冰冻：无法行动”；
+      - 重伤长剑：补“流血：受伤时受到额外伤害”。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户逐条验收 24 件塔防物品文案是否与提供表格一致。
+
+## 验收追加修正（2026-03-25，触发源简化为“波次开始计时”+ 同关单次触发）
+
+- 用户要求：
+  - 不再按“最后一只刷新”做复杂判定，改为记录“本波开始时间”后判断超时；
+  - 同一关中两种触发源（超时/清场）只要触发其一，另一种不再触发。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增当前波次状态：`towerWaveStartAtMs`、`towerWaveTriggerConsumed`；
+    - 触发条件改为：`battlePresentationMs - towerWaveStartAtMs >= enemyForceNextWaveAfterAllSpawnMs`（普通关）；
+    - 清场触发与超时触发统一写入 `towerWaveTriggerConsumed=true`，同关只触发一次；
+    - 开始下一波时重置为新波状态（重新记时并清除触发占用）。
+  - 保持既有规则：首领关仍为手动下一波（不自动倒计时）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“同关单次触发 + 不再连触发”。
+
+## 验收优化追加（2026-03-25，玩家血量500改为“上限固定”而非“锁血”）
+
+- 用户反馈：改成 500 后出现“不掉血”。
+- 修正说明：
+  - 之前把玩家 `hp` 每帧强制重置为 500，等于锁血；
+  - 现改为仅固定 `maxHp=500`，`hp` 可正常受伤减少。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - `update()`：保留 `maxHp` 固定 500，但 `hp` 仅做上限夹取（不再重置满血）；
+    - `applyEnemyDamageToPlayer()`：恢复真实扣血逻辑（先扣盾，再扣血）。
+- 验证：
+  - 全量 `npm run build` 当前被仓库内 `BattleScene.ts` 既有编译错误阻塞（与本次文件改动不同文件）。
+- 当前阶段：等待用户验收“上限500且可掉血”的实际战斗表现。
+
+## 验收优化追加（2026-03-25，塔防战斗玩家血量固定为500）
+
+- 用户反馈：塔防战斗中玩家血量在变化，期望固定为 `500`。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 新增 `getFixedPlayerHp()`（默认返回 `500`）；
+    - 初始化玩家英雄生命时改为固定 `500`，不再读取快照/日表生命；
+    - 每次 `update()` 后强制同步玩家 `hp/maxHp` 为固定值，避免战斗过程漂移；
+    - 敌人命中玩家时不再降低玩家生命（仍可走受击表现与护盾消耗流程）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收塔防战斗中玩家生命是否稳定显示为500。
+
+## 验收优化追加（2026-03-25，塔防1-15关 Hp/Atk比例更新）
+
+- 用户需求：更新塔防 1~15 关倍率为：
+  - Hp：`1, 1.2, 1.4, 1.6, 2, 3, 4, 5, 6, 10, 15, 20, 25, 30, 50`
+  - Atk：`1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3`
+- 已完成：
+  - `data/tower_game_config.json`
+    - `towerDefenseRules.dayWaves` 中 day 6~15 的 `hpMultiplier` 按新表替换；
+    - `attackMultiplier` 与新表对齐（day 6~10 为 2，day 11~15 为 3；day 1~5 保持 1）。
+- 验证：
+  - `npm run build` 通过。
+- 当前阶段：
+  - 等待用户验收 1~15 关难度曲线是否符合预期，若偏陡可再按区间回调倍率。
+
+## 塔防固定15关通关 + 入口强制直进战斗 + 战斗内获物即时存档（2026-03-25）
+
+- 用户需求：
+  - 塔防模式不应经过商店，点击塔防直接进战斗；
+  - 只打 15 关，过完第 15 关即通关；
+  - 战斗中购买/合成获得的物品要记录存档。
+- 已完成：
+  - `src/menu/MenuScene.ts`
+    - 塔防入口改为固定 `SceneManager.goto('tower-battle')`，不再按存档分流到商店。
+  - `src/main.ts`
+    - URL 模式 `?mode=tower|towerdefense|td` 改为固定直进 `tower-battle`。
+  - `data/tower_game_config.json`
+    - 新增 `towerDefenseRules.finalDay = 15`。
+  - `src/tower/common/items/ItemDef.ts`
+    - 增加 `towerDefenseRules.finalDay?: number` 类型声明。
+  - `src/tower/battle/BattleSettlement.ts`
+    - 新增塔防最终关判定：胜利且 `day >= finalDay` 记为通关；
+    - 塔防通关时显示结算面板（不再像普通过关那样隐藏），文案为通关提示；
+    - 结算可见性逻辑更新：仅普通塔防胜利隐藏面板，通关不隐藏。
+  - `src/tower/battle/BattleScene.ts`
+    - 下一波按钮/自动开波逻辑增加 `!settlement.isFinalVictory()` 保护，15 关通关后不会进入第 16 关；
+    - 战斗内购买在写入编队数据后立刻 `setBattleSnapshot()` 落盘，避免刷新丢失新获得物品。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“塔防入口无商店 + 第15关通关收尾 + 战斗内新获物刷新可恢复”。
+
+## 验收追加修正（2026-03-25，自动下一波连触发防抖）
+
+- 用户反馈：自动下一关会连续触发。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增自动开波最小触发间隔守卫：`getTowerNextWaveTriggerMinIntervalMs() = 10000`；
+    - `startNextTowerWaveInPlace()` 增加 `battlePresentationMs - towerNextWaveLastTriggerAtMs` 判断，10 秒内拒绝重复触发。
+- 目的：即便出现边界状态重复满足，也不会在短时间连续跳多关。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“自动下一波不再连触发（>=10s 间隔）”。
+
+## 验收优化追加（2026-03-25，护盾每秒衰减 + 过关护盾保留）
+
+- 用户需求：
+  - 护盾每秒自动降低当前护盾值的 `1/10`；
+  - 过关进入下一关后护盾不清除。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 新增护盾衰减循环：每 1000ms 结算一次，按“当前护盾 * 10%”扣减，最低扣减 1；
+    - 战斗初始化支持从快照读取 `playerShield`，不再强制从 0 开始。
+  - `src/tower/battle/BattleSnapshotStore.ts`
+    - `BattleSnapshotBundle` 增加 `playerShield` 字段，并补齐 clone 持久化逻辑。
+  - `src/tower/battle/BattleScene.ts`
+    - `buildEditableSnapshotFromBoard()` 写入当前英雄护盾到快照，确保换关重建战斗时可继承。
+- 验证：
+  - `npm run build` 通过。
+- 当前阶段：
+  - 等待用户验收“护盾衰减速度”和“过关护盾继承”是否符合预期。
+
+## 验收追加修正（2026-03-25，物品测试全等级保存后重进降级）
+
+- 用户反馈：物品测试点“全等级”后当场显示等级正常，但刷新重进后都变成最低等级，怀疑保存数据是最低级。
+- 根因定位：
+  - `src/tower/battle/EnemyBuilder.ts` 的 `toRunner()` 在还原玩家实体时优先用 `entity.level` 按“质量分”映射 tier；
+  - 该映射与塔防自定义等级语义不一致，导致已保存的高等级 tier 在重建时被降级覆盖。
+- 已完成：
+  - `src/tower/battle/EnemyBuilder.ts`
+    - 还原逻辑改为优先信任快照里的显式 `entity.tier/tierStar`；
+    - 仅当快照缺失 `tier` 时，才回退用 `entity.level` 做旧逻辑映射。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“全等级添加后刷新重进，等级与数值是否保持不降级”。
+
+- 验收追加修正（同日，白银/黄金等级数值整体上跳一级）：
+  - 用户反馈：白银 `Lv3/Lv4`、黄金 `Lv4` 数值偏高一档（实际按更高一级生效）。
+  - 根因定位：
+    - `src/tower/battle/CombatHelpers.ts` 的 `tierIndexFromRaw()` 采用旧“8档质量分（含 Bronze2/Silver2/Gold2）”索引；
+    - 塔防当前等级语义是 5 档（`Bronze1 → Silver1 → Gold1 → Diamond1 → Diamond2`），导致白银/黄金档位计算出现 +1 偏移。
+  - 已完成：
+    - `src/tower/battle/CombatHelpers.ts`
+      - 重写 `tierIndexFromRaw()`：改为按塔防 5 档步进计算索引；
+      - 仅钻石使用 `#2` 作为额外一档，白银/黄金不再被“隐式星级档”抬高。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户复测“白银 Lv3/Lv4、黄金 Lv4 数值是否回到正确档位”。
+
+- 验收追加修正（同日，等级显示与 tier 脱钩导致“看着Lv4实际Lv5”）：
+  - 用户反馈：修正后仍有白银/黄金等级显示与生效不一致（显示低一级，数值按高一级）。
+  - 根因定位：
+    - `BattleScene` 中 `level` 曾可独立保存，和 `tier/tierStar` 不一致时会出现“UI看起来Lv4，战斗按Lv5”的错位。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 在 `buildEditableSnapshotFromBoard()` 导出快照时，`level` 统一由 `tier/tierStar`反推，禁止独立漂移；
+      - 在 `ensureEditableBuildMode()` 载入快照时，`editableMeta.level` 同样由 `tier/tierStar` 归一化。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户复测“白银 Lv3/Lv4、黄金 Lv4 的显示等级与实际生效是否一致”。
+
+## 验收优化追加（2026-03-25，守护长剑重复加盾修复）
+
+- 用户反馈：仅有 3 个 Lv3 守护长剑时，预期每次触发应统一为 `+4`，实际出现 `+4` 与 `+1` 混合。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 护盾结算改为单入口：在 `firePlayerItemTrigger()` 中统一计算“基础护盾 + 所有守护长剑加成”并一次性触发 `gain_shield`；
+    - 移除 `applyPostItemUseEffects()` 中重复的剑士加盾逻辑，避免同次触发重复再加一次 `+1`。
+- 验证：
+  - `npm run build` 通过。
+- 当前阶段：
+  - 等待用户复测 3 个 Lv3 守护长剑场景，确认跳字是否稳定为 `+4`。
+
+## 验收优化追加（2026-03-25，守护长剑描述去括号 + 护盾跳字改总值）
+
+- 用户反馈：
+  - 守护长剑描述不需要括号附注；
+  - 护盾跳字应显示总加盾值（`+x`），而不是仅 `+1`。
+- 已完成：
+  - `data/tower_items.json`
+    - 守护长剑 `simple_desc_tiered` 去掉括号说明，恢复为 `使用所有长剑时获得护盾值+1|+2|+3`。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 剑士触发时改为先聚合总护盾（基础 + 守护长剑加成总和）后一次性 `gain_shield`；
+    - UI 护盾跳字改为直接显示总值 `+x`（例如 `+6`），不再拆成多次 `+1/+2/+3`。
+- 验证：
+  - `npm run build` 通过。
+- 当前阶段：
+  - 等待用户复测守护长剑在 3/4/5 级下的描述与加盾跳字是否一致。
+
+## 验收追加修正（2026-03-25，最后一只计时改为计数判定 + 首领关手动下一波）
+
+- 用户反馈：
+  - `enemyForceNextWaveAfterAllSpawnMs` 计时起点不对；
+  - 首领关卡应改为击败后手动前往下一关，不自动倒计时。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 新增当前波次计数字段：`currentWaveSpawnTotal/currentWaveSpawned/currentWaveHasBoss`；
+    - 最后一只刷新时刻改为“按本波刷怪数量计数”触发（`currentWaveSpawned >= currentWaveSpawnTotal`）而非简单队列条件；
+    - `getTowerEnemyStats()` 输出 `currentWaveHasBoss` 供场景逻辑使用。
+  - `src/tower/battle/BattleEngineTypes.ts`
+    - `TowerEnemyStatsView` 增加 `currentWaveHasBoss?: boolean`。
+  - `src/tower/battle/BattleScene.ts`
+    - 自动倒计时触发改为：
+      - 普通关：`全清` 或 `最后一只刷新后超时` 任一触发；
+      - 首领关：不自动倒计时，清关后仅显示手动“开始下一波”按钮。
+- 额外保持：超时切波时使用 `queueNextTowerWave`，旧怪物不清除。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“最后一只计数起点正确 + 首领关手动下一波”。
+
+## 验收优化追加（2026-03-25，守护长剑护盾逻辑修正 + 3/4/5级描述区分）
+
+- 用户反馈：
+  - 守护长剑不应替代长剑基础护盾，而是叠加增加；
+  - 需在描述上明确体现 Gold 路径对应 3/4/5 级差异。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 剑士每次使用时先结算“长剑基础护盾+1”（按来源长剑词条）；
+    - 再叠加全场 `toweritem22` 的额外护盾（可叠加），并兼容“护盾值+X”描述写法；
+    - 例如 Lv4 守护(+2) + Lv5 守护(+3) 时，任意长剑触发总护盾为 `1+2+3=6`。
+  - `data/tower_items.json`
+    - 守护长剑文案改为“使用所有长剑时获得护盾值+1|+2|+3”；
+    - `simple_desc_tiered` 补充“对应3|4|5级”提示，便于验收时识别档位。
+- 验证：
+  - `npm run build` 通过。
+- 当前阶段：
+  - 等待用户验收守护长剑在多件叠加时的实际加盾值是否符合预期。
+
+## 塔防剩余敌人仅保留文本显示（2026-03-25）
+
+- 用户需求：顶部“剩余敌人”只显示文本，不显示进度条图形。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `drawTowerRemainingBar()` 改为仅更新文本 `剩余敌人：x`（不再显示 `x/y`）；
+    - 清空并隐藏 `towerRemainBarG` 图形层，不再绘制条形背景/填充/边框；
+    - 塔防模式更新循环中强制 `towerRemainBarG.visible = false`，仅保留文本可见。
+    - 剩余敌人文本字号调整为 `36`；
+    - 右上角“第x天”字号调整为 `32`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“仅文本，无进度条”。
+
+## 验收追加修正（2026-03-25，塔防品质角标尺寸与跟随动效）
+
+- 用户需求：
+  - 塔防模式下钻石物品右下角钻石标志缩小 50%；
+  - 白银/黄金/钻石角标在物品释放时要跟随物品图标一起抖动放缩。
+- 已完成：
+  - `src/tower/common/grid/GridZone.ts`
+    - 新增 `setQualityDiamondMarkerScale(scale)`，支持按场景配置钻石角标缩放；
+    - 将 `qualityDot/qualitySparkle` 从独立 `badgeLayer` 移入 `visual`，使其随物品图标动画同步（释放 pulse 时一起放缩/抖动）；
+    - 钻石角标半径与闪光十字尺寸按该缩放系数联动。
+  - `src/tower/battle/BattleScene.ts`
+    - 塔防模式应用 `zone.setQualityDiamondMarkerScale(0.5)`；非塔防保持 `1`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“钻石角标缩小50% + 三品质角标跟随释放动效”。
+
+## 验收追加修正（2026-03-25，剑士长剑统一近战挥砍表现）
+
+- 用户需求：剑士的长剑系都使用 `toweritem19` 作为近战挥砍表现。
+- 已完成：
+  - `src/tower/battle/BattleFXPool.ts`
+    - 在 `spawnMeleeSweep()` 中对“剑士 + 近战挥动”分支强制使用 `toweritem19` 纹理；
+    - 其他流派/表现保持原逻辑不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“所有长剑挥砍是否统一为 toweritem19 表现”。
+
+## 验收追加修正（2026-03-25，最后刷新计时与跨波保留怪物）
+
+- 用户反馈：
+  1) 计时从首个怪物刷新开始算，应该从本关最后一个敌人刷新后开始；
+  2) 刷新下一关时不应清除老关卡怪物。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 新增 `queueNextTowerWave(nextDay)`：不重置战斗引擎，直接在当前局面追加下一关刷怪计划；
+    - 追加计划以当前 `elapsedMs` 为基准生成，保留在场怪物继续战斗；
+    - 保留并输出 `allEnemiesSpawnedAtMs`（最后一只敌人刷新时刻）与 `elapsedMs` 供场景计时。
+  - `src/tower/battle/BattleEngineTypes.ts`
+    - `BattleEngineLike` 新增可选 `queueNextTowerWave(nextDay)` 接口。
+  - `src/tower/battle/BattleScene.ts`
+    - `startNextTowerWaveInPlace()` 根据 `engine.isFinished()` 分流：
+      - 未结束（超时触发）走 `queueNextTowerWave`，不清怪；
+      - 已结束（清场触发）维持原开新波流程；
+    - 结算 UI 仅在已结算状态下重置，避免未结算超时跳波误清状态。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“最后一只刷新后计时 + 超时开新波不清怪（含首领关）”。
+
+## 验收优化追加（2026-03-25，双持长剑改为同帧双挥砍 + 镜像参数独立配置）
+
+- 用户反馈：
+  - 双持正向/反向应同时发生，不应走最小间隔触发；
+  - 镜像挥砍参数需独立可配（角度、起止 X 偏移）。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 双持长剑改为同一次触发内同时发出两套近战：`ltr + rtl`；
+    - 伤害结算顺序分别按列左到右/右到左独立计算（不再交替触发）。
+  - `src/tower/core/EventBus.ts`
+    - `battle:item_fire` 增加 `meleeSweepDirection` 字段，用于表现层区分左右挥砍。
+  - `src/tower/battle/BattleScene.ts`
+    - 新增镜像独立参数读取并生效：
+      - `playerMeleeSweepMirrorStartAngleDeg`
+      - `playerMeleeSweepMirrorEndAngleDeg`
+      - `playerMeleeSweepMirrorStartOffsetX`
+      - `playerMeleeSweepMirrorEndOffsetX`
+    - `rtl` 使用上述镜像参数，并通过 `flipX` 做贴图左右反置。
+  - `src/tower/common/items/ItemDef.ts`
+    - 补充塔防规则类型定义中的四个镜像参数字段。
+  - `data/tower_game_config.json`
+    - 增加四个镜像参数默认值（可直接在配置中调参）。
+- 验证：
+  - `npm run build` 通过。
+- 当前阶段：
+  - 等待用户验收“同帧双挥砍 + 独立镜像参数”表现是否符合预期。
+
+## 塔防入口强制直达战斗 + 战斗内购入/合成即时存档（2026-03-25）
+
+- 用户反馈：
+  - 点“塔防模式”在有存档时仍会进商店；
+  - 战斗中购买/合成获得的物品没有可靠落盘。
+- 已完成：
+  - `src/menu/MenuScene.ts`
+    - 移除“是否有职业存档”的分流判断；
+    - 塔防入口固定 `SceneManager.goto('tower-battle')`，不再走商店。
+  - `src/main.ts`
+    - URL 模式 `?mode=tower|towerdefense|td` 固定直达 `tower-battle`。
+  - `src/tower/battle/BattleScene.ts`
+    - 战斗内购买在落格并写入 `editableMeta` 后，先立即构建快照并 `setBattleSnapshot()` 落盘，再执行异步加图标；
+    - 避免刷新时因异步链路未完成导致新购入物品丢失。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“塔防入口直达战斗 + 购买/合成后刷新可恢复”。
+
+## 验收追加修正（2026-03-25，物品测试“最低级”按最低品质等级）
+
+- 用户反馈：物品测试里点“最低级”时直接给了 1 级；应按物品最低品质对应等级（如黄金最低 3 级、钻石最低 4 级）。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 物品测试面板“最低级”按钮逻辑改为：先根据 `starting_tier` 求可用等级列表，再取最小可用等级添加；
+    - 不再固定写死 `level=1`。
+  - `src/tower/common/grid/GridZone.ts`
+    - 清理未使用函数，保持类型检查整洁。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“物品测试最低级是否按品质正确落到最低可用等级”。
+
+## 验收追加修正（2026-03-25，新字段入库：enemyForceNextWaveAfterAllSpawnMs）
+
+- 用户反馈：搜索不到 `enemyForceNextWaveAfterAllSpawnMs`。
+- 已完成：
+  - `data/tower_game_config.json`
+    - 在 `towerDefenseRules` 中新增 `enemyForceNextWaveAfterAllSpawnMs: 30000`。
+  - `src/tower/common/items/ItemDef.ts`
+    - 为 `towerDefenseRules` 类型补充 `enemyForceNextWaveAfterAllSpawnMs?: number`。
+- 兼容说明：
+  - 代码读取优先 `enemyForceNextWaveAfterAllSpawnMs`，未配置时回退旧字段 `enemyAttackDoubleAfterAllSpawnMs`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认配置检索与首领关自动下一波表现。
+
+## 验收优化追加（2026-03-25，双持镜像改为“贴图翻转+反向运动”并恢复原物品图标）
+
+- 用户反馈：
+  - 镜像应为“图片左右反置 + 相反方向运动”，不是仅角度镜像；
+  - 先恢复使用原物品图标以确认尺寸是否正确。
+- 已完成：
+  - `src/tower/battle/BattleFXPool.ts`
+    - `spawnMeleeSweep()` 回退为使用来源物品原图标（不再强制 `toweritem19_a`）；
+    - 新增 `flipX` 参数，镜像刀通过 `scale.x` 取负实现左右反置。
+  - `src/tower/battle/BattleScene.ts`
+    - `rtl` 镜像挥砍改为“反向运动”：`startOffsetX/endOffsetX` 采用反向交换（并取反）；
+    - 角度恢复原值，视觉镜像由 `flipX` 控制；
+    - 触发镜像挥砍时向 FX 传递 `flipX: true`。
+- 验证：
+  - `npm run build` 通过。
+- 当前阶段：
+  - 等待用户确认“原图标尺寸是否正确 + 镜像挥砍是否符合预期（翻转+反向运动）”。
+
+## 塔防“重新开始”从商店链路改为直进战斗（2026-03-25）
+
+- 用户反馈：重新开始后会先落到商店，再点开始挑战才进战斗；期望直接进入战斗场景。
+- 已完成：
+  - `src/tower/shop/ShopScene.ts`
+    - `restartRunFromBeginning()` 在塔防模式下不再 `window.location.reload()`；
+    - 改为写入一次性自动开打标记 `bigbazzar_tower_auto_start_on_enter_once` 后直接 `SceneManager.goto('tower-battle')`；
+    - 非塔防模式仍保留原刷新行为。
+  - 兼容已在 `BattleScene` 中实现的“入场自动开打”逻辑，避免停在 `开始挑战` 等待态。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“重新开始后不经过商店，直接进战斗并开打”。
+
+## 验收优化追加（2026-03-25，双持长剑镜像挥砍 + 近战尺寸回到原控制方式）
+
+- 用户反馈：
+  - 双持长剑应为左右镜像挥砍，且第二刀伤害结算顺序需从右到左；
+  - 统一 `toweritem19_a` 后尺寸应回归之前的控制方式，不要额外硬缩放。
+- 已完成：
+  - `src/tower/core/EventBus.ts`
+    - 为 `battle:item_fire` 增加 `meleeSweepDirection?: 'ltr' | 'rtl'` 字段。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 新增双持挥砍方向状态缓存，剑士在有 `toweritem23` 时按每次触发左右交替；
+    - 近战结算按方向控制列顺序：`ltr` 左到右，`rtl` 右到左（镜像刀从右列开始结算）。
+  - `src/tower/battle/BattleScene.ts`
+    - 读取 `meleeSweepDirection`，对 `rtl` 挥砍做镜像（角度与横向偏移取反），实现从右到左视觉。
+  - `src/tower/battle/BattleFXPool.ts`
+    - 移除上一轮额外尺寸系数，恢复为原先 `sizePx + scale` 控制方式（与此前一致）。
+- 验证：
+  - `npm run build` 通过。
+- 当前阶段：
+  - 等待用户验收“双持镜像方向 + 右到左伤害顺序 + 挥砍尺寸恢复”是否符合预期。
+
+## 验收追加修正（2026-03-25，最后一只敌人刷新后自动下一波）
+
+- 用户需求：
+  - 去掉“最后一只敌人刷新后超时敌人攻击翻倍”逻辑；
+  - 改为最后一只敌人刷新后等待一段时间（示例 30s）即触发“开始下一波”倒计时；
+  - 若全清也触发倒计时；两种触发取先到者，只触发一次不重复。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 删除后刷新超时敌方攻击翻倍结算，敌人攻击恢复固定面板值；
+    - `getTowerEnemyStats()` 增加 `allEnemiesSpawnedAtMs` 与 `elapsedMs` 输出，供场景判定自动开波触发时机。
+  - `src/tower/battle/BattleEngineTypes.ts`
+    - `TowerEnemyStatsView` 增加可选字段 `allEnemiesSpawnedAtMs`、`elapsedMs`。
+  - `src/tower/battle/BattleScene.ts`
+    - 新增 `getTowerForceNextWaveAfterLastSpawnMs()`（默认 30000ms，兼容旧 `enemyAttackDoubleAfterAllSpawnMs` 作为回退）；
+    - “开始下一波”倒计时触发条件改为：
+      - `全清结算完成` 或 `最后一只敌人刷新后超时` 任一先满足即启动倒计时；
+      - 启动后仅保留单一倒计时入口，避免重复触发。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“首领关与普通关都可自动倒计时开下一波”。
+
+## 验收优化追加（2026-03-25，近战挥砍贴图缩小）
+
+- 用户反馈：统一为 `toweritem19_a` 后，挥砍剑尺寸偏大。
+- 已完成：
+  - `src/tower/battle/BattleFXPool.ts`
+    - 在 `spawnMeleeSweep()` 中对统一近战贴图增加尺寸系数，当前按 `0.62` 缩放，保持动画路径不变，仅收敛视觉体积。
+- 验证：
+  - `npm run build` 通过。
+- 当前阶段：
+  - 等待用户验收“近战剑大小”是否合适；若仍偏大/偏小可继续微调该系数。
+
+## 验收优化追加（2026-03-25，剑士护盾表现与近战挥砍贴图统一）
+
+- 用户需求：
+  - 剑士武器触发获得护盾时，不要再有“护盾球飞到英雄”的过程，直接加盾显示；
+  - 近战攻击表现统一使用 `toweritem19_a`。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `battle:gain_shield` 事件中新增塔防分支：当来源物品为剑士（`warrior`）且目标为我方时，改为直接在目标侧显示 `+护盾` 浮字，不再播放飞行投射物。
+  - `src/tower/battle/BattleFXPool.ts`
+    - `spawnMeleeSweep()` 挥砍贴图改为统一优先加载 `toweritem19_a`，实现近战攻击表现统一。
+- 验证：
+  - `npm run build` 通过。
+- 当前阶段：
+  - 等待用户验收“剑士加盾直接生效显示 + 近战挥砍统一素材”是否符合预期。
+
+## 验收优化追加（2026-03-25，塔防物品详情名称字号改为32）
+
+- 用户需求：物品详情中的物品名称字体大小改为 `32`。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 塔防模式详情弹层名称字号由 `36` 调整为 `32`（非塔防模式仍沿用调试配置）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“塔防物品详情名称字号 32”视觉效果。
+
+- 验收追加修正（同日，名称字号再调小）：
+  - 用户反馈：名称字号改为 `28`。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 塔防模式详情名称字号由 `32` 调整为 `28`。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“塔防物品详情名称字号 28”。
+
+## 验收优化追加（2026-03-25，物品测试分页恢复“全部”并切到新四职业）
+
+- 用户反馈：
+  - 物品测试应保留“全部”分页；
+  - 后续四个分页应按当前新物品四职业，而非旧职业分组。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 分页调整为：`全部 / 剑士 / 弓手 / 忍者 / 冰法师`；
+    - 过滤逻辑改为按 `tags` 匹配：`剑士`、`弓手`、`忍者`、`冰法师`；
+    - 默认分页改回 `全部`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收分页与 24 新物品归类显示是否正确。
+
+## 塔防重置后进入即自动开打（跳过“开始挑战”等待态）（2026-03-25）
+
+- 用户反馈：重置后虽已在战斗场景，但仍先停在“Day1 / 开始挑战”等待态，不算直接进入战斗。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增一次性标记 `bigbazzar_tower_auto_start_on_enter_once`（`sessionStorage`）；
+    - 塔防重置（顶部按钮/结算按钮）跳转战斗前写入该标记；
+    - 战斗场景进入后消费该标记，并在可继续条件满足时立即触发下一波开始，跳过等待态与倒计时。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“重置后直接开打，不停留开始挑战界面”。
+
+## 验收优化追加（2026-03-25，塔防24件武器伤害数值更新）
+
+- 用户需求：按给定表更新塔防武器伤害（含忍者/弓手/冰法师/剑士共24件），攻击间隔按给定分档口径。
+- 已完成：
+  - `data/tower_items.json`
+    - 批量更新 24 件武器首条技能文案中的伤害序列：
+      - 忍者系：`10|16|26|41|66`、`16|26|41|66`、`26|41|66`、`41|66`
+      - 弓手系：`10|16|26|41|66`、`16|26|41|66`、`26|41|66`、`41|66`
+      - 冰法师系：`6|10|15|25|39`、`10|15|25|39`、`15|25|39`、`25|39`
+      - 剑士系：`10|16|26|41|66`、`16|26|41|66`、`26|41|66`、`41|66`
+    - 核对攻击间隔字段（`cooldown` / `cooldown_tiers`）与本次给表一致，未额外改动。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“塔防战斗内四职业武器伤害是否按新表生效”。
+
+## 持续收敛（2026-03-25，24物品效果补齐 + 描述对齐）
+
+- 用户需求：
+  - 按给定 24 物品表更新描述文案；
+  - 将当前未落地的关键效果补齐（含控制/异常/范围口径）；
+  - 冰锥范围伤害口径明确为“半径 5m 圆形范围（列间距按 3m）”。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 新增敌方状态运行时：`slowMs/freezeMs/poisonMs/bleedMs` 与中毒按秒结算；
+    - 忍者：`toweritem4` 实装“所有手里剑减速（50%）”；
+    - 弓手：`toweritem10` 实装中毒（每秒按当前生命值扣血：普通 5%，首领 1%）；
+    - 弓手：`toweritem11` 改为“存在狙击弓箭时，所有弓手都吃距离增伤（最高 +100%）”；
+    - 弓手：`toweritem12` 改为“存在嗜血弓箭时，所有弓手连续命中同目标伤害 +1”；
+    - 冰法师：`toweritem13/14` 减速时长链路打通（基础减速 + 额外时长）；
+    - 冰法师：`toweritem16` 冰冻概率实装（10%，首领 2%，冻结中不重复冻结）；
+    - 冰法师：`toweritem17` 改为圆形范围伤害，半径 `5m`，横向列间距按 `3m` 计算；
+    - 剑士：`toweritem22` 改为“任意长剑触发时，所有守护长剑都加盾（可叠加）”；
+    - 剑士：`toweritem23` 改为“全体长剑双持施展（连发+1，全局生效）”；
+    - 剑士：`toweritem21` 流血脆弱实装（受击增伤：普通 +50%，首领 +20%，持续时长按词条）。
+  - `data/tower_items.json`
+    - 按用户口径更新多条“作用域描述”为“所有Xxx …”，并同步关键条目文案（忍者/弓手/冰法师/剑士）。
+- 验证：
+  - `npm run build` 通过（TypeScript + Vite）。
+- 当前阶段：
+  - 24 物品核心机制已从“部分占位”推进到“主要战斗效果可执行”；
+  - 下一步进入用户验收与数值微调阶段（重点看中毒/冰冻/流血与范围伤害体感）。
+- 待确认/技术债：
+  - 当前控制/异常效果已在塔防引擎层落地，但尚未补充独立可视化标记（仅伤害与行为变化可观察）；
+  - 冰锥“同时发射目标+1”当前仍采用连发近似实现，若需“严格多目标同帧锁定”可在下一轮细化。
+
+## 验收优化追加（2026-03-25，战斗物品测试按钮上移与分页改四职业）
+
+- 用户反馈：
+  - 战斗左上“物品测试”按钮需上移 `50px`；
+  - 测试弹层分页应为塔防四职业（战士/弓手/刺客/中立）。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 物品测试按钮位置 `y` 从 `98 + topSafeYOffset` 调整为 `48 + topSafeYOffset`（上移 50px）；
+    - 物品测试分页从 `全部+四职业` 调整为仅 `战士/弓手/刺客/中立` 四页；
+    - 默认分页改为 `战士`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收按钮位置与四职业分页是否符合预期。
+
+## 塔防重置后直进战斗（不再回商店）（2026-03-25）
+
+- 用户需求：塔防模式下重置后直接进入战斗，不要回到商店。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 顶部“重置”按钮回调由整页刷新改为：清空本局状态后直接 `SceneManager.goto('tower-battle')`；
+    - 结算面板中的重置回调同步改为同逻辑；
+    - 非塔防模式仍保留原刷新行为。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“塔防重置后直接回战斗”。
+
+## 验收追加修正（2026-03-25，塔防上阵区行数上限锁定2行）
+
+- 用户需求：第3天开始改为2行，且第9天不再增加到3行。
+- 已完成：
+  - `src/tower/shop/ShopMathHelpers.ts`
+    - `getTowerBattleRowsByDay(day)` 调整为：
+      - Day1-2：1行
+      - Day3+：2行（取消 Day9+ 升到3行）
+- 影响范围：商店编队区与塔防战斗区的行数计算都会同步使用该规则。
+- 验证：待本地回归 Day2→3、Day8→9 行数切换。
+- 当前阶段：等待用户验收“塔防行数上限固定2行”。
+
+## 验收优化追加（2026-03-25，塔防战斗左上新增“物品测试”按钮）
+
+- 用户需求：塔防战斗中增加左上角“物品测试”按钮，便于直接测试新增 24 个物品。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增左上角 `物品测试` 按钮（仅塔防战斗可编辑阶段显示）；
+    - 新增战斗内物品测试弹层（按职业分页 + 分页浏览）：`全部/战士/弓手/刺客/中立`；
+    - 每个物品提供 `最低级` 与 `全等级` 两种添加方式，直接投放到上阵区并同步战斗引擎；
+    - 上阵区满时给出提示，支持点击遮罩/关闭按钮退出。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收战斗内测试按钮位置、分页与新增物品投放流程。
+
+## 验收优化追加（2026-03-25，塔防战斗内品质角标与商店规则对齐）
+
+- 用户需求：塔防模式战斗中，物品品质应与其他模式商店一致，显示在图标右下角，内容和规则按商店口径。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `applyZoneVisualStyle()` 中塔防模式开启品质角标显示（`setItemQualityMarkerEnabled(true)`）。
+  - `src/tower/common/grid/GridZone.ts`
+    - 品质判定由“物品基础品质”改为“当前实例品质（node.tier）”，与商店展示口径一致；
+    - 角标形态对齐商店：白银四边形、黄金六边形、钻石八边形（含内层高光与闪烁）；
+    - 角标位置改为图标右下角（随格子尺寸与边框动态计算）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“塔防战斗内品质角标位置与规则是否与商店一致”。
+
+- 验收追加修正（同日，品质来源口径纠正）：
+  - 用户反馈：品质角标应严格按物品最低等级品质显示，不应按当前等级对应品质。
+  - 已完成：
+    - `src/tower/common/grid/GridZone.ts`
+      - 品质来源从 `node.tier` 改回 `getBaseTier(node.defId)`，即严格使用物品初始/最低品质。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户复测“品质角标是否按物品最低品质稳定显示”。
+
+## 验收优化追加（2026-03-25，塔防购买固定 Lv1 + 按本局购买次数计价）
+
+- 用户需求：
+  - 塔防模式下，购买物品必定为 `Lv1`；
+  - 购买价格按“本局总购买次数”递增，采用给定 1~55 次价格表。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `rollBattleBuyOffer()` 改为固定 `level=1`（塔防战斗内购买不再抽高等级）；
+    - 新增运行态计数 `towerBattleBuyCount`，成功购买后递增；
+    - `getTowerBattleBuyCost()` 改为按 `towerBattleBuyCount + 1` 查价格表；
+    - 超过价格表长度时按最后一档价格继续（索引钳制）；
+    - 将 `towerBattleBuyCount` 写入/读取战斗快照，保证同局跨波次延续计数。
+  - `src/tower/battle/BattleSnapshotStore.ts`
+    - 扩展快照字段 `towerBattleBuyCount?: number` 并纳入 clone/存取流程。
+  - `src/tower/common/items/ItemDef.ts`
+    - 为 `towerDefenseRules` 增加类型字段 `battleBuyCostByPurchaseCount?: number[]`。
+  - `data/tower_game_config.json`
+    - 在 `towerDefenseRules.battleBuyCostByPurchaseCount` 写入 55 档价格表：
+      - 1~12 次：`2,3,4,5,6,7,8,9,10,11,12,13`
+      - 13~24 次：`15,16,18,19,21,24,26,29,31,35,38,42`
+      - 25~36 次：`46,51,56,61,67,74,81,90,98,108,119,131`
+      - 37~48 次：`144,159,174,192,211,232,255,281,309,340,374,411`
+      - 49~55 次：`453,498,548,602,663,729,802`
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“塔防购买恒为Lv1 + 价格按本局累计购买次数递增”。
+
+## 持续收敛（2026-03-25，4职业合成过滤与塔防射程配置对齐）
+
+- 本次目标：在不改动“塔防购买恒为 Lv1”已确认口径下，继续收敛 24新物品/4职业落地差异。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 跨物品同职业合成过滤补齐 `mage`（冰法师）分支，避免与战士/弓手/刺客规则不一致。
+  - `data/tower_game_config.json`
+    - `tower_defense_rules.playerItemAttackDistanceByIcon` 全量从旧 `itemXX` 键改为 `toweritem1~24`；
+    - 射程按新24表对齐：忍者 `40`、弓手 `60`、冰法师 `50`、剑士 `16`。
+- 验证：
+  - `npm run build` 通过（TypeScript + Vite）。
+- 当前阶段：
+  - 关键配置已对齐到新24图标体系，避免依赖技能文案兜底解析；
+  - 下一步建议进入行为回归（逐条核对新24物品特效触发与描述一致性）。
+- 待确认/技术债：
+  - `TowerDefenseEngine.ts` 中“减速/中毒/冰冻/流血/范围”类描述效果尚需逐条实机验收与补齐。
+
+## 验收优化追加（2026-03-25，塔防关卡与怪物数值按新表更新）
+
+- 用户需求：按提供新表同步塔防 `1~15` 关波次（Hp/Atk 比例与怪物数量）和怪物基础参数（含掉落金币）。
+- 已完成：
+  - `data/tower_game_config.json`
+    - 更新 `tower_defense_rules.dayWaves` 的 `day=1~15`：
+      - 同步 `hpMultiplier` / `attackMultiplier` 到新表；
+      - 同步每关怪物构成与数量（含 `boss2` / `boss3` / `boss` 出场关卡）；
+    - 更新 `enemyDefs` 掉落金币：
+      - `enemy6: 8`、`enemy9: 8`、`enemy10: 20`、`enemy11: 20`、`enemy12: 20`、`boss: 80`。
+- 验证：
+  - `data/tower_game_config.json` JSON 语法校验通过；
+  - 全量 `npm run build` 当前受仓库内既有 TS 编译问题影响失败（与本次 JSON 改动无直接关联）。
+- 当前阶段：等待用户实机验收前 15 关节奏与掉落是否符合新数值预期。
+
+## 持续收敛（2026-03-25，编译修复与旧逻辑清理）
+
+- 本次目标：在“24新物品/4职业”改造分支上继续收敛，先恢复可稳定构建，再清理明显旧图标残留逻辑。
+- 已完成：
+  - `src/tower/shop/systems/ShopEventSystem.ts`
+    - 修复 `EventArchetype` 类型冲突：`toSkillArchetype` 现可能返回 `mage`，但事件系统类型仍为三职业；已在归集函数中仅纳入 `warrior/archer/assassin`，避免 TS 报错。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 删除未使用函数 `isAssassinDamageItem`、`resolveTieredValueFromItem`，清理对应无用导入；
+    - 清理旧物品残留逻辑：移除 `item56` 特判护盾显示与 `item52`“获盾充能”链路（当前新24表中无对应词条），避免旧配置污染。
+- 验证：
+  - `npm run build` 通过（TypeScript + Vite 均成功）。
+- 当前阶段：
+  - 已恢复“可编译、可继续联调”状态；
+  - 下一步建议进入塔防实机回归（重点：新24物品效果触发、5级封顶合成、4职业距离线与颜色、塔防专用资源路径）。
+- 待确认/技术债：
+  - `TowerDefenseEngine.ts` 仍有大量按图标规则驱动的效果分支，需要按新24表逐项对照验收；
+  - 目前仅完成编译收敛与一批显式旧逻辑清理，尚未做完整行为级回归清单打勾。
+
+## 验收追加修正（2026-03-25，血条坐标反推分母修正）
+
+- 用户反馈：受击时血条仍明显抖动，怀疑对齐点在变。
+- 根因：血条本地坐标反推时分母错误使用了 `finalScale`（包含受击/动作临时缩放），导致受击阶段本地坐标跟着变化。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 将血条本地坐标反推分母从 `finalScale` 改为基础远近 `scale`；
+    - 保持血条对象的 `invScale = 1/finalAnimScaleMul`（仅抵消临时动作/受击缩放）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“受击阶段血条不再抖动”。
+
+## 验收追加修正（2026-03-25，血条锚点仅在真实位移时更新）
+
+- 用户反馈：站定准备攻击时血条仍抖动。
+- 二次根因：此前使用 `isMoving` 作为锚点更新条件不够可靠，部分单位会出现“逻辑仍标记移动/微小距离波动”导致锚点持续刷新。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 血条锚点缓存扩展为 `{ x, y, scale, distance, lane }`；
+    - 锚点仅在“真实位移超过阈值（`distance` 变化 > 0.05）或换道”时刷新；
+    - 其余情况复用上一帧锚点，杜绝站定蓄力期抖动；
+    - 血条高度偏移继续使用基础 `flyingLift`（不吃攻击下压/临时 dive 动画）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“站定怪物血条稳定”。
+
+## 验收追加修正（2026-03-25，站定怪物血条锚点冻结）
+
+- 用户反馈：站定准备攻击时血条仍上下抖动。
+- 根因：尽管血条不再直接跟随 `animYOff`，但当单位底层距离/位置有微小波动时，血条锚点仍会随帧更新。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增 `towerEnemyHpAnchorById` 锚点缓存；
+    - 敌人 `isMoving=false` 时冻结血条锚点（`x/y/scale`）；
+    - 仅在 `isMoving=true` 时更新锚点；
+    - 保持“近大远小”缩放与偏移口径，且不受受击/准备动画影响。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“站定准备攻击时血条稳定不抖动”。
+
+## 验收优化追加（2026-03-25，详情图标描边职业色与开关解耦）
+
+- 用户需求：塔防模式下，详情中物品图标描边无论是否勾选“显示职业名称”，都应使用职业颜色；粗细保持此前配置。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 调整详情自定义样式注入：塔防模式下始终注入职业描边颜色与 `6px` 描边宽度；
+    - “显示职业名称”开关仅控制是否显示职业底条文字，不再影响描边配色。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“开关开/关时描边都保持职业色”。
+
+## 验收优化追加（2026-03-25，新增“显示职业名称”开关并默认关闭）
+
+- 用户需求：
+  - 增加开关“显示职业名称”；
+  - 开启：保持当前效果（塔防物品角标显示“职业首字+等级”，详情显示职业底条）；
+  - 关闭：角标仅显示等级，详情去掉职业显示；
+  - 默认关闭，放入网页“玩法数值”配置。
+- 已完成：
+  - `src/tower/config/debugConfig.ts`
+    - 新增 `gameplayShowClassName`（显示职业名称）配置，默认值 `0`。
+  - `data/tower_debug_defaults.json`
+    - 新增 `"gameplayShowClassName": 0`。
+  - `src/debug/DebugPage.ts`
+    - 将 `gameplayShowClassName` 加入 `GAMEPLAY_CHECKBOX_KEYS`，显示在网页“玩法数值”里。
+  - `src/tower/battle/BattleScene.ts`
+    - `applyZoneVisualStyle()` 中按开关控制 `setArchetypeBadgeShowClassPrefix(...)`；
+    - 详情弹层职业底条显示改为仅在塔防且开关开启时生效。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收开关开/关两种显示口径。
+
+## 验收优化追加（2026-03-25，职业距离线关闭时按选中物品单职业显示）
+
+- 用户需求：当“塔防职业攻击距离线”总开关关闭时，选中某个物品后仍显示该物品所属职业的那一条距离线。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `drawTowerClassAttackDistanceGuides()` 增加“选中物品职业”分支：
+      - 开关开启：仍显示全部职业距离线；
+      - 开关关闭：若存在选中物品，则仅显示该物品职业对应的一条线（战士/弓手/刺客）；
+      - 开关关闭且未选中物品：不显示任何职业线。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“关闭总开关后，点选物品显示单职业距离线”。
+
+## 验收追加修正（2026-03-25，塔防战斗物品详情名称字号）
+
+- 用户需求：仅塔防模式战斗中的物品详情界面，物品名称字号缩小到 `36`。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 详情弹窗 `setTextSizes()` 在塔防战斗分支下将 `name` 字号固定为 `36`；
+    - 其他模式保持原调试配置字号不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“塔防战斗详情名称字号=36”。
+
+## 验收追加修正（2026-03-25，血条仅跟随远近与行进）
+
+- 用户反馈：怪物站定准备攻击时血条仍抖动；期望血条除远近外不受其他动画控制。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 血条 X/Y 锚点改为按单位基础轨道位置（`laneX/y`）计算，不跟随 `animXOff/animYOff`；
+    - 保留“近大远小”的基础缩放与偏移；
+    - 继续抵消临时动作/受击放缩；
+    - 增加像素对齐（world x/y 四舍五入）降低子像素抖动。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“准备攻击时血条稳定 + 远近缩放保留”。
+
+## 验收优化追加（2026-03-25，塔防右上角天数显示 + 左上重置按钮）
+
+- 用户需求：
+  - 塔防模式战斗内右上角显示当前天数；
+  - 左上角“重新开始”按钮做小，文案改为“重置”。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增塔防专用天数文本 `towerDayText`，在战斗刷新中实时显示 `第N天`，固定右上角位置；
+    - 将左上按钮样式缩小（约 `108x44`），按钮文案由“重新开始”改为“重置”；
+    - 左上按钮位置同步微调，保持安全区偏移。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“右上角天数显示”和“左上重置按钮尺寸/文案”。
+
+- 验收追加修正（同日，位置下移 100px）：
+  - 用户反馈：左上“重置”按钮与右上“第N天”都需要整体下移 `100px`。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - `restartBtn.y`：`32 + topSafeYOffset` → `132 + topSafeYOffset`；
+      - `towerDayText.y`：`14 + topSafeYOffset` → `114 + topSafeYOffset`。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“按钮与天数文本下移100px”效果。
+
+## 验收优化追加（2026-03-25，塔防职业攻击距离线开关）
+
+- 用户需求：在“玩法数值”里增加塔防职业攻击距离线开关（控制当前这几条范围线），默认关闭。
+- 已完成：
+  - `src/tower/config/debugConfig.ts`
+    - 新增调试开关 `gameplayShowTowerClassAttackDistance`（0/1，默认 0）。
+  - `src/debug/debugPage.ts`
+    - 将该开关加入“玩法数值”复选项分组，可直接在调试页勾选。
+  - `src/tower/battle/BattleScene.ts`
+    - `drawTowerClassAttackDistanceGuides()` 接入该开关；关闭时强制隐藏职业攻击距离线。
+  - `data/tower_debug_defaults.json`
+    - 补充默认值 `"gameplayShowTowerClassAttackDistance": 0`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“默认不显示范围线，打开开关后显示”。
+
+## 验收追加修正（2026-03-25，血条高度偏移随远近缩放）
+
+- 用户补充：血条高度偏移也应随近大远小变化。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 敌人血条世界 Y 计算改为 `unitHpBarYOffset * scale`（偏移随基础远近缩放）；
+    - 继续保持仅屏蔽移动/受击临时缩放影响。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“血条大小与偏移都随远近缩放，但不受受击/位移动画抖动影响”。
+
+## 验收优化追加（2026-03-25，拖拽红绿落点提示恢复 + 拖拽中禁用触发黄框）
+
+- 用户反馈：
+  - 拖到不可放置物品上没有红色提示；
+  - 拖到空位没有绿色提示；
+  - 拖拽物品触发攻击时仍出现黄色触发框，期望拖拽中不显示。
+- 根因：
+  - `BattleScene` 在拖拽开始时调用了 `editableDrag.setSqueezeSuppressed(true)`；
+  - `DragController.updateHighlight()` 在 `suppressSqueeze=true` 时会提前返回，导致默认红/绿落点高亮整体失效。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 移除拖拽开始时的 `setSqueezeSuppressed(true)`，恢复 `DragController` 默认红/绿落点反馈；
+    - 新增 `draggingPlayerItemId` 跟踪当前拖拽物品；
+    - 在 `battle:item_trigger` 与 `battle:item_fire` 事件中：若来源是当前拖拽物品，则跳过 `fxPool.tryPulseItem()`；
+    - 结果为“拖拽中该物品攻击不再出现黄色触发框，未拖拽时保持原有黄色触发框表现”。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“空位绿/占位红/可合成黄 + 拖拽中无触发黄框”。
+
+## 验收优化追加（2026-03-25，修复合成/换型后沿用旧物品伤害统计）
+
+- 用户反馈：长盾这类理论不产伤的物品仍显示红色伤害累计，怀疑为合成瞬间沿用旧物品数据。
+- 根因定位：
+  - `TowerDefenseEngine.syncPlayerEntities()` 仅按 `instanceId` 复用旧 runtime；
+  - 当同一 `instanceId` 因合成/换型变为新 `defId` 时，旧武器 runtime 与 pending hit/fire 仍被沿用，导致新物品继续吃到旧伤害归因。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 仅在 `old.defId === runner.defId` 时复用 runtime；
+    - 若 `instanceId` 相同但 `defId` 变更，标记为 `replacedIds`；
+    - 清理该 `replacedIds` 对应的 `pendingPlayerFires / pendingPlayerHits / pendingPlayerMeleeTriggers`，避免旧弹道/旧触发结算到新物品。
+- 结果：合成后变成长盾等防御物品时，不再继承旧攻击物品的伤害累计。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“合成后盾牌错误显示伤害”是否消失。
+
+## 验收追加修正（2026-03-25，血条保留远近缩放）
+
+- 用户澄清：血条应保留“近大远小”基础缩放，但不受移动/受击等临时放缩影响。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 敌人血条缩放抵消口径从 `1 / finalScale` 调整为 `1 / finalAnimScaleMul`；
+    - 现在仅抵消动作/受击临时缩放，保留基础远近 `scale`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“血条近大远小仍在，且不受受击/位移动画抖动影响”。
+
+## 验收追加修正（2026-03-25，敌人受击放缩与血条稳定）
+
+- 用户需求：
+  - 敌人受击放缩不要叠加超过最大值；
+  - 敌人血条不要跟着放缩与抖动，应固定位置、固定缩放。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 受击期间将最终放缩系数封顶到 `enemyHitPopScale` 最大值，避免与其他动画乘积后超过上限；
+    - 敌人血条改为世界空间固定：
+      - 取消随 `root` 放缩变化（通过逆缩放抵消）；
+      - 取消随受击/位移动画上下抖动（按基础轨道位置计算）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“受击放缩封顶 + 血条稳定不抖动”。
+
+## 验收优化追加（2026-03-25，职业底条继续微调：下移12与去描边）
+
+- 用户反馈：职业底条整体下移 `12px`，并去掉描边。
+- 已完成：
+  - `src/tower/common/ui/SellPopup.ts`
+    - 职业底条 Y 偏移由 `-36` 调整为 `-24`（相对上一版下移 12px）；
+    - 移除职业底条文字描边；
+    - 移除职业底条背景外描边。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收最终职业底条位置与无描边样式。
+
+## 验收优化追加（2026-03-25，塔防战斗内购买等级概率按30天重排）
+
+- 用户需求：更新不同天数购买物品等级概率（1~30天），按给定表执行（最高到 lv7，lv8 概率为 0）。
+- 已完成：
+  - `data/tower_game_config.json`
+    - 更新 `shopRules.quickBuyLevelChancesByDay` 为 30 天新分布：
+      - Day 1~3：`[1,0,0,0,0,0,0,0]`
+      - Day 4~6：`[0.5,0.5,0,0,0,0,0,0]`
+      - Day 7~10：`[0,1,0,0,0,0,0,0]`
+      - Day 11~14：`[0,0.5,0.5,0,0,0,0,0]`
+      - Day 15~19：`[0,0,1,0,0,0,0,0]`
+      - Day 20~24：`[0,0,0.5,0.5,0,0,0,0]`
+      - Day 25~30：`[0,0,0,1,0,0,0,0]`
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“塔防战斗内购买等级分布是否符合新30天概率表”。
+
+## 验收优化追加（2026-03-25，拖拽后可升级提示位置修复）
+
+- 用户反馈：拖动物品换位后，再拖同等级可合成物品时，黄色上箭头提示仍出现在目标物品旧位置。
+- 根因：
+  - 提示箭头属于 `badgeLayer` 独立节点；
+  - 物品拖拽落位时仅更新了数值徽标位置，未同步刷新升级箭头坐标与基准 `baseY`，导致箭头沿用旧位置。
+- 已完成：
+  - `src/tower/common/grid/GridZone.ts`
+    - 在 `updateStatBadgePosition()` 中补充升级箭头坐标同步：
+      - 同步 `upgradeArrow/crossUpgradeArrow/defaultUpgradeArrow` 的 `x`；
+      - 同步 `upgradeBaseY/defaultUpgradeBaseY` 到物品最新位置；
+      - 通过“旧 delta + 新 baseY”方式保留动画相位，避免刷新时箭头跳变。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“拖拽换位后，可升级提示始终跟随最新格子位置”。
+
+## 验收优化追加（2026-03-25，职业底条字号与位置微调）
+
+- 用户反馈：职业底条文字字号改为 `24`，整体上移 `30px`。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 塔防详情传参中将 `iconRoleBadgeFontSize` 由 `32` 调整为 `24`。
+  - `src/tower/common/ui/SellPopup.ts`
+    - 职业底条 `badgeY` 上移 `30px`（在原基准上从 `-6` 调整为 `-36`）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收字号与位置是否符合预期。
+
+## 验收优化追加（2026-03-25，塔防物品详情图标职业边框与职业名底条）
+
+- 用户需求：塔防模式的物品详情中，左侧图标边框改为职业色且粗细 `6px`；图标下方边缘显示职业名（白字 `32`），职业色底条背景。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 在战斗详情展示时识别物品职业（战士/弓手/刺客），仅塔防模式下注入详情自定义样式；
+    - 将职业色与职业名传入详情弹层自定义参数。
+  - `src/tower/common/ui/SellPopup.ts`
+    - 扩展 `ItemInfoCustomDisplay`，支持图标边框颜色/粗细覆盖与职业底条配置；
+    - 图标边框按职业色渲染，宽度改为 `6px`；
+    - 图标下方边缘新增职业名底条：白字（`32`）+ 职业色背景。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收职业边框与职业底条视觉表现。
+
+## 验收优化追加（2026-03-25，塔防等级文本显示职业前缀）
+
+- 用户需求：塔防模式下，物品图标上方等级文本增加职业首字前缀（如 `弓1` / `战2` / `刺3`）。
+- 已完成：
+  - `src/tower/common/grid/GridZone.ts`
+    - 新增开关 `setArchetypeBadgeShowClassPrefix()`；
+    - 在 archetype 徽标文案生成中接入该开关：开启时显示“职业首字 + 等级”，关闭时保持原“仅等级”。
+  - `src/tower/battle/BattleScene.ts`
+    - 塔防战斗区样式应用时开启 `zone.setArchetypeBadgeShowClassPrefix(true)`，仅塔防战斗生效。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“塔防物品上方文本为 弓/战/刺 + 等级”表现。
+
+## 塔防模式默认显示倍速按钮（2026-03-25）
+
+- 用户需求：塔防模式下默认显示倍速按钮，默认速度保持 `x1`。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `getDefaultBattleSpeed()` 恢复为 `x1`；
+    - 倍速按钮显示逻辑保持开启（默认配置 `gameplayShowSpeedButton=1`），塔防开局可见但不自动加速。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“塔防开局显示倍速按钮且默认 x1”。
+
 ## 可升级上箭头提升到 CD/统计文本之上（2026-03-25）
 
 - 用户反馈：上箭头仍被 CD 遮罩和伤害统计数字盖住。
@@ -80,6 +1275,17 @@
       - 发射样式强制为 `projectileStyle: 'linear'`，禁用抛物线弧线轨迹；
       - 保持终点 `y` 仍由攻击距离映射，末段 `0.1s` 渐隐。
   - 当前阶段：等待用户复测“无目标发射是否为直线且随透视向中心收拢”。
+
+- 验收追加修正（同日，塔防战斗内购买预知等级与按等级计价）：
+  - 用户反馈：战斗内购买显示花 3 金直接买到 Lv2；购买前无法确认将购买的等级；Lv2 购买价应为 6。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 引入“待购买 offer”缓存：在购买前先确定本次将购买的物品等级，并在按钮文案中显示 `购买 LvX`；
+      - 价格不再固定 Bronze#1，而是改为按该待购买等级调用 `getUnlockPoolBuyPriceByLevel(level)` 计算；
+      - 扣费与展示统一使用同一份待购买 offer，避免“显示 3 金但实际买到 Lv2”这种不一致；
+      - 成功购买后才刷新下一份待购买 offer，保证“先知等级，再按等级价格购买”。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“战斗内购买是否可预知等级，且 Lv2 是否按 6 金显示与扣费”。
 
 ## 验收优化追加（2026-03-25，整理/倍速按钮再收窄与倍速文案）
 
@@ -196,6 +1402,29 @@
       - 我方血条 Y 按同口径在 1/2 行时下移。
   - 验证：`npm run build` 通过。
   - 当前阶段：等待用户验收“1/2/3行分段扩展 + 战斗区/我方血条随行数下移”。
+
+- 验收追加修正（同日，行数无法扩展根因修复）：
+  - 用户反馈：Day3/Day8 仍未增加行数。
+  - 根因：`GridSystem/GridZone` 的最大行数在构造时被固定为 Day1 的 1 行，后续 `setActiveRows/setActiveRowCount` 被上限裁剪，无法升到 2/3 行。
+  - 已完成：
+    - `src/tower/shop/ui/ShopBattleZoneBuilder.ts`
+      - 塔防上阵区改为“最大 3 行 + 按天数激活行数”（而非按 Day1 构造 1 行）。
+    - `src/tower/battle/BattleScene.ts`
+      - 战斗场景玩家区同样改为“最大 3 行 + 按天数激活”；
+      - 波间编辑 `editableSystem` 固定最大 3 行，仅动态切 active rows。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户复测 Day2→3、Day8→9 行数切换。
+
+- 验收追加修正（同日，2行后整理失败）：
+  - 用户反馈：上阵区变为 2 行后，点击“整理”失败。
+  - 根因：`organizeBattleZoneItemsByRule()` 仍按 `1` 行做 `planAutoPack`，且偏好位仅写在第 0 行，导致 2/3 行容量下仍按 1 行整理，空间不足时直接失败。
+  - 已完成：
+    - `src/tower/battle/BattleScene.ts`
+      - 整理逻辑改为读取当前上阵区 `cols × activeRows`；
+      - 偏好位改为按行列铺排（`col = idx % cols`, `row = floor(idx / cols)`）；
+      - `planAutoPack` 的行数改为当前 `activeRows`，并增加容量前置校验与明确提示。
+  - 验证：`npm run build` 通过。
+  - 当前阶段：等待用户验收“2/3行上阵区下整理可正常执行”。
 
 - 验收追加修正（同日，在场生效口径）：
   - 用户反馈：购买/合成后有时效果不生效（示例：双剑双盾时只部分生效）。

@@ -66,9 +66,18 @@ export function startTierScore(def: ItemDef | null): number {
 
 export function tierIndexFromRaw(def: ItemDef | null, tierRaw: string): number {
   if (!def) return 0
-  const score = tierScoreFromRaw(tierRaw)
-  const start = startTierScore(def)
-  return Math.max(0, score - start)
+  const tierToStep = (tier: string, star: number): number => {
+    if (tier === 'Silver') return 1
+    if (tier === 'Gold') return 2
+    if (tier === 'Diamond') return star >= 2 ? 4 : 3
+    return 0
+  }
+  const startTier = parseTierName(def.starting_tier || 'Bronze')
+  const startStep = tierToStep(startTier, 1)
+  const tier = parseTierName(tierRaw)
+  const star = parseTierStar(tierRaw)
+  const step = tierToStep(tier, star)
+  return Math.max(0, step - startStep)
 }
 
 export function ammoFromSkillLines(lines: string[], tierIndex: number): number {
@@ -174,9 +183,10 @@ export function getPrimaryArchetypeTag(rawTags: string): string {
 
 export function normalizeSkillArchetype(raw: string): SkillArchetype | null {
   const s = `${raw}`.trim()
-  if (s === 'warrior' || s === '战士') return 'warrior'
+  if (s === 'warrior' || s === '战士' || s === '剑士') return 'warrior'
   if (s === 'archer' || s === '弓手') return 'archer'
-  if (s === 'assassin' || s === '刺客') return 'assassin'
+  if (s === 'assassin' || s === '刺客' || s === '忍者') return 'assassin'
+  if (s === 'mage' || s === '冰法师') return 'mage'
   if (s === 'utility' || s === '通用') return 'utility'
   return null
 }

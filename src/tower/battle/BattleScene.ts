@@ -19,13 +19,13 @@ import { GridZone, CELL_SIZE, CELL_HEIGHT } from '@/tower/common/grid/GridZone'
 import { GridSystem, type ItemSizeNorm as GridItemSizeNorm } from '@/tower/common/grid/GridSystem'
 import { planAutoPack, type PackItem } from '@/tower/common/grid/AutoPack'
 import { DragController } from '@/tower/common/grid/DragController'
-import { getAllItems, getConfig as getGameCfg, getRunClassItemPoolIds } from '@/tower/core/DataLoader'
+import { getAllItems, getAllItemsRaw, getConfig as getGameCfg, getRunClassItemPoolIds } from '@/tower/core/DataLoader'
 import { getConfig as getDebugCfg } from '@/tower/config/debugConfig'
 import { normalizeSize, type ItemDef, type ItemSizeNorm } from '@/tower/common/items/ItemDef'
 import { EventBus } from '@/tower/core/EventBus'
 import { SellPopup, type ItemInfoCustomDisplay, type ItemInfoEnchantmentDisplay, type ItemInfoMode, type ItemInfoRuntimeOverride } from '@/tower/common/ui/SellPopup'
 import { getItemEnchantmentDisplay, resolveItemEnchantmentEffectCn } from '@/tower/common/items/ItemEnchantment'
-import { getBattleEffectColor, getBattleFloatTextColor, getBattleOrbColor, getShopUiColor } from '@/tower/config/colorPalette'
+import { getBattleEffectColor, getBattleFloatTextColor, getBattleOrbColor, getClassColor, getShopUiColor } from '@/tower/config/colorPalette'
 import { getHeroImageUrl, getItemIconUrl, getTowerBattleImageUrl } from '@/tower/core/AssetPath'
 import { BattlePortraitFX } from './BattlePortraitFX'
 import { BattleSkillUI } from './BattleSkillUI'
@@ -38,10 +38,8 @@ import { getAdjustedBattleZoneY, getAdjustedBattleZoneYInBattleOffset, getTowerB
 import { getTopLeftControlYOffset } from '@/tower/shop/ui/ShopSafeArea'
 import { clearLoadedAssetUrls, getLoadedAssetUrls, hasAssetUrlLoaded, markAssetUrlUnloaded } from '@/tower/core/AssetRuntimeTracker'
 import { clearMobileImageDownscaleRuntimeCache } from '@/tower/core/MobileImageDownscaleCache'
-import { levelToTierStar } from '@/tower/shop/systems/QuickBuySystem'
-import { getAllowedLevelsByStartingTier, getQuickBuyLevelWeightsByDay, pickQuickBuyLevelByPseudoRandomBucket } from '@/tower/shop/systems/QuickBuySystem'
 import type { TierKey } from '@/tower/shop/ShopManager'
-import { canSynthesizePair, getItemDefById, getPrimaryArchetype, nextTierLevel, parseTierName, tierStarLevelIndex, TIER_ORDER, toSkillArchetype } from '@/tower/shop/systems/ShopSynthesisLogic'
+import { getItemDefById, getPrimaryArchetype, parseTierName, tierStarLevelIndex, TIER_ORDER, toSkillArchetype } from '@/tower/shop/systems/ShopSynthesisLogic'
 import { getCrossSynthesisMinStartingTier, pickCrossIdEvolveCandidates } from '@/tower/shop/panels/SynthesisPanel'
 import { pickCrossSynthesisResultWithCycle } from '@/tower/shop/systems/ShopSynthesisController'
 import { getArchetypeSortOrder } from '@/tower/shop/systems/ShopAutoPackManager'
@@ -56,6 +54,8 @@ const HERO_VISUAL_ALIAS: Record<string, HeroVisualId> = {
   archer: 'archer',
   assassin: 'assassin',
 }
+
+const TOWER_AUTO_START_ON_ENTER_FLAG_KEY = 'bigbazzar_tower_auto_start_on_enter_once'
 
 const IS_MOBILE_DEVICE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
 
@@ -140,6 +140,7 @@ async function purgeMobileBattleAssetCacheIfEnabled(): Promise<void> {
 
 let root: Container | null = null
 let titleText: Text | null = null
+let towerDayText: Text | null = null
 let backBtn: Container | null = null
 let continueBtn: Container | null = null
 let continueBtnText: Text | null = null
@@ -151,6 +152,8 @@ let speedBtn: Container | null = null
 let speedBtnText: Text | null = null
 let battleEndMask: Graphics | null = null
 let organizeBtn: Container | null = null
+let itemTestBtn: Container | null = null
+let battleItemTestOverlay: Container | null = null
 let heroHudG: Graphics | null = null
 let enemyHpInfoCon: Container | null = null
 let playerHpInfoCon: Container | null = null
@@ -199,7 +202,7 @@ let battlePresentationMs = 0
 let chargeUiElapsedSinceTickMs = 0
 let ammoReloadUiElapsedSinceTickMs = 0
 const damageStats = new BattleDamageStats()
-const BATTLE_SPEED_STEPS = [1, 2, 3, 4] as const
+const BATTLE_SPEED_STEPS = [1, 1.3, 1.8, 2.5] as const
 const TOP_ACTION_BTN_H = 58
 const TOP_ACTION_BTN_W = BTN_RADIUS * 2
 const TOP_ACTION_BTN_HALF_H = TOP_ACTION_BTN_H / 2
@@ -260,8 +263,16 @@ let editableSystem: GridSystem | null = null
 let editableDrag: DragController | null = null
 let editableGold = 0
 let editableMergeHoverTargetId: string | null = null
+let draggingPlayerItemId: string | null = null
+let draggingPlayerItemFirePoint: { x: number; y: number } | null = null
 let towerWaveAdvanceInProgress = false
 let towerNextWaveAutoStartAtMs: number | null = null
+let towerWaveStartAtMs = 0
+let towerWaveTriggerConsumed = false
+let towerForceAutoStartOnEnter = false
+let towerBattleBuyCount = 0
+type BattleBuyOffer = { item: ItemDef; level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; tier: TierKey; star: 1 | 2 }
+let pendingBattleBuyOffer: BattleBuyOffer | null = null
 const editableMeta = new Map<string, {
   defId: string
   size: GridItemSizeNorm
@@ -320,11 +331,12 @@ const towerEnemyTexByIcon = new Map<string, Texture>()
 const towerEnemySpriteById = new Map<string, TowerEnemySpritePack>()
 const towerEnemyAnimStateById = new Map<string, TowerEnemyAnimState>()
 const towerEnemyPosById = new Map<string, { x: number; y: number }>()
+const towerEnemyHpAnchorById = new Map<string, { x: number; y: number; scale: number; distance: number; lane: number }>()
 const towerEnemyDefIdByUnitId = new Map<string, string>()
 const towerEnemyDeathFlyById = new Map<string, TowerEnemyDeathFlyState>()
 const towerEnemyLastHitDirById = new Map<string, { x: number; y: number }>()
 const towerGoldDropFxStates: TowerGoldDropFxState[] = []
-const towerClassRangeLineByRole = new Map<'swordsman' | 'archer' | 'assassin', Graphics>()
+const towerClassRangeLineByRole = new Map<'swordsman' | 'archer' | 'assassin' | 'mage', Graphics>()
 let towerClassRangeLastLogSignature = ''
 
 function resetBattleRandomSession(): void {
@@ -856,6 +868,14 @@ function syncTowerEnemyPresentation(activeCols: number): void {
     const anim = ensureTowerEnemyAnimState(one.id)
     const isFlying = (one as { isFlying?: boolean }).isFlying === true
     const isMoving = (one as { isMoving?: boolean }).isMoving === true
+    const prevHpAnchor = towerEnemyHpAnchorById.get(one.id)
+    const shouldRefreshHpAnchor = !prevHpAnchor
+      || Math.abs((one.distance ?? 0) - prevHpAnchor.distance) > 0.05
+      || Math.round(one.lane ?? 0) !== prevHpAnchor.lane
+    const hpAnchor = shouldRefreshHpAnchor
+      ? { x: laneX, y, scale, distance: one.distance ?? 0, lane: Math.round(one.lane ?? 0) }
+      : prevHpAnchor
+    towerEnemyHpAnchorById.set(one.id, hpAnchor)
     const useStandAnim = !isMoving
     const moveWave = useStandAnim
       ? { rotDeg: 0, yOff: 0, scaleMul: 1 }
@@ -929,11 +949,13 @@ function syncTowerEnemyPresentation(activeCols: number): void {
     }
 
     let hitScaleMul = 1
+    let hitScaleMaxMul = Number.POSITIVE_INFINITY
     if (anim.hitStartMs >= 0) {
       const hitElapsed = battlePresentationMs - anim.hitStartMs
       const hitMs = Math.max(1, Number((cfg as { enemyHitPopMs?: number }).enemyHitPopMs) || getDebugCfg('battleEnemyPortraitHitPulseMs'))
       const hitP = Math.max(0, Math.min(1, hitElapsed / hitMs))
       const maxScale = Math.max(1, Number((cfg as { enemyHitPopScale?: number }).enemyHitPopScale) || getDebugCfg('battleEnemyPortraitHitScaleMax'))
+      hitScaleMaxMul = maxScale
       const canPlayHitShake = anim.attackStartMs < 0 && anim.meleeDashStartMs < 0
       if (canPlayHitShake) {
         const popP = hitP < 0.5
@@ -954,7 +976,11 @@ function syncTowerEnemyPresentation(activeCols: number): void {
       spritePack.flash.alpha = 0
     }
 
-    const finalScale = scale * animScaleMul * hitScaleMul
+    let finalAnimScaleMul = animScaleMul * hitScaleMul
+    if (Number.isFinite(hitScaleMaxMul)) {
+      finalAnimScaleMul = Math.min(finalAnimScaleMul, hitScaleMaxMul)
+    }
+    const finalScale = scale * finalAnimScaleMul
     const flyingLift = isFlying ? flyingLiftNear : 0
     const effectiveFlyingLift = flyingLift * (1 - flyingDiveP)
     spritePack.root.visible = true
@@ -974,7 +1000,7 @@ function syncTowerEnemyPresentation(activeCols: number): void {
     const showShadow = !isFlying
     spritePack.shadow.visible = showShadow
     if (showShadow) {
-      const animScaleSafe = Math.max(0.01, animScaleMul * hitScaleMul)
+      const animScaleSafe = Math.max(0.01, finalAnimScaleMul)
       const shadowSizeByLift = Math.max(0.72, Math.min(1.28, 1 + animYOff * 0.012))
       const shadowWorldYOffset = scale * unitShadowYOffset
       spritePack.shadow.x = -animXOff / Math.max(0.01, finalScale)
@@ -989,20 +1015,33 @@ function syncTowerEnemyPresentation(activeCols: number): void {
       const barW = 52 * unitHpBarScale
       const barH = 8
       const radius = 4
-      const yOff = unitHpBarYOffset - effectiveFlyingLift
+      const desiredBarWorldX = hpAnchor.x
+      const desiredBarWorldY = hpAnchor.y + unitHpBarYOffset * hpAnchor.scale - (isFlying ? flyingLift : 0) * hpAnchor.scale
+      const desiredBarWorldXRounded = Math.round(desiredBarWorldX)
+      const desiredBarWorldYRounded = Math.round(desiredBarWorldY)
+      // 注意：血条几何坐标要用基础远近 scale 反推，不能用 finalScale（含受击/动作放缩），
+      // 否则受击时会产生明显上下抖动。
+      const localBarX = (desiredBarWorldXRounded - spritePack.root.x) / Math.max(0.01, scale)
+      const localBarY = (desiredBarWorldYRounded - spritePack.root.y) / Math.max(0.01, scale)
+      // 仅抵消动作/受击等临时放缩；保留近大远小的基础 scale
+      const invScale = 1 / Math.max(0.01, finalAnimScaleMul)
+      spritePack.hpBg.scale.set(invScale)
+      spritePack.hpFill.scale.set(invScale)
       spritePack.hpBg.clear()
-      spritePack.hpBg.roundRect(-barW / 2, yOff, barW, barH, radius)
+      spritePack.hpBg.roundRect(localBarX - barW / 2, localBarY, barW, barH, radius)
       spritePack.hpBg.fill({ color: 0x220000, alpha: 0.9 * alpha })
       spritePack.hpBg.stroke({ color: 0x000000, width: 2, alpha })
       spritePack.hpFill.clear()
       const fillW = Math.max(0, Math.min(barW, barW * hpRatio))
       if (fillW > 0.001) {
-        spritePack.hpFill.roundRect(-barW / 2, yOff, fillW, barH, radius)
+        spritePack.hpFill.roundRect(localBarX - barW / 2, localBarY, fillW, barH, radius)
         spritePack.hpFill.fill({ color: 0xe24848, alpha: 0.98 * alpha })
       }
       spritePack.hpBg.visible = true
       spritePack.hpFill.visible = true
     } else {
+      spritePack.hpBg.scale.set(1)
+      spritePack.hpFill.scale.set(1)
       spritePack.hpBg.visible = false
       spritePack.hpFill.visible = false
     }
@@ -1022,6 +1061,7 @@ function syncTowerEnemyPresentation(activeCols: number): void {
       one.root.visible = false
       one.flash.alpha = 0
       towerEnemyAnimStateById.delete(id)
+      towerEnemyHpAnchorById.delete(id)
       towerEnemyDefIdByUnitId.delete(id)
       towerEnemyLastHitDirById.delete(id)
       continue
@@ -1062,6 +1102,7 @@ function syncTowerEnemyPresentation(activeCols: number): void {
       one.flash.alpha = 0
       towerEnemyAnimStateById.delete(id)
       towerEnemyPosById.delete(id)
+      towerEnemyHpAnchorById.delete(id)
       towerEnemyDefIdByUnitId.delete(id)
       towerEnemyLastHitDirById.delete(id)
       continue
@@ -1106,7 +1147,18 @@ function drawTowerClassAttackDistanceGuides(): void {
   if (!towerClassRangeLayer) return
   const distances = engine?.getTowerClassAttackDistances?.()
   const cfg = getGameCfg().towerDefenseRules
-  if (!isTowerDefenseBattle() || !cfg || cfg.enabled === false || !distances) {
+  const showAllRangeGuides = getDebugCfg('gameplayShowTowerClassAttackDistance') >= 0.5
+  let selectedRoleKey: 'swordsman' | 'archer' | 'assassin' | 'mage' | null = null
+  if (!showAllRangeGuides && engine && selectedItemId && selectedItemSide) {
+    const selected = engine.getBoardState().items.find((it) => it.id === selectedItemId && it.side === selectedItemSide)
+    const selectedDef = selected ? getItemDefById(selected.defId) : null
+    const selectedArch = selectedDef ? toSkillArchetype(getPrimaryArchetype(selectedDef.tags)) : null
+    if (selectedArch === 'warrior') selectedRoleKey = 'swordsman'
+    else if (selectedArch === 'archer') selectedRoleKey = 'archer'
+    else if (selectedArch === 'assassin') selectedRoleKey = 'assassin'
+    else if (selectedArch === 'mage') selectedRoleKey = 'mage'
+  }
+  if ((!showAllRangeGuides && !selectedRoleKey) || !isTowerDefenseBattle() || !cfg || cfg.enabled === false || !distances) {
     towerClassRangeLayer.visible = false
     return
   }
@@ -1120,16 +1172,21 @@ function drawTowerClassAttackDistanceGuides(): void {
   const meterToDistance = Math.max(1, Number(cfg.moveDistancePerSecAtSpeed1) || 1)
   const lineWidthScale = Math.max(0.5, Number((cfg as { classRangeGuideWidthScale?: number }).classRangeGuideWidthScale) || 1.5)
   const nearThicknessPx = Math.max(1, Number((cfg as { classRangeGuideNearThicknessPx?: number }).classRangeGuideNearThicknessPx) || 10)
-  const roles: Array<{ key: 'swordsman' | 'archer' | 'assassin'; cn: string; color: number }> = [
-    { key: 'swordsman', cn: '战士', color: 0xe25555 },
-    { key: 'archer', cn: '弓手', color: 0x43c86f },
-    { key: 'assassin', cn: '刺客', color: 0x4d8fff },
+  const roles: Array<{ key: 'swordsman' | 'archer' | 'assassin' | 'mage'; cn: string; color: number }> = [
+    { key: 'swordsman', cn: '剑士', color: getClassColor('剑士') },
+    { key: 'archer', cn: '弓手', color: getClassColor('弓手') },
+    { key: 'assassin', cn: '忍者', color: getClassColor('忍者') },
+    { key: 'mage', cn: '冰法师', color: getClassColor('冰法师') },
   ]
   let hasVisible = false
   const logParts: string[] = []
   for (const role of roles) {
     const line = towerClassRangeLineByRole.get(role.key)
     if (!line) continue
+    if (!showAllRangeGuides && selectedRoleKey && role.key !== selectedRoleKey) {
+      line.visible = false
+      continue
+    }
     const distance = Math.max(0, Math.round(distances[role.key] || 0))
     if (distance <= 0) {
       line.visible = false
@@ -1387,7 +1444,7 @@ function makeContinueBattleButton(): Container {
   continueBtnText = txt
 
   con.x = CANVAS_W / 2
-  con.y = 92 + topSafeYOffset + 150
+  con.y = 92 + topSafeYOffset + 50
   con.zIndex = 190
   con.eventMode = 'static'
   con.cursor = 'pointer'
@@ -1404,16 +1461,16 @@ function makeContinueBattleButton(): Container {
 function makeRestartButton(): Container {
   const con = new Container()
   const bg = new Graphics()
-  const w = 180
-  const h = TOP_ACTION_BTN_H
-  bg.roundRect(-w / 2, -h / 2, w, h, 12)
+  const w = 108
+  const h = 44
+  bg.roundRect(-w / 2, -h / 2, w, h, 10)
   bg.stroke({ color: 0xffd25a, width: 2, alpha: 0.95 })
   bg.fill({ color: 0x1f2940, alpha: 0.9 })
   con.addChild(bg)
 
   const txt = new Text({
-    text: '重新开始',
-    style: { fontSize: 24, fill: 0xffe8a3, fontFamily: 'Arial', fontWeight: 'bold' },
+    text: '重置',
+    style: { fontSize: 20, fill: 0xffe8a3, fontFamily: 'Arial', fontWeight: 'bold' },
   })
   txt.anchor.set(0.5)
   con.addChild(txt)
@@ -1426,7 +1483,11 @@ function makeRestartButton(): Container {
     resetWinTrophyState(getGameCfg().runRules?.trophyWinsToFinalVictory ?? 10)
     clearBattleSnapshot()
     clearBattleOutcome()
-    window.location.reload()
+    if (isTowerDefenseBattle()) {
+      markTowerAutoStartOnEnter()
+      SceneManager.goto('tower-battle')
+    }
+    else window.location.reload()
   })
   return con
 }
@@ -1444,6 +1505,9 @@ function pickFirstEmptyCell(system: GridSystem, size: GridItemSizeNorm, activeCo
 }
 
 function getEditableStartGold(day: number): number {
+  if (isTowerDefenseBattle()) {
+    return day <= 1 ? 5 : 0
+  }
   const cfg = getGameCfg()
   const byDay = cfg.dailyGoldByDay
   if (Array.isArray(byDay) && byDay.length > 0) {
@@ -1453,17 +1517,18 @@ function getEditableStartGold(day: number): number {
   return Math.max(0, Math.round(cfg.dailyGold ?? 3))
 }
 
-function rollBattleBuyOffer(day: number): { item: ItemDef; level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; tier: TierKey; star: 1 | 2 } | null {
-  const weights = getQuickBuyLevelWeightsByDay(day)
-  const level = pickQuickBuyLevelByPseudoRandomBucket(weights)
-  const tierStar = levelToTierStar(level)
+function rollBattleBuyOffer(day: number): BattleBuyOffer | null {
+  const _day = day
+  void _day
+  const level: 1 = 1
+  const tierStar = levelToTowerTierStar(level)
   if (!tierStar) return null
 
   const allItems = getAllItems()
   const candidates = allItems.filter((it) => {
     if (String(it.id).startsWith('skill_')) return false
     const minTier = parseTierName(it.starting_tier) ?? 'Bronze'
-    if (!getAllowedLevelsByStartingTier(minTier).includes(level)) return false
+    if (!getTowerAllowedLevelsByStartingTier(minTier).includes(level)) return false
     const avail = String(it.available_tiers || '')
       .split('/')
       .map((s) => parseTierName(s.trim()))
@@ -1481,16 +1546,44 @@ function rollBattleBuyOffer(day: number): { item: ItemDef; level: 1 | 2 | 3 | 4 
   }
 }
 
+function levelToTowerTierStar(level: 1 | 2 | 3 | 4 | 5): { tier: TierKey; star: 1 | 2 } | null {
+  if (level === 1) return { tier: 'Bronze', star: 1 }
+  if (level === 2) return { tier: 'Silver', star: 1 }
+  if (level === 3) return { tier: 'Gold', star: 1 }
+  if (level === 4) return { tier: 'Diamond', star: 1 }
+  if (level === 5) return { tier: 'Diamond', star: 2 }
+  return null
+}
+
+function tierStarToTowerLevel(tier: TierKey, star: 1 | 2): 1 | 2 | 3 | 4 | 5 {
+  if (tier === 'Bronze') return 1
+  if (tier === 'Silver') return 2
+  if (tier === 'Gold') return 3
+  if (tier === 'Diamond' && star === 1) return 4
+  return 5
+}
+
+function getTowerAllowedLevelsByStartingTier(tier: TierKey): Array<1 | 2 | 3 | 4 | 5> {
+  if (tier === 'Bronze') return [1, 2, 3, 4, 5]
+  if (tier === 'Silver') return [2, 3, 4, 5]
+  if (tier === 'Gold') return [3, 4, 5]
+  return [4, 5]
+}
+
 function buildEditableSnapshotFromBoard(day: number): ReturnType<typeof getBattleSnapshot> {
   if (!editableSystem) return enteredSnapshot
+  const playerShield = Math.max(0, Math.round(engine?.getBoardState().player.shield ?? enteredSnapshot?.playerShield ?? 0))
   const entities = editableSystem.getCombatEntities(6).map((it) => {
     const meta = editableMeta.get(it.instanceId)
+    const tier = (meta?.tier ?? 'Bronze') as TierKey
+    const tierStar = (meta?.tierStar ?? 1) as 1 | 2
+    const level = tierStarToTowerLevel(tier, tierStar)
     return {
       ...it,
-      tier: meta?.tier ?? 'Bronze',
-      tierStar: meta?.tierStar ?? 1,
+      tier,
+      tierStar,
       quality: meta?.quality ?? 'Bronze',
-      level: meta?.level ?? 1,
+      level,
       permanentDamageBonus: meta?.permanentDamageBonus ?? 0,
     }
   })
@@ -1501,6 +1594,8 @@ function buildEditableSnapshotFromBoard(day: number): ReturnType<typeof getBattl
     createdAtMs: Date.now(),
     entities,
     playerGold: Math.max(0, Math.round(editableGold)),
+    playerShield,
+    towerBattleBuyCount: Math.max(0, Math.round(towerBattleBuyCount)),
   }
 }
 
@@ -1512,14 +1607,15 @@ function canSynthesizePairInBattle(sourceInstanceId: string, targetInstanceId: s
   const sourceDef = getItemDefById(sourceMeta.defId)
   const targetDef = getItemDefById(targetMeta.defId)
   if (!sourceDef || !targetDef) return false
-  return canSynthesizePair(
-    sourceMeta.defId,
-    targetMeta.defId,
-    sourceMeta.tier,
-    sourceMeta.tierStar,
-    targetMeta.tier,
-    targetMeta.tierStar,
-  )
+  const sourceLevel = Math.max(1, Math.min(5, Number(sourceMeta.level) || tierStarToTowerLevel(sourceMeta.tier, sourceMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
+  const targetLevel = Math.max(1, Math.min(5, Number(targetMeta.level) || tierStarToTowerLevel(targetMeta.tier, targetMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
+  if (sourceLevel !== targetLevel) return false
+  if (sourceLevel >= 5) return false
+  if (sourceMeta.defId === targetMeta.defId) return true
+  const sourceArch = toSkillArchetype(getPrimaryArchetype(sourceDef.tags))
+  const targetArch = toSkillArchetype(getPrimaryArchetype(targetDef.tags))
+  if (!sourceArch || !targetArch) return false
+  return sourceArch === targetArch
 }
 
 function refreshBattleSynthesisGuideArrows(sourceInstanceId: string | null): void {
@@ -1613,7 +1709,7 @@ function pickBattleSynthesisResultDef(
     const sourceArch = toSkillArchetype(getPrimaryArchetype(sourceDef.tags))
     const targetArch = toSkillArchetype(getPrimaryArchetype(targetDef.tags))
     const shouldExcludeSameArch = (
-      sourceArch === 'warrior' || sourceArch === 'archer' || sourceArch === 'assassin'
+      sourceArch === 'warrior' || sourceArch === 'archer' || sourceArch === 'assassin' || sourceArch === 'mage'
     ) && sourceArch === targetArch
     if (shouldExcludeSameArch) {
       out = out.filter((it) => toSkillArchetype(getPrimaryArchetype(it.tags)) !== sourceArch)
@@ -1645,7 +1741,12 @@ function applyBattleSynthesis(sourceInstanceId: string, targetInstanceId: string
   const sourceDef = getItemDefById(sourceMeta.defId)
   const targetDef = getItemDefById(targetMeta.defId)
   if (!sourceDef || !targetDef) return false
-  const upgradeTo = nextTierLevel(sourceMeta.tier, sourceMeta.tierStar)
+  const sourceLevel = Math.max(1, Math.min(5, Number(sourceMeta.level) || tierStarToTowerLevel(sourceMeta.tier, sourceMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
+  const targetLevel = Math.max(1, Math.min(5, Number(targetMeta.level) || tierStarToTowerLevel(targetMeta.tier, targetMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
+  if (sourceLevel !== targetLevel) return false
+  if (sourceLevel >= 5) return false
+  const resultLevel = (sourceLevel + 1) as 1 | 2 | 3 | 4 | 5
+  const upgradeTo = levelToTowerTierStar(resultLevel)
   if (!upgradeTo) return false
   const evolvedDef = pickBattleSynthesisResultDef(sourceDef, targetDef, targetMeta.size, upgradeTo.tier, upgradeTo.star)
   if (!evolvedDef) return false
@@ -1662,7 +1763,6 @@ function applyBattleSynthesis(sourceInstanceId: string, targetInstanceId: string
     editableDrag?.refreshZone(homeView)
   })
 
-  const resultLevel = Math.max(1, Math.min(8, tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   editableMeta.set(targetInstanceId, {
     ...targetMeta,
     defId: evolvedDef.id,
@@ -1683,7 +1783,8 @@ function showBattleSynthesisPreviewInfo(sourceInstanceId: string, targetInstance
   if (!sourceMeta || !targetMeta) return
   const sourceDef = getItemDefById(sourceMeta.defId)
   if (!sourceDef) return
-  const next = nextTierLevel(sourceMeta.tier, sourceMeta.tierStar)
+  const sourceLevel = Math.max(1, Math.min(5, Number(sourceMeta.level) || tierStarToTowerLevel(sourceMeta.tier, sourceMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
+  const next = sourceLevel >= 5 ? null : levelToTowerTierStar((sourceLevel + 1) as 1 | 2 | 3 | 4 | 5)
   const custom: ItemInfoCustomDisplay = {
     useQuestionIcon: true,
     hideName: true,
@@ -1707,6 +1808,12 @@ function showBattleSynthesisPreviewInfo(sourceInstanceId: string, targetInstance
   )
 }
 
+function getDraggingPlayerSourcePoint(sourceItemId: string, side: 'player' | 'enemy'): { x: number; y: number } | null {
+  if (side !== 'player') return null
+  if (!sourceItemId || sourceItemId !== draggingPlayerItemId) return null
+  return draggingPlayerItemFirePoint
+}
+
 function syncEngineWithEditable(resetChargeIds?: string[]): void {
   if (!engine || !editableSystem) return
   const snap = buildEditableSnapshotFromBoard(battleDay)
@@ -1724,26 +1831,69 @@ function resetTowerEnemyPresentationForNextWave(): void {
   towerEnemySpriteById.clear()
   towerEnemyAnimStateById.clear()
   towerEnemyPosById.clear()
+  towerEnemyHpAnchorById.clear()
   towerEnemyDefIdByUnitId.clear()
   towerEnemyDeathFlyById.clear()
   towerEnemyLastHitDirById.clear()
 }
 
 function getTowerBattleBuyCost(): number {
-  const fixed = getGameCfg().shopRules?.quickBuyFixedPrice?.['Bronze#1']
-  const n = Number(fixed)
-  if (Number.isFinite(n) && n > 0) return Math.max(1, Math.round(n))
-  return 3
+  const table = getGameCfg().towerDefenseRules?.battleBuyCostByPurchaseCount
+  const list = Array.isArray(table) ? table : []
+  const nextBuyCount = Math.max(1, Math.round(towerBattleBuyCount) + 1)
+  if (list.length > 0) {
+    const idx = Math.max(0, Math.min(list.length - 1, nextBuyCount - 1))
+    const raw = Number(list[idx])
+    if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.round(raw))
+  }
+  const fallback = Number(getGameCfg().shopRules?.quickBuyFixedPrice?.['Bronze#1'])
+  if (Number.isFinite(fallback) && fallback > 0) return Math.max(1, Math.round(fallback))
+  return 1
 }
 
-function formatTowerBattleBuyButtonText(gold: number, cost: number): string {
-  return `购买\n💰${Math.max(0, Math.round(gold))}/${Math.max(0, Math.round(cost))}`
+function getTowerBattleBuyOfferLevel(): number {
+  const offer = pendingBattleBuyOffer ?? rollBattleBuyOffer(battleDay)
+  if (!offer) return 0
+  if (!pendingBattleBuyOffer) pendingBattleBuyOffer = offer
+  return offer.level
+}
+
+function formatTowerBattleBuyButtonText(gold: number, cost: number, level: number): string {
+  if (cost <= 0 || level <= 0) return '购买\n暂无'
+  return `购买 Lv${Math.max(1, Math.round(level))}\n💰${Math.max(0, Math.round(gold))}/${Math.max(0, Math.round(cost))}`
 }
 
 function getTowerNextWaveAutoStartMs(): number {
   const v = Number(getGameCfg().towerDefenseRules?.nextWaveAutoStartMs)
   if (Number.isFinite(v) && v >= 0) return Math.round(v)
   return 5000
+}
+
+function getTowerForceNextWaveAfterLastSpawnMs(): number {
+  const rules = getGameCfg().towerDefenseRules as { enemyForceNextWaveAfterAllSpawnMs?: number; enemyAttackDoubleAfterAllSpawnMs?: number } | undefined
+  const raw = Number(rules?.enemyForceNextWaveAfterAllSpawnMs)
+  if (Number.isFinite(raw) && raw >= 0) return Math.round(raw)
+  const legacy = Number(rules?.enemyAttackDoubleAfterAllSpawnMs)
+  if (Number.isFinite(legacy) && legacy >= 0) return Math.round(legacy)
+  return 30000
+}
+
+function markTowerAutoStartOnEnter(): void {
+  try {
+    sessionStorage.setItem(TOWER_AUTO_START_ON_ENTER_FLAG_KEY, '1')
+  } catch {
+    // ignore
+  }
+}
+
+function consumeTowerAutoStartOnEnterFlag(): boolean {
+  try {
+    const hit = sessionStorage.getItem(TOWER_AUTO_START_ON_ENTER_FLAG_KEY) === '1'
+    if (hit) sessionStorage.removeItem(TOWER_AUTO_START_ON_ENTER_FLAG_KEY)
+    return hit
+  } catch {
+    return false
+  }
 }
 
 function getTowerEnemyKillGoldByUnitId(unitId: string): number {
@@ -1826,7 +1976,16 @@ function clearTowerEnemyGoldDropFx(): void {
 
 async function startNextTowerWaveInPlace(): Promise<void> {
   if (!engine || towerWaveAdvanceInProgress) return
+  if (draggingPlayerItemId) {
+    if (towerNextWaveAutoStartAtMs !== null) {
+      towerNextWaveAutoStartAtMs = battlePresentationMs + 250
+    }
+    return
+  }
   towerNextWaveAutoStartAtMs = null
+  towerWaveTriggerConsumed = false
+  towerWaveStartAtMs = battlePresentationMs
+  const preserveExistingEnemies = !engine.isFinished()
   const baseSnapshot = buildEditableSnapshotFromBoard(battleDay)
   if (!baseSnapshot) return
   const nextDay = Math.max(1, Math.round((baseSnapshot.day || 1) + 1))
@@ -1849,24 +2008,28 @@ async function startNextTowerWaveInPlace(): Promise<void> {
     applyLayout(6)
     editableGold = Math.max(0, Math.round(nextSnapshot.playerGold ?? 0))
     clearBattleItemSelection()
-    settlement.prepareForNextWave()
+    if (settlement.isResolved()) settlement.prepareForNextWave()
     settlementRevealAtMs = null
-    battleReplaySaved = false
-    resetTowerEnemyPresentationForNextWave()
+    if (!preserveExistingEnemies) battleReplaySaved = false
+    if (!preserveExistingEnemies) resetTowerEnemyPresentationForNextWave()
     clearTowerEnemyGoldDropFx()
-    clearItemRoundStatTracking()
+    if (!preserveExistingEnemies) clearItemRoundStatTracking()
 
-    const playerSkillIds = (PvpContext.isActive() && nextSnapshot.ownerSkillIds != null)
-      ? nextSnapshot.ownerSkillIds
-      : (skillUI?.getPickedSkills().map((s) => s.id) ?? [])
-    engine.start(nextSnapshot, {
-      playerSkillIds,
-      enemySkillIds: nextSnapshot.pvpEnemySkillIds ?? [],
-      enemyBackpackItemCount: nextSnapshot.pvpEnemyBackpackItemCount,
-      enemyGold: nextSnapshot.pvpEnemyGold,
-      enemyTrophyWins: nextSnapshot.pvpEnemyTrophyWins,
-    })
-    damageStats.bootstrapFromBoard(engine)
+    if (preserveExistingEnemies && engine.queueNextTowerWave) {
+      engine.queueNextTowerWave(nextDay)
+    } else {
+      const playerSkillIds = (PvpContext.isActive() && nextSnapshot.ownerSkillIds != null)
+        ? nextSnapshot.ownerSkillIds
+        : (skillUI?.getPickedSkills().map((s) => s.id) ?? [])
+      engine.start(nextSnapshot, {
+        playerSkillIds,
+        enemySkillIds: nextSnapshot.pvpEnemySkillIds ?? [],
+        enemyBackpackItemCount: nextSnapshot.pvpEnemyBackpackItemCount,
+        enemyGold: nextSnapshot.pvpEnemyGold,
+        enemyTrophyWins: nextSnapshot.pvpEnemyTrophyWins,
+      })
+      damageStats.bootstrapFromBoard(engine)
+    }
     ensureEditableBuildMode(getApp().stage)
     fxPool.refreshSourceDefMap()
   } finally {
@@ -1885,7 +2048,7 @@ function makeBuyButton(): Container {
   bg.fill({ color: 0x44aaff, alpha: 0.18 })
   con.addChild(bg)
   const txt = new Text({
-    text: formatTowerBattleBuyButtonText(editableGold, getTowerBattleBuyCost()),
+    text: formatTowerBattleBuyButtonText(editableGold, getTowerBattleBuyCost(), getTowerBattleBuyOfferLevel()),
     style: {
       fontSize: getGameCfg().textSizes.phaseButtonLabel,
       fill: 0x44aaff,
@@ -1902,13 +2065,14 @@ function makeBuyButton(): Container {
   con.on('pointerdown', async () => {
     if (!engine || !playerZone || !editableSystem) return
     if (transition.battleExitTransitionDurationMs > 0) return
+    const offer = pendingBattleBuyOffer ?? rollBattleBuyOffer(battleDay)
+    if (!offer) return
+    pendingBattleBuyOffer = offer
     const cost = getTowerBattleBuyCost()
     if (editableGold < cost) {
       showFatigueToast('金币不足')
       return
     }
-    const offer = rollBattleBuyOffer(battleDay)
-    if (!offer) return
     const size = normalizeSize(offer.item.size)
     const slot = pickFirstEmptyCell(editableSystem, size, 6)
     if (!slot) {
@@ -1918,6 +2082,7 @@ function makeBuyButton(): Container {
     const id = `b-${Date.now()}-${Math.floor(Math.random() * 9999)}`
     if (!editableSystem.place(slot.col, slot.row, size, offer.item.id, id)) return
     editableGold -= cost
+    towerBattleBuyCount += 1
     editableMeta.set(id, {
       defId: offer.item.id,
       size,
@@ -1927,10 +2092,17 @@ function makeBuyButton(): Container {
       level: offer.level,
       permanentDamageBonus: 0,
     })
+    const persistNow = buildEditableSnapshotFromBoard(battleDay)
+    if (persistNow) {
+      enteredSnapshot = persistNow
+      setBattleSnapshot(persistNow)
+    }
     await playerZone.addItem(id, offer.item.id, size, slot.col, slot.row, `${offer.tier}#${offer.star}`)
     playerZone.setItemTier(id, `${offer.tier}#${offer.star}`)
     editableDrag?.refreshZone(playerZone)
     syncEngineWithEditable([id])
+    pendingBattleBuyOffer = null
+    void getTowerBattleBuyCost()
   })
   return con
 }
@@ -1938,31 +2110,38 @@ function makeBuyButton(): Container {
 function ensureEditableBuildMode(stage: Container): void {
   if (!playerZone) return
   const battleRows = isTowerDefenseBattle() ? getTowerBattleRowsByDay(battleDay) : 3
-  if (!editableSystem) editableSystem = new GridSystem(6, battleRows)
+  if (!editableSystem) editableSystem = new GridSystem(6, 3)
   editableSystem.setActiveRows(battleRows)
   editableSystem.clear()
   editableMeta.clear()
   const sourceEntities = enteredSnapshot?.entities ?? []
   for (const one of sourceEntities) {
     editableSystem.place(one.col, one.row, one.size as GridItemSizeNorm, one.defId, one.instanceId)
+    const tier = (one.tier ?? 'Bronze') as TierKey
+    const tierStar = (one.tierStar ?? 1) as 1 | 2
+    const normalizedLevel = tierStarToTowerLevel(tier, tierStar)
     editableMeta.set(one.instanceId, {
       defId: one.defId,
       size: one.size as GridItemSizeNorm,
-      tier: one.tier ?? 'Bronze',
-      tierStar: one.tierStar ?? 1,
-      quality: one.quality ?? one.tier ?? 'Bronze',
-      level: one.level ?? 1,
+      tier,
+      tierStar,
+      quality: one.quality ?? tier,
+      level: normalizedLevel,
       permanentDamageBonus: one.permanentDamageBonus ?? 0,
     })
   }
   editableGold = Math.max(0, Math.round(enteredSnapshot?.playerGold ?? getEditableStartGold(battleDay)))
+  towerBattleBuyCount = Math.max(0, Math.round(enteredSnapshot?.towerBattleBuyCount ?? 0))
+  pendingBattleBuyOffer = null
+  void getTowerBattleBuyCost()
 
   if (!editableDrag) {
     editableDrag = new DragController(stage, getApp().canvas)
     editableDrag.setRearrangeSuppressed(true)
     editableDrag.addZone(editableSystem, playerZone)
     editableDrag.onDragStart = (instanceId) => {
-      editableDrag?.setSqueezeSuppressed(true)
+      draggingPlayerItemId = instanceId
+      draggingPlayerItemFirePoint = fxPool.getItemCenterById(instanceId, 'player') ?? null
       editableMergeHoverTargetId = null
       playerZone?.setSelected(null)
       playerZone?.clearHighlight()
@@ -2000,6 +2179,8 @@ function ensureEditableBuildMode(stage: Container): void {
       return applyBattleSynthesis(instanceId, targetId, homeSystem, homeView)
     }
     editableDrag.onDragEnd = () => {
+      draggingPlayerItemId = null
+      draggingPlayerItemFirePoint = null
       editableMergeHoverTargetId = null
       playerZone?.setSelected(null)
       playerZone?.clearHighlight()
@@ -2032,14 +2213,21 @@ function organizeBattleZoneItemsByRule(): void {
     if (idCmp !== 0) return idCmp
     return a.instanceId.localeCompare(b.instanceId)
   })
+  const cols = Math.max(1, playerZone.activeColCount)
+  const rows = Math.max(1, editableSystem.getActiveRows())
+  const maxSlots = cols * rows
   const packItems: PackItem[] = sorted.map((it, idx) => ({
     instanceId: it.instanceId,
     defId: it.defId,
     size: it.size,
-    preferredCol: idx,
-    preferredRow: 0,
+    preferredCol: idx % cols,
+    preferredRow: Math.min(rows - 1, Math.floor(idx / cols)),
   }))
-  const plan = planAutoPack(packItems, playerZone.activeColCount, 1)
+  if (packItems.length > maxSlots) {
+    showFatigueToast('整理失败：上阵区空间不足')
+    return
+  }
+  const plan = planAutoPack(packItems, cols, rows)
   if (!plan) {
     showFatigueToast('整理失败')
     return
@@ -2102,6 +2290,274 @@ function makeOrganizeButton(): Container {
   return ui.container
 }
 
+function closeBattleItemTestOverlay(): void {
+  if (!battleItemTestOverlay) return
+  if (battleItemTestOverlay.parent) battleItemTestOverlay.parent.removeChild(battleItemTestOverlay)
+  battleItemTestOverlay.destroy({ children: true })
+  battleItemTestOverlay = null
+}
+
+function addBattleTestItemAtLevel(def: ItemDef, level: 1 | 2 | 3 | 4 | 5): boolean {
+  if (!playerZone || !editableSystem) return false
+  const tierStar = levelToTowerTierStar(level)
+  if (!tierStar) return false
+  const size = normalizeSize(def.size)
+  const slot = pickFirstEmptyCell(editableSystem, size, 6)
+  if (!slot) return false
+  const id = `t-${Date.now()}-${Math.floor(Math.random() * 99999)}`
+  if (!editableSystem.place(slot.col, slot.row, size, def.id, id)) return false
+  const quality = parseTierName(def.starting_tier) ?? tierStar.tier
+  editableMeta.set(id, {
+    defId: def.id,
+    size,
+    tier: tierStar.tier,
+    tierStar: tierStar.star,
+    quality,
+    level,
+    permanentDamageBonus: 0,
+  })
+  void playerZone.addItem(id, def.id, size, slot.col, slot.row, `${tierStar.tier}#${tierStar.star}`).then(() => {
+    if (!playerZone || playerZone.destroyed) return
+    playerZone.setItemTier(id, `${tierStar.tier}#${tierStar.star}`)
+    editableDrag?.refreshZone(playerZone)
+  }).catch(() => undefined)
+  syncEngineWithEditable([id])
+  return true
+}
+
+function makeItemTestButton(): Container {
+  const con = new Container()
+  const bg = new Graphics()
+  bg.roundRect(-70, -22, 140, 44, 12)
+  bg.fill({ color: 0x2f4f82, alpha: 0.94 })
+  bg.stroke({ color: 0xb9d4ff, width: 2, alpha: 0.95 })
+  const txt = new Text({ text: '物品测试', style: { fontSize: 20, fill: 0xf3f9ff, fontFamily: 'Arial', fontWeight: 'bold' } })
+  txt.anchor.set(0.5)
+  con.addChild(bg, txt)
+  con.eventMode = 'static'
+  con.cursor = 'pointer'
+  con.zIndex = 195
+  con.on('pointerdown', (e) => {
+    e.stopPropagation()
+    if (!root) return
+    if (battleItemTestOverlay) {
+      closeBattleItemTestOverlay()
+      return
+    }
+
+    const overlay = new Container()
+    overlay.zIndex = 7600
+    overlay.eventMode = 'static'
+    const mask = new Graphics()
+    mask.rect(0, 0, CANVAS_W, CANVAS_H)
+    mask.fill({ color: 0x020409, alpha: 0.72 })
+    overlay.addChild(mask)
+
+    const panel = new Container()
+    panel.x = CANVAS_W / 2
+    panel.y = CANVAS_H / 2 + 8
+    panel.eventMode = 'static'
+    panel.on('pointerdown', (pe) => pe.stopPropagation())
+    overlay.addChild(panel)
+
+    const panelW = 620
+    const panelH = 1080
+    const panelBg = new Graphics()
+    panelBg.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 22)
+    panelBg.fill({ color: 0x13213a, alpha: 0.98 })
+    panelBg.stroke({ color: 0x9ec2ff, width: 3, alpha: 0.95 })
+    panel.addChild(panelBg)
+
+    const title = new Text({ text: '物品测试（塔防战斗）', style: { fontSize: 34, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' } })
+    title.anchor.set(0.5)
+    title.y = -476
+    panel.addChild(title)
+
+    type ItemTestPage = 'all' | 'swordsman' | 'archer' | 'ninja' | 'icemage'
+    const tabs: Array<{ key: ItemTestPage; label: string }> = [
+      { key: 'all', label: '全部' },
+      { key: 'swordsman', label: '剑士' },
+      { key: 'archer', label: '弓手' },
+      { key: 'ninja', label: '忍者' },
+      { key: 'icemage', label: '冰法师' },
+    ]
+    let activePage: ItemTestPage = 'all'
+    let pageIndex = 0
+    const rowsPerPage = 16
+
+    const allDefs = [...getAllItemsRaw()].filter((it) => !String(it.id).startsWith('skill_')).sort((a, b) => a.name_cn.localeCompare(b.name_cn, 'zh-Hans-CN'))
+    const getPageItems = (): ItemDef[] => {
+      if (activePage === 'all') return allDefs
+      return allDefs.filter((def) => {
+        const tags = `${def.tags ?? ''}`
+        if (activePage === 'swordsman') return tags.includes('剑士')
+        if (activePage === 'archer') return tags.includes('弓手')
+        if (activePage === 'ninja') return tags.includes('忍者')
+        return tags.includes('冰法师')
+      })
+    }
+
+    const pageCon = new Container()
+    pageCon.y = -422
+    panel.addChild(pageCon)
+    const tabW = 104
+    const tabStep = 112
+    const totalW = tabs.length * tabStep - (tabStep - tabW)
+    const tabViews = new Map<ItemTestPage, { bg: Graphics; text: Text }>()
+
+    const listCon = new Container()
+    panel.addChild(listCon)
+    const pageHint = new Text({ text: '', style: { fontSize: 20, fill: 0xb9d4ff, fontFamily: 'Arial', fontWeight: 'bold' } })
+    pageHint.anchor.set(0.5)
+    pageHint.y = 434
+    panel.addChild(pageHint)
+
+    const redrawTabs = () => {
+      for (const one of tabs) {
+        const v = tabViews.get(one.key)
+        if (!v) continue
+        const selected = one.key === activePage
+        v.bg.clear()
+        v.bg.roundRect(-tabW / 2, -17, tabW, 34, 12)
+        v.bg.fill({ color: selected ? 0x7cc6ff : 0x2a4068, alpha: 0.96 })
+        v.bg.stroke({ color: selected ? 0xe9f6ff : 0x9ec2ff, width: selected ? 3 : 2, alpha: 0.95 })
+        v.text.style.fill = selected ? 0x0f1c33 : 0xeaf3ff
+      }
+    }
+
+    const drawRows = () => {
+      const old = listCon.removeChildren()
+      old.forEach((ch) => ch.destroy())
+      const items = getPageItems()
+      const totalPages = Math.max(1, Math.ceil(items.length / rowsPerPage))
+      pageIndex = Math.max(0, Math.min(totalPages - 1, pageIndex))
+      pageHint.text = `第 ${pageIndex + 1}/${totalPages} 页（共 ${items.length} 个）`
+      const start = pageIndex * rowsPerPage
+      const end = Math.min(items.length, start + rowsPerPage)
+      const topY = -352
+      const rowH = 50
+      for (let i = start; i < end; i++) {
+        const def = items[i]!
+        const y = topY + (i - start) * rowH
+        const rowBg = new Graphics()
+        rowBg.roundRect(-286, y - 20, 572, 40, 10)
+        rowBg.fill({ color: i % 2 === 0 ? 0x172844 : 0x15233c, alpha: 0.72 })
+        listCon.addChild(rowBg)
+
+        const tier = parseTierName(def.starting_tier) ?? 'Bronze'
+        const label = new Text({
+          text: `${def.name_cn}（${tier}）`,
+          style: { fontSize: 18, fill: 0xe0ebff, fontFamily: 'Arial', fontWeight: 'bold' },
+        })
+        label.x = -270
+        label.y = y - label.height / 2
+        listCon.addChild(label)
+
+        const minBtn = new Container()
+        minBtn.x = 168
+        minBtn.y = y
+        minBtn.eventMode = 'static'
+        minBtn.cursor = 'pointer'
+        const minBg = new Graphics()
+        minBg.roundRect(-44, -16, 88, 32, 10)
+        minBg.fill({ color: 0x96c7ff, alpha: 0.98 })
+        minBg.stroke({ color: 0x0d1426, width: 2, alpha: 0.95 })
+        const minText = new Text({ text: '最低级', style: { fontSize: 14, fill: 0x0f1c33, fontFamily: 'Arial', fontWeight: 'bold' } })
+        minText.anchor.set(0.5)
+        minBtn.addChild(minBg, minText)
+        minBtn.on('pointerdown', (pe) => {
+          pe.stopPropagation()
+          const startTier = parseTierName(def.starting_tier) ?? 'Bronze'
+          const levels = getTowerAllowedLevelsByStartingTier(startTier)
+          const minLevel = levels[0] ?? 1
+          if (!addBattleTestItemAtLevel(def, minLevel)) showFatigueToast('上阵区已满')
+        })
+        listCon.addChild(minBtn)
+
+        const allBtn = new Container()
+        allBtn.x = 254
+        allBtn.y = y
+        allBtn.eventMode = 'static'
+        allBtn.cursor = 'pointer'
+        const allBg = new Graphics()
+        allBg.roundRect(-44, -16, 88, 32, 10)
+        allBg.fill({ color: 0x74dc9b, alpha: 0.98 })
+        allBg.stroke({ color: 0x0d1426, width: 2, alpha: 0.95 })
+        const allText = new Text({ text: '全等级', style: { fontSize: 14, fill: 0x0f1c33, fontFamily: 'Arial', fontWeight: 'bold' } })
+        allText.anchor.set(0.5)
+        allBtn.addChild(allBg, allText)
+        allBtn.on('pointerdown', (pe) => {
+          pe.stopPropagation()
+          const startTier = parseTierName(def.starting_tier) ?? 'Bronze'
+          const levels = getTowerAllowedLevelsByStartingTier(startTier)
+          let added = 0
+          for (const lv of levels) {
+            if (!addBattleTestItemAtLevel(def, lv)) break
+            added += 1
+          }
+          if (added <= 0) showFatigueToast('上阵区已满')
+        })
+        listCon.addChild(allBtn)
+      }
+    }
+
+    tabs.forEach((one, idx) => {
+      const btn = new Container()
+      btn.x = -totalW / 2 + idx * tabStep + tabW / 2
+      btn.y = 0
+      btn.eventMode = 'static'
+      btn.cursor = 'pointer'
+      const bgTab = new Graphics()
+      const textTab = new Text({ text: one.label, style: { fontSize: 16, fill: 0xeaf3ff, fontFamily: 'Arial', fontWeight: 'bold' } })
+      textTab.anchor.set(0.5)
+      btn.addChild(bgTab, textTab)
+      pageCon.addChild(btn)
+      tabViews.set(one.key, { bg: bgTab, text: textTab })
+      btn.on('pointerdown', (pe) => {
+        pe.stopPropagation()
+        if (activePage === one.key) return
+        activePage = one.key
+        pageIndex = 0
+        redrawTabs()
+        drawRows()
+      })
+    })
+
+    const prevBtn = makeTopRectActionButton('上一页', () => {
+      pageIndex -= 1
+      drawRows()
+    }).container
+    prevBtn.x = -150
+    prevBtn.y = 488
+    prevBtn.scale.set(0.72)
+    panel.addChild(prevBtn)
+
+    const nextBtn = makeTopRectActionButton('下一页', () => {
+      pageIndex += 1
+      drawRows()
+    }).container
+    nextBtn.x = 150
+    nextBtn.y = 488
+    nextBtn.scale.set(0.72)
+    panel.addChild(nextBtn)
+
+    const closeBtn = makeTopRectActionButton('关闭', () => {
+      closeBattleItemTestOverlay()
+    }).container
+    closeBtn.x = 0
+    closeBtn.y = 542
+    closeBtn.scale.set(0.86)
+    panel.addChild(closeBtn)
+
+    overlay.on('pointerdown', () => closeBattleItemTestOverlay())
+    root.addChild(overlay)
+    battleItemTestOverlay = overlay
+    redrawTabs()
+    drawRows()
+  })
+  return con
+}
+
 function drawInfoText(con: Container, centerX: number, centerY: number, parts: Array<{ text: string; color: number }>, fontSize: number): void {
   con.removeChildren()
   let x = 0
@@ -2134,21 +2590,11 @@ function drawTowerRemainingBar(): void {
   const stat = engine.getTowerEnemyStats()
   const total = Math.max(1, stat.totalCount)
   const remaining = Math.max(0, Math.min(total, stat.remainingCount))
-  const ratio = Math.max(0, Math.min(1, remaining / total))
-  const w = 430
-  const h = 26
-  const x = (CANVAS_W - w) / 2
-  const y = 96
   towerRemainBarG.clear()
-  towerRemainBarG.roundRect(x, y, w, h, 14)
-  towerRemainBarG.fill({ color: 0x1f2436, alpha: 0.9 })
-  towerRemainBarG.roundRect(x, y, Math.max(2, w * ratio), h, 14)
-  towerRemainBarG.fill({ color: 0xe84a4a, alpha: 0.95 })
-  towerRemainBarG.roundRect(x, y, w, h, 14)
-  towerRemainBarG.stroke({ color: 0x8b94b5, width: 2, alpha: 0.95 })
-  towerRemainBarText.text = `剩余敌人 ${remaining}/${total}`
+  towerRemainBarG.visible = false
+  towerRemainBarText.text = `剩余敌人：${remaining}`
   towerRemainBarText.x = CANVAS_W / 2 - towerRemainBarText.width / 2
-  towerRemainBarText.y = y + h / 2 - towerRemainBarText.height / 2
+  towerRemainBarText.y = 96
 }
 
 function getClampedTopActionBtnY(): number {
@@ -2233,9 +2679,12 @@ function drawHeroBars(
 
 function applyZoneVisualStyle(zone: GridZone, side: 'player' | 'enemy'): void {
   const towerMode = isTowerDefenseBattle()
-  zone.setItemQualityMarkerEnabled(false)
+  const showClassName = getDebugCfg('gameplayShowClassName') >= 0.5
+  zone.setItemQualityMarkerEnabled(towerMode)
+  zone.setQualityDiamondMarkerScale(towerMode ? 0.5 : 1)
   zone.setTierBadgeVisible(!towerMode)
   zone.setItemFrameUseArchetypeColor(towerMode ? true : (getDebugCfg('gameplayItemFrameColorByArchetype') >= 0.5))
+  zone.setArchetypeBadgeShowClassPrefix(towerMode && showClassName)
   zone.setStatBadgeMode(towerMode ? 'archetype' : 'stats')
   zone.setTierBorderWidth(getDebugCfg('tierBorderWidth'))
   zone.setCornerRadius(getDebugCfg('gridItemCornerRadius'))
@@ -2644,6 +3093,15 @@ function getBattleInfoPanelCenterY(): number {
   return getDebugCfg('battleItemInfoCenterY')
 }
 
+function resolveTowerRoleLabelAndColor(item: ItemDef): { label: '剑士' | '弓手' | '忍者' | '冰法师'; color: number } | null {
+  const tags = `${item.tags ?? ''}`
+  if (tags.includes('剑士') || tags.includes('战士')) return { label: '剑士', color: getClassColor('剑士') }
+  if (tags.includes('弓手')) return { label: '弓手', color: getClassColor('弓手') }
+  if (tags.includes('忍者') || tags.includes('刺客')) return { label: '忍者', color: getClassColor('忍者') }
+  if (tags.includes('冰法师')) return { label: '冰法师', color: getClassColor('冰法师') }
+  return null
+}
+
 function clearBattleItemSelection(): void {
   selectedItemId = null
   selectedItemSide = null
@@ -2706,7 +3164,7 @@ function showBattleItemInfo(instanceId: string, side: 'player' | 'enemy', keepMo
   itemInfoPopup.setSmallMinHeight(getDebugCfg('itemInfoMinHSmall'))
   itemInfoPopup.setCornerRadius(getDebugCfg('gridItemCornerRadius'))
   itemInfoPopup.setTextSizes({
-    name: getDebugCfg('itemInfoNameFontSize'),
+    name: isTowerDefenseBattle() ? 28 : getDebugCfg('itemInfoNameFontSize'),
     tier: getDebugCfg('itemInfoTierFontSize'),
     cooldown: getDebugCfg('itemInfoCooldownFontSize'),
     priceCorner: getDebugCfg('itemInfoPriceCornerFontSize'),
@@ -2720,7 +3178,22 @@ function showBattleItemInfo(instanceId: string, side: 'player' | 'enemy', keepMo
       effectCn: resolveItemEnchantmentEffectCn(item, hit.enchantment),
     }
     : undefined
-  itemInfoPopup.show(item, 0, 'none', hit.tier, undefined, selectedItemInfoMode, runtimeOverride, undefined, enchantmentDisplay)
+  const towerRoleDisplay = isTowerDefenseBattle() ? resolveTowerRoleLabelAndColor(item) : null
+  const showClassName = getDebugCfg('gameplayShowClassName') >= 0.5
+  const customDisplay: ItemInfoCustomDisplay | undefined = towerRoleDisplay
+    ? {
+      iconFrameColorOverride: towerRoleDisplay.color,
+      iconFrameWidthOverride: 6,
+      ...(showClassName
+        ? {
+          iconRoleBadgeLabel: towerRoleDisplay.label,
+          iconRoleBadgeBgColor: towerRoleDisplay.color,
+          iconRoleBadgeFontSize: 24,
+        }
+        : {}),
+    }
+    : undefined
+  itemInfoPopup.show(item, 0, 'none', hit.tier, undefined, selectedItemInfoMode, runtimeOverride, customDisplay, enchantmentDisplay)
 }
 
 export const BattleScene: Scene = {
@@ -2730,6 +3203,7 @@ export const BattleScene: Scene = {
     const requestedReplay = consumeRequestedBattleReplay()
     replayMode = requestedReplay != null
     replayRandomSourceValues = requestedReplay ? [...requestedReplay.randomValues] : null
+    towerForceAutoStartOnEnter = consumeTowerAutoStartOnEnterFlag()
     resetBattleRandomSession()
     let snapshot = getBattleSnapshot()
     if (!snapshot) {
@@ -2817,13 +3291,28 @@ export const BattleScene: Scene = {
     titleText.y = 40
     root.addChild(titleText)
 
+    towerDayText = new Text({
+      text: '',
+      style: {
+        fontSize: 32,
+        fill: 0xffe8a3,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        stroke: { color: 0x000000, width: 3 },
+      },
+    })
+    towerDayText.anchor.set(1, 0)
+    towerDayText.zIndex = 190
+    towerDayText.eventMode = 'none'
+    root.addChild(towerDayText)
+
     towerRemainBarG = new Graphics()
     towerRemainBarG.zIndex = 42
     towerRemainBarG.eventMode = 'none'
     root.addChild(towerRemainBarG)
     towerRemainBarText = new Text({
       text: '',
-      style: { fontSize: 24, fill: 0xfff2f2, fontFamily: 'Arial', fontWeight: 'bold', stroke: { color: 0x000000, width: 3 } },
+      style: { fontSize: 36, fill: 0xfff2f2, fontFamily: 'Arial', fontWeight: 'bold', stroke: { color: 0x000000, width: 3 } },
     })
     towerRemainBarText.zIndex = 43
     towerRemainBarText.eventMode = 'none'
@@ -2953,14 +3442,17 @@ export const BattleScene: Scene = {
 
     const day = snapshot?.day ?? 1
     const activeCols = getDayActiveCols(day)
-    const playerRows = getGameCfg().towerDefenseRules?.enabled === true
+    const towerMode = getGameCfg().towerDefenseRules?.enabled === true
+    const playerRows = towerMode
       ? getTowerBattleRowsByDay(day)
       : Math.max(1, Math.min(3,
         snapshot.entities.reduce((maxRow, one) => Math.max(maxRow, Math.max(0, Math.round(one.row ?? 0))), 0) + 1,
       ))
+    const playerMaxRows = towerMode ? 3 : playerRows
 
     enemyZone = new GridZone('敌方战斗区', 6, activeCols, 1)
-    playerZone = new GridZone('战斗区', 6, activeCols, playerRows)
+    playerZone = new GridZone('战斗区', 6, activeCols, playerMaxRows)
+    playerZone.setActiveRowCount(playerRows)
     const zoneZIndex = isTowerDefenseBattle() ? 38 : 20
     enemyZone.zIndex = zoneZIndex
     playerZone.zIndex = zoneZIndex
@@ -2983,7 +3475,7 @@ export const BattleScene: Scene = {
     towerClassRangeLayer.eventMode = 'none'
     root.addChild(towerClassRangeLayer)
     towerClassRangeLineByRole.clear()
-    for (const key of ['swordsman', 'archer', 'assassin'] as const) {
+    for (const key of ['swordsman', 'archer', 'assassin', 'mage'] as const) {
       const line = new Graphics()
       towerClassRangeLayer.addChild(line)
       towerClassRangeLineByRole.set(key, line)
@@ -3098,6 +3590,9 @@ export const BattleScene: Scene = {
     organizeBtn = makeOrganizeButton()
     root.addChild(organizeBtn)
 
+    itemTestBtn = makeItemTestButton()
+    root.addChild(itemTestBtn)
+
     backBtn = makeBackButton()
     backBtn.zIndex = 190
     backBtn.visible = false
@@ -3132,7 +3627,11 @@ export const BattleScene: Scene = {
         resetWinTrophyState(getGameCfg().runRules?.trophyWinsToFinalVictory ?? 10)
         clearBattleSnapshot()
         clearBattleOutcome()
-        window.location.reload()
+        if (isTowerDefenseBattle()) {
+          markTowerAutoStartOnEnter()
+          SceneManager.goto('tower-battle')
+        }
+        else window.location.reload()
       },
       () => {
         if (!hasBattleReplayRecord()) return
@@ -3186,6 +3685,8 @@ export const BattleScene: Scene = {
       enemyGold: snapshot.pvpEnemyGold,
       enemyTrophyWins: snapshot.pvpEnemyTrophyWins,
     })
+    towerWaveStartAtMs = battlePresentationMs
+    towerWaveTriggerConsumed = false
     skillUI!.loadFromSnapshot(engine.getEnemySkillIds())
     skillUI!.refreshEnemy(playerZone, enemyZone, true)
     console.log(`[BattleScene] 进入战斗场景 day=${snapshot.day} entities=${snapshot.entities.length} cols=${snapshot.activeColCount}`)
@@ -3224,12 +3725,16 @@ export const BattleScene: Scene = {
     stage.on('pointerdown', onStageTapHidePopup)
 
     offTriggerEvent = EventBus.on('battle:item_trigger', (e) => {
-      fxPool.tryPulseItem(e.sourceItemId, e.side)
+      if (!(e.side === 'player' && draggingPlayerItemId === e.sourceItemId)) {
+        fxPool.tryPulseItem(e.sourceItemId, e.side)
+      }
       damageStats.addTriggerCount(e.sourceItemId, e.side, Math.max(1, Math.round(e.multicast || e.triggerCount || 1)), engine)
     })
 
     offFireEvent = EventBus.on('battle:item_fire', (e) => {
-      if (!e.projectileFromEnemyUnitId) fxPool.tryPulseItem(e.sourceItemId, e.side)
+      if (!e.projectileFromEnemyUnitId && !(e.side === 'player' && draggingPlayerItemId === e.sourceItemId)) {
+        fxPool.tryPulseItem(e.sourceItemId, e.side)
+      }
       if (!isTowerDefenseBattle()) return
       if (e.side === 'player') {
         const attackType = e.attackType ?? 'line_projectile'
@@ -3240,16 +3745,29 @@ export const BattleScene: Scene = {
           const originOffsetYRaw = Number(cfg?.playerMeleeSweepOriginOffsetY)
           const startOffsetXRaw = Number(cfg?.playerMeleeSweepStartOffsetX)
           const endOffsetXRaw = Number(cfg?.playerMeleeSweepEndOffsetX)
+          const mirrorStartOffsetXRaw = Number((cfg as { playerMeleeSweepMirrorStartOffsetX?: number } | undefined)?.playerMeleeSweepMirrorStartOffsetX)
+          const mirrorEndOffsetXRaw = Number((cfg as { playerMeleeSweepMirrorEndOffsetX?: number } | undefined)?.playerMeleeSweepMirrorEndOffsetX)
+          const isMirrorSweep = e.meleeSweepDirection === 'rtl'
           const originOffsetX = Number.isFinite(originOffsetXRaw) ? originOffsetXRaw : 92
           const originOffsetY = Number.isFinite(originOffsetYRaw) ? originOffsetYRaw : -36
-          const startOffsetX = Number.isFinite(startOffsetXRaw) ? startOffsetXRaw : 0
-          const endOffsetX = Number.isFinite(endOffsetXRaw) ? endOffsetXRaw : 0
+          const baseStartOffsetX = Number.isFinite(startOffsetXRaw) ? startOffsetXRaw : 0
+          const baseEndOffsetX = Number.isFinite(endOffsetXRaw) ? endOffsetXRaw : 0
+          const mirrorStartOffsetX = Number.isFinite(mirrorStartOffsetXRaw) ? mirrorStartOffsetXRaw : -baseEndOffsetX
+          const mirrorEndOffsetX = Number.isFinite(mirrorEndOffsetXRaw) ? mirrorEndOffsetXRaw : -baseStartOffsetX
+          const startOffsetX = isMirrorSweep ? mirrorStartOffsetX : baseStartOffsetX
+          const endOffsetX = isMirrorSweep ? mirrorEndOffsetX : baseEndOffsetX
           const durationRaw = Number(cfg?.playerMeleeSweepDurationMs)
           const durationMs = Number.isFinite(durationRaw) ? Math.max(1, durationRaw) : 260
           const startAngleRaw = Number(cfg?.playerMeleeSweepStartAngleDeg)
           const endAngleRaw = Number(cfg?.playerMeleeSweepEndAngleDeg)
-          const startAngleDeg = Number.isFinite(startAngleRaw) ? startAngleRaw : -130
-          const endAngleDeg = Number.isFinite(endAngleRaw) ? endAngleRaw : -20
+          const mirrorStartAngleRaw = Number((cfg as { playerMeleeSweepMirrorStartAngleDeg?: number } | undefined)?.playerMeleeSweepMirrorStartAngleDeg)
+          const mirrorEndAngleRaw = Number((cfg as { playerMeleeSweepMirrorEndAngleDeg?: number } | undefined)?.playerMeleeSweepMirrorEndAngleDeg)
+          const baseStartAngleDeg = Number.isFinite(startAngleRaw) ? startAngleRaw : -130
+          const baseEndAngleDeg = Number.isFinite(endAngleRaw) ? endAngleRaw : -20
+          const mirrorStartAngleDeg = Number.isFinite(mirrorStartAngleRaw) ? mirrorStartAngleRaw : baseStartAngleDeg
+          const mirrorEndAngleDeg = Number.isFinite(mirrorEndAngleRaw) ? mirrorEndAngleRaw : baseEndAngleDeg
+          const startAngleDeg = isMirrorSweep ? mirrorStartAngleDeg : baseStartAngleDeg
+          const endAngleDeg = isMirrorSweep ? mirrorEndAngleDeg : baseEndAngleDeg
           const alphaStartRaw = Number(cfg?.playerMeleeSweepAlphaStart)
           const alphaMidRaw = Number(cfg?.playerMeleeSweepAlphaMid)
           const alphaEndRaw = Number(cfg?.playerMeleeSweepAlphaEnd)
@@ -3286,6 +3804,7 @@ export const BattleScene: Scene = {
                   alphaEnd,
                   sizePx: weaponSizePx,
                   scale: sweepScale,
+                  flipX: isMirrorSweep,
                 },
               )
             },
@@ -3295,7 +3814,7 @@ export const BattleScene: Scene = {
         if (e.targetSide !== 'enemy') return
         const from = e.projectileFromEnemyUnitId
           ? (towerEnemyPosById.get(e.projectileFromEnemyUnitId) ?? getHeroBarCenter('enemy'))
-          : (fxPool.getItemCenterById(e.sourceItemId, e.side) ?? getHeroBarCenter(e.side))
+          : (getDraggingPlayerSourcePoint(e.sourceItemId, e.side) ?? fxPool.getItemCenterById(e.sourceItemId, e.side) ?? getHeroBarCenter(e.side))
         if (!e.targetId) {
           const cfg = getGameCfg().towerDefenseRules
           const nearY = Number(cfg?.nearY) || 940
@@ -3557,15 +4076,23 @@ export const BattleScene: Scene = {
       const shieldOrbColor = getBattleOrbColor('shield')
       const textSize = getDebugCfg('battleTextFontSizeDamage')
       const floatingTarget = fxPool.offsetFloatingNumberTarget(side, projectileTarget)
+      const sourceDefId = engine?.getBoardState().items.find((it) => it.id === e.sourceItemId)?.defId ?? ''
+      const sourceDef = sourceDefId ? getItemDefById(sourceDefId) : null
+      const sourceArch = toSkillArchetype(getPrimaryArchetype(sourceDef?.tags ?? ''))
+      const instantShieldFx = isTowerDefenseBattle() && side === 'player' && sourceArch === 'warrior'
       const task = {
         amount: Math.max(0, Math.round(e.amount)),
         run: () => {
-          fxPool.spawnProjectile(from, projectileTarget, shieldOrbColor, () => {
-            if (side === 'enemy') {
-              portraitFX.triggerEnemyHit()
-            }
+          if (instantShieldFx) {
             fxPool.spawnFloatingNumber(floatingTarget, `+${task.amount}`, shieldColor, textSize)
-          }, e.sourceItemId)
+          } else {
+            fxPool.spawnProjectile(from, projectileTarget, shieldOrbColor, () => {
+              if (side === 'enemy') {
+                portraitFX.triggerEnemyHit()
+              }
+              fxPool.spawnFloatingNumber(floatingTarget, `+${task.amount}`, shieldColor, textSize)
+            }, e.sourceItemId)
+          }
         },
         mergeKey: catchUp ? `shield|${side}|${e.targetId}|${e.sourceItemId}` : undefined,
         mergeWith: (incoming: QueuedFxTask) => {
@@ -3696,6 +4223,7 @@ export const BattleScene: Scene = {
     root?.destroy({ children: true })
     root = null
     titleText = null
+    towerDayText = null
     backBtn = null
     continueBtn = null
     continueBtnText = null
@@ -3706,6 +4234,8 @@ export const BattleScene: Scene = {
     speedBtn = null
     speedBtnText = null
     organizeBtn = null
+    itemTestBtn = null
+    closeBattleItemTestOverlay()
     battleEndMask = null
     heroHudG = null
     enemyHpInfoCon = null
@@ -3799,14 +4329,21 @@ export const BattleScene: Scene = {
     battleRandomTags = []
     battleEnemyHeroVisualId = null
     battleReplaySaved = false
+    towerBattleBuyCount = 0
+    pendingBattleBuyOffer = null
     towerEnemyDefIdByUnitId.clear()
     clearTowerEnemyGoldDropFx()
     towerNextWaveAutoStartAtMs = null
+    towerWaveStartAtMs = 0
+    towerWaveTriggerConsumed = false
+    towerForceAutoStartOnEnter = false
     editableDrag?.destroy()
     editableDrag = null
     editableSystem = null
     editableMeta.clear()
     editableGold = 0
+    draggingPlayerItemId = null
+    draggingPlayerItemFirePoint = null
     towerWaveAdvanceInProgress = false
     // PVP sync cleanup
     syncAStarted = false
@@ -3920,7 +4457,7 @@ export const BattleScene: Scene = {
     drawTowerClassAttackDistanceGuides()
     if (isTowerDefenseBattle()) {
       drawTowerRemainingBar()
-      if (towerRemainBarG) towerRemainBarG.visible = true
+      if (towerRemainBarG) towerRemainBarG.visible = false
       if (towerRemainBarText) towerRemainBarText.visible = true
     } else {
       if (towerRemainBarG) towerRemainBarG.visible = false
@@ -4069,14 +4606,29 @@ export const BattleScene: Scene = {
     }
 
     if (speedBtn) {
-      speedBtn.visible = !engine.isFinished()
+      const towerMode = isTowerDefenseBattle()
+      const showTopActionButtons = !towerWaveAdvanceInProgress
+        && transition.battleExitTransitionDurationMs <= 0
+        && !settlement.isGameOver()
+      speedBtn.visible = towerMode ? showTopActionButtons : !engine.isFinished()
       speedBtn.y = getClampedTopActionBtnY()
       if (speedBtnText) speedBtnText.text = `倍速:${battleSpeed}x`
     }
 
     if (organizeBtn) {
-      organizeBtn.visible = !engine.isFinished()
+      const towerMode = isTowerDefenseBattle()
+      const showTopActionButtons = !towerWaveAdvanceInProgress
+        && transition.battleExitTransitionDurationMs <= 0
+        && !settlement.isGameOver()
+      organizeBtn.visible = towerMode ? showTopActionButtons : !engine.isFinished()
       organizeBtn.y = getClampedTopActionBtnY()
+    }
+
+    if (itemTestBtn) {
+      itemTestBtn.x = 96
+      itemTestBtn.y = 48 + topSafeYOffset
+      const canEditInBattle = isTowerDefenseBattle() && !replayMode && !towerWaveAdvanceInProgress && transition.battleExitTransitionDurationMs <= 0 && !settlement.isGameOver()
+      itemTestBtn.visible = canEditInBattle
     }
 
     const settlementUiStartMs = performance.now()
@@ -4094,32 +4646,77 @@ export const BattleScene: Scene = {
     }
 
     if (continueBtn) {
+      const towerMode = isTowerDefenseBattle()
       const canContinue = engine.isFinished()
         && settlement.isResolved()
         && !settlement.isGameOver()
+        && !settlement.isFinalVictory()
         && !towerWaveAdvanceInProgress
         && transition.battleExitTransitionDurationMs <= 0
+      const towerStats = towerMode ? engine.getTowerEnemyStats?.() : null
+      const bossWave = towerMode && towerStats?.currentWaveHasBoss === true
+      const waveElapsedMs = Math.max(0, battlePresentationMs - towerWaveStartAtMs)
+      const reachedPostSpawnLimit = towerMode
+        && !bossWave
+        && !towerWaveTriggerConsumed
+        && waveElapsedMs >= getTowerForceNextWaveAfterLastSpawnMs()
+      const autoByClear = canContinue && !bossWave && !towerWaveTriggerConsumed
+      if (towerMode && (autoByClear || reachedPostSpawnLimit)) {
+        towerWaveTriggerConsumed = true
+      }
+      const shouldStartWaveCountdown = towerMode
+        && !settlement.isGameOver()
+        && !settlement.isFinalVictory()
+        && !towerWaveAdvanceInProgress
+        && transition.battleExitTransitionDurationMs <= 0
+        && towerWaveTriggerConsumed
       continueBtn.x = CANVAS_W / 2
-      continueBtn.y = 92 + topSafeYOffset + 150
-      continueBtn.visible = canContinue
-      if (isTowerDefenseBattle() && canContinue) {
+      continueBtn.y = 92 + topSafeYOffset + 50
+      continueBtn.visible = towerMode ? (shouldStartWaveCountdown || canContinue) : canContinue
+      if (towerMode && shouldStartWaveCountdown) {
+        if (towerForceAutoStartOnEnter) {
+          towerForceAutoStartOnEnter = false
+          void startNextTowerWaveInPlace()
+          if (continueBtnText) continueBtnText.text = '开始下一波'
+          continueBtn.visible = false
+        }
         if (towerNextWaveAutoStartAtMs === null) {
           towerNextWaveAutoStartAtMs = battlePresentationMs + getTowerNextWaveAutoStartMs()
         }
         const remainMs = Math.max(0, towerNextWaveAutoStartAtMs - battlePresentationMs)
         const remainSec = Math.max(0, Math.ceil(remainMs / 1000))
         if (continueBtnText) continueBtnText.text = `开始下一波${remainSec > 0 ? ` (${remainSec})` : ''}`
-        if (remainMs <= 0) void startNextTowerWaveInPlace()
+        if (remainMs <= 0) {
+          if (draggingPlayerItemId) {
+            towerNextWaveAutoStartAtMs = battlePresentationMs + 250
+          } else {
+            void startNextTowerWaveInPlace()
+          }
+        }
+      } else if (towerMode && canContinue) {
+        towerNextWaveAutoStartAtMs = null
+        towerForceAutoStartOnEnter = false
+        if (continueBtnText) continueBtnText.text = '开始下一波'
       } else {
         towerNextWaveAutoStartAtMs = null
+        towerForceAutoStartOnEnter = false
         if (continueBtnText) continueBtnText.text = '开始挑战'
       }
     }
 
     if (restartBtn) {
-      restartBtn.x = 96
-      restartBtn.y = 44 + topSafeYOffset
+      restartBtn.x = 72
+      restartBtn.y = 132 + topSafeYOffset
       restartBtn.visible = isTowerDefenseBattle() && !replayMode && !towerWaveAdvanceInProgress && transition.battleExitTransitionDurationMs <= 0
+    }
+
+    if (towerDayText) {
+      towerDayText.visible = isTowerDefenseBattle()
+      if (towerDayText.visible) {
+        towerDayText.text = `第${Math.max(1, Math.round(battleDay))}天`
+        towerDayText.x = CANVAS_W - 16
+        towerDayText.y = 114 + topSafeYOffset
+      }
     }
 
     const canEditInBattle = isTowerDefenseBattle() && !replayMode && !towerWaveAdvanceInProgress && transition.battleExitTransitionDurationMs <= 0 && !settlement.isGameOver()
@@ -4130,7 +4727,7 @@ export const BattleScene: Scene = {
       const canAfford = editableGold >= getTowerBattleBuyCost()
       buyBtn.alpha = canAfford ? 1 : 0.55
       buyBtn.cursor = canAfford ? 'pointer' : 'default'
-      if (buyBtnText) buyBtnText.text = formatTowerBattleBuyButtonText(editableGold, getTowerBattleBuyCost())
+      if (buyBtnText) buyBtnText.text = formatTowerBattleBuyButtonText(editableGold, getTowerBattleBuyCost(), getTowerBattleBuyOfferLevel())
     }
     if (sellDropZone) {
       sellDropZone.visible = false
