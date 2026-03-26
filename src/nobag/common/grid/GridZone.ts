@@ -150,10 +150,10 @@ function parseTierStar(tierRaw?: string): number {
 function tierToLevelLabel(tierRaw?: string): string {
   const tier = getTier('', tierRaw)
   const star = parseTierStar(tierRaw)
-  if (tier === 'Bronze') return String(star)
-  if (tier === 'Silver') return String(star + 2)
-  if (tier === 'Gold') return String(star + 4)
-  return String(star + 6)
+  const level = tier === 'Bronze' ? star : tier === 'Silver' ? star + 2 : tier === 'Gold' ? star + 4 : star + 6
+  const capRaw = Number(getDebugCfg('gameplayItemSynthesisMaxLevel'))
+  const cap = Number.isFinite(capRaw) ? Math.max(1, Math.min(8, Math.round(capRaw))) : 8
+  return level >= cap ? 'MAX' : String(level)
 }
 
 // ---- ItemNode ----

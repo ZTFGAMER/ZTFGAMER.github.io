@@ -93,7 +93,7 @@ export type GameEvents = {
   };
   'battle:fatigue_start': { elapsedMs: number };
   'battle:fatigue_tick':  { elapsedMs: number; tick: number; playerDamage: number; enemyDamage: number };
-  'battle:unit_die':     { unitId: string; side: 'player' | 'enemy' };
+  'battle:unit_die':     { unitId: string; side: 'player' | 'enemy'; reason?: 'normal' | 'impact_player' };
   'battle:end':          { winner: 'player' | 'enemy' | 'draw'; blameLog: string[] };
 
   // 商店事件

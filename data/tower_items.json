@@ -17,7 +17,8 @@
     "attack_variants": ["toweritem1_a"],
     "attack_style": "旋转飞行",
     "simple_desc": "命中后弹射1次",
-    "simple_desc_tiered": "命中后弹射1次"
+    "simple_desc_tiered": "命中后弹射1次",
+    "max_active_count": 6
   },
   {
     "id": "578d9e51-a6c2-4c40-9dcd-60420ffe91c6",
@@ -37,7 +38,8 @@
     "attack_variants": ["toweritem1_a"],
     "attack_style": "旋转飞行",
     "simple_desc": "所有手里剑弹射次数提升",
-    "simple_desc_tiered": "所有手里剑弹射次数+1|+1|+2|+3|+4"
+    "simple_desc_tiered": "所有手里剑弹射次数+1|+1|+2|+3|+4",
+    "max_active_count": 4
   },
   {
     "id": "16e55d6c-d856-4820-a337-5f73332b8fe4",
@@ -52,12 +54,13 @@
     "position": "",
     "cooldown": 8000,
     "cooldown_tiers": "8000|6700|5600|4600|3900",
-    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:40，弹射次数:1。" }, { "en": "", "cn": "所有手里剑连发次数+1|+1|+1|+2|+3，伤害-20%|-20%|-20%|-30%|-40%。" }],
+    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:40，弹射次数:1。" }, { "en": "", "cn": "所有手里剑连发次数+1|+1|+1|+2|+3，伤害-20%|-20%|-20%|-20%|-20%。" }],
     "icon": "toweritem3",
     "attack_variants": ["toweritem1_a"],
     "attack_style": "旋转飞行",
     "simple_desc": "所有手里剑连发提升并降伤",
-    "simple_desc_tiered": "所有手里剑连发次数+1|+1|+1|+2|+3，伤害-20%|-20%|-20%|-30%|-40%"
+    "simple_desc_tiered": "所有手里剑连发次数+1|+1|+1|+2|+3，伤害-20%|-20%|-20%|-20%|-20%",
+    "max_active_count": 3
   },
   {
     "id": "0c6beae3-3f07-4496-957b-447dde815ffb",
@@ -72,12 +75,13 @@
     "position": "",
     "cooldown": 8000,
     "cooldown_tiers": "8000|6700|5600|4600|3900",
-    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:40，弹射次数:1。" }, { "en": "", "cn": "所有手里剑造成减速1|1|1|2|3秒（减速50%）。" }],
+    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:40，弹射次数:1。" }, { "en": "", "cn": "所有手里剑造成减速1|1|2|3|4秒（减速50%）。" }],
     "icon": "toweritem4",
     "attack_variants": ["toweritem1_a"],
     "attack_style": "旋转飞行",
     "simple_desc": "所有手里剑造成减速",
-    "simple_desc_tiered": "所有手里剑造成减速1|1|1|2|3秒"
+    "simple_desc_tiered": "所有手里剑造成减速1|1|2|3|4秒",
+    "max_active_count": 3
   },
   {
     "id": "aa05e315-afdd-40ba-8149-3fd3fd3617ce",
@@ -97,7 +101,8 @@
     "attack_variants": ["toweritem1_a"],
     "attack_style": "旋转飞行",
     "simple_desc": "所有手里剑弹射后伤害不变",
-    "simple_desc_tiered": "所有手里剑弹射后伤害不变"
+    "simple_desc_tiered": "所有手里剑弹射后伤害不变",
+    "max_active_count": 1
   },
   {
     "id": "4e61c6f3-4d31-4b29-97fb-691537b3a3a0",
@@ -112,12 +117,13 @@
     "position": "",
     "cooldown": 8000,
     "cooldown_tiers": "8000|6700|5600|4600|3900",
-    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:40，弹射次数:1。" }, { "en": "", "cn": "所有手里剑首次弹射后分裂1|1|1|1|1次（分裂目标数量+1）。" }],
+    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:40，弹射次数:1。" }, { "en": "", "cn": "所有手里剑首次弹射后分裂，额外+1|+1|+1|+1|+2目标。" }],
     "icon": "toweritem6",
     "attack_variants": ["toweritem1_a"],
     "attack_style": "旋转飞行",
     "simple_desc": "所有手里剑首次弹射后分裂（目标+1）",
-    "simple_desc_tiered": "所有手里剑首次弹射后分裂1|1|1|1|1次（分裂目标数量+1）"
+    "simple_desc_tiered": "所有手里剑首次弹射后分裂，额外+1|+1|+1|+1|+2目标",
+    "max_active_count": 2
   },
   {
     "id": "2f0448e7-58d2-4304-9819-d48f3c877858",
@@ -137,7 +143,8 @@
     "attack_variants": ["toweritem7_a"],
     "attack_style": "直线飞行",
     "simple_desc": "远距离锁定攻击",
-    "simple_desc_tiered": "远距离锁定攻击"
+    "simple_desc_tiered": "远距离锁定攻击",
+    "max_active_count": 6
   },
   {
     "id": "6631ae4c-ae28-46fc-ba6c-b8aa2555d261",
@@ -157,7 +164,8 @@
     "attack_variants": ["toweritem7_a"],
     "attack_style": "直线飞行",
     "simple_desc": "所有弓箭伤害提升",
-    "simple_desc_tiered": "所有弓箭伤害+2|+3|+5|+8|+13"
+    "simple_desc_tiered": "所有弓箭伤害+2|+3|+5|+8|+13",
+    "max_active_count": 4
   },
   {
     "id": "2d974fec-6038-417d-8831-1e7ea8d2fcde",
@@ -172,12 +180,13 @@
     "position": "",
     "cooldown": 5000,
     "cooldown_tiers": "5000|4200|3500|2900|2400",
-    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:60。" }, { "en": "", "cn": "所有弓箭连发次数+1|+1|+1|+2|+3，伤害-20%|-20%|-20%|-30%|-40%。" }],
+    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:60。" }, { "en": "", "cn": "所有弓箭连发次数+1|+1|+1|+2|+3，伤害-20%|-20%|-20%|-20%|-20%。" }],
     "icon": "toweritem9",
     "attack_variants": ["toweritem7_a"],
     "attack_style": "直线飞行",
     "simple_desc": "所有弓箭连发提升并降伤",
-    "simple_desc_tiered": "所有弓箭连发次数+1|+1|+1|+2|+3，伤害-20%|-20%|-20%|-30%|-40%"
+    "simple_desc_tiered": "所有弓箭连发次数+1|+1|+1|+2|+3，伤害-20%|-20%|-20%|-20%|-20%",
+    "max_active_count": 3
   },
   {
     "id": "67ab47ed-640b-432d-8afe-5f2f4d2046d7",
@@ -197,7 +206,8 @@
     "attack_variants": ["toweritem7_a"],
     "attack_style": "直线飞行",
     "simple_desc": "所有弓箭命中后附带中毒",
-    "simple_desc_tiered": "所有弓箭命中后附带中毒2|2|2|3|4秒，中毒：受到持续伤害"
+    "simple_desc_tiered": "所有弓箭命中后附带中毒2|2|2|3|4秒，中毒：受到持续伤害",
+    "max_active_count": 3
   },
   {
     "id": "ea7d8f3c-b0c8-4570-90de-4a706657f3f2",
@@ -212,12 +222,13 @@
     "position": "",
     "cooldown": 5000,
     "cooldown_tiers": "5000|4200|3500|2900|2400",
-    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:60。" }, { "en": "", "cn": "所有弓箭距离越远伤害越高，最高+100%。" }],
+    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:60。" }, { "en": "", "cn": "所有弓箭距离越远伤害越高，最高+150%。" }],
     "icon": "toweritem11",
     "attack_variants": ["toweritem7_a"],
     "attack_style": "直线飞行",
-    "simple_desc": "所有弓箭距离越远，伤害越高；最高+100%",
-    "simple_desc_tiered": "所有弓箭距离越远，伤害越高；最高+100%"
+    "simple_desc": "所有弓箭距离越远，伤害越高；最高+150%",
+    "simple_desc_tiered": "所有弓箭距离越远，伤害越高；最高+150%",
+    "max_active_count": 1
   },
   {
     "id": "7587058e-0db0-4d26-afa7-8cc19777c68c",
@@ -237,7 +248,8 @@
     "attack_variants": ["toweritem7_a"],
     "attack_style": "直线飞行",
     "simple_desc": "所有弓箭连续命中时增伤",
-    "simple_desc_tiered": "所有弓箭连续命中相同目标时，伤害+1|+1|+1|+1|+2"
+    "simple_desc_tiered": "所有弓箭连续命中相同目标时，伤害+1|+1|+1|+1|+2",
+    "max_active_count": 2
   },
   {
     "id": "aa88379b-caf0-48e4-8427-54aff2bcc0e3",
@@ -252,12 +264,13 @@
     "position": "",
     "cooldown": 7000,
     "cooldown_tiers": "7000|5800|4900|4100|3400",
-    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:50，减速:2秒。" }, { "en": "", "cn": "命中后减速2秒（减速50%）。" }],
+    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:50，减速:3秒。" }, { "en": "", "cn": "命中后减速3秒（减速50%）。" }],
     "icon": "toweritem13",
     "attack_variants": ["toweritem13_a"],
     "attack_style": "直线飞行",
     "simple_desc": "命中后减速",
-    "simple_desc_tiered": "命中后减速2秒"
+    "simple_desc_tiered": "命中后减速3秒",
+    "max_active_count": 6
   },
   {
     "id": "35a85821-5a72-4b42-8f8e-129e6504cbd0",
@@ -272,12 +285,13 @@
     "position": "",
     "cooldown": 7000,
     "cooldown_tiers": "7000|5800|4900|4100|3400",
-    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:50，减速:2秒。" }, { "en": "", "cn": "所有冰锥减速时间+1|+1|+2|+3|+4秒。" }],
+    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:50，减速:3秒。" }, { "en": "", "cn": "所有冰锥减速时间+1|+2|+3|+4|+5秒。" }],
     "icon": "toweritem14",
     "attack_variants": ["toweritem13_a"],
     "attack_style": "直线飞行",
     "simple_desc": "所有冰锥减速时间提升",
-    "simple_desc_tiered": "所有冰锥减速时间+1|+1|+2|+3|+4秒"
+    "simple_desc_tiered": "所有冰锥减速时间+1|+2|+3|+4|+5秒",
+    "max_active_count": 4
   },
   {
     "id": "9b85d1fd-b6a2-4ba8-afbf-1ef5467c73db",
@@ -292,12 +306,13 @@
     "position": "",
     "cooldown": 7000,
     "cooldown_tiers": "7000|5800|4900|4100|3400",
-    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:50，减速:2秒。" }, { "en": "", "cn": "所有冰锥同时发射目标+1|+1|+1|+2|+3。" }],
+    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:50，减速:3秒。" }, { "en": "", "cn": "所有冰锥同时发射目标+1|+1|+1|+2|+3。" }],
     "icon": "toweritem15",
     "attack_variants": ["toweritem13_a"],
     "attack_style": "直线飞行",
     "simple_desc": "所有冰锥同时发射目标提升",
-    "simple_desc_tiered": "所有冰锥同时发射目标+1|+1|+1|+2|+3"
+    "simple_desc_tiered": "所有冰锥同时发射目标+1|+1|+1|+2|+3",
+    "max_active_count": 3
   },
   {
     "id": "5fb79fd6-54f9-49cc-bf87-c20ecb57fcae",
@@ -312,12 +327,13 @@
     "position": "",
     "cooldown": 7000,
     "cooldown_tiers": "7000|5800|4900|4100|3400",
-    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:50，减速:2秒。" }, { "en": "", "cn": "所有冰锥有10%|10%|10%|15%|20%几率冰冻1秒，冰冻：无法行动。" }],
+    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:50，减速:3秒。" }, { "en": "", "cn": "所有冰锥有10%|10%|10%|15%|20%几率冰冻2秒，冰冻：无法行动。" }],
     "icon": "toweritem16",
     "attack_variants": ["toweritem13_a"],
     "attack_style": "直线飞行",
     "simple_desc": "所有冰锥有概率冰冻1秒",
-    "simple_desc_tiered": "所有冰锥有10%|10%|10%|15%|20%几率冰冻1秒，冰冻：无法行动"
+    "simple_desc_tiered": "所有冰锥有10%|10%|10%|15%|20%几率冰冻2秒，冰冻：无法行动",
+    "max_active_count": 3
   },
   {
     "id": "4ce4c826-62c4-4275-8625-7b42bcc6f601",
@@ -332,12 +348,13 @@
     "position": "",
     "cooldown": 7000,
     "cooldown_tiers": "7000|5800|4900|4100|3400",
-    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:50，减速:2秒。" }, { "en": "", "cn": "所有冰锥造成范围伤害。" }],
+    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:50，减速:3秒。" }, { "en": "", "cn": "所有冰锥造成范围伤害。" }],
     "icon": "toweritem17",
     "attack_variants": ["toweritem13_a"],
     "attack_style": "直线飞行",
     "simple_desc": "所有冰锥造成范围伤害",
-    "simple_desc_tiered": "所有冰锥造成范围伤害"
+    "simple_desc_tiered": "所有冰锥造成范围伤害",
+    "max_active_count": 1
   },
   {
     "id": "7092d066-6d29-4a69-8610-07b6b1da52c7",
@@ -352,12 +369,13 @@
     "position": "",
     "cooldown": 7000,
     "cooldown_tiers": "7000|5800|4900|4100|3400",
-    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:50，减速:2秒。" }, { "en": "", "cn": "受到伤害时所有冰锥充能1秒。" }],
+    "skills": [{ "en": "", "cn": "攻击造成10|16|26|41|66伤害。" }, { "en": "", "cn": "攻击距离:50，减速:3秒。" }, { "en": "", "cn": "受到伤害时所有冰锥充能0.5|1秒。" }],
     "icon": "toweritem18",
     "attack_variants": ["toweritem13_a"],
     "attack_style": "直线飞行",
-    "simple_desc": "受到伤害时所有冰锥充能1秒",
-    "simple_desc_tiered": "受到伤害时所有冰锥充能1秒"
+    "simple_desc": "受到伤害时所有冰锥充能0.5|1秒",
+    "simple_desc_tiered": "受到伤害时所有冰锥充能0.5|1秒",
+    "max_active_count": 2
   },
   {
     "id": "4456a17d-0ba5-4fd8-a906-ce1ea86d4828",
@@ -377,7 +395,8 @@
     "attack_variants": ["toweritem19_a"],
     "attack_style": "近战挥动",
     "simple_desc": "近距离范围攻击",
-    "simple_desc_tiered": "近距离范围攻击"
+    "simple_desc_tiered": "近距离范围攻击",
+    "max_active_count": 6
   },
   {
     "id": "64a22938-3d5e-47ff-ae8e-8b392d3fbd07",
@@ -397,7 +416,8 @@
     "attack_variants": ["toweritem19_a"],
     "attack_style": "近战挥动",
     "simple_desc": "所有长剑攻击距离提升",
-    "simple_desc_tiered": "所有长剑攻击距离+1|+1|+2|+3|+4"
+    "simple_desc_tiered": "所有长剑攻击距离+1|+1|+2|+3|+4",
+    "max_active_count": 4
   },
   {
     "id": "4d06281b-4772-4843-b4ce-8cbf6b6dd812",
@@ -417,7 +437,8 @@
     "attack_variants": ["toweritem19_a"],
     "attack_style": "近战挥动",
     "simple_desc": "所有长剑命中使目标流血",
-    "simple_desc_tiered": "所有长剑命中使目标流血2|2|2|3|4秒，流血：受伤时受到额外伤害"
+    "simple_desc_tiered": "所有长剑命中使目标流血2|2|2|3|4秒，流血：受伤时受到额外伤害",
+    "max_active_count": 3
   },
   {
     "id": "487be45f-b263-4b5f-9abe-891b1a801ec2",
@@ -437,7 +458,8 @@
     "attack_variants": ["toweritem19_a"],
     "attack_style": "近战挥动",
     "simple_desc": "使用所有长剑时获得额外护盾值",
-    "simple_desc_tiered": "使用所有长剑时获得护盾值+1|+1|+1|+2|+3"
+    "simple_desc_tiered": "使用所有长剑时获得护盾值+1|+1|+1|+2|+3",
+    "max_active_count": 3
   },
   {
     "id": "57c1ec04-ea07-484b-8755-669246676061",
@@ -457,7 +479,8 @@
     "attack_variants": ["toweritem19_a"],
     "attack_style": "近战挥动",
     "simple_desc": "所有长剑攻击时，从两侧同时施展",
-    "simple_desc_tiered": "所有长剑攻击时，从两侧同时施展"
+    "simple_desc_tiered": "所有长剑攻击时，从两侧同时施展",
+    "max_active_count": 1
   },
   {
     "id": "fd21e723-cacf-40a0-b7fb-4078d6697a37",
@@ -477,6 +500,7 @@
     "attack_variants": ["toweritem19_a"],
     "attack_style": "近战挥动",
     "simple_desc": "按当前护盾值反伤",
-    "simple_desc_tiered": "敌人攻击时受到当前护盾值100%|100%|100%|100%|200%的反伤"
+    "simple_desc_tiered": "敌人攻击时受到当前护盾值100%|100%|100%|100%|200%的反伤",
+    "max_active_count": 2
   }
 ]

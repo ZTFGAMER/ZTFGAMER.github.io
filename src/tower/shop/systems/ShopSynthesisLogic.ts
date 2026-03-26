@@ -114,6 +114,12 @@ export function tierStarLevelIndex(tier: TierKey, star: 1 | 2): number {
   return 7
 }
 
+function getSynthesisMaxLevel(): number {
+  const raw = Number(getDebugCfg('gameplayItemSynthesisMaxLevel'))
+  if (!Number.isFinite(raw)) return 8
+  return Math.max(1, Math.min(8, Math.round(raw)))
+}
+
 // ============================================================
 // 合成配對校驗
 // ============================================================
@@ -131,6 +137,8 @@ export function canSynthesizePair(
   if (!sourceDef || !targetDef) return false
   if (isNeutralItemDef(sourceDef) || isNeutralItemDef(targetDef)) return false
   if (sourceTier !== targetTier || sourceStar !== targetStar) return false
+  const level = tierStarLevelIndex(sourceTier, sourceStar) + 1
+  if (level >= getSynthesisMaxLevel()) return false
   if (!nextTierLevel(sourceTier, sourceStar)) {
     return canUseLv7MorphSynthesis(sourceDefId, targetDefId, sourceTier, sourceStar, targetTier, targetStar)
   }

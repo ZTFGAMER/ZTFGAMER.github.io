@@ -153,7 +153,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
   private playerBounceDamageFactorByItemId = new Map<string, number>()
   private playerNinjaDamagePenaltyPct = 0
   private playerArcherDamagePenaltyPct = 0
-  private bloodBowComboByItemId = new Map<string, { targetId: string; count: number }>()
+  private bloodBowComboByTargetId = new Map<string, number>()
   private playerShieldDecayCarryMs = 0
 
   start(snapshot: BattleSnapshotBundle): void {
@@ -195,7 +195,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
     this.pendingEnemyHits = []
     this.pendingPlayerMeleeTriggers = []
     this.nextPlayerMeleeTriggerAtMs = -1
-    this.bloodBowComboByItemId.clear()
+    this.bloodBowComboByTargetId.clear()
     this.playerShieldDecayCarryMs = 0
     this.rebuildPlayerDerivedParams()
 
@@ -241,9 +241,8 @@ export class TowerDefenseEngine implements BattleEngineLike {
     this.pendingPlayerFires = this.pendingPlayerFires.filter((it) => validIds.has(it.sourceItemId) && !replacedIds.has(it.sourceItemId))
     this.pendingPlayerHits = this.pendingPlayerHits.filter((it) => validIds.has(it.sourceItemId) && !replacedIds.has(it.sourceItemId))
     this.pendingPlayerMeleeTriggers = this.pendingPlayerMeleeTriggers.filter((id) => validIds.has(id) && !replacedIds.has(id))
-    this.bloodBowComboByItemId.forEach((_v, key) => {
-      if (!validIds.has(key) || replacedIds.has(key)) this.bloodBowComboByItemId.delete(key)
-    })
+    void validIds
+    void replacedIds
     if (this.pendingPlayerMeleeTriggers.length <= 0) this.nextPlayerMeleeTriggerAtMs = -1
 
     // 战斗中阵容变化后，按“在场即生效”口径重算被动（购买/合成/移动/消失都即时生效）
@@ -290,7 +289,8 @@ export class TowerDefenseEngine implements BattleEngineLike {
     this.playerShieldDecayCarryMs += dtMs
     while (this.playerShieldDecayCarryMs >= 1000 && this.playerHero.shield > 0) {
       this.playerShieldDecayCarryMs -= 1000
-      const decay = Math.floor(this.playerHero.shield * 0.1)
+      if (this.playerHero.shield < 20) continue
+      const decay = Math.floor(this.playerHero.shield / 20)
       if (decay <= 0) continue
       this.playerHero.shield = Math.max(0, this.playerHero.shield - decay)
     }
@@ -569,31 +569,12 @@ export class TowerDefenseEngine implements BattleEngineLike {
     const attackMultiplier = ('attackMultiplier' in picked ? picked.attackMultiplier : 1)
     this.waveHpMultiplier = Math.max(1, hpMultiplier)
     this.waveAttackMultiplier = Math.max(1, attackMultiplier)
-    const spawnDurationMs = Math.max(100, Math.round(wave.spawnDurationMs ?? cfg.defaultSpawnDurationMs ?? 10000))
     const enemyById = new Map<string, EnemyDef>()
     for (const one of cfg.enemyDefs ?? []) {
       enemyById.set(one.id, one)
     }
 
-    const jobs: SpawnJob[] = []
-    let totalHp = 0
-    let totalCount = 0
-    for (const rule of wave.enemies ?? []) {
-      const def = enemyById.get(rule.id)
-      if (!def) continue
-      const count = Math.max(0, Math.round(rule.count || 0))
-      const unitHp = Math.max(1, Math.round(def.hp * this.waveHpMultiplier))
-      totalCount += count
-      totalHp += unitHp * count
-      for (let i = 0; i < count; i++) {
-        const p = count <= 1 ? 0 : (i / Math.max(1, count - 1))
-        jobs.push({
-          spawnAtMs: Math.round(p * spawnDurationMs),
-          enemyId: def.id,
-          isBoss: this.isBossEnemyDef(def),
-        })
-      }
-    }
+    const { jobs, totalHp, totalCount } = this.buildWaveSpawnJobs(wave, enemyById, 0)
     jobs.sort((a, b) => {
       if (a.isBoss !== b.isBoss) return a.isBoss ? 1 : -1
       return a.spawnAtMs - b.spawnAtMs
@@ -618,30 +599,11 @@ export class TowerDefenseEngine implements BattleEngineLike {
     this.waveHpMultiplier = Math.max(1, hpMultiplier)
     this.waveAttackMultiplier = Math.max(1, attackMultiplier)
 
-    const spawnDurationMs = Math.max(100, Math.round(wave.spawnDurationMs ?? cfg.defaultSpawnDurationMs ?? 10000))
     const enemyById = new Map<string, EnemyDef>()
     for (const one of cfg.enemyDefs ?? []) enemyById.set(one.id, one)
 
     const spawnBaseMs = this.elapsedMs
-    const appendJobs: SpawnJob[] = []
-    let appendTotalHp = 0
-    let appendTotalCount = 0
-    for (const rule of wave.enemies ?? []) {
-      const def = enemyById.get(rule.id)
-      if (!def) continue
-      const count = Math.max(0, Math.round(rule.count || 0))
-      const unitHp = Math.max(1, Math.round(def.hp * this.waveHpMultiplier))
-      appendTotalCount += count
-      appendTotalHp += unitHp * count
-      for (let i = 0; i < count; i++) {
-        const p = count <= 1 ? 0 : (i / Math.max(1, count - 1))
-        appendJobs.push({
-          spawnAtMs: spawnBaseMs + Math.round(p * spawnDurationMs),
-          enemyId: def.id,
-          isBoss: this.isBossEnemyDef(def),
-        })
-      }
-    }
+    const { jobs: appendJobs, totalHp: appendTotalHp, totalCount: appendTotalCount } = this.buildWaveSpawnJobs(wave, enemyById, spawnBaseMs)
     appendJobs.sort((a, b) => {
       if (a.isBoss !== b.isBoss) return a.isBoss ? 1 : -1
       return a.spawnAtMs - b.spawnAtMs
@@ -979,34 +941,109 @@ export class TowerDefenseEngine implements BattleEngineLike {
   }
 
   private pickSpawnLane(lanes: number, laneOccupyCount: number): number {
-    if (laneOccupyCount <= 1 || lanes <= 1) return this.enemySerial % lanes
+    if (lanes <= 1) return 0
+    if (laneOccupyCount <= 1) return Math.floor(Math.random() * lanes)
     const half = Math.floor(laneOccupyCount / 2)
     const minCenter = half
     const maxCenter = Math.max(minCenter, lanes - 1 - half)
     const centerCount = Math.max(1, maxCenter - minCenter + 1)
-    return minCenter + (this.enemySerial % centerCount)
+    return minCenter + Math.floor(Math.random() * centerCount)
   }
 
   private getSpawnLaneCandidates(lanes: number, laneOccupyCount: number): number[] {
     if (lanes <= 1) return [0]
     if (laneOccupyCount <= 1) {
-      const out: number[] = []
-      const start = ((this.enemySerial % lanes) + lanes) % lanes
-      for (let i = 0; i < lanes; i++) {
-        out.push((start + i) % lanes)
-      }
+      const out = Array.from({ length: lanes }, (_, i) => i)
+      this.shuffleInPlace(out)
       return out
     }
     const half = Math.floor(laneOccupyCount / 2)
     const minCenter = half
     const maxCenter = Math.max(minCenter, lanes - 1 - half)
-    const centerCount = Math.max(1, maxCenter - minCenter + 1)
     const out: number[] = []
-    const start = ((this.enemySerial % centerCount) + centerCount) % centerCount
-    for (let i = 0; i < centerCount; i++) {
-      out.push(minCenter + ((start + i) % centerCount))
-    }
+    for (let lane = minCenter; lane <= maxCenter; lane++) out.push(lane)
+    this.shuffleInPlace(out)
     return out
+  }
+
+  private buildWaveSpawnJobs(
+    wave: { spawnDurationMs?: number; enemies?: Array<{ id: string; count: number }> },
+    enemyById: Map<string, EnemyDef>,
+    spawnBaseMs: number,
+  ): { jobs: SpawnJob[]; totalHp: number; totalCount: number } {
+    const cfg = getConfig().towerDefenseRules
+    const spawnDurationMs = Math.max(100, Math.round(wave.spawnDurationMs ?? cfg?.defaultSpawnDurationMs ?? 10000))
+    const normalPool: string[] = []
+    const bossPool: string[] = []
+    let totalHp = 0
+    let totalCount = 0
+
+    for (const rule of wave.enemies ?? []) {
+      const def = enemyById.get(rule.id)
+      if (!def) continue
+      const count = Math.max(0, Math.round(rule.count || 0))
+      if (count <= 0) continue
+      const unitHp = Math.max(1, Math.round(def.hp * this.waveHpMultiplier))
+      totalCount += count
+      totalHp += unitHp * count
+      const pool = this.isBossEnemyDef(def) ? bossPool : normalPool
+      for (let i = 0; i < count; i++) pool.push(def.id)
+    }
+
+    this.shuffleInPlace(normalPool)
+    this.shuffleInPlace(bossPool)
+
+    const jobs: SpawnJob[] = []
+    jobs.push(...this.buildRandomBurstJobs(normalPool, spawnDurationMs, spawnBaseMs, false))
+
+    if (bossPool.length > 0) {
+      const bossStart = Math.round(spawnDurationMs * 0.82)
+      const bossWindow = Math.max(200, spawnDurationMs - bossStart)
+      jobs.push(...this.buildRandomBurstJobs(bossPool, bossWindow, spawnBaseMs + bossStart, true))
+    }
+    return { jobs, totalHp, totalCount }
+  }
+
+  private buildRandomBurstJobs(enemyPool: string[], durationMs: number, spawnBaseMs: number, isBoss: boolean): SpawnJob[] {
+    if (enemyPool.length <= 0) return []
+    const jobs: SpawnJob[] = []
+    const batches: Array<{ atMs: number; count: number }> = []
+    const remainingTotal = enemyPool.length
+    const baseGapMs = Math.max(80, durationMs / Math.max(1, remainingTotal))
+    let remaining = remainingTotal
+    let cursorMs = 0
+
+    while (remaining > 0) {
+      const batchCap = Math.min(remaining, isBoss ? 1 : 3)
+      const batchSize = batchCap <= 1 ? 1 : (Math.floor(Math.random() * batchCap) + 1)
+      batches.push({ atMs: Math.round(cursorMs), count: batchSize })
+      remaining -= batchSize
+      if (remaining <= 0) break
+      const intervalMul = 1 + Math.floor(Math.random() * 3)
+      cursorMs += baseGapMs * intervalMul
+    }
+
+    const lastAtMs = batches.length > 0 ? batches[batches.length - 1]!.atMs : 0
+    const scale = lastAtMs > 0 ? durationMs / lastAtMs : 1
+    let poolIdx = 0
+    for (const batch of batches) {
+      const spawnAtMs = spawnBaseMs + Math.round(batch.atMs * scale)
+      for (let i = 0; i < batch.count; i++) {
+        const enemyId = enemyPool[poolIdx++]
+        if (!enemyId) continue
+        jobs.push({ spawnAtMs, enemyId, isBoss })
+      }
+    }
+    return jobs
+  }
+
+  private shuffleInPlace<T>(arr: T[]): void {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      const tmp = arr[i]
+      arr[i] = arr[j] as T
+      arr[j] = tmp as T
+    }
   }
 
   private getOccupiedLaneRange(unit: EnemyUnit, lanes: number): { start: number; end: number } {
@@ -1173,7 +1210,12 @@ export class TowerDefenseEngine implements BattleEngineLike {
       const maxDistance = Math.max(4, Number(attackDistance) || 60)
       const clamped = Math.max(4, Math.min(maxDistance, Number(target.distance) || 0))
       const p = maxDistance <= 4 ? 1 : (clamped - 4) / (maxDistance - 4)
-      const mul = 1 + 1 * Math.max(0, Math.min(1, p))
+      let maxBonusPct = 100
+      for (const one of this.getPlayerItemsByIcon('toweritem11')) {
+        const bonus = Math.max(0, this.resolveNumericValueFromItemLine(one, /最高\+\s*([+\-]?\d+(?:\.\d+)?(?:%?[\/|][+\-]?\d+(?:\.\d+)?)*%?)\s*%/))
+        if (bonus > 0) maxBonusPct = Math.max(maxBonusPct, bonus)
+      }
+      const mul = 1 + (maxBonusPct / 100) * Math.max(0, Math.min(1, p))
       out = Math.max(0, Math.round(out * mul))
     }
     return out
@@ -1334,14 +1376,6 @@ export class TowerDefenseEngine implements BattleEngineLike {
       if (bleedMs > 0) target.bleedMs = Math.max(target.bleedMs, bleedMs)
     }
 
-    if (sourceArch === '弓手' && this.getPlayerItemsByIcon('toweritem12').length > 0 && target) {
-      const prev = this.bloodBowComboByItemId.get(source.id)
-      if (prev && prev.targetId === target.id) {
-        this.bloodBowComboByItemId.set(source.id, { targetId: target.id, count: prev.count + 1 })
-      } else {
-        this.bloodBowComboByItemId.set(source.id, { targetId: target.id, count: 1 })
-      }
-    }
   }
 
   private applySpikeShieldReflect(attacker: EnemyUnit, shieldBeforeHit: number): void {
@@ -1373,7 +1407,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
     }
     const hasNoDecayBounce = this.getPlayerItemsByIcon('toweritem5').length > 0
     for (const one of this.getPlayerItemsByIcon('toweritem6')) {
-      this.playerFirstBounceSplitBonus += Math.max(0, Math.round(this.resolveNumericValueFromItemLine(one, /分裂\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)\s*次/)))
+      this.playerFirstBounceSplitBonus += Math.max(0, Math.round(this.resolveNumericValueFromItemLine(one, /(?:分裂\D*额外\+?|分裂\s*)([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)\s*(?:次|目标)/)))
     }
 
     for (const item of this.playerItems) {
@@ -1751,10 +1785,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
       damage = Math.max(1, Math.round(damage * factor))
     }
     if (sourceArch === '弓手' && this.getPlayerItemsByIcon('toweritem12').length > 0) {
-      const combo = this.bloodBowComboByItemId.get(source.id)
-      const bonusPerHit = this.resolveArcherComboBonusPerHit()
-      const bonus = combo ? Math.max(0, combo.count - 1) * bonusPerHit : 0
-      if (bonus > 0) damage += bonus
+      // 由命中目标时按“全体弓箭共享目标连击层数”结算，发射前不预加成
     }
     if (damage <= 0) return 0
     return Math.max(0, Math.round(damage))
@@ -1891,6 +1922,14 @@ export class TowerDefenseEngine implements BattleEngineLike {
     const baseDamage = Math.max(0, Math.round(damage))
     if (baseDamage <= 0) return
     let finalDamage = baseDamage
+    const sourceArch = itemArchetype(findItemDef(source.defId))
+    if (sourceArch === '弓手' && this.getPlayerItemsByIcon('toweritem12').length > 0) {
+      const nextComboCount = (this.bloodBowComboByTargetId.get(enemy.id) ?? 0) + 1
+      this.bloodBowComboByTargetId.set(enemy.id, nextComboCount)
+      const bonusPerHit = this.resolveArcherComboBonusPerHit()
+      const comboBonus = Math.max(0, nextComboCount - 1) * bonusPerHit
+      if (comboBonus > 0) finalDamage += comboBonus
+    }
     if (enemy.bleedMs > 0) {
       const bleedMul = this.isBossEnemyUnit(enemy) ? 1.2 : 1.5
       finalDamage = Math.max(1, Math.round(finalDamage * bleedMul))
@@ -1912,6 +1951,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
     this.applyPostPlayerDamageEffects(source, finalDamage, enemy)
     if (!fromSplash) this.applyIceExplosionSplash(source, enemy, finalDamage)
     if (enemy.hp <= 0) {
+      this.bloodBowComboByTargetId.delete(enemy.id)
       this.totalWaveHpKilled += enemy.maxHp
       EventBus.emit('battle:unit_die', {
         unitId: enemy.id,
@@ -1963,6 +2003,10 @@ export class TowerDefenseEngine implements BattleEngineLike {
 
   private cleanupDeadEnemies(): void {
     if (this.enemyUnits.length <= 0) return
+    const aliveIds = new Set(this.enemyUnits.filter((it) => it.hp > 0).map((it) => it.id))
+    for (const targetId of this.bloodBowComboByTargetId.keys()) {
+      if (!aliveIds.has(targetId)) this.bloodBowComboByTargetId.delete(targetId)
+    }
     this.enemyUnits = this.enemyUnits.filter((it) => it.hp > 0)
   }
 

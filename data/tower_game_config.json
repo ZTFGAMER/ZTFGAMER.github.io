@@ -3261,9 +3261,9 @@
       "quickBuyQualityWeightsByLevel": {
         "Bronze": [
           1,
-          0.4,
-          0.2,
-          0.1,
+          0,
+          0,
+          0,
           0,
           0,
           0,
@@ -3271,20 +3271,20 @@
         ],
         "Silver": [
           0.0,
-          0.6,
-          0.4,
+          1,
+          0.5,
+          0.2,
+          0.2,
           0.3,
-          0.2,
-          0.2,
-          0.2,
-          0.2
+          0.3,
+          0.3
         ],
         "Gold": [
           0.0,
           0.0,
-          0.4,
+          0.5,
           0.3,
-          0.4,
+          0.3,
           0.4,
           0.4,
           0.4
@@ -3293,20 +3293,20 @@
           0.0,
           0.0,
           0.0,
+          0.5,
+          0.5,
           0.3,
-          0.4,
-          0.4,
-          0.4,
-          0.4
+          0.3,
+          0.3
         ]
       },
       "qualityPseudoRandomWindowSize": 10,
       "qualityPseudoRandomWeightsByLevel": {
         "Bronze": [
           1,
-          0.4,
-          0.2,
-          0.1,
+          0,
+          0,
+          0,
           0,
           0,
           0,
@@ -3314,20 +3314,20 @@
         ],
         "Silver": [
           0,
-          0.6,
-          0.4,
+          1,
+          0.5,
+          0.2,
+          0.2,
           0.3,
-          0.2,
-          0.2,
-          0.2,
-          0.2
+          0.3,
+          0.3
         ],
         "Gold": [
           0,
           0,
-          0.4,
+          0.5,
           0.3,
-          0.4,
+          0.3,
           0.4,
           0.4,
           0.4
@@ -3336,11 +3336,11 @@
           0,
           0,
           0,
+          0.5,
+          0.5,
           0.3,
-          0.4,
-          0.4,
-          0.4,
-          0.4
+          0.3,
+          0.3
         ]
       },
       "quickBuyNeutralChance": 0.25,
@@ -3577,6 +3577,39 @@
       "playerBounceProjectileSpeedPxPerSec": 500,
       "enemyAttackDoubleAfterAllSpawnMs": 40000,
       "enemyForceNextWaveAfterAllSpawnMs": 35000,
+      "playerZoneResizeAnimMs": 1000,
+      "playerZoneSizeByDay": [
+        {
+          "day": 1,
+          "cols": 2,
+          "rows": 2
+        },
+        {
+          "day": 3,
+          "cols": 3,
+          "rows": 2
+        },
+        {
+          "day": 5,
+          "cols": 3,
+          "rows": 3
+        },
+        {
+          "day": 7,
+          "cols": 4,
+          "rows": 3
+        },
+        {
+          "day": 10,
+          "cols": 5,
+          "rows": 3
+        },
+        {
+          "day": 12,
+          "cols": 6,
+          "rows": 3
+        }
+      ],
       "playerMeleeSweepHitStepMs": 30,
       "playerMeleeQueueTriggerIntervalMs": 100,
       "playerMeleeSweepOriginOffsetX": 0,
@@ -3703,6 +3736,11 @@
         646,
         678
       ],
+      "battleBuyAffordPulseDurationMs": 820,
+      "battleBuyAffordPulseScaleMax": 1.2,
+      "battleBuyAffordPulsePaddingPx": 12,
+      "battleBuyButtonY": 1313,
+      "playerZoneBackgroundAlpha": 0.95,
       "nextWaveAutoStartMs": 5000,
       "finalDay": 15,
       "enemyKillGold": 1,
@@ -3710,13 +3748,13 @@
       "enemyKillGoldFxMs": 700,
       "enemyKillGoldFxRisePx": 44,
       "spawnLanes": 5,
-      "defaultSpawnDurationMs": 10000,
+      "defaultSpawnDurationMs": 25000,
       "enemyDefs": [
         {
           "id": "enemy1",
           "name": "骷髅小兵",
           "hp": 20,
-          "attack": 10,
+          "attack": 20,
           "moveSpeed": 1,
           "attackIntervalMs": 2000,
           "attackDistance": 100,
@@ -3733,7 +3771,7 @@
           "id": "enemy2",
           "name": "骷髅战士",
           "hp": 60,
-          "attack": 10,
+          "attack": 20,
           "moveSpeed": 1,
           "attackIntervalMs": 2000,
           "attackDistance": 100,
@@ -3768,7 +3806,7 @@
           "id": "enemy4",
           "name": "蝙蝠小妖",
           "hp": 20,
-          "attack": 5,
+          "attack": 20,
           "moveSpeed": 2.5,
           "attackIntervalMs": 2000,
           "attackDistance": 100,
@@ -3786,7 +3824,7 @@
           "id": "enemy5",
           "name": "灰色小妖",
           "hp": 20,
-          "attack": 10,
+          "attack": 20,
           "moveSpeed": 1.25,
           "attackIntervalMs": 2000,
           "attackDistance": 100,
@@ -3803,7 +3841,7 @@
           "id": "enemy6",
           "name": "灰色小妖队长",
           "hp": 100,
-          "attack": 20,
+          "attack": 40,
           "moveSpeed": 1.25,
           "attackIntervalMs": 2000,
           "attackDistance": 100,
@@ -3820,7 +3858,7 @@
           "id": "enemy7",
           "name": "骷髅犬",
           "hp": 20,
-          "attack": 5,
+          "attack": 20,
           "moveSpeed": 2,
           "attackIntervalMs": 1000,
           "attackDistance": 100,
@@ -3855,7 +3893,7 @@
           "id": "enemy9",
           "name": "红色小恶魔",
           "hp": 20,
-          "attack": 10,
+          "attack": 20,
           "moveSpeed": 1.5,
           "attackIntervalMs": 2000,
           "attackDistance": 100,
@@ -3872,7 +3910,7 @@
           "id": "enemy10",
           "name": "红色领主",
           "hp": 100,
-          "attack": 20,
+          "attack": 40,
           "moveSpeed": 1.5,
           "attackIntervalMs": 2000,
           "attackDistance": 100,

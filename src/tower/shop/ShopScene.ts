@@ -1984,7 +1984,7 @@ function setDay(day: number, ctx: ShopSceneCtx = _ctx): void {
     QUICK_BUY_LEVEL_PSEUDO_RANDOM_STATE.clear()
     ctx.nextQuickBuyOffer = null
   }
-  const newCols = towerMode ? 6 : getDayActiveCols(ctx.currentDay)
+  const newCols = getDayActiveCols(ctx.currentDay)
   const newBackpackRows = getBackpackRowsByDay(ctx.currentDay)
   const newBattleRows = towerMode ? getTowerBattleRowsByDay(ctx.currentDay) : 1
   refreshBasicSynthesisGuideVisibility(ctx)

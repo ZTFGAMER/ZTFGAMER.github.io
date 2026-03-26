@@ -1,5 +1,344 @@
 # 大巴扎 — 开发进度记录
 
+## 验收追加（2026-03-26，塔防物品数值微调：重型手里剑 + 冰锥冰冻时长）
+
+- 用户需求：
+  - 重型手里剑减速成长改为 `1|1|2|3|4秒`；
+  - 冰锥“10%|10%|10%|15%|20% 几率冰冻”时长统一改为 `2秒`。
+- 已完成：
+  - `data/tower_items.json`
+    - `重型手里剑`：
+      - 技能文本从 `所有手里剑造成减速1|1|1|2|3秒（减速50%）。` 调整为 `所有手里剑造成减速1|1|2|3|4秒（减速50%）。`
+      - `simple_desc_tiered` 同步为 `所有手里剑造成减速1|1|2|3|4秒`。
+    - 冰锥冻结描述：
+      - 技能文本从 `...几率冰冻1秒...` 调整为 `...几率冰冻2秒...`；
+      - `simple_desc_tiered` 同步改为 `...几率冰冻2秒...`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收本次数值微调是否符合预期。
+
+## 验收追加（2026-03-26，护盾每秒衰减规则调整）
+
+- 用户需求：护盾改为“每秒降低当前值的 `1/20`（向下取整）”，且护盾低于 `20` 时不再降低。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - `tickPlayerShieldDecay()` 从原 `floor(shield * 0.1)` 调整为 `floor(shield / 20)`；
+    - 新增阈值判断：`shield < 20` 时不执行衰减。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收护盾自然衰减节奏是否符合预期。
+
+## 验收追加优化（2026-03-26，物品合成最高等级可配置 + 最高级显示 MAX）
+
+- 用户需求：
+  - 游戏物品最高等级改为 4 级，并且 4 级后不可再合成；
+  - 最高等级物品在图标上方等级文本显示为 `MAX`；
+  - 最高等级要有可配置入口。
+- 已完成：
+  - 新增可配置项 `gameplayItemSynthesisMaxLevel`（默认 `4`）：
+    - `data/tower_debug_defaults.json`
+    - `data/debug_defaults.json`
+    - `data/nobag_debug_defaults.json`
+    - `src/tower/config/debugConfig.ts`
+    - `src/config/debugConfig.ts`
+    - `src/nobag/config/debugConfig.ts`
+    - `src/debug/debugPage.ts`（加入玩法参数分组）
+  - 合成上限约束：
+    - `src/tower/shop/systems/ShopSynthesisLogic.ts`
+    - `src/shop/systems/ShopSynthesisLogic.ts`
+    - `src/nobag/shop/systems/ShopSynthesisLogic.ts`
+    - 在 `canSynthesizePair` 增加等级上限判断，达到上限直接不可合成。
+  - 升级路径上限约束（避免其他升级路径突破上限）：
+    - `src/tower/shop/systems/ShopGridInventory.ts`
+    - `src/shop/systems/ShopGridInventory.ts`
+    - `src/nobag/shop/systems/ShopGridInventory.ts`
+    - 升级/转化升级相关逻辑统一按 `min(品质上限, gameplayItemSynthesisMaxLevel)` 判定。
+  - 塔防战斗内合成同步上限：
+    - `src/tower/battle/BattleScene.ts`
+    - 新增 `getTowerItemSynthesisMaxLevel()`，战斗内合成判定、预览、快照归一化、测试加物品等级均按该上限处理。
+  - 最高等级显示 `MAX`：
+    - `src/tower/common/grid/GridZone.ts`
+    - `src/common/grid/GridZone.ts`
+    - `src/nobag/common/grid/GridZone.ts`
+    - 当显示等级达到或超过配置上限时，等级标签从数字改为 `MAX`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“4级封顶 + 达顶显示MAX + 无法继续合成”表现是否符合预期。
+
+## 验收追加（2026-03-26，桶随机品质概率按新表调整）
+
+- 用户需求：调整“桶随机品质”数值为新表（最低等级 × Lv1~Lv5）：
+  - 青铜：`1, 0, 0, 0, 0`
+  - 白银：`0, 1, 0.5, 0.2, 0.2`
+  - 黄金：`0, 0, 0.5, 0.3, 0.3`
+  - 钻石：`0, 0, 0, 0.5, 0.5`
+- 已完成：
+  - `data/tower_game_config.json`
+    - 同步更新 `quickBuyQualityWeightsByLevel` 与 `qualityPseudoRandomWeightsByLevel` 在 Lv4/Lv5 的白银/黄金/钻石权重，匹配新表；Lv6~Lv8 保持原值不变。
+- 当前阶段：等待用户验收桶随机品质分布是否符合预期。
+
+## 验收追加优化（2026-03-26，冰锥系数值增强）
+
+- 用户需求：增强冰锥系（重点是基础减速强度与减速冰锥的成长）。
+- 已完成：
+  - `data/tower_items.json`
+    - 冰锥系基础减速由 `2秒` 提升到 `3秒`（统一更新冰锥家族条目，避免高阶冰锥反向变弱）；
+    - `减速冰锥` 的加成由 `+1|+1|+2|+3|+4秒` 提升为 `+1|+2|+3|+4|+5秒`；
+    - 同步更新 `simple_desc_tiered` 文案，保证展示与实际一致。
+- 影响说明：
+  - 引擎减速时长读取自技能文本（`TowerDefenseEngine.resolveIceSlowDurationMs`），因此本次改动会直接作用到战斗结算；
+  - `多发冰锥` 的额外目标数保持 `+1|+1|+1|+2|+3` 不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收冰锥控场强度是否达到预期。
+
+## 验收追加优化（2026-03-26，怪物刷新改为随机列 + 关前随机批次计划）
+
+- 用户需求：
+  - 怪物刷新不要再按第一列顺序轮转，改为每次随机列；
+  - 单关内刷新节奏不要等间隔，要求出现“同刻 2~3 只同时刷新 + 间隔按 1/2/3 倍随机”；
+  - 在每关开始前先计算好该关全量刷新计划，再按计划出怪。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - `buildSpawnPlan()` / `queueNextTowerWave()` 改为统一走新计划构建器 `buildWaveSpawnJobs()`；
+    - 新增 `buildRandomBurstJobs()`：先随机打散本关怪物池，再生成“随机批次（1~3只）+ 随机间隔倍数（1/2/3）”时间轴，并归一化到本关 `spawnDurationMs` 窗口内；
+    - Boss 保持后段出场特性（后段窗口刷新），普通怪先刷新；
+    - 列选择改为真正随机：`pickSpawnLane()` 与 `getSpawnLaneCandidates()` 改为随机选列/乱序候选，不再按 serial 固定轮转。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“列随机感 + 批次爆发感 + 节奏不等间隔”是否符合预期。
+
+## 验收追加修正（2026-03-26，嗜血弓箭改为全体弓箭共享同目标连击层数）
+
+- 用户需求：嗜血弓箭连击层数不再按“单把弓”计算，改为所有弓箭共享；例如 3 把弓同时打 Boss 要共同叠层。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 连击状态由 `bloodBowComboByItemId`（按武器）改为 `bloodBowComboByTargetId`（按目标）；
+    - 伤害加成时机改为命中结算阶段：命中同一目标时共享递增层数；
+    - 同目标第 1 次命中不加伤，从第 2 次开始按“(层数-1)*每层加成”生效；
+    - 目标死亡/清理时自动清除该目标连击层，防止脏数据残留。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“多弓同打 Boss 层数共同上涨”是否符合预期。
+
+## 验收优化追加（2026-03-26，右上角“剩余敌人”再下移 5px）
+
+- 用户需求：右上角“剩余敌人”文本再下移 `5px`。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `towerRemainBarText.y` 由 `152 + topSafeYOffset` 调整为 `157 + topSafeYOffset`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收该文本纵向位置是否合适。
+
+## 验收追加修正（2026-03-26，关闭后仍显示“累计伤害/护盾”数值）
+
+- 用户反馈：关闭“物品图标显示伤害护盾”后，物品中心仍显示累计伤害/获得护盾数值。
+- 根因：该中心统计文本由 `BattleScene` 的 `updateItemRoundStatHints()` 单独绘制，未接入新开关。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `updateItemRoundStatHints()` 增加开关判断：当 `gameplayShowItemDamageShieldOnIcon=0` 时，立即隐藏所有中心统计文本并返回，不再绘制累计伤害/护盾值。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“关闭后图标上累计伤害/护盾值完全不显示”。
+
+## 验收追加修正（2026-03-26，战斗中偶发“点物品选不中”排查与修复）
+
+- 用户反馈：战斗中偶发物品点击选不中，怀疑与“释放中/状态切换”有关。
+- 根因定位：
+  - 在塔防战斗可编辑状态切换时，`editableDrag.setEnabled(false)` 会禁用拖拽控制器；
+  - 禁用态下 `DragController.onDown()` 直接 `return`，未回退到 `onTap`，导致这段窗口期点击被吞，表现为“点不中/像被取消选中”；
+  - 同时当前 `dragThresholdPx` 默认仅 `4px`，轻微手抖也容易从“点击”进入“拖拽”，体感上像点选被打断。
+- 已完成：
+  - `src/tower/common/grid/DragController.ts`
+  - `src/common/grid/DragController.ts`
+  - `src/nobag/common/grid/DragController.ts`
+    - 在 `onDown()` 中新增禁用态兜底：即使 `enabled=false`，也会 `stopPropagation` 后执行 `view.onTap(instanceId)`，不再吞掉点击。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“出现 `[Snapshot] setBattleSnapshot ...` 日志附近时，点击物品是否仍稳定可选中”。
+
+## 验收追加（2026-03-26，物品图标伤害/护盾显示开关，默认关闭）
+
+- 用户需求：玩法数值部分新增开关，控制“物品图标上的伤害/护盾数值显示”，且默认关闭。
+- 已完成：
+  - `src/tower/common/ui/ItemStatBadges.ts`
+  - `src/common/ui/ItemStatBadges.ts`
+  - `src/nobag/common/ui/ItemStatBadges.ts`
+    - 新增读取调试开关 `gameplayShowItemDamageShieldOnIcon`；
+    - 当开关为关时，在 `stats` 模式下不再绘制图标上的数值徽标（伤害/护盾等）；
+    - `archetype` 模式不受影响。
+  - `src/tower/config/debugConfig.ts`
+  - `src/config/debugConfig.ts`
+  - `src/nobag/config/debugConfig.ts`
+    - 新增参数定义：`gameplayShowItemDamageShieldOnIcon`（0/1，默认 0）。
+  - `src/debug/DebugPage.ts`
+    - 将 `gameplayShowItemDamageShieldOnIcon` 加入“玩法数值”勾选项分组。
+  - `data/tower_debug_defaults.json`
+  - `data/debug_defaults.json`
+  - `data/nobag_debug_defaults.json`
+    - 三套默认值同步新增：`"gameplayShowItemDamageShieldOnIcon": 0`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“默认不显示图标伤害/护盾，打开开关后恢复显示”是否符合预期。
+
+## 验收追加修正（2026-03-26，我方四武器统计改为按总伤害排序）
+
+- 用户反馈：统计面板未按伤害高低排序。
+- 已完成：
+  - `src/tower/battle/BattleDamageStats.ts`
+    - 我方四基础武器行改为“按总伤害降序排序”；
+    - 当总伤害相同，按既定顺序兜底（手里剑/弓箭/冰锥/长剑）。
+- 验证：待执行构建验证。
+- 当前阶段：等待用户验收排序是否符合预期。
+
+## 验收优化追加（2026-03-26，右上角天数/敌人数二次微调）
+
+- 用户需求：右上角两文本间隔再增加 `10px`，并将“剩余敌人”字号调整为 `24`。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - “剩余敌人”文本字号由 `32` 调整为 `24`；
+    - 两文本间距增加：将“剩余敌人”Y 从 `142 + topSafeYOffset` 调整为 `152 + topSafeYOffset`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收右上角文案的间距与字号是否达到预期。
+
+## 验收追加修正（2026-03-26，塔防物品描述与效果按新表校正）
+
+- 用户需求：按最新表修正部分物品描述与效果数值口径，并确认描述与实战一致。
+- 已完成：
+  - `data/tower_items.json`
+    - `toweritem3` 连发手里剑：伤害惩罚改为 `-20%|-20%|-20%|-20%|-20%`；
+    - `toweritem6` 分裂手里剑：改为“首次弹射后分裂，额外 `+1|+1|+1|+1|+2` 目标”；
+    - `toweritem9` 连发弓箭：伤害惩罚改为 `-20%|-20%|-20%|-20%|-20%`；
+    - `toweritem11` 狙击弓箭：最高增伤文案改为 `+150%`；
+    - `toweritem18` 反击冰锥：充能文案改为 `0.5|1秒`。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - `toweritem11` 距离增伤上限改为从词条文案动态解析（支持 `+150%`）；
+    - `toweritem6` 分裂额外目标解析正则扩展为兼容“次/目标”两种写法。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收上述 5 项描述与战斗生效是否对齐。
+
+## 验收追加优化（2026-03-26，统计面板图标描边改为职业色）
+
+- 用户需求：统计面板内我方四基础武器图标边框，改为对应职业颜色。
+- 已完成：
+  - `src/tower/battle/BattleDamageStats.ts`
+    - 我方行根据职业映射描边色：
+      - 手里剑（刺客）-> 忍者色
+      - 弓箭（弓手）-> 弓手色
+      - 冰锥（法师）-> 冰法师色
+      - 长剑（战士）-> 剑士色
+    - 敌方行维持原描边逻辑不变。
+- 验证：待执行构建验证。
+- 当前阶段：等待用户验收职业描边色是否符合预期。
+
+## 验收优化追加（2026-03-26，天数/剩余敌人间距收紧 + 剩余敌人字号32 + 半透黑底）
+
+- 用户需求：缩小“第x/15天”和“剩余敌人”之间的间隔；将“剩余敌人”改为 32 号字；两个文本都增加黑色半透明底。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - “剩余敌人”字号从 `36` 调整为 `32`；
+    - 两文本纵向间距收紧：
+      - 天数文案 `y` 调整为 `102 + topSafeYOffset`；
+      - 剩余敌人文案 `y` 调整为 `142 + topSafeYOffset`；
+    - 为天数文本新增背景层 `towerDayTextBg`（黑色半透，圆角矩形）；
+    - 为剩余敌人文本新增背景层 `towerRemainBarTextBg`（黑色半透，圆角矩形）；
+    - 非塔防模式下自动隐藏并清理这两个背景层。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“更紧凑间距 + 32号剩余敌人 + 双文本半透黑底”视觉效果。
+
+## 验收优化追加（2026-03-26，战斗顶部文案改版：去“战斗阶段”+ 天数格式调整）
+
+- 用户需求：去掉“战斗阶段”文本；将“第x天”放到原“战斗阶段”位置；“第x天”和“剩余敌人”整体下移 50px；天数字段改为 `第x/15天`（后者为最大关卡数）。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 移除“战斗阶段”标题创建逻辑；
+    - `towerDayText` 锚点改为顶部居中（`anchor=0.5,0`），位置改为原标题位置下移后（`y=90+topSafeYOffset`）；
+    - 天数字符串改为 `第${day}/${finalDay}天`，其中 `finalDay` 读取 `towerDefenseRules.finalDay`（缺省回退 `15`）；
+    - `drawTowerRemainingBar()` 的文本 Y 从 `96` 下移到 `146`（并叠加 `topSafeYOffset`）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“顶部无战斗阶段文字 + 天数/剩余敌人新位置与新格式”是否符合预期。
+
+## 验收追加修正（2026-03-26，统计图标不显示 + 总伤害未累计）
+
+- 用户反馈：统计面板四行图标未显示，且总伤害均为 0。
+- 根因定位：
+  - 我方职业归类时错误把 `defId` 当作 `tags` 解析，导致职业判定失败；
+  - 失败后统计未正确归档，且青铜基础武器 `defId` 为空，图标加载也随之失败。
+- 已完成：
+  - `src/tower/battle/BattleDamageStats.ts`
+    - 职业归类修复为：`defId -> itemDef.tags -> archetype` 正确链路；
+    - 我方统计行固定为四基础武器：`手里剑 / 弓箭 / 冰锥 / 长剑`；
+    - 图标映射改为优先匹配这四个青铜基础武器名称，再取其 `defId` 加载图标；
+    - 我方四行排序固定为：手里剑、弓箭、冰锥、长剑；
+    - 总伤害按“同职业所有物品伤害总计”累计，不再错误全落到战士或丢失。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测图标显示与四行总伤害累计是否正确。
+
+## 验收追加优化（2026-03-26，物品“同时在场最大数量”限制接入购买与合成池）
+
+- 用户需求：每个物品增加“同时在场最大数量”；达到上限后，购买随机池和合成随机池都要排除该物品。
+- 已完成：
+  - `data/tower_items.json`
+    - 为 `toweritem1~toweritem24` 新增 `max_active_count`，按你给的“最大数量”列配置：
+      - 忍者：`6,4,3,3,1,2`
+      - 弓手：`6,4,3,3,1,2`
+      - 冰法师：`6,4,3,3,1,2`
+      - 剑士：`6,4,3,3,1,2`
+  - `src/tower/common/items/ItemDef.ts`
+    - 新增类型字段：`max_active_count?: number`。
+  - `src/tower/battle/BattleScene.ts`
+    - 新增在场计数与上限判定：
+      - `buildCurrentBattleItemCountByDefId()`
+      - `getItemMaxActiveCount()`
+      - `reachesMaxActiveCount()`
+    - 购买随机池 `rollBattleBuyOffer()`：达到上限的物品直接过滤；
+    - 合成随机池 `pickBattleSynthesisResultDef()`：在“扣除两个合成素材后的计数上下文”中过滤上限物品；
+    - 合成成功后重置购买候选 `pendingBattleBuyOffer`，确保立刻按新计数重掷；
+    - 合成池被上限卡空时增加提示：`可合成物品已达上限`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“到上限后不会再买到/合到该物品”。
+- 重要决定记录：
+  - 合成上限判定按“消耗两个素材后”的即时在场数计算，避免出现本可合法却被错误拦截的情况。
+
+## 验收追加修正（2026-03-26，仅修描述：弹窗词条按等级显示）
+
+- 用户反馈：实际逻辑看起来已生效，但弹窗描述仍错档。
+- 根因：
+  - `SellPopup` 描述档位仍按“品质分段+起始品质偏移”计算 `tierIndex`；
+  - 塔防 5 档下会导致 `simple_desc_tiered` 显示错一级。
+- 已完成：
+  - `src/tower/common/ui/SellPopup.ts`
+    - `show()` 新增可选参数 `levelOverride`；
+    - 当传入该值时，描述档位直接按 `level-1` 取 `|` 序列，不走品质偏移；
+    - 弹窗标题等级（`xxLvN`）同样优先用 `levelOverride`。
+  - `src/tower/battle/BattleScene.ts`
+    - 战斗详情弹窗与合成预览弹窗传入当前等级 `levelOverride`，保证展示与战斗生效一致。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“白银Lv4/黄金/钻石”弹窗描述是否与实际生效一致。
+
+## 验收追加调整（2026-03-26，品质桶概率按新表更新）
+
+- 用户需求：更新各等级品质桶概率（青铜/白银/黄金/钻石在 Lv1~Lv5 的概率按新表）。
+- 已完成：
+  - `data/tower_game_config.json`
+    - 更新 `shopRules.quickBuyQualityWeightsByLevel`；
+    - 同步更新 `shopRules.qualityPseudoRandomWeightsByLevel`，保证伪随机袋与基础权重口径一致。
+  - 当前配置（Lv1~Lv5）：
+    - Bronze: `1, 0, 0, 0, 0`
+    - Silver: `0, 1, 0.5, 0.3, 0.3`
+    - Gold: `0, 0, 0.5, 0.4, 0.4`
+    - Diamond: `0, 0, 0, 0.3, 0.3`
+  - `Lv6~Lv8` 延用 `Lv5` 概率（与现有 8 级配置结构兼容）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收快速购买品质分布是否符合预期。
+
+## 验收追加修正（2026-03-26，统计改为四基础武器总伤害且修复全算战士）
+
+- 用户反馈：统计应显示四种基础武器总伤害（手里剑/弓箭/冰锥/长剑），并用对应青铜图标；当前错误地把所有伤害都算到战士。
+- 已完成：
+  - `src/tower/battle/BattleDamageStats.ts`
+    - 我方统计改为职业聚合并固定映射到四基础武器：
+      - 刺客 -> 手里剑
+      - 弓手 -> 弓箭
+      - 法师 -> 冰锥
+      - 战士 -> 长剑
+    - 聚合口径改为“同职业所有物品伤害总计”；
+    - 修复错误 fallback（未知来源不再默认归战士）；
+    - 我方面板仅显示四基础武器行，文案仅保留“总伤害”，不显示护盾/触发次数。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测四行总伤害归类是否准确。
+
 ## 验收追加修正（2026-03-26，彻底去品质化：词条只按等级取档）
 
 - 用户要求：技能词条读取完全忽略品质/起始品质，只按当前等级（Lv1~Lv5）取 `|` 序列。

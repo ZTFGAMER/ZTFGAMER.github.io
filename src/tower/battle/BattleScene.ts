@@ -333,8 +333,8 @@ async function purgeMobileBattleAssetCacheIfEnabled(): Promise<void> {
 }
 
 let root: Container | null = null
-let titleText: Text | null = null
 let towerDayText: Text | null = null
+let towerDayTextBg: Graphics | null = null
 let backBtn: Container | null = null
 let continueBtn: Container | null = null
 let continueBtnText: Text | null = null
@@ -382,6 +382,7 @@ let fatigueToastBg: Graphics | null = null
 let fatigueToastText: Text | null = null
 let fatigueToastUntilMs = 0
 let towerRemainBarG: Graphics | null = null
+let towerRemainBarTextBg: Graphics | null = null
 let towerRemainBarText: Text | null = null
 const portraitFX = new BattlePortraitFX()
 let enemyPresentationVisible = true
@@ -1813,6 +1814,29 @@ function pickFirstEmptyCell(system: GridSystem, size: GridItemSizeNorm, activeCo
   return null
 }
 
+function getItemMaxActiveCount(def: ItemDef | null | undefined): number {
+  const raw = Number(def?.max_active_count)
+  if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.round(raw))
+  return Number.POSITIVE_INFINITY
+}
+
+function buildCurrentBattleItemCountByDefId(excludeInstanceIds?: Set<string>): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const [instanceId, meta] of editableMeta.entries()) {
+    if (!meta?.defId) continue
+    if (excludeInstanceIds?.has(instanceId)) continue
+    counts.set(meta.defId, (counts.get(meta.defId) ?? 0) + 1)
+  }
+  return counts
+}
+
+function reachesMaxActiveCount(def: ItemDef, currentCountByDefId: Map<string, number>): boolean {
+  const maxCount = getItemMaxActiveCount(def)
+  if (!Number.isFinite(maxCount)) return false
+  const cur = currentCountByDefId.get(def.id) ?? 0
+  return cur >= maxCount
+}
+
 function getEditableStartGold(day: number): number {
   if (isTowerDefenseBattle()) {
     return day <= 1 ? 5 : 0
@@ -1834,8 +1858,10 @@ function rollBattleBuyOffer(day: number): BattleBuyOffer | null {
   if (!tierStar) return null
 
   const allItems = getAllItems()
+  const currentCountByDefId = buildCurrentBattleItemCountByDefId()
   const candidates = allItems.filter((it) => {
     if (String(it.id).startsWith('skill_')) return false
+    if (reachesMaxActiveCount(it, currentCountByDefId)) return false
     const minTier = parseTierName(it.starting_tier) ?? 'Bronze'
     if (!getTowerAllowedLevelsByStartingTier(minTier).includes(level)) return false
     const avail = String(it.available_tiers || '')
@@ -1864,6 +1890,12 @@ function levelToTowerTierStar(level: 1 | 2 | 3 | 4 | 5): { tier: TierKey; star: 
   return null
 }
 
+function getTowerItemSynthesisMaxLevel(): 1 | 2 | 3 | 4 | 5 {
+  const raw = Number(getDebugCfg('gameplayItemSynthesisMaxLevel'))
+  if (!Number.isFinite(raw)) return 5
+  return Math.max(1, Math.min(5, Math.round(raw))) as 1 | 2 | 3 | 4 | 5
+}
+
 function tierStarToTowerLevel(tier: TierKey, star: 1 | 2): 1 | 2 | 3 | 4 | 5 {
   if (tier === 'Bronze') return star >= 2 ? 2 : 1
   if (tier === 'Silver') return star >= 2 ? 3 : 2
@@ -1872,20 +1904,26 @@ function tierStarToTowerLevel(tier: TierKey, star: 1 | 2): 1 | 2 | 3 | 4 | 5 {
 }
 
 function getTowerAllowedLevelsByStartingTier(tier: TierKey): Array<1 | 2 | 3 | 4 | 5> {
-  if (tier === 'Bronze') return [1, 2, 3, 4, 5]
-  if (tier === 'Silver') return [2, 3, 4, 5]
-  if (tier === 'Gold') return [3, 4, 5]
-  return [4, 5]
+  const cap = getTowerItemSynthesisMaxLevel()
+  const all = tier === 'Bronze'
+    ? [1, 2, 3, 4, 5]
+    : tier === 'Silver'
+      ? [2, 3, 4, 5]
+      : tier === 'Gold'
+        ? [3, 4, 5]
+        : [4, 5]
+  return all.filter((lv): lv is 1 | 2 | 3 | 4 | 5 => lv <= cap)
 }
 
 function buildEditableSnapshotFromBoard(day: number): ReturnType<typeof getBattleSnapshot> {
   if (!editableSystem) return enteredSnapshot
+  const maxLevel = getTowerItemSynthesisMaxLevel()
   const playerShield = Math.max(0, Math.round(engine?.getBoardState().player.shield ?? enteredSnapshot?.playerShield ?? 0))
   const entities = editableSystem.getCombatEntities(6).map((it) => {
     const meta = editableMeta.get(it.instanceId)
     const level = Math.max(
       1,
-      Math.min(5, Number(meta?.level) || tierStarToTowerLevel((meta?.tier ?? 'Bronze') as TierKey, (meta?.tierStar ?? 1) as 1 | 2)),
+      Math.min(maxLevel, Number(meta?.level) || tierStarToTowerLevel((meta?.tier ?? 'Bronze') as TierKey, (meta?.tierStar ?? 1) as 1 | 2)),
     ) as 1 | 2 | 3 | 4 | 5
     const byLevel = levelToTowerTierStar(level)
     const tier = (byLevel?.tier ?? meta?.tier ?? 'Bronze') as TierKey
@@ -1919,10 +1957,11 @@ function canSynthesizePairInBattle(sourceInstanceId: string, targetInstanceId: s
   const sourceDef = getItemDefById(sourceMeta.defId)
   const targetDef = getItemDefById(targetMeta.defId)
   if (!sourceDef || !targetDef) return false
-  const sourceLevel = Math.max(1, Math.min(5, Number(sourceMeta.level) || tierStarToTowerLevel(sourceMeta.tier, sourceMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
-  const targetLevel = Math.max(1, Math.min(5, Number(targetMeta.level) || tierStarToTowerLevel(targetMeta.tier, targetMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
+  const maxLevel = getTowerItemSynthesisMaxLevel()
+  const sourceLevel = Math.max(1, Math.min(maxLevel, Number(sourceMeta.level) || tierStarToTowerLevel(sourceMeta.tier, sourceMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
+  const targetLevel = Math.max(1, Math.min(maxLevel, Number(targetMeta.level) || tierStarToTowerLevel(targetMeta.tier, targetMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
   if (sourceLevel !== targetLevel) return false
-  if (sourceLevel >= 5) return false
+  if (sourceLevel >= maxLevel) return false
   if (sourceMeta.defId === targetMeta.defId) return true
   const sourceArch = toSkillArchetype(getPrimaryArchetype(sourceDef.tags))
   const targetArch = toSkillArchetype(getPrimaryArchetype(targetDef.tags))
@@ -2001,11 +2040,17 @@ function pickBattleSynthesisResultDef(
   targetSize: GridItemSizeNorm,
   resultTier: TierKey,
   resultStar: 1 | 2,
+  sourceInstanceId?: string,
+  targetInstanceId?: string,
 ): ItemDef | null {
   const runPoolSet = new Set(getRunClassItemPoolIds())
   const isSameIdSynthesis = sourceDef.id === targetDef.id
   const sameItemRandomSynthesis = getDebugCfg('gameplaySameItemRandomSynthesis') >= 0.5
   const minStartingTier = getCrossSynthesisMinStartingTier(sourceDef, targetDef)
+  const excludedInstanceIds = new Set<string>()
+  if (sourceInstanceId) excludedInstanceIds.add(sourceInstanceId)
+  if (targetInstanceId) excludedInstanceIds.add(targetInstanceId)
+  const currentCountByDefId = buildCurrentBattleItemCountByDefId(excludedInstanceIds)
 
   const resultTierIndex = (tier: TierKey): number => Math.max(0, TIER_ORDER.indexOf(tier))
   const filterByResultTierCeiling = (list: ItemDef[], targetTierKey: TierKey): ItemDef[] => {
@@ -2027,6 +2072,7 @@ function pickBattleSynthesisResultDef(
       out = out.filter((it) => toSkillArchetype(getPrimaryArchetype(it.tags)) !== sourceArch)
     }
     if (runPoolSet.size > 0) out = out.filter((it) => runPoolSet.has(it.id))
+    out = out.filter((it) => !reachesMaxActiveCount(it, currentCountByDefId))
     return out
   }
 
@@ -2040,6 +2086,7 @@ function pickBattleSynthesisResultDef(
   } else {
     candidates = filterCrossSynthesisPool(allByTier)
   }
+  candidates = candidates.filter((it) => !reachesMaxActiveCount(it, currentCountByDefId))
   const evolvedDef = pickCrossSynthesisResultWithCycle(candidates, resultTier, resultStar, minStartingTier)
   return evolvedDef
 }
@@ -2053,15 +2100,19 @@ function applyBattleSynthesis(sourceInstanceId: string, targetInstanceId: string
   const sourceDef = getItemDefById(sourceMeta.defId)
   const targetDef = getItemDefById(targetMeta.defId)
   if (!sourceDef || !targetDef) return false
-  const sourceLevel = Math.max(1, Math.min(5, Number(sourceMeta.level) || tierStarToTowerLevel(sourceMeta.tier, sourceMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
-  const targetLevel = Math.max(1, Math.min(5, Number(targetMeta.level) || tierStarToTowerLevel(targetMeta.tier, targetMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
+  const maxLevel = getTowerItemSynthesisMaxLevel()
+  const sourceLevel = Math.max(1, Math.min(maxLevel, Number(sourceMeta.level) || tierStarToTowerLevel(sourceMeta.tier, sourceMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
+  const targetLevel = Math.max(1, Math.min(maxLevel, Number(targetMeta.level) || tierStarToTowerLevel(targetMeta.tier, targetMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
   if (sourceLevel !== targetLevel) return false
-  if (sourceLevel >= 5) return false
+  if (sourceLevel >= maxLevel) return false
   const resultLevel = (sourceLevel + 1) as 1 | 2 | 3 | 4 | 5
   const upgradeTo = levelToTowerTierStar(resultLevel)
   if (!upgradeTo) return false
-  const evolvedDef = pickBattleSynthesisResultDef(sourceDef, targetDef, targetMeta.size, upgradeTo.tier, upgradeTo.star)
-  if (!evolvedDef) return false
+  const evolvedDef = pickBattleSynthesisResultDef(sourceDef, targetDef, targetMeta.size, upgradeTo.tier, upgradeTo.star, sourceInstanceId, targetInstanceId)
+  if (!evolvedDef) {
+    showFatigueToast('可合成物品已达上限')
+    return false
+  }
 
   homeSystem.remove(sourceInstanceId)
   homeView.removeItem(sourceInstanceId)
@@ -2085,6 +2136,7 @@ function applyBattleSynthesis(sourceInstanceId: string, targetInstanceId: string
   })
   clearItemRoundStatForPlayerIds([sourceInstanceId, targetInstanceId])
   syncEngineWithEditable([targetInstanceId])
+  pendingBattleBuyOffer = null
   return true
 }
 
@@ -2095,8 +2147,9 @@ function showBattleSynthesisPreviewInfo(sourceInstanceId: string, targetInstance
   if (!sourceMeta || !targetMeta) return
   const sourceDef = getItemDefById(sourceMeta.defId)
   if (!sourceDef) return
-  const sourceLevel = Math.max(1, Math.min(5, Number(sourceMeta.level) || tierStarToTowerLevel(sourceMeta.tier, sourceMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
-  const next = sourceLevel >= 5 ? null : levelToTowerTierStar((sourceLevel + 1) as 1 | 2 | 3 | 4 | 5)
+  const maxLevel = getTowerItemSynthesisMaxLevel()
+  const sourceLevel = Math.max(1, Math.min(maxLevel, Number(sourceMeta.level) || tierStarToTowerLevel(sourceMeta.tier, sourceMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
+  const next = sourceLevel >= maxLevel ? null : levelToTowerTierStar((sourceLevel + 1) as 1 | 2 | 3 | 4 | 5)
   const custom: ItemInfoCustomDisplay = {
     useQuestionIcon: true,
     hideName: true,
@@ -2117,6 +2170,8 @@ function showBattleSynthesisPreviewInfo(sourceInstanceId: string, targetInstance
     'detailed',
     undefined,
     custom,
+    undefined,
+    sourceLevel,
   )
 }
 
@@ -2512,12 +2567,13 @@ function ensureEditableBuildMode(stage: Container): void {
   editableSystem.setActiveRows(battleRows)
   editableSystem.clear()
   editableMeta.clear()
+  const maxLevel = getTowerItemSynthesisMaxLevel()
   const sourceEntities = enteredSnapshot?.entities ?? []
   for (const one of sourceEntities) {
     editableSystem.place(one.col, one.row, one.size as GridItemSizeNorm, one.defId, one.instanceId)
     const tier = (one.tier ?? 'Bronze') as TierKey
     const tierStar = (one.tierStar ?? 1) as 1 | 2
-    const normalizedLevel = Math.max(1, Math.min(5, Number(one.level) || tierStarToTowerLevel(tier, tierStar))) as 1 | 2 | 3 | 4 | 5
+    const normalizedLevel = Math.max(1, Math.min(maxLevel, Number(one.level) || tierStarToTowerLevel(tier, tierStar))) as 1 | 2 | 3 | 4 | 5
     editableMeta.set(one.instanceId, {
       defId: one.defId,
       size: one.size as GridItemSizeNorm,
@@ -2717,7 +2773,8 @@ function closeBattleItemTestOverlay(): void {
 
 function addBattleTestItemAtLevel(def: ItemDef, level: 1 | 2 | 3 | 4 | 5): boolean {
   if (!playerZone || !editableSystem) return false
-  const tierStar = levelToTowerTierStar(level)
+  const safeLevel = Math.min(level, getTowerItemSynthesisMaxLevel()) as 1 | 2 | 3 | 4 | 5
+  const tierStar = levelToTowerTierStar(safeLevel)
   if (!tierStar) return false
   const size = normalizeSize(def.size)
   const slot = pickFirstEmptyCell(editableSystem, size, playerZone.activeColCount)
@@ -2731,7 +2788,7 @@ function addBattleTestItemAtLevel(def: ItemDef, level: 1 | 2 | 3 | 4 | 5): boole
     tier: tierStar.tier,
     tierStar: tierStar.star,
     quality,
-    level,
+    level: safeLevel,
     permanentDamageBonus: 0,
   })
   void playerZone.addItem(id, def.id, size, slot.col, slot.row, `${tierStar.tier}#${tierStar.star}`).then(() => {
@@ -3009,11 +3066,31 @@ function drawTowerRemainingBar(): void {
   const stat = engine.getTowerEnemyStats()
   const total = Math.max(1, stat.totalCount)
   const remaining = Math.max(0, Math.min(total, stat.remainingCount))
+  const rightPad = 16
   towerRemainBarG.clear()
   towerRemainBarG.visible = false
   towerRemainBarText.text = `剩余敌人：${remaining}`
-  towerRemainBarText.x = CANVAS_W / 2 - towerRemainBarText.width / 2
-  towerRemainBarText.y = 96
+  towerRemainBarText.x = CANVAS_W - rightPad - towerRemainBarText.width
+  towerRemainBarText.y = 157 + topSafeYOffset
+  if (towerRemainBarTextBg) {
+    const padX = 14
+    const padY = 8
+    towerRemainBarTextBg.clear()
+    towerRemainBarTextBg.roundRect(
+      towerRemainBarText.x - padX,
+      towerRemainBarText.y - padY,
+      towerRemainBarText.width + padX * 2,
+      towerRemainBarText.height + padY * 2,
+      12,
+    )
+    towerRemainBarTextBg.fill({ color: 0x000000, alpha: 0.45 })
+  }
+}
+
+function getTowerFinalDay(): number {
+  const raw = Number(getGameCfg().towerDefenseRules?.finalDay)
+  if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.round(raw))
+  return 15
 }
 
 function getClampedTopActionBtnY(key: 'battleSpeedBtnY' | 'battleOrganizeBtnY' = 'battleSpeedBtnY'): number {
@@ -3376,6 +3453,10 @@ function updateItemRoundStatHints(
   shieldById: Map<string, number>,
 ): void {
   if (!layer) return
+  if (getDebugCfg('gameplayShowItemDamageShieldOnIcon') < 0.5) {
+    for (const one of labelsById.values()) one.visible = false
+    return
+  }
   const fontSize = Math.max(8, getDebugCfg('itemRoundStatFontSize'))
   const visibleIds = new Set<string>()
   for (const it of items) {
@@ -3671,13 +3752,15 @@ function showBattleItemInfo(instanceId: string, side: 'player' | 'enemy', keepMo
         : {}),
     }
     : undefined
+  const infoLevel = (!isTowerDefenseBattle() || side !== 'player')
+    ? undefined
+    : (Math.max(1, Math.min(getTowerItemSynthesisMaxLevel(), Number((hit as { level?: number }).level) || Number(editableMeta.get(instanceId)?.level) || 1)) as 1 | 2 | 3 | 4 | 5)
   const displayTier = (() => {
     if (!isTowerDefenseBattle() || side !== 'player') return hit.tier
-    const lv = Math.max(1, Math.min(5, Number(hit.level) || Number(editableMeta.get(instanceId)?.level) || 1)) as 1 | 2 | 3 | 4 | 5
-    const byLevel = levelToTowerTierStar(lv)
+    const byLevel = infoLevel ? levelToTowerTierStar(infoLevel) : null
     return byLevel ? `${byLevel.tier}#${byLevel.star}` : hit.tier
   })()
-  itemInfoPopup.show(item, 0, 'none', displayTier, undefined, selectedItemInfoMode, runtimeOverride, customDisplay, enchantmentDisplay)
+  itemInfoPopup.show(item, 0, 'none', displayTier, undefined, selectedItemInfoMode, runtimeOverride, customDisplay, enchantmentDisplay, infoLevel)
 }
 
 export const BattleScene: Scene = {
@@ -3711,7 +3794,7 @@ export const BattleScene: Scene = {
       const normalizedEntities = snapshot.entities.map((one) => {
         const tier = (one.tier ?? 'Bronze') as TierKey
         const tierStar = (one.tierStar ?? 1) as 1 | 2
-        const level = Math.max(1, Math.min(5, Number(one.level) || tierStarToTowerLevel(tier, tierStar))) as 1 | 2 | 3 | 4 | 5
+        const level = Math.max(1, Math.min(getTowerItemSynthesisMaxLevel(), Number(one.level) || tierStarToTowerLevel(tier, tierStar))) as 1 | 2 | 3 | 4 | 5
         const normalizedTierStar = levelToTowerTierStar(level) ?? { tier, star: tierStar }
         return {
           ...one,
@@ -3787,14 +3870,6 @@ export const BattleScene: Scene = {
       stage.addChild(transition.battleIntroCover)
     }
 
-    titleText = new Text({
-      text: '战斗阶段',
-      style: { fontSize: 36, fill: 0xffe2a8, fontFamily: 'Arial', fontWeight: 'bold' },
-    })
-    titleText.x = CANVAS_W / 2 - titleText.width / 2
-    titleText.y = 40
-    root.addChild(titleText)
-
     towerDayText = new Text({
       text: '',
       style: {
@@ -3805,6 +3880,10 @@ export const BattleScene: Scene = {
         stroke: { color: 0x000000, width: 3 },
       },
     })
+    towerDayTextBg = new Graphics()
+    towerDayTextBg.zIndex = 189
+    towerDayTextBg.eventMode = 'none'
+    root.addChild(towerDayTextBg)
     towerDayText.anchor.set(1, 0)
     towerDayText.zIndex = 190
     towerDayText.eventMode = 'none'
@@ -3814,9 +3893,13 @@ export const BattleScene: Scene = {
     towerRemainBarG.zIndex = 42
     towerRemainBarG.eventMode = 'none'
     root.addChild(towerRemainBarG)
+    towerRemainBarTextBg = new Graphics()
+    towerRemainBarTextBg.zIndex = 42
+    towerRemainBarTextBg.eventMode = 'none'
+    root.addChild(towerRemainBarTextBg)
     towerRemainBarText = new Text({
       text: '',
-      style: { fontSize: 36, fill: 0xfff2f2, fontFamily: 'Arial', fontWeight: 'bold', stroke: { color: 0x000000, width: 3 } },
+      style: { fontSize: 24, fill: 0xfff2f2, fontFamily: 'Arial', fontWeight: 'bold', stroke: { color: 0x000000, width: 3 } },
     })
     towerRemainBarText.zIndex = 43
     towerRemainBarText.eventMode = 'none'
@@ -4760,7 +4843,6 @@ export const BattleScene: Scene = {
     if (root) stage.removeChild(root)
     root?.destroy({ children: true })
     root = null
-    titleText = null
     towerDayText = null
     backBtn = null
     continueBtn = null
@@ -4830,7 +4912,9 @@ export const BattleScene: Scene = {
     fatigueToastText = null
     towerGoldDropLayer = null
     towerRemainBarG = null
+    towerRemainBarTextBg = null
     towerRemainBarText = null
+    towerDayTextBg = null
     fatigueToastUntilMs = 0
     portraitFX.reset()
     transition.reset()
@@ -5023,9 +5107,14 @@ export const BattleScene: Scene = {
     if (isTowerDefenseBattle()) {
       drawTowerRemainingBar()
       if (towerRemainBarG) towerRemainBarG.visible = false
+      if (towerRemainBarTextBg) towerRemainBarTextBg.visible = true
       if (towerRemainBarText) towerRemainBarText.visible = true
     } else {
       if (towerRemainBarG) towerRemainBarG.visible = false
+      if (towerRemainBarTextBg) {
+        towerRemainBarTextBg.clear()
+        towerRemainBarTextBg.visible = false
+      }
       if (towerRemainBarText) towerRemainBarText.visible = false
     }
 
@@ -5283,9 +5372,29 @@ export const BattleScene: Scene = {
     if (towerDayText) {
       towerDayText.visible = isTowerDefenseBattle()
       if (towerDayText.visible) {
-        towerDayText.text = `第${Math.max(1, Math.round(battleDay))}天`
+        const day = Math.max(1, Math.round(battleDay))
+        const finalDay = getTowerFinalDay()
+        towerDayText.text = `第${day}/${finalDay}天`
         towerDayText.x = CANVAS_W - 16
-        towerDayText.y = 114 + topSafeYOffset
+        towerDayText.y = 102 + topSafeYOffset
+        if (towerDayTextBg) {
+          const padX = 14
+          const padY = 8
+          towerDayTextBg.clear()
+          towerDayTextBg.roundRect(
+            towerDayText.x - towerDayText.width - padX,
+            towerDayText.y - padY,
+            towerDayText.width + padX * 2,
+            towerDayText.height + padY * 2,
+            12,
+          )
+          towerDayTextBg.fill({ color: 0x000000, alpha: 0.45 })
+          towerDayTextBg.visible = true
+        }
+      }
+      else if (towerDayTextBg) {
+        towerDayTextBg.clear()
+        towerDayTextBg.visible = false
       }
     }
 

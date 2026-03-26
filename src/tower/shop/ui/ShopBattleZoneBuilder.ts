@@ -39,6 +39,7 @@ import {
 import { showHintToast } from './ShopToastSystem'
 import {
   toVisualTier,
+  getDayActiveCols,
   getBattleZoneX,
   getBackpackZoneX,
   getBackpackZoneYByBattle,
@@ -203,7 +204,7 @@ export function buildBattleZoneUI(
   const compactMode = cfg.gameplayModeValues?.compactMode
   const towerMode = cfg.towerDefenseRules?.enabled === true
   const activeCols = towerMode
-    ? 6
+    ? getDayActiveCols(ctx.currentDay || 1)
     : (compactMode?.enabled
       ? (compactMode.battleCols ?? 6)
       : (cfg.dailyBattleSlots[0] ?? 4))

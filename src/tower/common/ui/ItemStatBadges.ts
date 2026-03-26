@@ -88,6 +88,7 @@ export function createItemStatBadges(
   textOptions?: ItemStatBadgeTextOptions,
 ): Container {
   const isArchetypeMode = mode === 'archetype'
+  const showCombatValueBadges = getDebugCfg('gameplayShowItemDamageShieldOnIcon') >= 0.5
   const archetypes = isArchetypeMode ? parseArchetypes(item) : []
   const archetypeSuffix = (textOptions?.archetypeSuffix ?? '').trim()
   const archetypeLevelOnly = textOptions?.archetypeLevelOnly === true
@@ -103,10 +104,12 @@ export function createItemStatBadges(
         color: getArchetypeColor(k),
       }))
       .filter((it) => it.text.length > 0)
-    : STAT_ORDER
-      .map((k) => ({ key: k, value: override?.[k] ?? item[k] }))
-      .filter((it) => Number.isFinite(it.value) && it.value > 0)
-      .map((it) => ({ key: it.key, text: toBadgeText(it.value as number, Math.max(1, Math.round(override?.multicast ?? item.multicast ?? 1))), color: getStatColor(it.key as StatKey) }))
+    : (showCombatValueBadges
+      ? STAT_ORDER
+        .map((k) => ({ key: k, value: override?.[k] ?? item[k] }))
+        .filter((it) => Number.isFinite(it.value) && it.value > 0)
+        .map((it) => ({ key: it.key, text: toBadgeText(it.value as number, Math.max(1, Math.round(override?.multicast ?? item.multicast ?? 1))), color: getStatColor(it.key as StatKey) }))
+      : [])
   const root = new Container()
   if (badges.length === 0) return root
 

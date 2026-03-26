@@ -49,6 +49,7 @@ export interface ItemDef {
   skills:       SkillText[]
   simple_desc?: string
   simple_desc_tiered?: string
+  max_active_count?: number
   enchantments: Record<string, { name_cn: string; effect_en: string; effect_cn: string }>
 }
 
@@ -405,6 +406,12 @@ export interface GameConfig {
     playerBounceProjectileFlyMs?: number
     enemyAttackDoubleAfterAllSpawnMs?: number
     enemyForceNextWaveAfterAllSpawnMs?: number
+    playerZoneResizeAnimMs?: number
+    playerZoneSizeByDay?: Array<{
+      day: number
+      cols: number
+      rows: number
+    }>
     playerBounceProjectileSpeedPxPerSec?: number
     playerMeleeSweepHitStepMs?: number
     playerMeleeQueueTriggerIntervalMs?: number
@@ -430,6 +437,11 @@ export interface GameConfig {
     playerMeleeSweepScaleMax?: number
     laneEnemyMinGapDistance?: number
     spawnFrontGapDistance?: number
+    battleBuyAffordPulseDurationMs?: number
+    battleBuyAffordPulseScaleMax?: number
+    battleBuyAffordPulsePaddingPx?: number
+    battleBuyButtonY?: number
+    playerZoneBackgroundAlpha?: number
     battleBuyCostByPurchaseCount?: number[]
     nextWaveAutoStartMs?: number
     finalDay?: number

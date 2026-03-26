@@ -108,15 +108,6 @@ function formatTierQualityLabel(baseTierRaw: string): string {
   return '钻石'
 }
 
-function formatTierLabelWithLevel(baseTierRaw: string, rawTier: string): string {
-  const baseTier = parseTierName(baseTierRaw) || 'Bronze'
-  const level = Math.max(1, Math.min(8, tierScoreFromRaw(rawTier)))
-  if (baseTier === 'Bronze') return `青铜Lv${level}`
-  if (baseTier === 'Silver') return `白银Lv${level}`
-  if (baseTier === 'Gold') return `黄金Lv${level}`
-  return `钻石Lv${level}`
-}
-
 function pickTierValue(series: string, tierIndex: number): string {
   const parts = series.split(/[\/|]/).map(v => v.trim()).filter(Boolean)
   if (parts.length <= 1) return series
@@ -464,6 +455,7 @@ export class SellPopup extends Container {
   private lastPriceMode: 'sell' | 'buy' | 'none' = 'sell'
   private lastTierOverride: string | undefined = undefined
   private lastUpgradeFromTier: string | undefined = undefined
+  private lastLevelOverride: number | undefined = undefined
   private lastInfoMode: ItemInfoMode = 'detailed'
   private lastRuntimeOverride: ItemInfoRuntimeOverride | undefined = undefined
   private lastCustomDisplay: ItemInfoCustomDisplay | undefined = undefined
@@ -652,7 +644,7 @@ export class SellPopup extends Container {
     this.minH = Math.max(0, height)
     this.currentMinH = this.minH
     if (this.lastItem) {
-      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay)
+      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay, this.lastLevelOverride)
     } else {
       this.redrawPanel(this.minH)
       this.setAnchor(0, this.anchorY)
@@ -662,7 +654,7 @@ export class SellPopup extends Container {
   setSmallMinHeight(height: number): void {
     this.minHSmall = Math.max(0, height)
     if (this.lastItem) {
-      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay)
+      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay, this.lastLevelOverride)
     }
   }
 
@@ -684,19 +676,19 @@ export class SellPopup extends Container {
     this.cooldownT.style.fontSize = this.textSize.cooldown
     this.cooldownLabelT.style.fontSize = Math.max(12, this.textSize.cooldown - 6)
     this.priceT.style.fontSize = this.textSize.priceCorner
-    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay)
+    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay, this.lastLevelOverride)
   }
 
   setCornerRadius(radius: number): void {
     this.cornerRadius = Math.max(0, radius)
-    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay)
+    if (this.lastItem) this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay, this.lastLevelOverride)
   }
 
   setWidth(width: number): void {
     this.panelW = Math.max(POPUP_MIN_W, Math.min(this.canvasW, width))
     this.nameT.style.wordWrapWidth = this.panelW - 24
     if (this.lastItem) {
-      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay)
+      this.show(this.lastItem, this.lastPrice, this.lastPriceMode, this.lastTierOverride, this.lastUpgradeFromTier, this.lastInfoMode, this.lastRuntimeOverride, this.lastCustomDisplay, this.lastEnchantmentDisplay, this.lastLevelOverride)
     } else {
       this.redrawPanel(POPUP_MIN_H)
       this.setAnchor(0, this.anchorY)
@@ -704,12 +696,13 @@ export class SellPopup extends Container {
   }
 
   /** 展示弹窗（需传入物品信息及出售价格） */
-  show(item: ItemDef, price: number, priceMode: 'sell' | 'buy' | 'none' = 'sell', tierOverride?: string, upgradeFromTier?: string, infoMode: ItemInfoMode = 'detailed', runtimeOverride?: ItemInfoRuntimeOverride, customDisplay?: ItemInfoCustomDisplay, enchantmentDisplay?: ItemInfoEnchantmentDisplay): void {
+  show(item: ItemDef, price: number, priceMode: 'sell' | 'buy' | 'none' = 'sell', tierOverride?: string, upgradeFromTier?: string, infoMode: ItemInfoMode = 'detailed', runtimeOverride?: ItemInfoRuntimeOverride, customDisplay?: ItemInfoCustomDisplay, enchantmentDisplay?: ItemInfoEnchantmentDisplay, levelOverride?: number): void {
     this.lastItem = item
     this.lastPrice = price
     this.lastPriceMode = priceMode
     this.lastTierOverride = tierOverride
     this.lastUpgradeFromTier = upgradeFromTier
+    this.lastLevelOverride = levelOverride
     this.lastInfoMode = infoMode
     this.lastRuntimeOverride = runtimeOverride
     this.lastCustomDisplay = customDisplay
@@ -730,19 +723,21 @@ export class SellPopup extends Container {
     const tierRaw = tierOverride ?? (parseTierName(item.starting_tier) || 'Bronze')
     const tier = parseTierName(tierRaw) || 'Bronze'
     const baseTier = parseTierName(item.starting_tier || 'Bronze') || 'Bronze'
+    const hasLevelOverride = Number.isFinite(levelOverride) && Number(levelOverride) > 0
+    const overrideLevel = hasLevelOverride ? Math.max(1, Math.min(8, Math.round(Number(levelOverride)))) : 1
     const tierColor = getTierColor(baseTier)
     const isClassItem = !isSkillItemDefId(item.id) && /战士|剑士|弓手|刺客|忍者|冰法师/.test(String(item.tags || ''))
-    const tierLabel = isClassItem ? formatTierLabelWithLevel(baseTier, tierRaw) : formatTierQualityLabel(baseTier)
+    const tierLabel = isClassItem ? `${formatTierQualityLabel(baseTier)}Lv${hasLevelOverride ? overrideLevel : Math.max(1, Math.min(8, tierScoreFromRaw(tierRaw)))}` : formatTierQualityLabel(baseTier)
     const fromTierBase = parseTierName(upgradeFromTier ?? tierRaw) || baseTier
     const fromTierLabel = isClassItem
-      ? formatTierLabelWithLevel(baseTier, upgradeFromTier ?? tierRaw)
+      ? `${formatTierQualityLabel(baseTier)}Lv${hasLevelOverride ? Math.max(1, overrideLevel - 1) : Math.max(1, Math.min(8, tierScoreFromRaw(upgradeFromTier ?? tierRaw)))}`
       : formatTierQualityLabel(fromTierBase)
     const startScore = startTierScoreFromItem(item)
-    const tierIndex = Math.max(0, tierScoreFromRaw(tierRaw) - startScore)
+    const tierIndex = hasLevelOverride ? Math.max(0, overrideLevel - 1) : Math.max(0, tierScoreFromRaw(tierRaw) - startScore)
     const fromTier = parseTierName(upgradeFromTier ?? tierRaw) || tier
     const fromStar = fromTier === 'Bronze' ? 1 : parseTierStar(upgradeFromTier ?? tierRaw)
     const fromRaw = `${fromTier}#${fromStar}`
-    const fromTierIndex = Math.max(0, tierScoreFromRaw(fromRaw) - startScore)
+    const fromTierIndex = hasLevelOverride ? Math.max(0, overrideLevel - 2) : Math.max(0, tierScoreFromRaw(fromRaw) - startScore)
     const inUpgradePreview = Boolean(upgradeFromTier && fromTier !== tier)
     // 先更新字体，再计算布局
     this.nameT.style.fontSize  = this.textSize.name + 8

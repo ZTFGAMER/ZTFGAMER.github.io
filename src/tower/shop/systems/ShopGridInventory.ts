@@ -6,6 +6,7 @@
 
 import type { ShopSceneCtx } from '../ShopSceneContext'
 import { getConfig } from '@/tower/core/DataLoader'
+import { getConfig as getDebugCfg } from '@/tower/config/debugConfig'
 import { GridSystem } from '@/tower/common/grid/GridSystem'
 import type { ItemSizeNorm, PlacedItem } from '@/tower/common/grid/GridSystem'
 import { GridZone } from '@/tower/common/grid/GridZone'
@@ -46,6 +47,17 @@ export type GridInventoryCallbacks = {
   recordNeutralItemObtained: (defId: string) => void
   unlockItemToPool: (defId: string) => boolean
   collectPoolCandidatesByLevel: (level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8) => PoolCandidate[]
+}
+
+function getItemSynthesisMaxLevel(): number {
+  const raw = Number(getDebugCfg('gameplayItemSynthesisMaxLevel'))
+  if (!Number.isFinite(raw)) return 8
+  return Math.max(1, Math.min(8, Math.round(raw)))
+}
+
+function getUpgradeLevelCap(quality: TierKey): number {
+  const range = getQualityLevelRange(quality)
+  return Math.max(range.min, Math.min(range.max, getItemSynthesisMaxLevel()))
 }
 
 // ---- 格位查找 ----
@@ -168,8 +180,8 @@ export function upgradePlacedItem(
   if (!placed) return false
   const level = getInstanceLevel(instanceId)
   const quality = getInstanceQuality(instanceId)
-  const range = getQualityLevelRange(quality)
-  if (level >= range.max) return false
+  const levelCap = getUpgradeLevelCap(quality)
+  if (level >= levelCap) return false
   const nextLevel = clampLevel(level + 1)
   const next = levelToTierStar(nextLevel)
   if (!next) return false
@@ -206,8 +218,8 @@ export function convertAndUpgradePlacedItem(
   if (!placed) return false
   const level = getInstanceLevel(instanceId)
   const quality = getInstanceQuality(instanceId)
-  const range = getQualityLevelRange(quality)
-  if (level >= range.max) return false
+  const levelCap = getUpgradeLevelCap(quality)
+  if (level >= levelCap) return false
   const nextLevel = clampLevel(level + 1)
   const next = levelToTierStar(nextLevel)
   if (!next) return false
@@ -246,8 +258,8 @@ export function canUpgradePlacedItem(instanceId: string, zone: 'battle' | 'backp
   if (!def || isNeutralItemDef(def)) return false
   const quality = getInstanceQuality(instanceId)
   const level = getInstanceLevel(instanceId)
-  const range = getQualityLevelRange(quality)
-  return level < range.max
+  const levelCap = getUpgradeLevelCap(quality)
+  return level < levelCap
 }
 
 export function canConvertAndUpgradePlacedItem(instanceId: string, zone: 'battle' | 'backpack', ctx: ShopSceneCtx): boolean {
@@ -257,8 +269,8 @@ export function canConvertAndUpgradePlacedItem(instanceId: string, zone: 'battle
   if (!placed) return false
   const quality = getInstanceQuality(instanceId)
   const level = getInstanceLevel(instanceId)
-  const range = getQualityLevelRange(quality)
-  if (level >= range.max) return false
+  const levelCap = getUpgradeLevelCap(quality)
+  if (level >= levelCap) return false
   const nextLevel = clampLevel(level + 1)
   const next = levelToTierStar(nextLevel)
   if (!next) return false

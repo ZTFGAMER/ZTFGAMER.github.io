@@ -152,10 +152,16 @@ function tierToLevelLabel(tierRaw?: string, defId?: string): string {
   const baseTier = defId ? parseTierName(getBaseTier(defId)) : tierFromRuntime
   const effectiveTier = rank(baseTier) > rank(tierFromRuntime) ? baseTier : tierFromRuntime
   const star = parseTierStar(tierRaw)
-  if (effectiveTier === 'Bronze') return '1'
-  if (effectiveTier === 'Silver') return '2'
-  if (effectiveTier === 'Gold') return '3'
-  return (effectiveTier === tierFromRuntime && star >= 2) ? '5' : '4'
+  const level = effectiveTier === 'Bronze'
+    ? 1
+    : effectiveTier === 'Silver'
+      ? (effectiveTier === tierFromRuntime && star >= 2 ? 3 : 2)
+      : effectiveTier === 'Gold'
+        ? (effectiveTier === tierFromRuntime && star >= 2 ? 4 : 3)
+        : (effectiveTier === tierFromRuntime && star >= 2 ? 5 : 4)
+  const capRaw = Number(getDebugCfg('gameplayItemSynthesisMaxLevel'))
+  const cap = Number.isFinite(capRaw) ? Math.max(1, Math.min(8, Math.round(capRaw))) : 8
+  return level >= cap ? 'MAX' : String(level)
 }
 
 // ---- ItemNode ----

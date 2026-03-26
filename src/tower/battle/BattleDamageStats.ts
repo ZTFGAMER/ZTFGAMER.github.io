@@ -1,10 +1,11 @@
 import { Assets, Container, Graphics, Sprite, Text, Texture } from 'pixi.js'
 import { getConfig as getDebugCfg } from '@/tower/config/debugConfig'
 import { getAllItems, getConfig as getGameCfg } from '@/tower/core/DataLoader'
-import { getTierColor } from '@/tower/config/colorPalette'
+import { getClassColor, getTierColor } from '@/tower/config/colorPalette'
 import { getItemIconUrl, getTowerBattleImageUrl } from '@/tower/core/AssetPath'
 import { CANVAS_W, CANVAS_H } from '@/tower/config/layoutConstants'
 import type { BattleEngineLike } from './BattleEngineTypes'
+import { getPrimaryArchetype, getItemDefById, toSkillArchetype } from '@/tower/shop/systems/ShopSynthesisLogic'
 
 type ItemBattleStat = {
   sourceItemId: string
@@ -19,6 +20,33 @@ type ItemBattleStat = {
   shield: number
   isTowerEnemyUnit: boolean
   towerEnemyIcon: string
+}
+
+type PlayerClassKey = 'warrior' | 'archer' | 'assassin' | 'mage'
+
+const PLAYER_CLASS_KEYS: PlayerClassKey[] = ['warrior', 'archer', 'assassin', 'mage']
+
+const PLAYER_CLASS_CN: Record<PlayerClassKey, string> = {
+  warrior: '战士',
+  archer: '弓手',
+  assassin: '刺客',
+  mage: '法师',
+}
+
+const PLAYER_CLASS_BRONZE_ITEM_NAME: Record<PlayerClassKey, string> = {
+  warrior: '长剑',
+  archer: '弓箭',
+  assassin: '手里剑',
+  mage: '冰锥',
+}
+
+const PLAYER_STATS_ORDER: PlayerClassKey[] = ['assassin', 'archer', 'mage', 'warrior']
+
+const PLAYER_CLASS_COLOR_LABEL: Record<PlayerClassKey, '剑士' | '弓手' | '忍者' | '冰法师'> = {
+  warrior: '剑士',
+  archer: '弓手',
+  assassin: '忍者',
+  mage: '冰法师',
 }
 
 type DamageStatsRowView = {
@@ -54,13 +82,6 @@ function parseBaseTier(raw?: string): 'Bronze' | 'Silver' | 'Gold' | 'Diamond' {
   if (s.includes('Gold')) return 'Gold'
   if (s.includes('Silver')) return 'Silver'
   return 'Bronze'
-}
-
-function tierCn(tier: 'Bronze' | 'Silver' | 'Gold' | 'Diamond'): string {
-  if (tier === 'Silver') return '白银'
-  if (tier === 'Gold') return '黄金'
-  if (tier === 'Diamond') return '钻石'
-  return '青铜'
 }
 
 function getClampedStatsPanelY(panelH: number): number {
@@ -103,12 +124,14 @@ export class BattleDamageStats {
   private damageStatsRowsCon: Container | null = null
   private damageStatsTabPlayerBtn: Container | null = null
   private damageStatsTabEnemyBtn: Container | null = null
+  private damageStatsTopLeftBtn: Container | null = null
   private statsBtnText: Text | null = null
   private damageStatsRowViews: DamageStatsRowView[] = []
   private damageStatsEmptyText: Text | null = null
   private damageStatsRowIconDefIds: string[] = []
   private damageStatsIconTextureByDefId = new Map<string, Texture>()
   private damageStatsIconLoadPendingByDefId = new Set<string>()
+  private playerClassBronzeDefByKey = new Map<PlayerClassKey, { defId: string; name: string }>()
 
   // ---- private helpers ----
 
@@ -230,6 +253,81 @@ export class BattleDamageStats {
     return stat
   }
 
+  private toPlayerClassKeyFromDefId(defId: string): PlayerClassKey | null {
+    const itemDef = getItemDefById(defId)
+    const archRaw = getPrimaryArchetype(itemDef?.tags ?? '')
+    const arch = toSkillArchetype(archRaw)
+    if (arch === 'warrior' || arch === 'archer' || arch === 'assassin' || arch === 'mage') return arch
+    return null
+  }
+
+  private ensurePlayerClassBronzeMeta(classKey: PlayerClassKey): { defId: string; name: string } {
+    const cached = this.playerClassBronzeDefByKey.get(classKey)
+    if (cached) return cached
+    const all = getAllItems()
+    const preferredName = PLAYER_CLASS_BRONZE_ITEM_NAME[classKey]
+    const picked = all
+      .filter((it) => this.toPlayerClassKeyFromDefId(it.id) === classKey && parseBaseTier(it.starting_tier) === 'Bronze' && String(it.name_cn || '') === preferredName)
+      .sort((a, b) => a.id.localeCompare(b.id))[0]
+      ?? all
+      .filter((it) => this.toPlayerClassKeyFromDefId(it.id) === classKey && parseBaseTier(it.starting_tier) === 'Bronze')
+      .sort((a, b) => a.id.localeCompare(b.id))[0]
+      ?? all.filter((it) => this.toPlayerClassKeyFromDefId(it.id) === classKey).sort((a, b) => a.id.localeCompare(b.id))[0]
+    const out = {
+      defId: picked?.id ?? '',
+      name: picked?.name_cn ?? preferredName ?? PLAYER_CLASS_CN[classKey],
+    }
+    this.playerClassBronzeDefByKey.set(classKey, out)
+    return out
+  }
+
+  private ensurePlayerClassStatEntry(classKey: PlayerClassKey): ItemBattleStat {
+    const sourceItemId = `player-class:${classKey}`
+    const prev = this.battleStatsByItemId.get(sourceItemId)
+    if (prev) return prev
+    const bronze = this.ensurePlayerClassBronzeMeta(classKey)
+    const stat: ItemBattleStat = {
+      sourceItemId,
+      side: 'player',
+      defId: bronze.defId,
+      itemName: bronze.name,
+      baseTier: 'Bronze',
+      tierRaw: 'Bronze#1',
+      level: 1,
+      triggerCount: 0,
+      damage: 0,
+      shield: 0,
+      isTowerEnemyUnit: false,
+      towerEnemyIcon: '',
+    }
+    this.battleStatsByItemId.set(sourceItemId, stat)
+    return stat
+  }
+
+  private resolvePlayerClassStatBySource(sourceItemId: string, engine: BattleEngineLike | null): ItemBattleStat | null {
+    const boardItem = engine?.getBoardState().items.find((it) => it.id === sourceItemId)
+    if (!boardItem?.defId) return null
+    const key = this.toPlayerClassKeyFromDefId(boardItem.defId)
+    if (!key) return null
+    return this.ensurePlayerClassStatEntry(key)
+  }
+
+  private getPlayerRowSortRank(stat: ItemBattleStat): number {
+    if (!stat.sourceItemId.startsWith('player-class:')) return 999
+    const key = stat.sourceItemId.slice('player-class:'.length) as PlayerClassKey
+    const idx = PLAYER_STATS_ORDER.indexOf(key)
+    return idx >= 0 ? idx : 999
+  }
+
+  private getPlayerClassKeyFromStat(stat: ItemBattleStat): PlayerClassKey | null {
+    if (stat.sourceItemId.startsWith('player-class:')) {
+      const key = stat.sourceItemId.slice('player-class:'.length)
+      if (key === 'warrior' || key === 'archer' || key === 'assassin' || key === 'mage') return key
+    }
+    const key = this.toPlayerClassKeyFromDefId(stat.defId)
+    return key
+  }
+
   private refreshDamageStatsPanel(
     battlePresentationMs: number,
     engine: BattleEngineLike | null,
@@ -239,8 +337,11 @@ export class BattleDamageStats {
     if (!force && !this.damageStatsDirty && battlePresentationMs - this.damageStatsLastRenderAtMs < 180) return
     const rows = Array.from(this.battleStatsByItemId.values())
       .filter((it) => it.side === this.damageStatsTab)
-      .sort((a, b) => (b.damage + b.shield) - (a.damage + a.shield) || b.damage - a.damage || b.shield - a.shield || b.triggerCount - a.triggerCount)
-    const maxStatValue = Math.max(1, ...rows.map((r) => Math.max(r.damage, r.shield)))
+      .filter((it) => this.damageStatsTab !== 'player' || it.sourceItemId.startsWith('player-class:'))
+      .sort((a, b) => this.damageStatsTab === 'player'
+        ? (b.damage - a.damage || this.getPlayerRowSortRank(a) - this.getPlayerRowSortRank(b))
+        : (b.damage - a.damage || b.shield - a.shield || b.triggerCount - a.triggerCount))
+    const maxStatValue = Math.max(1, ...rows.map((r) => r.damage))
 
     this.damageStatsTitleText.text = engine?.isFinished() ? '战斗统计（已结束）' : '战斗统计（进行中）'
     this.ensureDamageStatsRowsBuilt()
@@ -320,6 +421,7 @@ export class BattleDamageStats {
       triggerText.anchor.set(0, 0)
       triggerText.x = barX + barW + 12
       triggerText.y = 12
+      triggerText.visible = false
       row.addChild(triggerText)
 
       const dmgBg = new Graphics()
@@ -342,9 +444,11 @@ export class BattleDamageStats {
       const shBg = new Graphics()
       shBg.roundRect(barX, 74, barW, barH, 6)
       shBg.fill({ color: 0x2a3557, alpha: 1 })
+      shBg.visible = false
       row.addChild(shBg)
 
       const shieldFill = new Graphics()
+      shieldFill.visible = false
       row.addChild(shieldFill)
 
       const shieldText = new Text({
@@ -354,6 +458,7 @@ export class BattleDamageStats {
       shieldText.anchor.set(0, 0)
       shieldText.x = barX + barW + 12
       shieldText.y = 66
+      shieldText.visible = false
       row.addChild(shieldText)
 
       this.damageStatsRowsCon.addChild(row)
@@ -393,8 +498,10 @@ export class BattleDamageStats {
     view.iconFrame.clear()
     view.iconFrame.roundRect(iconX - iconSide / 2, iconY - iconSide / 2, iconSide, iconSide, 9)
     view.iconFrame.fill({ color: 0x1d2a45, alpha: 1 })
+    const playerClassKey = !stat.isTowerEnemyUnit ? this.getPlayerClassKeyFromStat(stat) : null
+    const playerClassColor = playerClassKey ? getClassColor(PLAYER_CLASS_COLOR_LABEL[playerClassKey]) : null
     view.iconFrame.stroke({
-      color: stat.isTowerEnemyUnit ? 0x8eb2eb : getTierColor(stat.baseTier),
+      color: stat.isTowerEnemyUnit ? 0x8eb2eb : (playerClassColor ?? getTierColor(stat.baseTier)),
       width: 5,
       alpha: 0.98,
     })
@@ -411,21 +518,13 @@ export class BattleDamageStats {
     }
     view.name.text = stat.isTowerEnemyUnit
       ? `${rowIndex + 1}. ${stat.itemName}`
-      : `${rowIndex + 1}. ${stat.itemName} ${tierCn(stat.baseTier)}Lv${stat.level}`
-    view.triggerText.text = `${stat.isTowerEnemyUnit ? '攻击' : '触发'} ${Math.max(0, Math.round(stat.triggerCount))}次`
-    view.damageText.text = `伤害 ${Math.round(stat.damage)}`
-    view.shieldText.text = stat.isTowerEnemyUnit ? '' : `护盾 ${Math.round(stat.shield)}`
+      : `${rowIndex + 1}. ${stat.itemName}`
+    view.triggerText.text = ''
+    view.damageText.text = `总伤害 ${Math.round(stat.damage)}`
+    view.shieldText.text = ''
 
     this.updateFillBar(view.damageFill, barX, 52, barW, barH, 0xe95d5d, stat.damage / maxStatValue)
-    this.updateFillBar(
-      view.shieldFill,
-      barX,
-      74,
-      barW,
-      barH,
-      Math.round(getDebugCfg('battleColorShield')),
-      stat.isTowerEnemyUnit ? 0 : (stat.shield / maxStatValue),
-    )
+    view.shieldFill.clear()
   }
 
   private setDamageStatsTab(tab: 'player' | 'enemy', battlePresentationMs: number, engine: BattleEngineLike | null): void {
@@ -473,7 +572,18 @@ export class BattleDamageStats {
   // ---- public API ----
 
   addDamage(sourceItemId: string, side: 'player' | 'enemy', amount: number, engine: BattleEngineLike | null): void {
-    const stat = this.ensureBattleStatEntry(sourceItemId, side, engine)
+    let stat: ItemBattleStat | null
+    if (side === 'player') {
+      stat = this.resolvePlayerClassStatBySource(sourceItemId, engine)
+      if (!stat) {
+        const fallback = this.ensureBattleStatEntry(sourceItemId, side, engine)
+        const key = this.toPlayerClassKeyFromDefId(fallback.defId)
+        stat = key ? this.ensurePlayerClassStatEntry(key) : null
+      }
+    } else {
+      stat = this.ensureBattleStatEntry(sourceItemId, side, engine)
+    }
+    if (!stat) return
     stat.damage += Math.max(0, amount)
     if (side === 'enemy') {
       stat.triggerCount += 1
@@ -482,6 +592,7 @@ export class BattleDamageStats {
   }
 
   addShield(sourceItemId: string, side: 'player' | 'enemy', amount: number, engine: BattleEngineLike | null): void {
+    if (side === 'player') return
     const stat = this.ensureBattleStatEntry(sourceItemId, side, engine)
     stat.shield += Math.max(0, amount)
     this.damageStatsDirty = true
@@ -494,6 +605,7 @@ export class BattleDamageStats {
     engine: BattleEngineLike | null,
     dedupeWithinTick = false,
   ): void {
+    if (side === 'player') return
     if (!sourceItemId) return
     const add = Math.max(1, Math.round(Number(amount) || 1))
     if (dedupeWithinTick) {
@@ -511,7 +623,9 @@ export class BattleDamageStats {
 
   bootstrapFromBoard(engine: BattleEngineLike | null): void {
     if (!engine) return
+    for (const key of PLAYER_CLASS_KEYS) this.ensurePlayerClassStatEntry(key)
     for (const it of engine.getBoardState().items) {
+      if (it.side === 'player') continue
       this.ensureBattleStatEntry(it.id, it.side, engine, it.defId)
     }
     this.damageStatsDirty = true
@@ -583,14 +697,20 @@ export class BattleDamageStats {
     const bg = new Graphics()
     const w = 116
     const h = TOP_ACTION_BTN_H
-    bg.roundRect(-w / 2, -h / 2, w, h, 14)
-    bg.stroke({ color: 0x96b2ff, width: 2, alpha: 0.95 })
-    bg.fill({ color: 0x1f2945, alpha: 0.9 })
+    const corner = Math.max(10, Math.round(getDebugCfg('gridItemCornerRadius') + 8))
+    bg.roundRect(-w / 2, -h / 2, w, h, corner)
+    bg.stroke({ color: 0x44aaff, width: 3 })
+    bg.fill({ color: 0x44aaff, alpha: 0.18 })
     con.addChild(bg)
 
     this.statsBtnText = new Text({
       text: '统计',
-      style: { fontSize: 26, fill: 0xd9e4ff, fontFamily: 'Arial', fontWeight: 'bold' },
+      style: {
+        fontSize: getGameCfg().textSizes.phaseButtonLabel,
+        fill: 0x44aaff,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+      },
     })
     this.statsBtnText.anchor.set(0.5)
     con.addChild(this.statsBtnText)
@@ -604,6 +724,7 @@ export class BattleDamageStats {
       e.stopPropagation()
       onToggle()
     })
+    this.damageStatsTopLeftBtn = con
     root.addChild(con)
     return con
   }
@@ -649,6 +770,10 @@ export class BattleDamageStats {
     return this.damageStatsPanelVisible
   }
 
+  getTopLeftButton(): Container | null {
+    return this.damageStatsTopLeftBtn
+  }
+
   tick(battlePresentationMs: number, engine: BattleEngineLike | null): void {
     if (this.damageStatsPanel?.visible) {
       this.refreshDamageStatsPanel(battlePresentationMs, engine)
@@ -670,6 +795,7 @@ export class BattleDamageStats {
     this.damageStatsRowsCon = null
     this.damageStatsTabPlayerBtn = null
     this.damageStatsTabEnemyBtn = null
+    this.damageStatsTopLeftBtn = null
     this.statsBtnText = null
     this.damageStatsRowViews = []
     this.damageStatsRowIconDefIds = []

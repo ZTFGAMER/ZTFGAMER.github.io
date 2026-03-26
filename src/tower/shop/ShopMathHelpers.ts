@@ -58,11 +58,23 @@ export function toVisualTier(tier?: TierKey, star?: 1 | 2): string | undefined {
 // ── 坐标 / 布局计算 ───────────────────────────────────────────
 
 export function getDayActiveCols(day: number): number {
-  if (getConfig().towerDefenseRules?.enabled === true) return 6
+  if (getConfig().towerDefenseRules?.enabled === true) return getTowerBattleColsByDay(day)
   const slots = getConfig().dailyBattleSlots
   if (day <= 2) return slots[0] ?? 4
   if (day <= 4) return slots[1] ?? 5
   return slots[2] ?? 6
+}
+
+export function getTowerBattleColsByDay(day: number): number {
+  const d = Math.max(1, Math.round(day || 1))
+  const plan = getConfig().towerDefenseRules?.playerZoneSizeByDay ?? []
+  let resolved = 6
+  for (const step of plan) {
+    const stepDay = Math.max(1, Math.round(step.day || 1))
+    if (d < stepDay) continue
+    resolved = Math.max(1, Math.min(6, Math.round(step.cols || resolved)))
+  }
+  return resolved
 }
 
 export function getShopItemScale(): number {
@@ -92,9 +104,14 @@ export function getBackpackRowsByDay(day: number): number {
 
 export function getTowerBattleRowsByDay(day: number): number {
   const d = Math.max(1, Math.round(day || 1))
-  if (d <= 3) return 1
-  if (d <= 8) return 2
-  return 3
+  const plan = getConfig().towerDefenseRules?.playerZoneSizeByDay ?? []
+  let resolved = 3
+  for (const step of plan) {
+    const stepDay = Math.max(1, Math.round(step.day || 1))
+    if (d < stepDay) continue
+    resolved = Math.max(1, Math.min(3, Math.round(step.rows || resolved)))
+  }
+  return resolved
 }
 
 export function getAdjustedBattleZoneY(day: number): number {

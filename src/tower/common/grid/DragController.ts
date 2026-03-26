@@ -187,7 +187,11 @@ export class DragController {
   // ---- 事件处理 ----
 
   private onDown(instanceId: string, e: FederatedPointerEvent): void {
-    if (!this.enabled) return
+    if (!this.enabled) {
+      e.stopPropagation()
+      this.findZoneOf(instanceId)?.view.onTap(instanceId)
+      return
+    }
     e.stopPropagation()
     this.reset()
     this.activeId = instanceId
