@@ -1,5 +1,22 @@
 # 大巴扎 — 开发进度记录
 
+## 验收追加修正（2026-03-26，词条档位错位：星级映射口径修正）
+
+- 复现反馈：白银 Lv4 读第5档；黄金/钻石整体前读1档。
+- 根因：
+  - `tierStarToTowerLevel()` 之前忽略了 `Silver/Gold` 的 `star`；
+  - 旧快照里存在 `Silver#2/Gold#2` 时会被映射到低一级，导致词条档位整体错位。
+- 修正：
+  - `src/tower/battle/BattleScene.ts`
+    - `tierStarToTowerLevel()` 改为星级参与映射：
+      - `Bronze#1/#2 -> Lv1/Lv2`
+      - `Silver#1/#2 -> Lv2/Lv3`
+      - `Gold#1/#2 -> Lv3/Lv4`
+      - `Diamond#1/#2 -> Lv4/Lv5`
+    - `buildEditableSnapshotFromBoard()` 改为仅按 `tier/tierStar` 计算等级，避免历史 `meta.level` 污染。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测白银 Lv4 与黄金/钻石词条档位是否回正。
+
 ## 验收追加修正（2026-03-26，技能词条“错一档”最终回灌修复）
 
 - 现象复盘：白银 Lv4 读第5档、黄金/钻石词条前读1档。

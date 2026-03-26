@@ -1865,11 +1865,10 @@ function levelToTowerTierStar(level: 1 | 2 | 3 | 4 | 5): { tier: TierKey; star: 
 }
 
 function tierStarToTowerLevel(tier: TierKey, star: 1 | 2): 1 | 2 | 3 | 4 | 5 {
-  if (tier === 'Bronze') return 1
-  if (tier === 'Silver') return 2
-  if (tier === 'Gold') return 3
-  if (tier === 'Diamond' && star === 1) return 4
-  return 5
+  if (tier === 'Bronze') return star >= 2 ? 2 : 1
+  if (tier === 'Silver') return star >= 2 ? 3 : 2
+  if (tier === 'Gold') return star >= 2 ? 4 : 3
+  return star >= 2 ? 5 : 4
 }
 
 function getTowerAllowedLevelsByStartingTier(tier: TierKey): Array<1 | 2 | 3 | 4 | 5> {
@@ -1884,10 +1883,7 @@ function buildEditableSnapshotFromBoard(day: number): ReturnType<typeof getBattl
   const playerShield = Math.max(0, Math.round(engine?.getBoardState().player.shield ?? enteredSnapshot?.playerShield ?? 0))
   const entities = editableSystem.getCombatEntities(6).map((it) => {
     const meta = editableMeta.get(it.instanceId)
-    const level = Math.max(
-      1,
-      Math.min(5, Number(meta?.level) || tierStarToTowerLevel((meta?.tier ?? 'Bronze') as TierKey, (meta?.tierStar ?? 1) as 1 | 2)),
-    ) as 1 | 2 | 3 | 4 | 5
+    const level = tierStarToTowerLevel((meta?.tier ?? 'Bronze') as TierKey, (meta?.tierStar ?? 1) as 1 | 2)
     const byLevel = levelToTowerTierStar(level)
     const tier = (byLevel?.tier ?? meta?.tier ?? 'Bronze') as TierKey
     const tierStar = (byLevel?.star ?? meta?.tierStar ?? 1) as 1 | 2
