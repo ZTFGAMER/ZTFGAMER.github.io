@@ -45,7 +45,7 @@ import { pickCrossSynthesisResultWithCycle } from '@/tower/shop/systems/ShopSynt
 import { getArchetypeSortOrder } from '@/tower/shop/systems/ShopAutoPackManager'
 import {
   TOWER_BATTLE_SKILL_DEFS,
-  getHighestArchetypeByTotalItemLevel,
+  getTopArchetypesByTotalItemLevel,
   getTowerBattleSkillBuyCost as calcTowerBattleSkillBuyCost,
   getTowerBattleSkillCountByArchetype,
   pickTowerBattleSkillChoices,
@@ -2285,13 +2285,16 @@ function serializeTowerBattleSkillPickCounts(): Record<string, number> {
 function getTowerBattleItemIconSet(): Set<string> {
   const out = new Set<string>()
   for (const meta of editableMeta.values()) {
-    const id = String(meta?.defId || '').trim()
-    if (id) out.add(id)
+    const defId = String(meta?.defId || '').trim()
+    if (!defId) continue
+    const def = getItemDefById(defId)
+    const icon = String(def?.icon || '').trim()
+    if (icon) out.add(icon)
   }
   return out
 }
 
-function getTowerHighestArchetypeForSkillDraft(): TowerSkillArchetype {
+function getTowerTopArchetypesForSkillDraft(): [TowerSkillArchetype, TowerSkillArchetype] {
   const metaLite = new Map<string, { defId: string; level?: number; tier?: string; tierStar?: 1 | 2 }>()
   for (const [instanceId, meta] of editableMeta.entries()) {
     metaLite.set(instanceId, {
@@ -2301,15 +2304,19 @@ function getTowerHighestArchetypeForSkillDraft(): TowerSkillArchetype {
       tierStar: meta.tierStar,
     })
   }
-  return getHighestArchetypeByTotalItemLevel(metaLite)
+  const sorted = getTopArchetypesByTotalItemLevel(metaLite)
+  const top1 = sorted[0] ?? '忍者'
+  const top2 = sorted[1] ?? top1
+  return [top1, top2]
 }
 
 function pickTowerBattleSkillDraftChoices(): TowerBattleSkillDef[] {
-  const guaranteed = getTowerHighestArchetypeForSkillDraft()
+  const [guaranteed, secondGuaranteed] = getTowerTopArchetypesForSkillDraft()
   const itemIcons = getTowerBattleItemIconSet()
   return pickTowerBattleSkillChoices(
     towerBattleSkillPickCounts,
     guaranteed,
+    secondGuaranteed,
     itemIcons,
     () => nextBattleRandom('tower_skill_draft_choice'),
   )
@@ -2371,28 +2378,32 @@ function getTowerSkillDisplayName(id: string, name: string): string {
   const map: Record<string, string> = {
     td_skill_ninja_damage: '手里剑\n伤害',
     td_skill_ninja_cd: '手里剑\n间隔',
-    td_skill_ninja_super_multicast: '手里剑\n超级连发',
-    td_skill_ninja_super_bounty: '手里剑\n超级赏金',
-    td_skill_ninja_super_heavy: '手里剑\n超级重刃',
     td_skill_ninja_super_bounce: '手里剑\n超级弹射',
+    td_skill_ninja_super_multicast: '手里剑\n超级连发',
+    td_skill_ninja_super_heavy: '手里剑\n超级重型',
+    td_skill_ninja_super_crystal: '手里剑\n超级水晶',
+    td_skill_ninja_super_split: '手里剑\n超级分裂',
     td_skill_archer_damage: '弓箭\n伤害',
     td_skill_archer_cd: '弓箭\n间隔',
+    td_skill_archer_super_high_damage: '弓箭\n超级高伤',
     td_skill_archer_super_multicast: '弓箭\n超级连发',
-    td_skill_archer_super_zero: '弓箭\n超级零射',
-    td_skill_archer_super_poison: '弓箭\n超级剧毒',
+    td_skill_archer_super_poison: '弓箭\n超级中毒',
     td_skill_archer_super_sniper: '弓箭\n超级狙击',
+    td_skill_archer_super_blood: '弓箭\n超级嗜血',
     td_skill_mage_damage: '冰锥\n伤害',
     td_skill_mage_cd: '冰锥\n间隔',
-    td_skill_mage_super_multicast: '冰锥\n超级减速',
+    td_skill_mage_super_slow: '冰锥\n超级减速',
     td_skill_mage_super_multitarget: '冰锥\n超级多发',
     td_skill_mage_super_freeze: '冰锥\n超级冰冻',
     td_skill_mage_super_explode: '冰锥\n超级爆炸',
+    td_skill_mage_super_counter: '冰锥\n超级反击',
     td_skill_warrior_damage: '长剑\n伤害',
     td_skill_warrior_cd: '长剑\n间隔',
-    td_skill_warrior_super_multicast: '长剑\n超级连发',
+    td_skill_warrior_super_range: '长剑\n超级伸缩',
     td_skill_warrior_super_guard: '长剑\n超级守护',
     td_skill_warrior_super_bleed: '长剑\n超级重伤',
     td_skill_warrior_super_dual: '长剑\n超级双持',
+    td_skill_warrior_super_counter: '长剑\n超级反击',
   }
   const mapped = map[id]
   if (mapped) return mapped
@@ -2404,30 +2415,34 @@ function getTowerSkillDisplayName(id: string, name: string): string {
 
 function getTowerSkillDetailById(id: string): string {
   const map: Record<string, string> = {
-    td_skill_ninja_damage: '所有手里剑伤害+10%',
-    td_skill_ninja_cd: '所有手里剑间隔缩短5%',
-    td_skill_ninja_super_multicast: '所有手里剑连发次数+1，伤害-20%',
-    td_skill_ninja_super_bounty: '所有手里剑击败敌人时，额外获得30%金币',
+    td_skill_ninja_damage: '所有手里剑伤害+20%',
+    td_skill_ninja_cd: '所有手里剑间隔缩短10%',
+    td_skill_ninja_super_bounce: '所有手里剑弹射次数额外+2',
+    td_skill_ninja_super_multicast: '所有手里剑连发次数+1',
     td_skill_ninja_super_heavy: '手里剑命中减速目标造成双倍伤害',
-    td_skill_ninja_super_bounce: '水晶手里剑弹射后伤害增加10%',
-    td_skill_archer_damage: '所有弓箭伤害+10%',
-    td_skill_archer_cd: '所有弓箭间隔缩短5%',
-    td_skill_archer_super_multicast: '所有弓箭连发次数+1，伤害-20%',
-    td_skill_archer_super_zero: '所有弓箭距离减半，伤害+100%',
-    td_skill_archer_super_poison: '所有弓箭中毒按目标最大生命值比例结算（比例不变）',
+    td_skill_ninja_super_crystal: '水晶手里剑弹射后伤害增加10%',
+    td_skill_ninja_super_split: '分裂手里剑分裂后伤害增加50%',
+    td_skill_archer_damage: '所有弓箭伤害+20%',
+    td_skill_archer_cd: '所有弓箭间隔缩短10%',
+    td_skill_archer_super_high_damage: '所有弓箭伤害额外+5',
+    td_skill_archer_super_multicast: '所有弓箭连发次数+1',
+    td_skill_archer_super_poison: '所有弓箭中毒按目标最大生命值百分比结算',
     td_skill_archer_super_sniper: '狙击弓箭效果翻倍',
-    td_skill_mage_damage: '所有冰锥伤害+10%',
-    td_skill_mage_cd: '所有冰锥间隔缩短5%',
-    td_skill_mage_super_multicast: '所有减速效果提升为减速75%',
+    td_skill_archer_super_blood: '嗜血弓箭效果翻倍',
+    td_skill_mage_damage: '所有冰锥伤害+20%',
+    td_skill_mage_cd: '所有冰锥间隔缩短10%',
+    td_skill_mage_super_slow: '冰锥减速效果提升为减速66%',
     td_skill_mage_super_multitarget: '所有冰锥同时发射目标+2',
     td_skill_mage_super_freeze: '冰冻持续时间翻倍',
-    td_skill_mage_super_explode: '爆炸冰锥范围翻倍',
-    td_skill_warrior_damage: '所有长剑伤害+10%',
-    td_skill_warrior_cd: '所有长剑间隔缩短5%',
-    td_skill_warrior_super_multicast: '所有长剑连发次数+1，伤害-20%',
+    td_skill_mage_super_explode: '爆炸冰锥半径提升50%（6m→9m）',
+    td_skill_mage_super_counter: '反击冰锥受击获得的充能值翻倍',
+    td_skill_warrior_damage: '所有长剑伤害+20%',
+    td_skill_warrior_cd: '所有长剑间隔缩短10%',
+    td_skill_warrior_super_range: '所有长剑攻击距离+3',
     td_skill_warrior_super_guard: '护盾值低于50时不自动下降',
     td_skill_warrior_super_bleed: '长剑重伤效果翻倍',
     td_skill_warrior_super_dual: '双持长剑获得护盾翻倍',
+    td_skill_warrior_super_counter: '反击长剑反弹伤害翻倍',
   }
   return map[id] ?? '强化对应职业技能效果'
 }

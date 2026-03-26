@@ -157,20 +157,25 @@ export class TowerDefenseEngine implements BattleEngineLike {
   private bloodBowComboByTargetId = new Map<string, number>()
   private playerShieldDecayCarryMs = 0
   private towerSkillPickCounts = new Map<string, number>()
-  private towerNinjaBonusKillGoldPct = 0
   private towerNinjaVsSlowedMul = 1
-  private towerNinjaBounceNoDecayBonusPct = 0
-  private towerArcherPoisonMul = 1
+  private towerNinjaCrystalBounceBonusPct = 0
+  private towerNinjaSuperBounceExtraCount = 0
+  private towerNinjaSplitDamageMul = 1
+  private towerArcherPoisonUseMaxHp = false
   private towerArcherSniperBonusMul = 1
-  private towerArcherZeroShotEnabled = false
+  private towerArcherFlatDamageBonus = 0
+  private towerArcherBloodBonusMul = 1
   private towerMageFreezeChanceBonusPct = 0
   private towerMageFreezeDurationMul = 1
   private towerSlowSpeedMul = 0.5
-  private towerMageExplosionRadiusMeters = 5
+  private towerMageExplosionRadiusMeters = 6
+  private towerMageCounterChargeMul = 1
   private towerWarriorShieldNoDecayBelow = 0
   private towerWarriorBleedMulNormal = 1.5
   private towerWarriorBleedMulBoss = 1.2
   private towerWarriorDualShieldGainMul = 1
+  private towerWarriorRangeBonusMeters = 0
+  private towerWarriorReflectMul = 1
 
   start(snapshot: BattleSnapshotBundle): void {
     this.day = Math.max(1, Math.round(snapshot.day || 1))
@@ -354,8 +359,8 @@ export class TowerDefenseEngine implements BattleEngineLike {
         while (enemy.poisonTickCarryMs >= 1000 && enemy.hp > 0 && enemy.poisonMs > 0) {
           enemy.poisonTickCarryMs -= 1000
           const rateBase = this.isBossEnemyUnit(enemy) ? 0.01 : 0.05
-          const rate = rateBase * Math.max(1, this.towerArcherPoisonMul)
-          const poisonDamageBaseHp = this.towerArcherPoisonMul > 1
+          const rate = rateBase
+          const poisonDamageBaseHp = this.towerArcherPoisonUseMaxHp
             ? Math.max(1, enemy.maxHp)
             : Math.max(1, enemy.hp)
           const poisonDamage = Math.max(1, Math.round(poisonDamageBaseHp * rate))
@@ -480,61 +485,66 @@ export class TowerDefenseEngine implements BattleEngineLike {
     this.playerNinjaDamagePenaltyPct = 0
     this.playerArcherDamagePenaltyPct = 0
     this.playerWarriorDamagePenaltyPct = 0
-    this.towerNinjaBonusKillGoldPct = 0
     this.towerNinjaVsSlowedMul = 1
-    this.towerNinjaBounceNoDecayBonusPct = 0
-    this.towerArcherPoisonMul = 1
+    this.towerNinjaCrystalBounceBonusPct = 0
+    this.towerNinjaSuperBounceExtraCount = 0
+    this.towerNinjaSplitDamageMul = 1
+    this.towerArcherPoisonUseMaxHp = false
     this.towerArcherSniperBonusMul = 1
-    this.towerArcherZeroShotEnabled = false
+    this.towerArcherFlatDamageBonus = 0
+    this.towerArcherBloodBonusMul = 1
     this.towerMageFreezeChanceBonusPct = 0
     this.towerMageFreezeDurationMul = 1
     this.towerSlowSpeedMul = 0.5
-    this.towerMageExplosionRadiusMeters = 5
+    this.towerMageExplosionRadiusMeters = 6
+    this.towerMageCounterChargeMul = 1
     this.towerWarriorShieldNoDecayBelow = 0
     this.towerWarriorBleedMulNormal = 1.5
     this.towerWarriorBleedMulBoss = 1.2
     this.towerWarriorDualShieldGainMul = 1
+    this.towerWarriorRangeBonusMeters = 0
+    this.towerWarriorReflectMul = 1
 
     const skillCount = (id: string): number => Math.max(0, Math.round(this.towerSkillPickCounts.get(id) ?? 0))
     const hasSkill = (id: string): boolean => skillCount(id) > 0
     const itemIconSet = new Set(this.playerItems.map((it) => this.getItemIcon(it)))
 
-    this.towerNinjaBonusKillGoldPct = hasSkill('td_skill_ninja_super_bounty') ? 30 : 0
     this.towerNinjaVsSlowedMul = (hasSkill('td_skill_ninja_super_heavy') && itemIconSet.has('toweritem4')) ? 2 : 1
-    this.towerNinjaBounceNoDecayBonusPct = (hasSkill('td_skill_ninja_super_bounce') && itemIconSet.has('toweritem5')) ? 10 : 0
+    this.towerNinjaSuperBounceExtraCount = (hasSkill('td_skill_ninja_super_bounce') && itemIconSet.has('toweritem2')) ? 2 : 0
+    this.towerNinjaCrystalBounceBonusPct = (hasSkill('td_skill_ninja_super_crystal') && itemIconSet.has('toweritem5')) ? 10 : 0
+    this.towerNinjaSplitDamageMul = (hasSkill('td_skill_ninja_super_split') && itemIconSet.has('toweritem6')) ? 1.5 : 1
 
-    this.towerArcherPoisonMul = (hasSkill('td_skill_archer_super_poison') && itemIconSet.has('toweritem10')) ? 2 : 1
+    this.towerArcherFlatDamageBonus = (hasSkill('td_skill_archer_super_high_damage') && itemIconSet.has('toweritem8')) ? 5 : 0
+    this.towerArcherPoisonUseMaxHp = hasSkill('td_skill_archer_super_poison') && itemIconSet.has('toweritem10')
     this.towerArcherSniperBonusMul = (hasSkill('td_skill_archer_super_sniper') && itemIconSet.has('toweritem11')) ? 2 : 1
-    this.towerArcherZeroShotEnabled = hasSkill('td_skill_archer_super_zero')
+    this.towerArcherBloodBonusMul = (hasSkill('td_skill_archer_super_blood') && itemIconSet.has('toweritem12')) ? 2 : 1
 
-    this.towerSlowSpeedMul = (hasSkill('td_skill_mage_super_multicast') && itemIconSet.has('toweritem13')) ? 0.25 : 0.5
+    this.towerSlowSpeedMul = (hasSkill('td_skill_mage_super_slow') && itemIconSet.has('toweritem14')) ? 0.34 : 0.5
     this.towerMageFreezeChanceBonusPct = 0
     this.towerMageFreezeDurationMul = (hasSkill('td_skill_mage_super_freeze') && itemIconSet.has('toweritem16')) ? 2 : 1
-    this.towerMageExplosionRadiusMeters = (hasSkill('td_skill_mage_super_explode') && itemIconSet.has('toweritem17')) ? 9 : 5
+    this.towerMageExplosionRadiusMeters = (hasSkill('td_skill_mage_super_explode') && itemIconSet.has('toweritem17')) ? 9 : 6
+    this.towerMageCounterChargeMul = (hasSkill('td_skill_mage_super_counter') && itemIconSet.has('toweritem18')) ? 2 : 1
 
-    this.towerWarriorShieldNoDecayBelow = hasSkill('td_skill_warrior_super_guard') ? 50 : 0
+    this.towerWarriorRangeBonusMeters = (hasSkill('td_skill_warrior_super_range') && itemIconSet.has('toweritem20')) ? 3 : 0
+    this.towerWarriorShieldNoDecayBelow = (hasSkill('td_skill_warrior_super_guard') && itemIconSet.has('toweritem22')) ? 50 : 0
     const hasSuperBleed = hasSkill('td_skill_warrior_super_bleed') && itemIconSet.has('toweritem21')
     this.towerWarriorBleedMulNormal = hasSuperBleed ? 2 : 1.5
     this.towerWarriorBleedMulBoss = hasSuperBleed ? 1.4 : 1.2
     this.towerWarriorDualShieldGainMul = (hasSkill('td_skill_warrior_super_dual') && itemIconSet.has('toweritem23')) ? 2 : 1
+    this.towerWarriorReflectMul = (hasSkill('td_skill_warrior_super_counter') && itemIconSet.has('toweritem24')) ? 2 : 1
 
-    const ninjaDamagePct = Math.min(50, skillCount('td_skill_ninja_damage') * 10)
-    const archerDamagePct = Math.min(50, skillCount('td_skill_archer_damage') * 10)
-    const mageDamagePct = Math.min(50, skillCount('td_skill_mage_damage') * 10)
-    const warriorDamagePct = Math.min(50, skillCount('td_skill_warrior_damage') * 10)
-    const ninjaCdReducePct = Math.min(25, skillCount('td_skill_ninja_cd') * 5)
-    const archerCdReducePct = Math.min(25, skillCount('td_skill_archer_cd') * 5)
-    const mageCdReducePct = Math.min(25, skillCount('td_skill_mage_cd') * 5)
-    const warriorCdReducePct = Math.min(25, skillCount('td_skill_warrior_cd') * 5)
+    const ninjaDamagePct = Math.min(100, skillCount('td_skill_ninja_damage') * 20)
+    const archerDamagePct = Math.min(100, skillCount('td_skill_archer_damage') * 20)
+    const mageDamagePct = Math.min(100, skillCount('td_skill_mage_damage') * 20)
+    const warriorDamagePct = Math.min(100, skillCount('td_skill_warrior_damage') * 20)
+    const ninjaCdReducePct = Math.min(50, skillCount('td_skill_ninja_cd') * 10)
+    const archerCdReducePct = Math.min(50, skillCount('td_skill_archer_cd') * 10)
+    const mageCdReducePct = Math.min(50, skillCount('td_skill_mage_cd') * 10)
+    const warriorCdReducePct = Math.min(50, skillCount('td_skill_warrior_cd') * 10)
 
     const ninjaSuperMulticast = hasSkill('td_skill_ninja_super_multicast') ? 1 : 0
     const archerSuperMulticast = hasSkill('td_skill_archer_super_multicast') ? 1 : 0
     const mageSuperExtraTargets = hasSkill('td_skill_mage_super_multitarget') ? 2 : 0
-    const warriorSuperMulticast = hasSkill('td_skill_warrior_super_multicast') ? 1 : 0
-
-    if (ninjaSuperMulticast > 0) this.playerNinjaDamagePenaltyPct += 20
-    if (archerSuperMulticast > 0) this.playerArcherDamagePenaltyPct += 20
-    if (warriorSuperMulticast > 0) this.playerWarriorDamagePenaltyPct += 20
 
     const applyPercentDamage = (base: number, pct: number): number => {
       if (pct <= 0 || base <= 0) return base
@@ -557,8 +567,8 @@ export class TowerDefenseEngine implements BattleEngineLike {
       } else if (arch === '弓手') {
         aura.baseStats.damage = applyPercentDamage(aura.baseStats.damage, archerDamagePct)
         aura.baseStats.cooldownMs = applyReduceCooldown(aura.baseStats.cooldownMs, archerCdReducePct)
-        if (this.towerArcherZeroShotEnabled && aura.baseStats.damage > 0) {
-          aura.baseStats.damage = Math.max(1, Math.round(aura.baseStats.damage * 2))
+        if (aura.baseStats.damage > 0 && this.towerArcherFlatDamageBonus > 0) {
+          aura.baseStats.damage = Math.max(1, Math.round(aura.baseStats.damage + this.towerArcherFlatDamageBonus))
         }
         if (aura.baseStats.damage > 0 && archerSuperMulticast > 0) {
           aura.baseStats.multicast = Math.max(1, aura.baseStats.multicast + archerSuperMulticast)
@@ -572,9 +582,6 @@ export class TowerDefenseEngine implements BattleEngineLike {
       } else if (arch === '剑士') {
         aura.baseStats.damage = applyPercentDamage(aura.baseStats.damage, warriorDamagePct)
         aura.baseStats.cooldownMs = applyReduceCooldown(aura.baseStats.cooldownMs, warriorCdReducePct)
-        if (aura.baseStats.damage > 0 && warriorSuperMulticast > 0) {
-          aura.baseStats.multicast = Math.max(1, aura.baseStats.multicast + warriorSuperMulticast)
-        }
       }
 
       if (icon === 'toweritem8') {
@@ -1429,18 +1436,13 @@ export class TowerDefenseEngine implements BattleEngineLike {
       }
     }
     if (baseDistance <= 0) return 0
-    if (this.resolvePlayerAttackType(item) !== 'melee_sweep') {
-      if (this.towerArcherZeroShotEnabled && itemArchetype(def) === '弓手') {
-        return Math.max(1, Math.round(baseDistance * 0.5))
-      }
-      return baseDistance
-    }
+    if (this.resolvePlayerAttackType(item) !== 'melee_sweep') return baseDistance
     let rangeBonusMeters = 0
     for (const one of this.playerItems) {
       if (this.getItemIcon(one) !== 'toweritem20') continue
       rangeBonusMeters += Math.max(0, this.resolveNumericValueFromItemLine(one, /长剑攻击距离\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/))
     }
-    return Math.max(0, Math.round(baseDistance + rangeBonusMeters * meterToDistance))
+    return Math.max(0, Math.round(baseDistance + (rangeBonusMeters + this.towerWarriorRangeBonusMeters) * meterToDistance))
   }
 
   private resolvePlayerItemUseDamageBonus(item: CombatItemRunner): number {
@@ -1574,7 +1576,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
       totalPct += Math.max(0, this.resolveNumericValueFromItemLine(one, /护盾值\s*([+\-]?\d+(?:\.\d+)?(?:%?[\/|][+\-]?\d+(?:\.\d+)?)*%?)\s*%?\s*的反伤/))
     }
     if (totalPct <= 0) return
-    const reflectDamage = Math.max(0, Math.round(shieldNow * totalPct / 100))
+    const reflectDamage = Math.max(0, Math.round(shieldNow * totalPct / 100 * this.towerWarriorReflectMul))
     if (reflectDamage <= 0) return
     const source = spikedShields[0]
     if (!source || attacker.hp <= 0) return
@@ -1587,7 +1589,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
     this.playerBounceDamageBonusPerHopByItemId.clear()
     this.playerBounceDamageFactorByItemId.clear()
 
-    let extraBounceCount = 0
+    let extraBounceCount = this.towerNinjaSuperBounceExtraCount
     for (const one of this.getPlayerItemsByIcon('toweritem2')) {
       extraBounceCount += Math.max(0, Math.round(this.resolveNumericValueFromItemLine(one, /弹射次数\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/)))
     }
@@ -1605,7 +1607,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
       this.playerBounceCountByItemId.set(item.id, Math.max(0, totalBounce))
       this.playerBounceDamageBonusPerHopByItemId.set(item.id, 0)
       const bounceFactor = hasNoDecayBounce
-        ? (1 + Math.max(0, this.towerNinjaBounceNoDecayBonusPct) / 100)
+        ? (1 + Math.max(0, this.towerNinjaCrystalBounceBonusPct) / 100)
         : 0.7
       this.playerBounceDamageFactorByItemId.set(item.id, isNinjaDamage ? bounceFactor : 1)
       void icon
@@ -2021,7 +2023,10 @@ export class TowerDefenseEngine implements BattleEngineLike {
       const decayFactor = Math.max(0, this.playerBounceDamageFactorByItemId.get(source.id) ?? 1)
       const bounced = Math.max(0, Math.round(currentHit.damage * decayFactor))
       const bonus = Math.max(0, Math.round(currentHit.bounceDamageBonusPerHop * nextHop))
-      const nextDamage = Math.max(0, bounced + bonus)
+      let nextDamage = Math.max(0, bounced + bonus)
+      if (nextHop === 1 && currentHit.firstBounceSplitBonus > 0 && this.towerNinjaSplitDamageMul > 1) {
+        nextDamage = Math.max(0, Math.round(nextDamage * this.towerNinjaSplitDamageMul))
+      }
       if (nextDamage <= 0) continue
       EventBus.emit('battle:item_fire', {
         itemId: source.defId,
@@ -2156,7 +2161,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
     if (sourceArch === '弓手' && this.getPlayerItemsByIcon('toweritem12').length > 0) {
       const nextComboCount = (this.bloodBowComboByTargetId.get(enemy.id) ?? 0) + 1
       this.bloodBowComboByTargetId.set(enemy.id, nextComboCount)
-      const bonusPerHit = this.resolveArcherComboBonusPerHit()
+      const bonusPerHit = Math.max(0, Math.round(this.resolveArcherComboBonusPerHit() * this.towerArcherBloodBonusMul))
       const comboBonus = Math.max(0, nextComboCount - 1) * bonusPerHit
       if (comboBonus > 0) finalDamage += comboBonus
     }
@@ -2186,9 +2191,9 @@ export class TowerDefenseEngine implements BattleEngineLike {
       EventBus.emit('battle:unit_die', {
         unitId: enemy.id,
         side: 'enemy',
-        bonusGoldPct: sourceArch === '忍者' ? this.towerNinjaBonusKillGoldPct : 0,
-      })
-    }
+          bonusGoldPct: 0,
+        })
+      }
   }
 
   private applyEnemyDamageToPlayer(enemy: EnemyUnit, damageRaw?: number): void {
@@ -2224,6 +2229,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
         chargeMs += Math.round(sec * 1000)
       }
       if (chargeMs <= 0) chargeMs = 1000
+      chargeMs = Math.max(0, Math.round(chargeMs * this.towerMageCounterChargeMul))
       for (const one of this.playerItems) {
         if (itemArchetype(findItemDef(one.defId)) !== '冰法师') continue
         this.addChargeToItem(one, chargeMs)
