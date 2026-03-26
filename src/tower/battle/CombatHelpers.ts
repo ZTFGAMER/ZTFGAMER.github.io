@@ -72,12 +72,10 @@ export function tierIndexFromRaw(def: ItemDef | null, tierRaw: string): number {
     if (tier === 'Diamond') return star >= 2 ? 4 : 3
     return 0
   }
-  const startTier = parseTierName(def.starting_tier || 'Bronze')
-  const startStep = tierToStep(startTier, 1)
   const tier = parseTierName(tierRaw)
   const star = parseTierStar(tierRaw)
   const step = tierToStep(tier, star)
-  return Math.max(0, step - startStep)
+  return Math.max(0, step)
 }
 
 export function ammoFromSkillLines(lines: string[], tierIndex: number): number {

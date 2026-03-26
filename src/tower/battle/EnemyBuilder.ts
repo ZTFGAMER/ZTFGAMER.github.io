@@ -11,7 +11,7 @@ import { getLifeState, getPlayerWinStreakState } from '@/tower/core/RunState'
 import type { CombatItemRunner, EnemyTier, EnemyStar } from './CombatTypes'
 import {
   validCooldown, skillLines, findItemDef, isNeutralItemDef,
-  tierIndexFromRaw, ammoFromSkillLines, multicastFromSkillLines,
+  ammoFromSkillLines, multicastFromSkillLines,
   tierStarToRaw, parseAvailableTiers, getPrimaryArchetypeTag,
   buildQualityScores, makeSeededRng, dailyCurveValue, qualityScoreToTierStar,
   rv, rvBool,
@@ -35,22 +35,34 @@ export function toRunner(entity: BattleSnapshotEntity, _idPrefix: string): Comba
     return n >= 2 ? 2 : 1
   }
   const level = Math.max(1, Math.min(8, Math.round(entity.level ?? 0)))
-  const tierStarFromLevel = qualityScoreToTierStar(level)
+  const tierStarFromLevel: { tier: EnemyTier; star: EnemyStar } = level <= 5
+    ? ((): { tier: EnemyTier; star: EnemyStar } => {
+        if (level <= 1) return { tier: 'Bronze', star: 1 }
+        if (level === 2) return { tier: 'Silver', star: 1 }
+        if (level === 3) return { tier: 'Gold', star: 1 }
+        if (level === 4) return { tier: 'Diamond', star: 1 }
+        return { tier: 'Diamond', star: 2 }
+      })()
+    : qualityScoreToTierStar(level)
   const tierStarFromSnapshot: { tier: EnemyTier; star: EnemyStar } = {
     tier: hasExplicitTier ? parseTierKey(explicitTierRaw) : 'Bronze',
     star: entity.tierStar === 2 ? 2 : (hasExplicitTier ? parseTierStar(explicitTierRaw) : 1),
   }
-  const tierStarResolved = hasExplicitTier
-    ? tierStarFromSnapshot
-    : (entity.level ? tierStarFromLevel : tierStarFromSnapshot)
+  const tierStarResolved = entity.level
+    ? tierStarFromLevel
+    : (hasExplicitTier ? tierStarFromSnapshot : tierStarFromLevel)
   const tierStar: 1 | 2 = tierStarResolved.star
   const tierRaw = `${tierStarResolved.tier}#${tierStarResolved.star}`
-  const snapBase = entity.baseStats
-  const tierStats = def ? resolveItemTierBaseStats(def, tierRaw) : null
-  const tierIndex = tierIndexFromRaw(def, tierRaw)
+  const level5 = Math.max(1, Math.min(5, Number(entity.level) || (
+    tierStarResolved.tier === 'Diamond'
+      ? (tierStarResolved.star === 2 ? 5 : 4)
+      : (tierStarResolved.tier === 'Gold' ? 3 : (tierStarResolved.tier === 'Silver' ? 2 : 1))
+  )))
+  const tierStats = def ? resolveItemTierBaseStats(def, tierRaw, level5) : null
+  const tierIndex = Math.max(0, Math.min(4, level5 - 1))
   const lines = skillLines(def)
   const ammoMax = ammoFromSkillLines(lines, tierIndex)
-  const baseMulticast = Math.max(1, Math.round(snapBase?.multicast ?? tierStats?.multicast ?? def?.multicast ?? 1))
+  const baseMulticast = Math.max(1, Math.round(tierStats?.multicast ?? def?.multicast ?? 1))
   const parsedMulticast = multicastFromSkillLines(lines, tierIndex, baseMulticast)
   const permanentBonus = ('permanentDamageBonus' in entity && typeof entity.permanentDamageBonus === 'number')
     ? Math.max(0, entity.permanentDamageBonus)
@@ -60,14 +72,14 @@ export function toRunner(entity: BattleSnapshotEntity, _idPrefix: string): Comba
     side: 'player',
     defId: entity.defId,
     baseStats: {
-      cooldownMs: validCooldown(snapBase?.cooldownMs ?? tierStats?.cooldownMs ?? def?.cooldown ?? 0),
-      damage: Math.max(0, snapBase?.damage ?? ((tierStats?.damage ?? def?.damage ?? 0) + permanentBonus)),
-      heal: Math.max(0, snapBase?.heal ?? tierStats?.heal ?? def?.heal ?? 0),
-      shield: Math.max(0, snapBase?.shield ?? tierStats?.shield ?? def?.shield ?? 0),
-      burn: Math.max(0, snapBase?.burn ?? tierStats?.burn ?? def?.burn ?? 0),
-      poison: Math.max(0, snapBase?.poison ?? tierStats?.poison ?? def?.poison ?? 0),
-      regen: Math.max(0, snapBase?.regen ?? tierStats?.regen ?? def?.regen ?? 0),
-      crit: Math.max(0, snapBase?.crit ?? tierStats?.crit ?? def?.crit ?? 0),
+      cooldownMs: validCooldown(tierStats?.cooldownMs ?? def?.cooldown ?? 0),
+      damage: Math.max(0, (tierStats?.damage ?? def?.damage ?? 0) + permanentBonus),
+      heal: Math.max(0, tierStats?.heal ?? def?.heal ?? 0),
+      shield: Math.max(0, tierStats?.shield ?? def?.shield ?? 0),
+      burn: Math.max(0, tierStats?.burn ?? def?.burn ?? 0),
+      poison: Math.max(0, tierStats?.poison ?? def?.poison ?? 0),
+      regen: Math.max(0, tierStats?.regen ?? def?.regen ?? 0),
+      crit: Math.max(0, tierStats?.crit ?? def?.crit ?? 0),
       multicast: Math.max(1, parsedMulticast),
     },
     runtime: {
@@ -90,6 +102,7 @@ export function toRunner(entity: BattleSnapshotEntity, _idPrefix: string): Comba
     col: entity.col,
     row: entity.row,
     size: entity.size,
+    level: level5,
     tier: tierRaw,
     tierStar,
     enchantment: entity.enchantment,
@@ -194,8 +207,9 @@ function buildEnemyRunner(
   star: EnemyStar,
 ): CombatItemRunner {
   const tierRaw = tierStarToRaw(tier, star)
-  const tierStats = resolveItemTierBaseStats(def, tierRaw)
-  const tierIdx = tierIndexFromRaw(def, tierRaw)
+  const level5 = tier === 'Diamond' ? (star === 2 ? 5 : 4) : tier === 'Gold' ? 3 : tier === 'Silver' ? 2 : 1
+  const tierStats = resolveItemTierBaseStats(def, tierRaw, level5)
+  const tierIdx = Math.max(0, Math.min(4, level5 - 1))
   const lines = skillLines(def)
   const ammoMax = ammoFromSkillLines(lines, tierIdx)
   const multicast = multicastFromSkillLines(lines, tierIdx, Math.max(1, Math.round(tierStats.multicast)))
@@ -230,6 +244,7 @@ function buildEnemyRunner(
     col,
     row,
     size,
+    level: level5,
     tier: tierRaw,
     tierStar: star,
   }

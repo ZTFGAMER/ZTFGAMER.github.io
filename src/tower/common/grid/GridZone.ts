@@ -232,31 +232,22 @@ function drawRegularPolygon(g: Graphics, sides: number, radius: number, rotation
   g.closePath()
 }
 
-function tierScoreFromRaw(raw?: string): number {
+function tierStepFromRaw(raw?: string): number {
   const tier = parseTierName(raw ?? 'Bronze')
   const star = parseTierStar(raw)
-  if (tier === 'Bronze') return star === 2 ? 2 : 1
-  if (tier === 'Silver') return star === 2 ? 4 : 3
-  if (tier === 'Gold') return star === 2 ? 6 : 5
-  return star === 2 ? 8 : 7
-}
-
-function startTierScore(raw?: string): number {
-  const tier = parseTierName(raw ?? 'Bronze')
-  if (tier === 'Silver') return 3
-  if (tier === 'Gold') return 5
-  if (tier === 'Diamond') return 7
-  return 1
+  if (tier === 'Silver') return 1
+  if (tier === 'Gold') return 2
+  if (tier === 'Diamond') return star >= 2 ? 4 : 3
+  return 0
 }
 
 function tierIndexFromRaw(item: { available_tiers: string; starting_tier?: string }, tierRaw?: string): number {
-  const score = tierScoreFromRaw(tierRaw)
-  const start = startTierScore(item.starting_tier)
-  return Math.max(0, score - start)
+  void item
+  return Math.max(0, tierStepFromRaw(tierRaw))
 }
 
 function pickTierSeriesValue(series: string, tierIndex: number): number {
-  const parts = series.split('/').map((v) => v.trim()).filter(Boolean)
+  const parts = series.split(/[\/|]/).map((v) => v.trim()).filter(Boolean)
   if (parts.length === 0) return 0
   const idx = Math.max(0, Math.min(parts.length - 1, tierIndex))
   const n = Number(parts[idx])
@@ -404,6 +395,9 @@ export class GridZone extends Container {
   private cornerRadius = 10
   private cellBorderWidth = 1
   private selectedId: string | null = null
+  private cellBgDrawScaleX = 1
+  private cellBgDrawScaleY = 1
+  private cellBgAlpha = 1
   private statBadgeFontSize = getGameConfig().textSizes.itemStatBadge
   private statBadgeMode: ItemBadgeDisplayMode = 'stats'
   private statBadgeOffsetY = 0
@@ -476,44 +470,59 @@ export class GridZone extends Container {
     g.clear()
     const radius = this.cornerRadius
     const borderWidth = this.cellBorderWidth
+    const cellW = CELL_SIZE * this.cellBgDrawScaleX
+    const cellH = CELL_HEIGHT * this.cellBgDrawScaleY
 
     // 背包/战斗区背景：一整块底板（不按每格单独填充）
-    const w = this._activeColCount * CELL_SIZE
-    const h = this._activeRowCount * CELL_HEIGHT
+    const w = this._activeColCount * cellW
+    const h = this._activeRowCount * cellH
     const inset = Math.max(1, Math.ceil(borderWidth / 2))
 
     // 底板 fill
     g.roundRect(inset, inset, Math.max(1, w - inset * 2), Math.max(1, h - inset * 2), Math.max(0, radius - inset))
-    g.fill({ color: 0x2a2a3e })
+    g.fill({ color: 0x2a2a3e, alpha: this.cellBgAlpha })
 
     // 外边框 stroke
     g.roundRect(0, 0, w, h, radius)
-    g.stroke({ color: 0x4a4a6e, width: borderWidth })
+    g.stroke({ color: 0x4a4a6e, width: borderWidth, alpha: this.cellBgAlpha })
 
-    // 内部格线（更弱的分隔线，非圆角）
-    const lineAlpha = 0.35
-    for (let c = 1; c < this._activeColCount; c++) {
-      const x = c * CELL_SIZE
-      g.moveTo(x, 0)
-      g.lineTo(x, h)
-      g.stroke({ color: 0x4a4a6e, width: borderWidth, alpha: lineAlpha })
-    }
-    for (let r = 1; r < this._activeRowCount; r++) {
-      const y = r * CELL_HEIGHT
-      g.moveTo(0, y)
-      g.lineTo(w, y)
-      g.stroke({ color: 0x4a4a6e, width: borderWidth, alpha: lineAlpha })
+    const isResizing = Math.abs(this.cellBgDrawScaleX - 1) > 0.001 || Math.abs(this.cellBgDrawScaleY - 1) > 0.001
+    if (!isResizing) {
+      // 内部格线（更弱的分隔线，非圆角）
+      const lineAlpha = 0.35 * this.cellBgAlpha
+      for (let c = 1; c < this._activeColCount; c++) {
+        const x = c * cellW
+        g.moveTo(x, 0)
+        g.lineTo(x, h)
+        g.stroke({ color: 0x4a4a6e, width: borderWidth, alpha: lineAlpha })
+      }
+      for (let r = 1; r < this._activeRowCount; r++) {
+        const y = r * cellH
+        g.moveTo(0, y)
+        g.lineTo(w, y)
+        g.stroke({ color: 0x4a4a6e, width: borderWidth, alpha: lineAlpha })
+      }
     }
   }
 
   /** 动态更新活跃列数并重绘格子背景 */
   setActiveColCount(cols: number): void {
+    this.cellBgDrawScaleX = 1
+    this.cellBgDrawScaleY = 1
     this._activeColCount = Math.max(1, Math.min(this.zoneCols, cols))
     this.drawCells()
   }
 
   setActiveRowCount(rows: number): void {
+    this.cellBgDrawScaleX = 1
+    this.cellBgDrawScaleY = 1
     this._activeRowCount = Math.max(1, Math.min(this.zoneRows, rows))
+    this.drawCells()
+  }
+
+  setCellBackgroundScale(scaleX: number, scaleY: number): void {
+    this.cellBgDrawScaleX = Math.max(0.01, scaleX)
+    this.cellBgDrawScaleY = Math.max(0.01, scaleY)
     this.drawCells()
   }
 
@@ -1192,6 +1201,11 @@ export class GridZone extends Container {
 
   setCellBorderWidth(width: number): void {
     this.cellBorderWidth = Math.max(1, width)
+    this.drawCells()
+  }
+
+  setCellBackgroundAlpha(alpha: number): void {
+    this.cellBgAlpha = Math.max(0, Math.min(1, alpha))
     this.drawCells()
   }
 

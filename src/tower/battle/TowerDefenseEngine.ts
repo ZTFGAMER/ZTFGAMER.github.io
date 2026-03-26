@@ -151,6 +151,8 @@ export class TowerDefenseEngine implements BattleEngineLike {
   private playerFirstBounceSplitBonus = 0
   private playerBounceDamageBonusPerHopByItemId = new Map<string, number>()
   private playerBounceDamageFactorByItemId = new Map<string, number>()
+  private playerNinjaDamagePenaltyPct = 0
+  private playerArcherDamagePenaltyPct = 0
   private bloodBowComboByItemId = new Map<string, { targetId: string; count: number }>()
   private playerShieldDecayCarryMs = 0
 
@@ -408,6 +410,8 @@ export class TowerDefenseEngine implements BattleEngineLike {
   }
 
   private applyPassiveAurasOnBattleStart(): void {
+    this.playerNinjaDamagePenaltyPct = 0
+    this.playerArcherDamagePenaltyPct = 0
     for (const aura of this.playerItems) {
       const icon = this.getItemIcon(aura)
       if (icon === 'toweritem8') {
@@ -422,25 +426,35 @@ export class TowerDefenseEngine implements BattleEngineLike {
         continue
       }
       if (icon === 'toweritem9') {
+        const multicastBonus = Math.max(0, Math.round(this.resolveNumericValueFromItemLine(aura, /连发次数\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/)))
+        const penaltyRaw = this.resolveNumericValueFromItemLine(aura, /伤害\s*([+\-]?\d+(?:\.\d+)?(?:%?[\/|][+\-]?\d+(?:\.\d+)?)*%?)\s*%?/)
+        const damagePenaltyPct = Math.max(0, Math.round(Math.abs(penaltyRaw)))
         for (const target of this.playerItems) {
           if (itemArchetype(findItemDef(target.defId)) !== '弓手') continue
-          target.baseStats.multicast = Math.max(1, target.baseStats.multicast + 1)
+          if (target.baseStats.damage <= 0) continue
+          target.baseStats.multicast = Math.max(1, target.baseStats.multicast + multicastBonus)
         }
+        this.playerArcherDamagePenaltyPct += damagePenaltyPct
         continue
       }
       if (icon === 'toweritem3') {
+        const multicastBonus = Math.max(0, Math.round(this.resolveNumericValueFromItemLine(aura, /连发次数\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/)))
+        const penaltyRaw = this.resolveNumericValueFromItemLine(aura, /伤害\s*([+\-]?\d+(?:\.\d+)?(?:%?[\/|][+\-]?\d+(?:\.\d+)?)*%?)\s*%?/)
+        const damagePenaltyPct = Math.max(0, Math.round(Math.abs(penaltyRaw)))
         for (const target of this.playerItems) {
           if (itemArchetype(findItemDef(target.defId)) !== '忍者') continue
           if (target.baseStats.damage <= 0) continue
-          target.baseStats.multicast = Math.max(1, target.baseStats.multicast + 1)
+          target.baseStats.multicast = Math.max(1, target.baseStats.multicast + multicastBonus)
         }
+        this.playerNinjaDamagePenaltyPct += damagePenaltyPct
         continue
       }
       if (icon === 'toweritem15') {
+        const multicastBonus = Math.max(0, Math.round(this.resolveNumericValueFromItemLine(aura, /发射目标\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/)))
         for (const target of this.playerItems) {
           if (itemArchetype(findItemDef(target.defId)) !== '冰法师') continue
           if (target.baseStats.damage <= 0) continue
-          target.baseStats.multicast = Math.max(1, target.baseStats.multicast + 1)
+          target.baseStats.multicast = Math.max(1, target.baseStats.multicast + multicastBonus)
         }
         continue
       }
@@ -946,6 +960,14 @@ export class TowerDefenseEngine implements BattleEngineLike {
       const source = this.enemyUnits.find((it) => it.id === one.sourceEnemyUnitId && it.hp > 0)
       if (!source) continue
       this.applyEnemyDamageToPlayer(source, one.damage)
+      if (source.attackType === 'melee' && source.hp > 0) {
+        source.hp = 0
+        EventBus.emit('battle:unit_die', {
+          unitId: source.id,
+          side: 'enemy',
+          reason: 'impact_player',
+        })
+      }
       if (this.finished) return
     }
   }
@@ -1170,7 +1192,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
     if (baseDistance <= 0 && def) {
       const lines = skillLines(def)
       if (lines.length > 0) {
-        const tierIndex = tierIndexFromRaw(def, item.tier)
+        const tierIndex = this.resolveSeriesTierIndex(item, def)
         for (const line of lines) {
           const m = line.match(/攻击距离\s*[:：]\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/)
           if (!m?.[1]) continue
@@ -1197,7 +1219,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
     if (!def) return 0
     const lines = skillLines(def)
     if (lines.length <= 0) return 0
-    const tierIndex = tierIndexFromRaw(def, item.tier)
+    const tierIndex = this.resolveSeriesTierIndex(item, def)
     for (const line of lines) {
       const m = line.match(/(?:每次)?使用(?:后|时)伤害\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/)
       if (!m?.[1]) continue
@@ -1209,6 +1231,14 @@ export class TowerDefenseEngine implements BattleEngineLike {
 
   private getItemIcon(item: CombatItemRunner): string {
     return String(findItemDef(item.defId)?.icon || '').trim()
+  }
+
+  private resolveSeriesTierIndex(item: CombatItemRunner, def: ReturnType<typeof findItemDef>): number {
+    const rawLevel = Number(item.level)
+    if (Number.isFinite(rawLevel) && rawLevel > 0) {
+      return Math.max(0, Math.min(4, Math.round(rawLevel) - 1))
+    }
+    return tierIndexFromRaw(def, item.tier)
   }
 
   private resolvePlayerAttackType(item: CombatItemRunner): 'melee_sweep' | 'line_projectile' | 'spin_projectile' {
@@ -1230,7 +1260,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
     if (!raw) return 0
     let value = 0
     if (raw.includes('/') || raw.includes('|')) {
-      const tierIdx = tierIndexFromRaw(def, item.tier)
+      const tierIdx = this.resolveSeriesTierIndex(item, def)
       value = pickTierSeriesValue(raw, tierIdx)
     } else {
       value = Number(raw.replace(/^\+/, '').replace(/%$/u, ''))
@@ -1318,7 +1348,10 @@ export class TowerDefenseEngine implements BattleEngineLike {
     if (shieldNow <= 0) return
     const spikedShields = this.getPlayerItemsByIcon('toweritem24')
     if (spikedShields.length <= 0) return
-    const totalPct = 100
+    let totalPct = 0
+    for (const one of spikedShields) {
+      totalPct += Math.max(0, this.resolveNumericValueFromItemLine(one, /护盾值\s*([+\-]?\d+(?:\.\d+)?(?:%?[\/|][+\-]?\d+(?:\.\d+)?)*%?)\s*%?\s*的反伤/))
+    }
     if (totalPct <= 0) return
     const reflectDamage = Math.max(0, Math.round(shieldNow * totalPct / 100))
     if (reflectDamage <= 0) return
@@ -1333,17 +1366,21 @@ export class TowerDefenseEngine implements BattleEngineLike {
     this.playerBounceDamageBonusPerHopByItemId.clear()
     this.playerBounceDamageFactorByItemId.clear()
 
-    const hasExtraBounce = this.getPlayerItemsByIcon('toweritem2').length > 0
+    let extraBounceCount = 0
+    for (const one of this.getPlayerItemsByIcon('toweritem2')) {
+      extraBounceCount += Math.max(0, Math.round(this.resolveNumericValueFromItemLine(one, /弹射次数\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/)))
+    }
     const hasNoDecayBounce = this.getPlayerItemsByIcon('toweritem5').length > 0
-    const hasSplitBounce = this.getPlayerItemsByIcon('toweritem6').length > 0
-    if (hasSplitBounce) this.playerFirstBounceSplitBonus = 1
+    for (const one of this.getPlayerItemsByIcon('toweritem6')) {
+      this.playerFirstBounceSplitBonus += Math.max(0, Math.round(this.resolveNumericValueFromItemLine(one, /分裂\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)\s*次/)))
+    }
 
     for (const item of this.playerItems) {
       const icon = this.getItemIcon(item)
       const archetype = itemArchetype(findItemDef(item.defId))
       const isNinjaDamage = archetype === '忍者' && item.baseStats.damage > 0
       const baseBounce = isNinjaDamage ? 1 : 0
-      const totalBounce = baseBounce + (isNinjaDamage && hasExtraBounce ? 1 : 0)
+      const totalBounce = baseBounce + (isNinjaDamage ? extraBounceCount : 0)
       this.playerBounceCountByItemId.set(item.id, Math.max(0, totalBounce))
       this.playerBounceDamageBonusPerHopByItemId.set(item.id, 0)
       this.playerBounceDamageFactorByItemId.set(item.id, isNinjaDamage ? (hasNoDecayBounce ? 1 : 0.7) : 1)
@@ -1704,13 +1741,30 @@ export class TowerDefenseEngine implements BattleEngineLike {
   private resolveSourceDamageForThisFire(source: CombatItemRunner): number {
     let damage = Math.max(0, Math.round(source.baseStats.damage + source.runtime.tempDamageBonus))
     const sourceArch = itemArchetype(findItemDef(source.defId))
+    if (sourceArch === '忍者' && damage > 0) {
+      const factor = Math.max(0, 1 - (this.playerNinjaDamagePenaltyPct / 100))
+      damage = Math.max(1, Math.round(damage * factor))
+    }
+    if (sourceArch === '弓手' && damage > 0) {
+      const factor = Math.max(0, 1 - (this.playerArcherDamagePenaltyPct / 100))
+      damage = Math.max(1, Math.round(damage * factor))
+    }
     if (sourceArch === '弓手' && this.getPlayerItemsByIcon('toweritem12').length > 0) {
       const combo = this.bloodBowComboByItemId.get(source.id)
-      const bonus = combo ? Math.max(0, combo.count - 1) : 0
+      const bonusPerHit = this.resolveArcherComboBonusPerHit()
+      const bonus = combo ? Math.max(0, combo.count - 1) * bonusPerHit : 0
       if (bonus > 0) damage += bonus
     }
     if (damage <= 0) return 0
     return Math.max(0, Math.round(damage))
+  }
+
+  private resolveArcherComboBonusPerHit(): number {
+    let bonus = 0
+    for (const one of this.getPlayerItemsByIcon('toweritem12')) {
+      bonus += Math.max(0, Math.round(this.resolveNumericValueFromItemLine(one, /伤害\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/)))
+    }
+    return Math.max(0, bonus)
   }
 
   private enqueueBounceHitsAfterImpact(source: CombatItemRunner, currentTarget: EnemyUnit, currentHit: PendingPlayerHit): void {
@@ -1797,8 +1851,13 @@ export class TowerDefenseEngine implements BattleEngineLike {
   }
 
   private resolveIceFreezeChance(target: EnemyUnit): number {
-    if (this.getPlayerItemsByIcon('toweritem16').length <= 0) return 0
-    return this.isBossEnemyUnit(target) ? 0.02 : 0.1
+    let totalPct = 0
+    for (const one of this.getPlayerItemsByIcon('toweritem16')) {
+      totalPct += Math.max(0, this.resolveNumericValueFromItemLine(one, /([+\-]?\d+(?:\.\d+)?(?:%?[\/|][+\-]?\d+(?:\.\d+)?)*%?)\s*%?\s*几率冰冻/))
+    }
+    if (totalPct <= 0) return 0
+    const chance = this.isBossEnemyUnit(target) ? (totalPct * 0.2 / 100) : (totalPct / 100)
+    return Math.max(0, Math.min(1, chance))
   }
 
   private resolveSwordBleedDurationMs(): number {
@@ -1887,7 +1946,12 @@ export class TowerDefenseEngine implements BattleEngineLike {
       finalDamage: panel,
     })
     if (this.getPlayerItemsByIcon('toweritem18').length > 0) {
-      const chargeMs = 1000
+      let chargeMs = 0
+      for (const one of this.getPlayerItemsByIcon('toweritem18')) {
+        const sec = Math.max(0, this.resolveNumericValueFromItemLine(one, /充能\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)\s*秒/))
+        chargeMs += Math.round(sec * 1000)
+      }
+      if (chargeMs <= 0) chargeMs = 1000
       for (const one of this.playerItems) {
         if (itemArchetype(findItemDef(one.defId)) !== '冰法师') continue
         this.addChargeToItem(one, chargeMs)

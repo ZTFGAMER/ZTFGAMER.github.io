@@ -34,7 +34,7 @@ import { BattleFXPool, type BattleFxPerfStats } from './BattleFXPool'
 import { BattleTransition } from './BattleTransition'
 import { BattleSettlement } from './BattleSettlement'
 import { CANVAS_W, CANVAS_H, BTN_RADIUS } from '@/tower/config/layoutConstants'
-import { getAdjustedBattleZoneY, getAdjustedBattleZoneYInBattleOffset, getTowerBattleRowsByDay } from '@/tower/shop/ShopMathHelpers'
+import { getAdjustedBattleZoneY, getAdjustedBattleZoneYInBattleOffset, getTowerBattleColsByDay, getTowerBattleRowsByDay } from '@/tower/shop/ShopMathHelpers'
 import { getTopLeftControlYOffset } from '@/tower/shop/ui/ShopSafeArea'
 import { clearLoadedAssetUrls, getLoadedAssetUrls, hasAssetUrlLoaded, markAssetUrlUnloaded } from '@/tower/core/AssetRuntimeTracker'
 import { clearMobileImageDownscaleRuntimeCache } from '@/tower/core/MobileImageDownscaleCache'
@@ -54,6 +54,12 @@ const HERO_VISUAL_ALIAS: Record<string, HeroVisualId> = {
   archer: 'archer',
   assassin: 'assassin',
 }
+
+const PLAYER_FOUR_HERO_PORTRAIT_STEMS = ['maga', 'archer', 'assassin', 'warrior'] as const
+type PlayerFourHeroPortraitStem = typeof PLAYER_FOUR_HERO_PORTRAIT_STEMS[number]
+type PlayerFourHeroPortraitSlot = 0 | 1 | 2 | 3
+const PLAYER_FOUR_HERO_SLOT_STEMS_DEFAULT: PlayerFourHeroPortraitStem[] = ['warrior', 'maga', 'assassin', 'archer']
+const PLAYER_FOUR_HERO_SWAP_MS = 1000
 
 const TOWER_AUTO_START_ON_ENTER_FLAG_KEY = 'bigbazzar_tower_auto_start_on_enter_once'
 
@@ -84,6 +90,194 @@ function readPlayerHeroVisualId(): HeroVisualId {
   } catch {
     return 'warrior'
   }
+}
+
+function isBattlePlayerFourHeroPortraitEnabled(): boolean {
+  return getDebugCfg('battlePlayerPortraitFourHeroEnabled') >= 0.5
+}
+
+async function loadPlayerFourHeroPortraitTextures(): Promise<void> {
+  const jobs = playerFourHeroPortraitUnits.map(async (unit) => {
+    let preferredTexture: Texture | null = null
+    try {
+      preferredTexture = await Assets.load<Texture>(getHeroImageUrl(`${unit.stem}b.png`))
+    } catch {
+      preferredTexture = null
+    }
+    if (!preferredTexture) {
+      try {
+        preferredTexture = await Assets.load<Texture>(getHeroImageUrl(`${unit.stem}.png`))
+      } catch {
+        preferredTexture = null
+      }
+    }
+    unit.normalTexture = preferredTexture
+    unit.hitTexture = preferredTexture
+    if (preferredTexture) {
+      unit.sprite.texture = preferredTexture
+      unit.sprite.visible = true
+    } else {
+      unit.sprite.visible = false
+    }
+  })
+  await Promise.all(jobs)
+}
+
+function setPlayerFourHeroPortraitUseHit(useHit: boolean): void {
+  for (const unit of playerFourHeroPortraitUnits) {
+    const tex = useHit ? (unit.hitTexture ?? unit.normalTexture) : unit.normalTexture
+    if (tex) {
+      unit.sprite.texture = tex
+      unit.sprite.visible = true
+    } else {
+      unit.sprite.visible = false
+    }
+  }
+}
+
+function triggerPlayerPortraitHitFx(): void {
+  portraitFX.triggerPlayerHit()
+  if (!isBattlePlayerFourHeroPortraitEnabled()) return
+  playerFourHeroHitElapsedMs = 0
+  setPlayerFourHeroPortraitUseHit(true)
+}
+
+function tickPlayerFourHeroPortrait(dtMs: number): void {
+  if (playerFourHeroPortraitUnits.length <= 0) return
+  const enabled = isBattlePlayerFourHeroPortraitEnabled()
+  if (!enabled) {
+    if (playerFourHeroPortraitLayer) playerFourHeroPortraitLayer.visible = false
+    playerFourHeroHitElapsedMs = -1
+    return
+  }
+  if (playerFourHeroPortraitLayer) playerFourHeroPortraitLayer.visible = true
+  const loopMs = Math.max(1, getDebugCfg('battlePlayerPortraitIdleLoopMs'))
+  const loopP = (battlePresentationMs % loopMs) / loopMs
+  const loopWave = (Math.sin(loopP * Math.PI * 2 - Math.PI / 2) + 1) / 2
+  const idleScaleMax = Math.max(1, getDebugCfg('battlePlayerPortraitIdleScaleMax'))
+  const idleScale = 1 + (idleScaleMax - 1) * loopWave
+  let hitScaleMul = 1
+  if (playerFourHeroHitElapsedMs >= 0) {
+    const hitMs = Math.max(1, getDebugCfg('battlePlayerPortraitHitPulseMs'))
+    playerFourHeroHitElapsedMs += dtMs
+    const p = Math.max(0, Math.min(1, playerFourHeroHitElapsedMs / hitMs))
+    const pulse = Math.sin(Math.PI * p)
+    const maxScale = Math.max(1, getDebugCfg('battlePlayerPortraitHitScaleMax'))
+    hitScaleMul = 1 + (maxScale - 1) * pulse
+    if (p >= 1) {
+      playerFourHeroHitElapsedMs = -1
+      setPlayerFourHeroPortraitUseHit(false)
+      hitScaleMul = 1
+    }
+  }
+  for (const unit of playerFourHeroPortraitUnits) {
+    unit.sprite.scale.set(unit.baseScale * idleScale * hitScaleMul)
+  }
+}
+
+function getPlayerFourHeroPortraitSlotByStem(stems: PlayerFourHeroPortraitStem[]): Record<PlayerFourHeroPortraitStem, PlayerFourHeroPortraitSlot> {
+  const out: Record<PlayerFourHeroPortraitStem, PlayerFourHeroPortraitSlot> = {
+    maga: 1,
+    archer: 3,
+    assassin: 2,
+    warrior: 0,
+  }
+  for (let i = 0; i < stems.length; i++) {
+    const stem = stems[i]
+    if (!stem) continue
+    out[stem] = Math.max(0, Math.min(3, i)) as PlayerFourHeroPortraitSlot
+  }
+  return out
+}
+
+function getPlayerFourHeroPortraitAdjust(slot: PlayerFourHeroPortraitSlot): { offsetX: number; offsetY: number; scale: number } {
+  if (slot === 0) {
+    return {
+      offsetX: getDebugCfg('battlePlayerPortraitFourHeroFrontOffsetX'),
+      offsetY: getDebugCfg('battlePlayerPortraitFourHeroFrontOffsetY'),
+      scale: getDebugCfg('battlePlayerPortraitFourHeroFrontScale'),
+    }
+  }
+  if (slot === 1) {
+    return {
+      offsetX: getDebugCfg('battlePlayerPortraitFourHeroBack1OffsetX'),
+      offsetY: getDebugCfg('battlePlayerPortraitFourHeroBack1OffsetY'),
+      scale: getDebugCfg('battlePlayerPortraitFourHeroBack1Scale'),
+    }
+  }
+  if (slot === 2) {
+    return {
+      offsetX: getDebugCfg('battlePlayerPortraitFourHeroBack2OffsetX'),
+      offsetY: getDebugCfg('battlePlayerPortraitFourHeroBack2OffsetY'),
+      scale: getDebugCfg('battlePlayerPortraitFourHeroBack2Scale'),
+    }
+  }
+  return {
+    offsetX: getDebugCfg('battlePlayerPortraitFourHeroBack3OffsetX'),
+    offsetY: getDebugCfg('battlePlayerPortraitFourHeroBack3OffsetY'),
+    scale: getDebugCfg('battlePlayerPortraitFourHeroBack3Scale'),
+  }
+}
+
+function getPlayerFourHeroPortraitStyle(slot: PlayerFourHeroPortraitSlot): { alpha: number; grayMul: number } {
+  if (slot === 0) return { alpha: 1, grayMul: 1 }
+  const alpha = Math.max(0, Math.min(1, getDebugCfg('battlePlayerPortraitFourHeroBackAlpha')))
+  const darken = Math.max(0, Math.min(1, getDebugCfg('battlePlayerPortraitFourHeroBackDarken')))
+  return { alpha, grayMul: 1 - darken }
+}
+
+function getPlayerFourHeroItemTotalLevelsByStem(): Record<PlayerFourHeroPortraitStem, number> {
+  const totals: Record<PlayerFourHeroPortraitStem, number> = { maga: 0, archer: 0, assassin: 0, warrior: 0 }
+  if (!engine) return totals
+  const items = engine.getBoardState().items
+  for (const it of items) {
+    if (it.side !== 'player') continue
+    const def = getItemDefById(it.defId)
+    if (!def) continue
+    const arch = toSkillArchetype(getPrimaryArchetype(def.tags ?? ''))
+    const stem = arch === 'warrior'
+      ? 'warrior'
+      : arch === 'archer'
+        ? 'archer'
+        : arch === 'assassin'
+          ? 'assassin'
+          : arch === 'mage'
+            ? 'maga'
+            : null
+    if (!stem) continue
+    const tier = parseTierName(it.tier) ?? 'Bronze'
+    const starRaw = Number(String(it.tier ?? '').split('#')[1] ?? 1)
+    const star: 1 | 2 = starRaw >= 2 ? 2 : 1
+    totals[stem] += Math.max(1, tierStarLevelIndex(tier, star) + 1)
+  }
+  return totals
+}
+
+function updatePlayerFourHeroFrontSlotByPower(): void {
+  if (playerFourHeroPortraitUnits.length <= 0 || playerFourHeroSwapAnim) return
+  const slotByStem = getPlayerFourHeroPortraitSlotByStem(playerFourHeroSlotStems)
+  const totals = getPlayerFourHeroItemTotalLevelsByStem()
+  const maxTotal = Math.max(totals.maga, totals.archer, totals.assassin, totals.warrior)
+  const topStems = (PLAYER_FOUR_HERO_PORTRAIT_STEMS as readonly PlayerFourHeroPortraitStem[]).filter((stem) => totals[stem] === maxTotal)
+  if (topStems.length <= 0) return
+  const currentFront = playerFourHeroSlotStems[0] ?? 'warrior'
+  const desiredFront = topStems.includes(currentFront)
+    ? currentFront
+    : (topStems[Math.max(0, Math.min(topStems.length - 1, Math.floor(nextBattleRandom('player_four_hero_front_pick') * topStems.length)))] ?? currentFront)
+  if (desiredFront === currentFront) return
+  const desiredIdx = slotByStem[desiredFront]
+  if (desiredIdx <= 0) return
+  const next = [...playerFourHeroSlotStems]
+  const oldFront = next[0]
+  next[0] = desiredFront
+  if (oldFront) next[desiredIdx] = oldFront
+  playerFourHeroSwapAnim = {
+    fromSlotByStem: slotByStem,
+    toSlotByStem: getPlayerFourHeroPortraitSlotByStem(next),
+    startAtMs: battlePresentationMs,
+    durationMs: PLAYER_FOUR_HERO_SWAP_MS,
+  }
+  playerFourHeroSlotStems = next
 }
 
 function runRendererTextureGcNow(): void {
@@ -146,6 +340,8 @@ let continueBtn: Container | null = null
 let continueBtnText: Text | null = null
 let restartBtn: Container | null = null
 let buyBtn: Container | null = null
+let buyBtnBg: Graphics | null = null
+let buyBtnPulseFrame: Graphics | null = null
 let buyBtnText: Text | null = null
 let sellDropZone: Graphics | null = null
 let speedBtn: Container | null = null
@@ -273,6 +469,26 @@ let towerForceAutoStartOnEnter = false
 let towerBattleBuyCount = 0
 type BattleBuyOffer = { item: ItemDef; level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; tier: TierKey; star: 1 | 2 }
 let pendingBattleBuyOffer: BattleBuyOffer | null = null
+let buyBtnLastCanAfford: boolean | null = null
+let buyBtnAffordPulseStartAtMs: number | null = null
+let buyBtnAffordVisualState: boolean | null = null
+type PlayerFourHeroPortraitUnit = {
+  stem: PlayerFourHeroPortraitStem
+  sprite: Sprite
+  normalTexture: Texture | null
+  hitTexture: Texture | null
+  baseScale: number
+}
+let playerFourHeroPortraitLayer: Container | null = null
+const playerFourHeroPortraitUnits: PlayerFourHeroPortraitUnit[] = []
+let playerFourHeroHitElapsedMs = -1
+let playerFourHeroSlotStems: PlayerFourHeroPortraitStem[] = [...PLAYER_FOUR_HERO_SLOT_STEMS_DEFAULT]
+let playerFourHeroSwapAnim: {
+  fromSlotByStem: Record<PlayerFourHeroPortraitStem, PlayerFourHeroPortraitSlot>
+  toSlotByStem: Record<PlayerFourHeroPortraitStem, PlayerFourHeroPortraitSlot>
+  startAtMs: number
+  durationMs: number
+} | null = null
 const editableMeta = new Map<string, {
   defId: string
   size: GridItemSizeNorm
@@ -536,6 +752,21 @@ let fpsSampleFrames = 0
 let fpsShown = 0
 let topSafeYOffset = 0
 let appliedActiveCols = -1
+type PlayerZoneResizeTransition = {
+  fromCols: number
+  toCols: number
+  fromRows: number
+  toRows: number
+  fromX: number
+  toX: number
+  fromY: number
+  toY: number
+  targetBgScaleX: number
+  targetBgScaleY: number
+  durationMs: number
+  elapsedMs: number
+}
+let playerZoneResizeTransition: PlayerZoneResizeTransition | null = null
 
 function updateFpsHud(dt: number): void {
   if (!fpsHudText) return
@@ -738,6 +969,20 @@ function triggerTowerEnemyDeathFly(enemyUnitId: string, lastHitDir?: { x: number
     elapsedMs: 0,
     startScale: Math.max(0.1, spritePack.root.scale.x || 1),
   })
+}
+
+function removeTowerEnemyImmediately(enemyUnitId: string): void {
+  const spritePack = towerEnemySpriteById.get(enemyUnitId)
+  if (spritePack) {
+    spritePack.root.visible = false
+    spritePack.flash.alpha = 0
+  }
+  towerEnemyDeathFlyById.delete(enemyUnitId)
+  towerEnemyAnimStateById.delete(enemyUnitId)
+  towerEnemyPosById.delete(enemyUnitId)
+  towerEnemyHpAnchorById.delete(enemyUnitId)
+  towerEnemyDefIdByUnitId.delete(enemyUnitId)
+  towerEnemyLastHitDirById.delete(enemyUnitId)
 }
 
 function triggerTowerEnemyHit(enemyUnitId: string): void {
@@ -1352,11 +1597,71 @@ function getDefaultItemInfoMode(): ItemInfoMode {
 
 
 function getDayActiveCols(day: number): number {
-  if (getGameCfg().towerDefenseRules?.enabled === true) return 6
+  if (getGameCfg().towerDefenseRules?.enabled === true) return getTowerBattleColsByDay(day)
   const slots = getGameCfg().dailyBattleSlots
   if (day <= 2) return slots[0] ?? 4
   if (day <= 4) return slots[1] ?? 5
   return slots[2] ?? 6
+}
+
+function getTowerPlayerZoneResizeAnimMs(): number {
+  const raw = Number(getGameCfg().towerDefenseRules?.playerZoneResizeAnimMs)
+  if (Number.isFinite(raw)) return Math.max(0, Math.round(raw))
+  return 1000
+}
+
+function startPlayerZoneResizeTransition(toCols: number, toRows: number): void {
+  if (!playerZone) return
+  const fromCols = Math.max(1, playerZone.activeColCount)
+  const fromRows = Math.max(1, playerZone.activeRowCount)
+  if (fromCols === toCols && fromRows === toRows) {
+    playerZoneResizeTransition = null
+    playerZone.setCellBackgroundScale(1, 1)
+    return
+  }
+  const durationMs = getTowerPlayerZoneResizeAnimMs()
+  if (durationMs <= 0) {
+    playerZoneResizeTransition = null
+    playerZone.setCellBackgroundScale(1, 1)
+    playerZone.setActiveColCount(toCols)
+    playerZone.setActiveRowCount(toRows)
+    return
+  }
+  playerZoneResizeTransition = {
+    fromCols,
+    toCols,
+    fromRows,
+    toRows,
+    fromX: playerZone.x,
+    toX: getPlayerZoneX(toCols),
+    fromY: playerZone.y,
+    toY: getPlayerZoneY(battleDay),
+    targetBgScaleX: toCols / Math.max(1, fromCols),
+    targetBgScaleY: toRows / Math.max(1, fromRows),
+    durationMs,
+    elapsedMs: 0,
+  }
+}
+
+function updatePlayerZoneResizeTransition(dtMs: number): void {
+  if (!playerZoneResizeTransition || !playerZone) return
+  const state = playerZoneResizeTransition
+  state.elapsedMs = Math.min(state.durationMs, state.elapsedMs + Math.max(0, dtMs))
+  const t = state.durationMs <= 0 ? 1 : Math.min(1, state.elapsedMs / state.durationMs)
+  const ease = 1 - Math.pow(1 - t, 3)
+  playerZone.x = state.fromX + (state.toX - state.fromX) * ease
+  playerZone.y = state.fromY + (state.toY - state.fromY) * ease
+  playerZone.setCellBackgroundScale(
+    1 + (state.targetBgScaleX - 1) * ease,
+    1 + (state.targetBgScaleY - 1) * ease,
+  )
+  if (t < 1) return
+  playerZone.setCellBackgroundScale(1, 1)
+  playerZone.setActiveColCount(state.toCols)
+  playerZone.setActiveRowCount(state.toRows)
+  applyZoneVisualStyle(playerZone, 'player')
+  applyLayout(state.toCols)
+  playerZoneResizeTransition = null
 }
 
 function getBattleItemScale(): number {
@@ -1374,6 +1679,11 @@ function getEnemyHpBarScale(): number {
 function getPlayerZoneX(activeCols: number): number {
   const s = getBattleItemScale()
   return getDebugCfg('battleZoneX') + (CANVAS_W - activeCols * CELL_SIZE * s) / 2
+}
+
+function getPlayerZoneY(day: number): number {
+  const playerScale = getBattleItemScale()
+  return getAdjustedBattleZoneY(day) + getAdjustedBattleZoneYInBattleOffset(day) + (CELL_HEIGHT * (1 - playerScale)) / 2
 }
 
 function getEnemyZoneX(activeCols: number): number {
@@ -1461,16 +1771,15 @@ function makeContinueBattleButton(): Container {
 function makeRestartButton(): Container {
   const con = new Container()
   const bg = new Graphics()
-  const w = 108
-  const h = 44
-  bg.roundRect(-w / 2, -h / 2, w, h, 10)
-  bg.stroke({ color: 0xffd25a, width: 2, alpha: 0.95 })
-  bg.fill({ color: 0x1f2940, alpha: 0.9 })
+  const corner = Math.max(10, Math.round(getDebugCfg('gridItemCornerRadius') + 8))
+  bg.roundRect(-TOP_ACTION_BTN_W / 2, -TOP_ACTION_BTN_H / 2, TOP_ACTION_BTN_W, TOP_ACTION_BTN_H, corner)
+  bg.stroke({ color: 0x44aaff, width: 3 })
+  bg.fill({ color: 0x44aaff, alpha: 0.18 })
   con.addChild(bg)
 
   const txt = new Text({
     text: '重置',
-    style: { fontSize: 20, fill: 0xffe8a3, fontFamily: 'Arial', fontWeight: 'bold' },
+    style: { fontSize: getGameCfg().textSizes.phaseButtonLabel, fill: 0x44aaff, fontFamily: 'Arial', fontWeight: 'bold' },
   })
   txt.anchor.set(0.5)
   con.addChild(txt)
@@ -1575,9 +1884,13 @@ function buildEditableSnapshotFromBoard(day: number): ReturnType<typeof getBattl
   const playerShield = Math.max(0, Math.round(engine?.getBoardState().player.shield ?? enteredSnapshot?.playerShield ?? 0))
   const entities = editableSystem.getCombatEntities(6).map((it) => {
     const meta = editableMeta.get(it.instanceId)
-    const tier = (meta?.tier ?? 'Bronze') as TierKey
-    const tierStar = (meta?.tierStar ?? 1) as 1 | 2
-    const level = tierStarToTowerLevel(tier, tierStar)
+    const level = Math.max(
+      1,
+      Math.min(5, Number(meta?.level) || tierStarToTowerLevel((meta?.tier ?? 'Bronze') as TierKey, (meta?.tierStar ?? 1) as 1 | 2)),
+    ) as 1 | 2 | 3 | 4 | 5
+    const byLevel = levelToTowerTierStar(level)
+    const tier = (byLevel?.tier ?? meta?.tier ?? 'Bronze') as TierKey
+    const tierStar = (byLevel?.star ?? meta?.tierStar ?? 1) as 1 | 2
     return {
       ...it,
       tier,
@@ -1863,10 +2176,81 @@ function formatTowerBattleBuyButtonText(gold: number, cost: number, level: numbe
   return `购买 Lv${Math.max(1, Math.round(level))}\n💰${Math.max(0, Math.round(gold))}/${Math.max(0, Math.round(cost))}`
 }
 
-function getTowerNextWaveAutoStartMs(): number {
-  const v = Number(getGameCfg().towerDefenseRules?.nextWaveAutoStartMs)
-  if (Number.isFinite(v) && v >= 0) return Math.round(v)
-  return 5000
+function getTowerBattleBuyAffordPulseDurationMs(): number {
+  const raw = Number(getGameCfg().towerDefenseRules?.battleBuyAffordPulseDurationMs)
+  if (Number.isFinite(raw) && raw > 0) return Math.round(raw)
+  return 750
+}
+
+function getTowerBattleBuyAffordPulseScaleMax(): number {
+  const raw = Number(getGameCfg().towerDefenseRules?.battleBuyAffordPulseScaleMax)
+  if (Number.isFinite(raw) && raw > 1) return raw
+  return 1.18
+}
+
+function getTowerBattleBuyAffordPulsePaddingPx(): number {
+  const raw = Number(getGameCfg().towerDefenseRules?.battleBuyAffordPulsePaddingPx)
+  if (Number.isFinite(raw) && raw >= 0) return Math.round(raw)
+  return 10
+}
+
+function getTowerBattleBuyButtonY(): number {
+  const raw = Number(getGameCfg().towerDefenseRules?.battleBuyButtonY)
+  if (Number.isFinite(raw)) return Math.round(raw)
+  return CANVAS_H - 63
+}
+
+function getTowerPlayerZoneBackgroundAlpha(): number {
+  const raw = Number(getGameCfg().towerDefenseRules?.playerZoneBackgroundAlpha)
+  if (Number.isFinite(raw)) return Math.max(0, Math.min(1, raw))
+  return 0.58
+}
+
+function redrawTowerBattleBuyButtonVisual(canAfford: boolean): void {
+  if (!buyBtnBg) return
+  const w = BTN_RADIUS * 4
+  const h = BTN_RADIUS * 2
+  const corner = Math.max(10, Math.round(getDebugCfg('gridItemCornerRadius') + 8))
+  const strokeColor = canAfford ? 0xffcf4a : 0x44aaff
+  const fillColor = canAfford ? 0xffcf4a : 0x44aaff
+  const fillAlpha = canAfford ? 0.34 : 0.18
+  buyBtnBg.clear()
+  buyBtnBg.roundRect(-w / 2, -h / 2, w, h, corner)
+  buyBtnBg.stroke({ color: strokeColor, width: 3 })
+  buyBtnBg.fill({ color: fillColor, alpha: fillAlpha })
+  if (buyBtnText) {
+    buyBtnText.style.fill = canAfford ? 0xffffff : 0x44aaff
+    buyBtnText.style.stroke = canAfford ? { color: 0x000000, width: 3 } : { color: 0x000000, width: 0 }
+  }
+}
+
+function tickTowerBattleBuyAffordPulse(): void {
+  if (!buyBtnPulseFrame) return
+  if (buyBtnAffordPulseStartAtMs === null) {
+    buyBtnPulseFrame.visible = false
+    return
+  }
+  const durationMs = getTowerBattleBuyAffordPulseDurationMs()
+  const elapsed = Math.max(0, battlePresentationMs - buyBtnAffordPulseStartAtMs)
+  const p = Math.max(0, Math.min(1, elapsed / Math.max(1, durationMs)))
+  if (p >= 1) {
+    buyBtnAffordPulseStartAtMs = null
+    buyBtnPulseFrame.visible = false
+    return
+  }
+  const w = BTN_RADIUS * 4
+  const h = BTN_RADIUS * 2
+  const pad = getTowerBattleBuyAffordPulsePaddingPx()
+  const corner = Math.max(10, Math.round(getDebugCfg('gridItemCornerRadius') + 8)) + pad
+  const scaleMax = Math.max(1.01, getTowerBattleBuyAffordPulseScaleMax())
+  const wave = Math.sin(p * Math.PI)
+  const alpha = (1 - p) * 0.95
+  const scale = 1 + (scaleMax - 1) * wave
+  buyBtnPulseFrame.visible = true
+  buyBtnPulseFrame.clear()
+  buyBtnPulseFrame.roundRect(-w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad * 2, corner)
+  buyBtnPulseFrame.stroke({ color: 0xffda67, width: 4, alpha })
+  buyBtnPulseFrame.scale.set(scale)
 }
 
 function getTowerForceNextWaveAfterLastSpawnMs(): number {
@@ -1974,7 +2358,7 @@ function clearTowerEnemyGoldDropFx(): void {
   }
 }
 
-async function startNextTowerWaveInPlace(): Promise<void> {
+async function startNextTowerWaveInPlace(options?: { showNewEnemyToast?: boolean }): Promise<void> {
   if (!engine || towerWaveAdvanceInProgress) return
   if (draggingPlayerItemId) {
     if (towerNextWaveAutoStartAtMs !== null) {
@@ -1988,7 +2372,12 @@ async function startNextTowerWaveInPlace(): Promise<void> {
   const preserveExistingEnemies = !engine.isFinished()
   const baseSnapshot = buildEditableSnapshotFromBoard(battleDay)
   if (!baseSnapshot) return
+  const prevCols = getDayActiveCols(battleDay)
+  const prevRows = getTowerBattleRowsByDay(battleDay)
   const nextDay = Math.max(1, Math.round((baseSnapshot.day || 1) + 1))
+  const nextCols = getDayActiveCols(nextDay)
+  const nextRows = getTowerBattleRowsByDay(nextDay)
+  const zoneExpanded = nextCols > prevCols || nextRows > prevRows
   const nextSnapshot = {
     ...baseSnapshot,
     day: nextDay,
@@ -2002,10 +2391,7 @@ async function startNextTowerWaveInPlace(): Promise<void> {
     setBattleSnapshot(nextSnapshot)
     enteredSnapshot = nextSnapshot
     battleDay = nextDay
-    const nextRows = getTowerBattleRowsByDay(nextDay)
-    playerZone?.setActiveRowCount(nextRows)
     editableSystem?.setActiveRows(nextRows)
-    applyLayout(6)
     editableGold = Math.max(0, Math.round(nextSnapshot.playerGold ?? 0))
     clearBattleItemSelection()
     if (settlement.isResolved()) settlement.prepareForNextWave()
@@ -2030,6 +2416,12 @@ async function startNextTowerWaveInPlace(): Promise<void> {
       })
       damageStats.bootstrapFromBoard(engine)
     }
+    if (options?.showNewEnemyToast) {
+      showFatigueToast('新的敌人刷新了', 1200)
+    }
+    if (zoneExpanded) {
+      showFatigueToast('背包扩大了', 1200)
+    }
     ensureEditableBuildMode(getApp().stage)
     fxPool.refreshSourceDefMap()
   } finally {
@@ -2039,7 +2431,12 @@ async function startNextTowerWaveInPlace(): Promise<void> {
 
 function makeBuyButton(): Container {
   const con = new Container()
+  const pulse = new Graphics()
+  pulse.visible = false
+  con.addChild(pulse)
+  buyBtnPulseFrame = pulse
   const bg = new Graphics()
+  buyBtnBg = bg
   const w = BTN_RADIUS * 4
   const h = BTN_RADIUS * 2
   const corner = Math.max(10, Math.round(getDebugCfg('gridItemCornerRadius') + 8))
@@ -2059,6 +2456,8 @@ function makeBuyButton(): Container {
   })
   txt.anchor.set(0.5)
   con.addChild(txt)
+  buyBtnAffordVisualState = null
+  redrawTowerBattleBuyButtonVisual(false)
   buyBtnText = txt
   con.eventMode = 'static'
   con.cursor = 'pointer'
@@ -2074,7 +2473,7 @@ function makeBuyButton(): Container {
       return
     }
     const size = normalizeSize(offer.item.size)
-    const slot = pickFirstEmptyCell(editableSystem, size, 6)
+    const slot = pickFirstEmptyCell(editableSystem, size, playerZone.activeColCount)
     if (!slot) {
       showFatigueToast('上阵区已满')
       return
@@ -2133,6 +2532,9 @@ function ensureEditableBuildMode(stage: Container): void {
   editableGold = Math.max(0, Math.round(enteredSnapshot?.playerGold ?? getEditableStartGold(battleDay)))
   towerBattleBuyCount = Math.max(0, Math.round(enteredSnapshot?.towerBattleBuyCount ?? 0))
   pendingBattleBuyOffer = null
+  buyBtnLastCanAfford = editableGold >= getTowerBattleBuyCost()
+  buyBtnAffordPulseStartAtMs = null
+  buyBtnAffordVisualState = null
   void getTowerBattleBuyCost()
 
   if (!editableDrag) {
@@ -2192,10 +2594,23 @@ function ensureEditableBuildMode(stage: Container): void {
     editableDrag.refreshZone(playerZone)
   }
   playerZone.onTap = (id) => showBattleItemInfo(id, 'player')
+
+  const normalized = buildEditableSnapshotFromBoard(battleDay)
+  if (normalized) {
+    enteredSnapshot = normalized
+    setBattleSnapshot(normalized)
+    syncEngineWithEditable()
+  }
 }
 
 function organizeBattleZoneItemsByRule(): void {
   if (!editableSystem || !playerZone) return
+  const getBaseTierRank = (defId: string): number => {
+    const def = getItemDefById(defId)
+    const baseTier = parseTierName(def?.starting_tier ?? '') ?? 'Bronze'
+    const idx = TIER_ORDER.indexOf(baseTier)
+    return idx >= 0 ? idx : 0
+  }
   const items = editableSystem.getAllItems()
   if (items.length <= 1) {
     showFatigueToast('上阵区已整理')
@@ -2209,6 +2624,9 @@ function organizeBattleZoneItemsByRule(): void {
     const aLv = aMeta?.level ?? (tierStarLevelIndex(aMeta?.tier ?? 'Bronze', aMeta?.tierStar ?? 1) + 1)
     const bLv = bMeta?.level ?? (tierStarLevelIndex(bMeta?.tier ?? 'Bronze', bMeta?.tierStar ?? 1) + 1)
     if (aLv !== bLv) return bLv - aLv
+    const aBaseTierRank = getBaseTierRank(a.defId)
+    const bBaseTierRank = getBaseTierRank(b.defId)
+    if (aBaseTierRank !== bBaseTierRank) return bBaseTierRank - aBaseTierRank
     const idCmp = a.defId.localeCompare(b.defId)
     if (idCmp !== 0) return idCmp
     return a.instanceId.localeCompare(b.instanceId)
@@ -2287,6 +2705,7 @@ function makeOrganizeButton(): Container {
     organizeBattleZoneItemsByRule()
   })
   ui.container.x = 92
+  ui.container.y = getClampedTopActionBtnY('battleOrganizeBtnY')
   return ui.container
 }
 
@@ -2302,7 +2721,7 @@ function addBattleTestItemAtLevel(def: ItemDef, level: 1 | 2 | 3 | 4 | 5): boole
   const tierStar = levelToTowerTierStar(level)
   if (!tierStar) return false
   const size = normalizeSize(def.size)
-  const slot = pickFirstEmptyCell(editableSystem, size, 6)
+  const slot = pickFirstEmptyCell(editableSystem, size, playerZone.activeColCount)
   if (!slot) return false
   const id = `t-${Date.now()}-${Math.floor(Math.random() * 99999)}`
   if (!editableSystem.place(slot.col, slot.row, size, def.id, id)) return false
@@ -2328,10 +2747,11 @@ function addBattleTestItemAtLevel(def: ItemDef, level: 1 | 2 | 3 | 4 | 5): boole
 function makeItemTestButton(): Container {
   const con = new Container()
   const bg = new Graphics()
-  bg.roundRect(-70, -22, 140, 44, 12)
-  bg.fill({ color: 0x2f4f82, alpha: 0.94 })
-  bg.stroke({ color: 0xb9d4ff, width: 2, alpha: 0.95 })
-  const txt = new Text({ text: '物品测试', style: { fontSize: 20, fill: 0xf3f9ff, fontFamily: 'Arial', fontWeight: 'bold' } })
+  const corner = Math.max(10, Math.round(getDebugCfg('gridItemCornerRadius') + 8))
+  bg.roundRect(-TOP_ACTION_BTN_W / 2, -TOP_ACTION_BTN_H / 2, TOP_ACTION_BTN_W, TOP_ACTION_BTN_H, corner)
+  bg.fill({ color: 0x44aaff, alpha: 0.18 })
+  bg.stroke({ color: 0x44aaff, width: 3 })
+  const txt = new Text({ text: '物品测试', style: { fontSize: getGameCfg().textSizes.phaseButtonLabel, fill: 0x44aaff, fontFamily: 'Arial', fontWeight: 'bold' } })
   txt.anchor.set(0.5)
   con.addChild(bg, txt)
   con.eventMode = 'static'
@@ -2597,11 +3017,21 @@ function drawTowerRemainingBar(): void {
   towerRemainBarText.y = 96
 }
 
-function getClampedTopActionBtnY(): number {
-  const y = getDebugCfg('battleSpeedBtnY')
+function getClampedTopActionBtnY(key: 'battleSpeedBtnY' | 'battleOrganizeBtnY' = 'battleSpeedBtnY'): number {
+  const y = getDebugCfg(key)
   const minY = TOP_ACTION_BTN_HALF_H + TOP_ACTION_BTN_SAFE_PAD
   const maxY = CANVAS_H - TOP_ACTION_BTN_HALF_H - TOP_ACTION_BTN_SAFE_PAD
   return Math.max(minY, Math.min(maxY, y))
+}
+
+function getTowerTopLeftActionBtnX(): number {
+  return 92
+}
+
+function getTowerTopLeftActionBtnY(order: number): number {
+  const startY = TOP_ACTION_BTN_HALF_H + 18 + topSafeYOffset
+  const gap = TOP_ACTION_BTN_H + 14
+  return startY + Math.max(0, order) * gap
 }
 
 function isBattleSpeedButtonEnabled(): boolean {
@@ -2689,6 +3119,7 @@ function applyZoneVisualStyle(zone: GridZone, side: 'player' | 'enemy'): void {
   zone.setTierBorderWidth(getDebugCfg('tierBorderWidth'))
   zone.setCornerRadius(getDebugCfg('gridItemCornerRadius'))
   zone.setCellBorderWidth(getDebugCfg('gridCellBorderWidth'))
+  zone.setCellBackgroundAlpha(towerMode && side === 'player' ? getTowerPlayerZoneBackgroundAlpha() : 1)
   zone.setLabelVisible(false)
   zone.setStatBadgeFontSize(getDebugCfg('itemStatBadgeFontSize'))
   zone.setTierStarFontSize(towerMode ? 56 : getDebugCfg('itemTierStarFontSize'))
@@ -3008,7 +3439,7 @@ function updateItemRoundStatHints(
   }
 }
 
-function applyLayout(activeCols: number): void {
+function applyLayout(activeCols: number, options?: { keepPlayerZoneX?: boolean; keepPlayerZoneY?: boolean }): void {
   const playerScale = getBattleItemScale()
   const enemyScale = getEnemyAreaScale()
   if (enemyZone) {
@@ -3018,8 +3449,8 @@ function applyLayout(activeCols: number): void {
   }
   if (playerZone) {
     playerZone.scale.set(playerScale)
-    playerZone.x = getPlayerZoneX(activeCols)
-    playerZone.y = getAdjustedBattleZoneY(battleDay) + getAdjustedBattleZoneYInBattleOffset(battleDay) + (CELL_HEIGHT * (1 - playerScale)) / 2
+    if (!options?.keepPlayerZoneX) playerZone.x = getPlayerZoneX(activeCols)
+    if (!options?.keepPlayerZoneY) playerZone.y = getPlayerZoneY(battleDay)
   }
   if (portraitFX.enemyBossSprite) {
     const widthRatio = Math.max(0.2, getDebugCfg('battleEnemyPortraitWidthRatio'))
@@ -3044,23 +3475,71 @@ function applyLayout(activeCols: number): void {
     }
   }
 
-  if (portraitFX.playerHeroSprite) {
-    portraitFX.playerHeroSprite.x = CANVAS_W / 2
-    const tex = portraitFX.playerHeroSprite.texture
-    if (tex?.width) {
-      const targetW = CANVAS_W * Math.max(0.2, getDebugCfg('battlePlayerPortraitWidthRatio'))
-      portraitFX.playerHeroBaseScale = targetW / Math.max(1, tex.width)
-      if (portraitFX.playerHeroSprite) {
-        portraitFX.playerHeroSprite.scale.set(portraitFX.playerHeroBaseScale)
+  const useFourHeroPortrait = isBattlePlayerFourHeroPortraitEnabled()
+  if (portraitFX.playerHeroSprite) portraitFX.playerHeroSprite.visible = !useFourHeroPortrait
+  if (portraitFX.playerHeroFlashSprite) portraitFX.playerHeroFlashSprite.visible = !useFourHeroPortrait
+  if (!useFourHeroPortrait) {
+    if (portraitFX.playerHeroSprite) {
+      portraitFX.playerHeroSprite.x = CANVAS_W / 2
+      const tex = portraitFX.playerHeroSprite.texture
+      if (tex?.width) {
+        const targetW = CANVAS_W * Math.max(0.2, getDebugCfg('battlePlayerPortraitWidthRatio'))
+        portraitFX.playerHeroBaseScale = targetW / Math.max(1, tex.width)
+        if (portraitFX.playerHeroSprite) {
+          portraitFX.playerHeroSprite.scale.set(portraitFX.playerHeroBaseScale)
+        }
       }
+      const offsetY = getDebugCfg('battlePlayerPortraitOffsetY')
+      portraitFX.playerHeroSprite.y = CANVAS_H + offsetY
     }
-    const offsetY = getDebugCfg('battlePlayerPortraitOffsetY')
-    portraitFX.playerHeroSprite.y = CANVAS_H + offsetY
+    if (portraitFX.playerHeroFlashSprite && portraitFX.playerHeroSprite) {
+      portraitFX.playerHeroFlashSprite.x = portraitFX.playerHeroSprite.x
+      portraitFX.playerHeroFlashSprite.y = portraitFX.playerHeroSprite.y
+      portraitFX.playerHeroFlashSprite.scale.copyFrom(portraitFX.playerHeroSprite.scale)
+    }
   }
-  if (portraitFX.playerHeroFlashSprite && portraitFX.playerHeroSprite) {
-    portraitFX.playerHeroFlashSprite.x = portraitFX.playerHeroSprite.x
-    portraitFX.playerHeroFlashSprite.y = portraitFX.playerHeroSprite.y
-    portraitFX.playerHeroFlashSprite.scale.copyFrom(portraitFX.playerHeroSprite.scale)
+  if (playerFourHeroPortraitLayer) {
+    playerFourHeroPortraitLayer.visible = useFourHeroPortrait
+  }
+  if (useFourHeroPortrait && playerFourHeroPortraitUnits.length > 0) {
+    updatePlayerFourHeroFrontSlotByPower()
+    const orderedUnits = [...playerFourHeroPortraitUnits]
+    const slotByStem = getPlayerFourHeroPortraitSlotByStem(playerFourHeroSlotStems)
+    const perPortraitW = CANVAS_W * 0.22
+    const fourHeroBaseScale = Math.max(0.2, getDebugCfg('battlePlayerPortraitFourHeroScale'))
+    const baseY = CANVAS_H + getDebugCfg('battlePlayerPortraitOffsetY')
+    const swapAnim = playerFourHeroSwapAnim
+    const swapP = swapAnim
+      ? Math.max(0, Math.min(1, (battlePresentationMs - swapAnim.startAtMs) / Math.max(1, swapAnim.durationMs)))
+      : 1
+    const swapEase = 1 - Math.pow(1 - swapP, 3)
+    if (swapAnim && swapP >= 1) playerFourHeroSwapAnim = null
+    for (const unit of orderedUnits) {
+      if (!unit) continue
+      const targetSlot = slotByStem[unit.stem]
+      const fromSlot = swapAnim ? swapAnim.fromSlotByStem[unit.stem] : targetSlot
+      const toSlot = swapAnim ? swapAnim.toSlotByStem[unit.stem] : targetSlot
+      const fromAdjust = getPlayerFourHeroPortraitAdjust(fromSlot)
+      const toAdjust = getPlayerFourHeroPortraitAdjust(toSlot)
+      const fromStyle = getPlayerFourHeroPortraitStyle(fromSlot)
+      const toStyle = getPlayerFourHeroPortraitStyle(toSlot)
+      const offsetX = fromAdjust.offsetX + (toAdjust.offsetX - fromAdjust.offsetX) * swapEase
+      const offsetY = fromAdjust.offsetY + (toAdjust.offsetY - fromAdjust.offsetY) * swapEase
+      const scaleAdjust = fromAdjust.scale + (toAdjust.scale - fromAdjust.scale) * swapEase
+      const alpha = fromStyle.alpha + (toStyle.alpha - fromStyle.alpha) * swapEase
+      const grayMul = fromStyle.grayMul + (toStyle.grayMul - fromStyle.grayMul) * swapEase
+      const tex = unit.sprite.texture
+      if (tex?.width) {
+        unit.baseScale = (perPortraitW / Math.max(1, tex.width)) * fourHeroBaseScale * Math.max(0.1, scaleAdjust)
+        unit.sprite.scale.set(unit.baseScale)
+      }
+      unit.sprite.x = CANVAS_W * 0.5 + offsetX
+      unit.sprite.y = baseY + offsetY
+      unit.sprite.alpha = alpha
+      const gray = Math.max(0, Math.min(255, Math.round(255 * grayMul)))
+      unit.sprite.tint = (gray << 16) | (gray << 8) | gray
+      unit.sprite.zIndex = 80 + Math.round(unit.sprite.y)
+    }
   }
 }
 
@@ -3223,6 +3702,25 @@ export const BattleScene: Scene = {
         return
       }
     }
+    if (getGameCfg().towerDefenseRules?.enabled === true) {
+      const normalizedEntities = snapshot.entities.map((one) => {
+        const tier = (one.tier ?? 'Bronze') as TierKey
+        const tierStar = (one.tierStar ?? 1) as 1 | 2
+        const level = tierStarToTowerLevel(tier, tierStar)
+        const normalizedTierStar = levelToTowerTierStar(level) ?? { tier, star: tierStar }
+        return {
+          ...one,
+          tier: normalizedTierStar.tier,
+          tierStar: normalizedTierStar.star,
+          level,
+        }
+      })
+      snapshot = {
+        ...snapshot,
+        entities: normalizedEntities,
+      }
+      setBattleSnapshot(snapshot)
+    }
     enteredSnapshot = snapshot
     battleEnemyHeroVisualId = null
     battleReplaySaved = false
@@ -3264,6 +3762,7 @@ export const BattleScene: Scene = {
     battleRuntimePerfSnapshot = {}
     battleLastTickIndexForPerf = -1
     appliedActiveCols = -1
+    playerZoneResizeTransition = null
     root = new Container()
     root.sortableChildren = true
     stage.addChild(root)
@@ -3383,6 +3882,32 @@ export const BattleScene: Scene = {
     portraitFX.playerHeroFlashSprite.blendMode = 'add'
     portraitFX.playerHeroFlashSprite.alpha = 0
     root.addChild(portraitFX.playerHeroFlashSprite)
+
+    playerFourHeroPortraitLayer = new Container()
+    playerFourHeroPortraitLayer.zIndex = 35
+    playerFourHeroPortraitLayer.sortableChildren = true
+    playerFourHeroPortraitLayer.eventMode = 'none'
+    playerFourHeroPortraitLayer.visible = false
+    root.addChild(playerFourHeroPortraitLayer)
+    playerFourHeroPortraitUnits.length = 0
+    playerFourHeroSlotStems = [...PLAYER_FOUR_HERO_SLOT_STEMS_DEFAULT]
+    playerFourHeroSwapAnim = null
+    for (const stem of PLAYER_FOUR_HERO_PORTRAIT_STEMS) {
+      const sprite = new Sprite(Texture.WHITE)
+      sprite.anchor.set(0.5, 1)
+      sprite.eventMode = 'none'
+      playerFourHeroPortraitLayer.addChild(sprite)
+      playerFourHeroPortraitUnits.push({
+        stem,
+        sprite,
+        normalTexture: null,
+        hitTexture: null,
+        baseScale: 1,
+      })
+    }
+    await loadPlayerFourHeroPortraitTextures()
+    playerFourHeroHitElapsedMs = -1
+    setPlayerFourHeroPortraitUseHit(false)
 
     if (isTowerDefenseBattle()) {
       if (portraitFX.enemyBossSprite) portraitFX.enemyBossSprite.visible = false
@@ -4006,7 +4531,7 @@ export const BattleScene: Scene = {
       const floatingTarget = fxPool.offsetFloatingNumberTarget(side, projectileTarget)
       const playDamageVisual = () => {
         if (e.sourceItemId.startsWith('status_') || isFatigueDamage) {
-          if (enemyAttackToPlayer) portraitFX.triggerPlayerHit()
+          if (enemyAttackToPlayer) triggerPlayerPortraitHitFx()
           const task = {
             amount: Math.max(0, Math.round(damageShown)),
             run: () => {
@@ -4028,7 +4553,7 @@ export const BattleScene: Scene = {
               return
             }
             if (isTowerEnemyDeferredDamage) {
-              if (enemyAttackToPlayer) portraitFX.triggerPlayerHit()
+              if (enemyAttackToPlayer) triggerPlayerPortraitHitFx()
               fxPool.spawnFloatingNumber(floatingTarget, `-${task.amount}`, textColor, textSize)
               return
             }
@@ -4036,7 +4561,7 @@ export const BattleScene: Scene = {
               if (side === 'enemy') {
                 portraitFX.triggerEnemyHit()
               } else if (enemyAttackToPlayer) {
-                portraitFX.triggerPlayerHit()
+                triggerPlayerPortraitHitFx()
               }
               fxPool.spawnFloatingNumber(floatingTarget, `-${task.amount}`, textColor, textSize)
             }, e.sourceItemId)
@@ -4174,7 +4699,7 @@ export const BattleScene: Scene = {
         run: () => {
           fxPool.spawnProjectile(from, to, color, () => {
             if (targetIsHero && targetSide === 'enemy') portraitFX.triggerEnemyHit()
-            if (targetIsHero && targetSide === 'player') portraitFX.triggerPlayerHit()
+            if (targetIsHero && targetSide === 'player') triggerPlayerPortraitHitFx()
           }, e.sourceItemId, { forceDot })
         },
         mergeKey: catchUp ? `status|${e.status}|${targetSide}|${e.targetId}|${e.sourceItemId}` : undefined,
@@ -4188,7 +4713,8 @@ export const BattleScene: Scene = {
     offUnitDieEvent = EventBus.on('battle:unit_die', (e) => {
       if (e.unitId === 'hero_player' || e.unitId === 'hero_enemy') return
       if (e.unitId.startsWith('td-enemy-')) {
-        if (isTowerDefenseBattle() && !replayMode) {
+        const impactPlayer = e.reason === 'impact_player'
+        if (isTowerDefenseBattle() && !replayMode && !impactPlayer) {
           const dropGold = getTowerEnemyKillGoldByUnitId(e.unitId)
           if (dropGold > 0) {
             editableGold += dropGold
@@ -4200,6 +4726,10 @@ export const BattleScene: Scene = {
               setBattleSnapshot(snap)
             }
           }
+        }
+        if (impactPlayer) {
+          removeTowerEnemyImmediately(e.unitId)
+          return
         }
         triggerTowerEnemyDeathFly(e.unitId, towerEnemyLastHitDirById.get(e.unitId) ?? null)
         return
@@ -4229,6 +4759,8 @@ export const BattleScene: Scene = {
     continueBtnText = null
     restartBtn = null
     buyBtn = null
+    buyBtnBg = null
+    buyBtnPulseFrame = null
     buyBtnText = null
     sellDropZone = null
     speedBtn = null
@@ -4322,6 +4854,7 @@ export const BattleScene: Scene = {
     battleRuntimePerfSnapshot = {}
     battleLastTickIndexForPerf = -1
     appliedActiveCols = -1
+    playerZoneResizeTransition = null
     replayMode = false
     replayRandomSourceValues = null
     replayRandomCursor = 0
@@ -4331,6 +4864,14 @@ export const BattleScene: Scene = {
     battleReplaySaved = false
     towerBattleBuyCount = 0
     pendingBattleBuyOffer = null
+    buyBtnLastCanAfford = null
+    buyBtnAffordPulseStartAtMs = null
+    buyBtnAffordVisualState = null
+    playerFourHeroPortraitLayer = null
+    playerFourHeroPortraitUnits.length = 0
+    playerFourHeroHitElapsedMs = -1
+    playerFourHeroSlotStems = [...PLAYER_FOUR_HERO_SLOT_STEMS_DEFAULT]
+    playerFourHeroSwapAnim = null
     towerEnemyDefIdByUnitId.clear()
     clearTowerEnemyGoldDropFx()
     towerNextWaveAutoStartAtMs = null
@@ -4444,13 +4985,29 @@ export const BattleScene: Scene = {
     const runtimeBuildCostMs = performance.now() - runtimeBuildStartMs
     const layoutStartMs = performance.now()
     const activeCols = getDayActiveCols(battleDay)
-    if (activeCols !== appliedActiveCols) {
+    const desiredPlayerRows = isTowerDefenseBattle() ? getTowerBattleRowsByDay(battleDay) : (playerZone?.activeRowCount ?? 1)
+    const rowNeedsUpdate = !!playerZone && playerZone.activeRowCount !== desiredPlayerRows
+    if (activeCols !== appliedActiveCols || (rowNeedsUpdate && !playerZoneResizeTransition)) {
       enemyZone.setActiveColCount(activeCols)
-      playerZone.setActiveColCount(activeCols)
       applyZoneVisualStyle(enemyZone, 'enemy')
-      applyZoneVisualStyle(playerZone, 'player')
-      applyLayout(activeCols)
+      const shouldAnimatePlayerResize = isTowerDefenseBattle()
+        && appliedActiveCols > 0
+        && !!playerZone
+        && (playerZone.activeColCount !== activeCols || playerZone.activeRowCount !== desiredPlayerRows)
+      if (shouldAnimatePlayerResize) {
+        startPlayerZoneResizeTransition(activeCols, desiredPlayerRows)
+        applyLayout(activeCols, { keepPlayerZoneX: true, keepPlayerZoneY: true })
+      } else {
+        playerZone.setActiveColCount(activeCols)
+        playerZone.setActiveRowCount(desiredPlayerRows)
+        applyZoneVisualStyle(playerZone, 'player')
+        applyLayout(activeCols)
+      }
       appliedActiveCols = activeCols
+    }
+    updatePlayerZoneResizeTransition(dtMs)
+    if (isBattlePlayerFourHeroPortraitEnabled() || playerFourHeroSwapAnim) {
+      applyLayout(activeCols, { keepPlayerZoneX: true, keepPlayerZoneY: true })
     }
     const layoutCostMs = performance.now() - layoutStartMs
     syncTowerEnemyPresentation(activeCols)
@@ -4543,6 +5100,7 @@ export const BattleScene: Scene = {
     const portraitStartMs = performance.now()
     portraitFX.tickEnemy(dtMs)
     portraitFX.tickPlayer(dtMs)
+    tickPlayerFourHeroPortrait(dtMs)
     const portraitCostMs = performance.now() - portraitStartMs
 
     const queueStats = engine.getQueuePerfStats()
@@ -4611,7 +5169,12 @@ export const BattleScene: Scene = {
         && transition.battleExitTransitionDurationMs <= 0
         && !settlement.isGameOver()
       speedBtn.visible = towerMode ? showTopActionButtons : !engine.isFinished()
-      speedBtn.y = getClampedTopActionBtnY()
+      if (towerMode) {
+        speedBtn.x = getTowerTopLeftActionBtnX()
+        speedBtn.y = getTowerTopLeftActionBtnY(2)
+      } else {
+        speedBtn.y = getClampedTopActionBtnY()
+      }
       if (speedBtnText) speedBtnText.text = `倍速:${battleSpeed}x`
     }
 
@@ -4621,12 +5184,12 @@ export const BattleScene: Scene = {
         && transition.battleExitTransitionDurationMs <= 0
         && !settlement.isGameOver()
       organizeBtn.visible = towerMode ? showTopActionButtons : !engine.isFinished()
-      organizeBtn.y = getClampedTopActionBtnY()
+      organizeBtn.y = getClampedTopActionBtnY('battleOrganizeBtnY')
     }
 
     if (itemTestBtn) {
-      itemTestBtn.x = 96
-      itemTestBtn.y = 48 + topSafeYOffset
+      itemTestBtn.x = getTowerTopLeftActionBtnX()
+      itemTestBtn.y = getTowerTopLeftActionBtnY(0)
       const canEditInBattle = isTowerDefenseBattle() && !replayMode && !towerWaveAdvanceInProgress && transition.battleExitTransitionDurationMs <= 0 && !settlement.isGameOver()
       itemTestBtn.visible = canEditInBattle
     }
@@ -4664,35 +5227,19 @@ export const BattleScene: Scene = {
       if (towerMode && (autoByClear || reachedPostSpawnLimit)) {
         towerWaveTriggerConsumed = true
       }
-      const shouldStartWaveCountdown = towerMode
+      const shouldAutoAdvanceWave = towerMode
         && !settlement.isGameOver()
         && !settlement.isFinalVictory()
+        && !bossWave
         && !towerWaveAdvanceInProgress
         && transition.battleExitTransitionDurationMs <= 0
         && towerWaveTriggerConsumed
       continueBtn.x = CANVAS_W / 2
       continueBtn.y = 92 + topSafeYOffset + 50
-      continueBtn.visible = towerMode ? (shouldStartWaveCountdown || canContinue) : canContinue
-      if (towerMode && shouldStartWaveCountdown) {
-        if (towerForceAutoStartOnEnter) {
-          towerForceAutoStartOnEnter = false
-          void startNextTowerWaveInPlace()
-          if (continueBtnText) continueBtnText.text = '开始下一波'
-          continueBtn.visible = false
-        }
-        if (towerNextWaveAutoStartAtMs === null) {
-          towerNextWaveAutoStartAtMs = battlePresentationMs + getTowerNextWaveAutoStartMs()
-        }
-        const remainMs = Math.max(0, towerNextWaveAutoStartAtMs - battlePresentationMs)
-        const remainSec = Math.max(0, Math.ceil(remainMs / 1000))
-        if (continueBtnText) continueBtnText.text = `开始下一波${remainSec > 0 ? ` (${remainSec})` : ''}`
-        if (remainMs <= 0) {
-          if (draggingPlayerItemId) {
-            towerNextWaveAutoStartAtMs = battlePresentationMs + 250
-          } else {
-            void startNextTowerWaveInPlace()
-          }
-        }
+      continueBtn.visible = towerMode ? (bossWave && canContinue) : canContinue
+      if (towerMode && shouldAutoAdvanceWave) {
+        if (towerForceAutoStartOnEnter) towerForceAutoStartOnEnter = false
+        void startNextTowerWaveInPlace({ showNewEnemyToast: true })
       } else if (towerMode && canContinue) {
         towerNextWaveAutoStartAtMs = null
         towerForceAutoStartOnEnter = false
@@ -4705,8 +5252,8 @@ export const BattleScene: Scene = {
     }
 
     if (restartBtn) {
-      restartBtn.x = 72
-      restartBtn.y = 132 + topSafeYOffset
+      restartBtn.x = getTowerTopLeftActionBtnX()
+      restartBtn.y = getTowerTopLeftActionBtnY(1)
       restartBtn.visible = isTowerDefenseBattle() && !replayMode && !towerWaveAdvanceInProgress && transition.battleExitTransitionDurationMs <= 0
     }
 
@@ -4722,12 +5269,26 @@ export const BattleScene: Scene = {
     const canEditInBattle = isTowerDefenseBattle() && !replayMode && !towerWaveAdvanceInProgress && transition.battleExitTransitionDurationMs <= 0 && !settlement.isGameOver()
     if (buyBtn) {
       buyBtn.x = CANVAS_W / 2
-      buyBtn.y = CANVAS_H - 63
+      buyBtn.y = getTowerBattleBuyButtonY()
       buyBtn.visible = canEditInBattle
-      const canAfford = editableGold >= getTowerBattleBuyCost()
+      const buyCost = getTowerBattleBuyCost()
+      const canAfford = editableGold >= buyCost
+      if (buyBtnLastCanAfford === null) {
+        buyBtnLastCanAfford = canAfford
+      } else if (!buyBtnLastCanAfford && canAfford && canEditInBattle) {
+        buyBtnAffordPulseStartAtMs = battlePresentationMs
+      }
+      buyBtnLastCanAfford = canAfford
+      if (!canAfford) buyBtnAffordPulseStartAtMs = null
+      if (buyBtnAffordVisualState !== canAfford) {
+        redrawTowerBattleBuyButtonVisual(canAfford)
+        buyBtnAffordVisualState = canAfford
+      }
+      if (canEditInBattle) tickTowerBattleBuyAffordPulse()
+      else if (buyBtnPulseFrame) buyBtnPulseFrame.visible = false
       buyBtn.alpha = canAfford ? 1 : 0.55
       buyBtn.cursor = canAfford ? 'pointer' : 'default'
-      if (buyBtnText) buyBtnText.text = formatTowerBattleBuyButtonText(editableGold, getTowerBattleBuyCost(), getTowerBattleBuyOfferLevel())
+      if (buyBtnText) buyBtnText.text = formatTowerBattleBuyButtonText(editableGold, buyCost, getTowerBattleBuyOfferLevel())
     }
     if (sellDropZone) {
       sellDropZone.visible = false

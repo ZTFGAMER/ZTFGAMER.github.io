@@ -1,5 +1,790 @@
 # 大巴扎 — 开发进度记录
 
+## 验收追加修正（2026-03-26，技能词条“错一档”最终回灌修复）
+
+- 现象复盘：白银 Lv4 读第5档、黄金/钻石词条前读1档。
+- 最终根因：
+  - 战斗引擎 `start(snapshot)` 启动时直接使用商店快照；
+  - 商店快照与塔防 5 档词条口径存在混用；
+  - 编辑态归一化之前未在初始化阶段立即回灌引擎。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 进入战斗即先归一化快照（`tier/tierStar/level` 统一到塔防 5 档）；
+    - `ensureEditableBuildMode()` 末尾立即回写归一化快照并 `syncEngineWithEditable()`；
+    - 回填 `editableMeta` 时等级统一由 `tier/tierStar` 规范化。
+  - `src/tower/battle/EnemyBuilder.ts`
+    - Runner 持续按 `level` 5 档索引读取词条与基础值。
+- 结果：开战首帧起即按当前等级档读取 `|` 技能词条，无需先操作触发刷新。
+- 验证：`npm run build` 通过。
+
+## 验收追加修正（2026-03-26，开战首帧词条档位错读修复）
+
+- 用户持续反馈：白银 Lv4 读第5档，黄金/钻石技能词条整体前读1档。
+- 最终根因：
+  - 进入战斗时 `engine.start(snapshot)` 使用商店阶段快照；
+  - 编辑态虽然会做等级归一化，但初始化阶段未立即回灌引擎；
+  - 导致首帧及未操作前仍按旧快照档位生效。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 在 `ensureEditableBuildMode()` 末尾新增初始化回灌：
+      - 立即 `buildEditableSnapshotFromBoard()`；
+      - 回写 `enteredSnapshot` 与 `setBattleSnapshot()`；
+      - 立即调用 `syncEngineWithEditable()`。
+- 预期：无需拖拽/购买，开战即按当前等级档位读取 `|` 技能词条。
+- 验证：`npm run build` 通过。
+
+## 验收追加优化（2026-03-26，四英雄后排半透/压暗可配且换位时动态过渡）
+
+- 用户需求：
+  - 后排三个英雄增加半透与压暗效果，并可配置；
+  - 换位动画期间，这两个效果要动态插值（后退者逐渐半透变暗，前进者逐渐恢复不半透不变暗）。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增后排样式函数 `getPlayerFourHeroPortraitStyle(slot)`；
+    - 在换位插值流程中同步插值 `alpha/tint`：
+      - 前进到前排时逐步恢复 `alpha=1`、无压暗；
+      - 后退到后排时逐步过渡到配置值。
+  - `src/config/debugConfig.ts`
+  - `src/tower/config/debugConfig.ts`
+  - `src/nobag/config/debugConfig.ts`
+    - 新增可调参数：
+      - `battlePlayerPortraitFourHeroBackAlpha`
+      - `battlePlayerPortraitFourHeroBackDarken`
+  - `src/debug/DebugPage.ts`
+    - 将上述两个参数加入战斗调试面板。
+  - `data/tower_debug_defaults.json`
+  - `data/debug_defaults.json`
+  - `data/nobag_debug_defaults.json`
+    - 新增默认值：`BackAlpha=0.72`、`BackDarken=0.32`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“后排半透压暗 + 换位时动态过渡”视觉。
+
+## 验收追加修正（2026-03-26，技能词条档位严格按当前等级）
+
+- 用户强调：问题在技能词条（`|` 序列）读档，不是基础战斗值。
+- 本轮修正：
+  - `src/tower/battle/BattleScene.ts`
+    - 快照生成与编辑回填统一按 `tier/tierStar` 反推等级，避免历史快照 `level` 偏差污染词条读档。
+  - `src/tower/battle/EnemyBuilder.ts`
+    - `toRunner()` 的 `runner.level` 改为由 `tier/tierStar` 规范化得到（1~5）；
+    - 词条序列索引统一走该规范化等级，剥离品质起点干扰。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 维持“词条解析优先按 `item.level` -> `level-1` 档位”。
+- 预期：`|` 词条不再出现“白银Lv4读第5档、黄金/钻石整体前读1档”。
+- 验证：`npm run build` 通过。
+
+## 验收追加修正（2026-03-26，四英雄前后位在购买/合成后未触发换位）
+
+- 用户反馈：购买/合成后应重算前排并触发换位，但实机未触发。
+- 根因：
+  - 前后位重算逻辑挂在 `applyLayout()` 内；
+  - 但 `applyLayout()` 只在列/行变化等布局事件触发，购买/合成仅改物品，不一定触发布局更新。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 在 `update()` 中增加四英雄动态重排触发：
+      - 四英雄开关开启或正在换位动画时，每帧执行一次 `applyLayout(activeCols, { keepPlayerZoneX: true, keepPlayerZoneY: true })`；
+      - 从而保证购买/合成后职业总等级变化可立即驱动前后位重算与 `1s` 换位动画。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“购买/合成后前后位会立即重算并触发换位动画”。
+
+## 验收追加优化（2026-03-26，四英雄前后位配置 + 按总等级动态抢前排）
+
+- 用户需求：
+  - 四英雄配置从“按职业配置”改为“前方英雄 + 后方英雄1/2/3”；
+  - 战斗中按各职业物品总等级决定谁站前排；
+  - 前后换位需有 `1s` 过渡动画并同步渲染层级；
+  - 总等级平票时：若平票方里已有前排则保持不换；若都在后排则随机一方上前。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增四英雄槽位模型（`front/back1/back2/back3`）与默认映射；
+    - 新增按玩家当前上阵物品计算职业总等级逻辑（剑士/弓手/忍者/冰法师）；
+    - 每帧判定前排归属并按规则触发换位；
+    - 换位采用 `1000ms` 动画（位移/缩放联动），并按最终 `y` 同步更新 `zIndex`；
+    - X 偏移继续以屏幕中心为基准（`offsetX=0` 即在屏幕中心）。
+  - `src/config/debugConfig.ts`
+  - `src/tower/config/debugConfig.ts`
+  - `src/nobag/config/debugConfig.ts`
+    - 四英雄调参项改名为位置语义：`Front`、`Back1`、`Back2`、`Back3`（X/Y/Scale）。
+  - `src/debug/DebugPage.ts`
+    - 调试面板四英雄项同步替换为前后位配置键。
+  - `data/tower_debug_defaults.json`
+  - `data/debug_defaults.json`
+  - `data/nobag_debug_defaults.json`
+    - 默认值迁移到新键（旧“战士前、其余后”布局自动映射到 `Front/Back1/Back2/Back3`）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“动态前排切换 + 平票策略 + 1秒换位动画”是否符合预期。
+- 重要决定记录：
+  - 换位期间采用缓动插值，避免瞬移抖动；
+  - 正在换位时不重复发起新换位，待当前动画结束后再判定下一次前排归属。
+
+## 验收追加修正（2026-03-26，彻底切到“等级唯一驱动”读数）
+
+- 用户要求：不要再考虑品质/起始品质，所有数值严格按当前等级读取。
+- 最终收敛（本轮）：
+  - `src/tower/battle/EnemyBuilder.ts`
+    - `toRunner()` 读取玩家快照时，不再优先信任 `entity.baseStats`（该值可能来自旧口径）；
+    - 改为由 `level` 直接计算 5 档索引（`level-1`）并重建 `baseStats`；
+    - `ammo/multicast/cooldown/damage` 等基础战斗值统一走等级档，完全剥离起始品质影响。
+  - 结合上一轮已生效改动：
+    - `TowerDefenseEngine` 的词条解析统一“`item.level` 优先，`tier` 仅兜底”；
+    - `BattleScene` 快照构建以 `level` 为主并反推展示 tier，防止等级漂移。
+- 预期结果：
+  - 白银/黄金/钻石不再发生“按品质错位读档”；
+  - 任意物品在 `LvN` 都读第 `N` 档（1~5）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户按实战回归确认“白银Lv4不再读第5档、黄金/钻石不再整体前读1档”。
+
+## 验收追加修正（2026-03-26，严格按等级读数的最终收敛）
+
+- 用户要求：所有技能效果必须严格按当前等级读取，不能再出现“低一级”。
+- 本次收敛动作：
+  - `src/tower/battle/BattleScene.ts`
+    - 生成战斗快照时，优先使用 `meta.level`，再由等级反推出 `tier/tierStar`，避免 tier 与 level 漂移；
+    - 回填 `editableMeta` 时优先读取快照中的 `level`。
+  - `src/tower/battle/EnemyBuilder.ts`
+    - `toRunner()` 明确写入 `runner.level`；
+    - `level<=5` 固定映射为塔防 5 级体系（`1->Bronze#1 ... 5->Diamond#2`）。
+  - `src/tower/battle/CombatTypes.ts`
+    - `CombatItemRunner` 增加 `level?: number`，用于后续按等级直接取档。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 新增 `resolveSeriesTierIndex()`：优先按 `item.level` 直接换算序列索引（`level-1`），仅在无等级时回退 `tier`；
+    - 攻击距离/使用后增伤/通用词条数值解析统一改为走该函数。
+- 结果：效果读取来源统一为“等级优先”，从机制上消除整体前读一级。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测 `toweritem15 Lv5=+3` 以及其余 5 档技能词条是否全部命中正确档位。
+
+## 验收追加修正（2026-03-26，技能整体前读一级的二次修复）
+
+- 用户反馈：修复后仍然“整体低一级”，不仅是 `toweritem15`。
+- 二次根因：
+  - `EnemyBuilder.toRunner()` 已优先使用 `entity.level`，但 `BattleScene.buildEditableSnapshotFromBoard()` 仍用 `tier/tierStar` 反推并覆盖 `level`；
+  - 当 `editableMeta` 里的 `tier/tierStar` 与 `level` 不一致时，会把正确等级覆盖成低一级，导致全局效果前读。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `buildEditableSnapshotFromBoard()`：改为优先使用 `meta.level`，再由该等级反推标准 `tier/tierStar`（统一 5 级语义）；
+    - `ensureEditableBuildMode()`：从快照回填 `editableMeta` 时，优先读取 `one.level`，避免仅按 `tier/tierStar` 反推造成级别漂移。
+  - `src/tower/battle/EnemyBuilder.ts`
+    - 保留上一轮修复：`level<=5` 使用塔防 5 级映射（`1~5 -> Bronze#1..Diamond#2`）。
+- 当前阶段：等待用户复测 `Lv5` 词条（特别是 `toweritem15`）是否恢复为第五档。
+- 验证状态：本地构建被仓库内既有 `BattleScene.ts` 未使用常量/缺失常量错误阻断（与本次改动无直接耦合）。
+
+## 验收追加修正（2026-03-26，技能效果整体“前读一级”问题修复）
+
+- 用户反馈：不仅多发冰锥，多个技能效果都出现“按前一级读取”的现象。
+- 根因定位：
+  - `src/tower/battle/EnemyBuilder.ts` 的 `toRunner()` 仍用旧 8 档质量映射处理 `entity.level`；
+  - 当前塔防等级语义是 5 档（`Lv1~Lv5`），导致 `Lv5` 被误映射为 `Gold#1`，进而引发效果整体前读。
+- 已完成：
+  - `src/tower/battle/EnemyBuilder.ts`
+    - `level<=5` 改为塔防专用映射：`1->Bronze#1, 2->Silver#1, 3->Gold#1, 4->Diamond#1, 5->Diamond#2`；
+    - `level>5` 仍回退旧 8 档映射，兼容历史数据。
+- 结果：技能效果读取恢复与 Lv1~Lv5 配表一致，不再整体前读一级。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户重点复测 `toweritem15 Lv5` 与其它 5 档技能在 Lv4/Lv5 的读取是否完全正确。
+
+## 验收追加调整（2026-03-26，四英雄X偏移改为以屏幕中心为基准）
+
+- 用户需求：四英雄的 X 偏移统一改为“基于屏幕中心偏移”，默认都在屏幕中心。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 四英雄布局从“按队列横向排布 + X 偏移”改为“统一中心点 + 各自 X 偏移”；
+    - 当前位置公式改为：`x = CANVAS_W * 0.5 + 各英雄offsetX`；
+    - Y 偏移与缩放逻辑保持不变，仍支持逐角色调参。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“offsetX=0 时四英雄重合在屏幕中心”行为是否符合预期。
+- 重要决定记录：
+  - 保留四英雄顺序与 Y 决定层级逻辑，仅调整 X 基准，避免影响既有前后遮挡关系。
+
+## 验收追加修正（2026-03-26，24件塔防物品描述与逻辑统一为5级口径）
+
+- 用户确认：`toweritem1~24` 的间隔/伤害/效果描述全部按 5 级序列配置；塔防战斗逻辑同步按该 5 级口径读取；仅改塔防，不改普通模式物品。
+- 已完成：
+  - `data/tower_items.json`
+    - 24 件塔防物品基础值统一为 5 档：
+      - 伤害统一 `10|16|26|41|66`；
+      - 冷却按职业统一 5 档（忍者/弓手/冰法师/剑士）；
+    - 关键效果描述与 `simple_desc_tiered` 同步改为 5 档串：
+      - `toweritem2/3/4/6/8/9/10/12/14/15/16/20/21/22/24`。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - `toweritem9` 改为按词条读取“连发次数+X + 伤害惩罚%”，并可叠加；
+    - `toweritem15` 改为按词条读取“发射目标+X”并叠加；
+    - `toweritem12` 连续命中增伤改为按词条值读取并叠加；
+    - `toweritem16` 冰冻概率改为按词条百分比读取并叠加，首领按 `1/5` 折算；
+    - `toweritem18` 反击充能改为按词条秒数累计（多件叠加秒数）；
+    - `toweritem24` 反伤比例改为按词条百分比读取并叠加（支持 `...|200%`）；
+    - 忍者/弓手连发降伤均支持 5 档百分比串读取并保底最小伤害 1。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收 24 件物品在 Lv1~Lv5 的描述展示与实战生效完全一致。
+
+## 验收追加调整（2026-03-26，购买按钮可购买态文字改白字黑描边）
+
+- 用户需求：购买按钮变黄（可购买态）后，按钮内文字改为白色，黑色描边，描边宽度 `3px`。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 在 `redrawTowerBattleBuyButtonVisual(canAfford)` 中调整可购买态文本样式：
+      - `fill = 0xffffff`
+      - `stroke = { color: 0x000000, width: 3 }`
+    - 非可购买态保持原蓝色文字（描边宽度为 `0`）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收黄色按钮态文本可读性是否符合预期。
+
+## 验收追加修正（2026-03-26，塔防物品改为按等级绝对档读取数值）
+
+- 用户需求：简化为“间隔/数值直接按等级读取”，不再受起始品质偏移影响；白银/黄金/钻石虽然不出 Lv1，但仍按新表提供的 5 档（Lv1~Lv5）读取。
+- 已完成：
+  - `src/tower/battle/CombatHelpers.ts`
+    - `tierIndexFromRaw()` 改为绝对档位：`Bronze1=0, Silver1=1, Gold1=2, Diamond1=3, Diamond2=4`；
+    - 不再减去 `starting_tier` 偏移，统一按等级档直接取值。
+  - `src/tower/common/items/ItemTierStats.ts`
+    - 基础战斗属性解析同样改为按绝对档位取 `cooldown_tiers/伤害序列`；
+    - 与战斗引擎取值口径统一。
+  - `src/tower/common/grid/GridZone.ts`
+    - 面板显示取值同步改为绝对档位，避免“显示档位”和“战斗生效档位”不一致；
+    - 序列解析支持 `|` 与 `/` 两种分隔符。
+  - `data/tower_items.json`
+    - 塔防 24 件主战物品（手里剑/弓箭/冰锥/长剑四系）数值表按新表统一：
+      - 伤害统一为 `10|16|26|41|66`；
+      - 间隔统一为职业基表 5 档：
+        - 忍者 `8000|6700|5600|4600|3900`
+        - 弓手 `5000|4200|3500|2900|2400`
+        - 冰法师 `7000|5800|4900|4100|3400`
+        - 剑士 `6000|5000|4200|3500|2900`
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户重点验收白银 Lv3/Lv4、黄金 Lv4 的间隔与伤害是否与新表一致。
+
+## 验收追加调整（2026-03-26，上阵区背景透明度改为 JSON 可配置）
+
+- 用户需求：上阵区背景透明度不要写死，改为在 JSON 中可配置。
+- 已完成：
+  - `data/tower_game_config.json`
+    - `tower_defense_rules` 新增 `playerZoneBackgroundAlpha: 0.58`。
+  - `src/tower/common/items/ItemDef.ts`
+    - `towerDefenseRules` 类型新增 `playerZoneBackgroundAlpha?: number`。
+  - `src/tower/battle/BattleScene.ts`
+    - 新增读取函数 `getTowerPlayerZoneBackgroundAlpha()`（自动夹取到 `0~1`）；
+    - 上阵区背景透明度改为读取 `towerDefenseRules.playerZoneBackgroundAlpha`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户按视觉反馈调整该 JSON 值。
+
+## 验收追加修正（2026-03-26，手里剑系按确认口径重做叠加与分档）
+
+- 用户确认口径（按序号）：
+  - `toweritem2` 弹射次数按品质分档（`+1|+2|+3|+4`）且可叠加；
+  - `toweritem3` 连发次数按品质分档（`+1|+2|+3`）且可叠加；
+  - `toweritem3` 伤害惩罚按品质分档（`-20%|-30%|-40%`）且可叠加，最终伤害最低 `1`；
+  - `toweritem4` 减速维持“总时长刷新”口径（不改为剩余时长累加）；
+  - `toweritem6` 分裂目标数量 `+1` 支持多件叠加；
+  - `toweritem5` 维持开关效果（不叠加）；
+  - 同步更新手里剑文案。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 新增忍者全局降伤累计参数 `playerNinjaDamagePenaltyPct`；
+    - `toweritem3` 被动由“固定 +1 连发”改为按词条分档解析连发加成，并累计降伤百分比；
+    - 忍者出手伤害结算加入累计降伤，并保底最小伤害 `1`；
+    - `toweritem2` 弹射加成由布尔开关改为“按每件词条值累加”；
+    - `toweritem6` 首次弹射分裂数由布尔开关改为“按每件词条值累加”。
+  - `data/tower_items.json`
+    - 同步 `toweritem2/3/6` 的 `skills/simple_desc/simple_desc_tiered` 文案到确认口径；
+    - `toweritem3` 文案统一为 `-20|-30|-40%` 便于按档解析与展示一致。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“手里剑连发/弹射/分裂叠加与伤害惩罚”实战表现。
+- 重要决定记录：
+  - `toweritem4` 继续保持“命中刷新到总减速时长”的实现，不做目标剩余时长叠加。
+
+## 验收追加调整（2026-03-26，上阵区背景改为半透明）
+
+- 用户需求：上阵区背景改为半透。
+- 已完成：
+  - `src/tower/common/grid/GridZone.ts`
+    - 新增 `setCellBackgroundAlpha(alpha)`，支持按实例控制格子底板/边框/格线透明度；
+    - `drawCells()` 背景填充、外边框与内格线统一应用该透明度。
+  - `src/tower/battle/BattleScene.ts`
+    - 塔防战斗中仅对上阵区（`side==='player'`）设置半透：`alpha=0.58`；
+    - 其他区域保持原透明度不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收上阵区半透程度是否合适。
+- 重要决定记录：
+  - 透明度先固定为 `0.58` 作为首版体验值，如需可继续按你反馈微调。
+
+## 验收追加优化（2026-03-26，四英雄逐角色 X/Y/缩放可配，并按Y决定层级）
+
+- 用户需求：四英雄支持分别配置 `X偏移 / Y偏移 / 缩放`，并改为由 `Y` 自动决定渲染层级。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 四英雄布局改为逐角色调参：法师/战士/刺客/弓手各自读取独立 `offsetX/offsetY/scale`；
+    - 渲染层级改为按最终 `sprite.y` 自动计算（Y 越大层级越高，覆盖在更前面）；
+    - 保留横向基础顺序：左1法师、左2战士、左3刺客、左4弓手。
+  - `src/debug/DebugPage.ts`
+    - 战斗 VFX 面板新增 12 个逐角色调参项（4 角色 × X/Y/Scale）。
+  - `src/tower/config/debugConfig.ts`
+  - `src/nobag/config/debugConfig.ts`
+  - `src/config/debugConfig.ts`
+    - 三套定义同步新增：
+      - `battlePlayerPortraitFourHeroMageOffsetX/Y/Scale`
+      - `battlePlayerPortraitFourHeroWarriorOffsetX/Y/Scale`
+      - `battlePlayerPortraitFourHeroAssassinOffsetX/Y/Scale`
+      - `battlePlayerPortraitFourHeroArcherOffsetX/Y/Scale`
+    - 并移除旧的层级步进修正参数（改为逐角色显式配置）。
+  - `data/tower_debug_defaults.json`
+  - `data/nobag_debug_defaults.json`
+  - `data/debug_defaults.json`
+    - 三套默认值同步补齐上述 12 个参数（默认 `X=0, Y=0, Scale=1`）。
+- 验证：待执行构建验证。
+- 当前阶段：等待用户按目标构图微调四英雄各自 X/Y/Scale，并确认最终层级关系。
+
+## 验收追加调整（2026-03-26，四英雄层级Y偏移范围改为 -300~300）
+
+- 用户需求：四英雄层级 Y 偏移支持负值，范围改为 `-300 ~ +300`。
+- 已完成：
+  - `src/tower/config/debugConfig.ts`
+  - `src/nobag/config/debugConfig.ts`
+  - `src/config/debugConfig.ts`
+    - `battlePlayerPortraitFourHeroDepthYOffsetPx.min` 由 `0` 调整为 `-300`，`max` 保持 `300`。
+- 验证：待执行构建验证。
+- 当前阶段：等待用户在网页调试面板按负值/正值方向验收层级位移表现。
+
+## 验收追加优化（2026-03-26，四英雄顺序/层级规则 + 层级修正可配置）
+
+- 用户需求：
+  - 四英雄固定横向顺序：左1法师、左2战士、左3刺客、左4弓手；
+  - 渲染层级固定：战士最低、刺客次低、法师次高、弓手最高；
+  - 按层级应用 Y 偏移与缩放修正，且最高层级单位不做偏移和缩放修正；
+  - 这两个修正值支持网页配置。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增四英雄布局顺序/深度顺序映射并在布局时生效；
+    - 四英雄渲染层级按固定规则写入 `zIndex`；
+    - 增加层级修正计算：
+      - `battlePlayerPortraitFourHeroDepthYOffsetPx`（逐层 Y 偏移步进）
+      - `battlePlayerPortraitFourHeroDepthScaleStep`（逐层缩放扣减步进）
+      - 最高层级（弓手）修正量恒为 0。
+  - `src/debug/DebugPage.ts`
+    - 将上述两个参数加入战斗 VFX 面板，网页可实时调。
+  - `src/tower/config/debugConfig.ts`
+  - `src/nobag/config/debugConfig.ts`
+  - `src/config/debugConfig.ts`
+    - 三套定义同步新增这两个调参项。
+  - `data/tower_debug_defaults.json`
+  - `data/nobag_debug_defaults.json`
+  - `data/debug_defaults.json`
+    - 三套默认值同步补齐：`DepthYOffsetPx=20`、`DepthScaleStep=0.1`。
+- 验证：待执行构建验证。
+- 当前阶段：等待用户按目标视觉微调层级偏移与缩放步进。
+
+## 验收追加回退（2026-03-26，取消血条以下背景遮挡）
+
+- 用户反馈：血条以下背景遮挡视觉不理想，要求取消。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 删除血条以下遮挡层 `towerBottomCoverG` 及其动态重绘逻辑；
+    - 战斗画面恢复到此前无遮挡版本（场景与立绘正常显示）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“已回退遮挡背景，恢复原视觉”。
+
+## 验收优化追加（2026-03-26，血条以下区域背景遮挡战场与立绘）
+
+- 用户需求：战斗中从玩家血条往下的区域使用背景遮住，不显示场景和立绘；当血条位置变化时，遮挡区域随之联动变大/变小。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增遮挡层 `towerBottomCoverG`（`zIndex=37`），位于战场/立绘之上、UI 之下；
+    - 在 `drawHeroBars()` 中按玩家血条位置动态计算遮挡起点：`coverTop = yPlayer + battleHpBarH + 12`；
+    - 塔防模式下每帧重绘“血条以下整块遮罩背景 + 顶部分隔线”，非塔防模式自动隐藏。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“血条以下仅显示UI，不再露出场景与立绘”效果。
+- 重要决定记录：
+  - 遮挡起点直接绑定血条 Y 与血条高度，确保你后续调血条位置时，遮挡区自动同步变化。
+
+## 验收追加优化（2026-03-26，四英雄并排间距可配置）
+
+- 用户需求：四英雄并排立绘之间的间隔距离可配置。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 四英雄布局中的固定间距改为读取 `battlePlayerPortraitFourHeroSpacingPx`。
+  - `src/debug/DebugPage.ts`
+    - 将 `battlePlayerPortraitFourHeroSpacingPx` 加入战斗 VFX 调参项，网页可实时调。
+  - `src/tower/config/debugConfig.ts`
+  - `src/nobag/config/debugConfig.ts`
+  - `src/config/debugConfig.ts`
+    - 三套配置定义同步新增 `battlePlayerPortraitFourHeroSpacingPx`（范围 `-200~600`，默认 `8`）。
+  - `data/tower_debug_defaults.json`
+  - `data/nobag_debug_defaults.json`
+  - `data/debug_defaults.json`
+    - 三套默认值同步新增 `battlePlayerPortraitFourHeroSpacingPx: 8`。
+- 验证：待执行构建验证。
+- 当前阶段：等待用户按视觉效果调节四英雄间距并确认目标值。
+
+## 验收追加调整（2026-03-26，四英雄基础放缩上限扩到 10x）
+
+- 用户需求：四英雄并排立绘“基础放缩比例”最大值提升到 10 倍。
+- 已完成：
+  - `src/tower/config/debugConfig.ts`
+  - `src/nobag/config/debugConfig.ts`
+  - `src/config/debugConfig.ts`
+    - `battlePlayerPortraitFourHeroScale.max` 由 `2.5` 提升为 `10`。
+- 验证：待执行构建验证。
+- 当前阶段：等待用户在调试面板直接拉高到目标倍率验收极限表现。
+
+## 验收追加优化（2026-03-26，四英雄并排立绘“基础放缩比例”可调）
+
+- 用户需求：可手动控制四英雄并排立绘的基础放缩比例。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 四英雄并排布局新增基础缩放参数读取：`battlePlayerPortraitFourHeroScale`；
+    - 每个并排立绘在基准宽度缩放后，再乘该比例，支持实时调大/调小。
+  - `src/debug/DebugPage.ts`
+    - 将 `battlePlayerPortraitFourHeroScale` 加入战斗 VFX 调参项。
+  - `src/tower/config/debugConfig.ts`
+  - `src/nobag/config/debugConfig.ts`
+  - `src/config/debugConfig.ts`
+    - 三套配置定义同步新增 `battlePlayerPortraitFourHeroScale`（范围 `0.2~2.5`，步进 `0.01`）。
+  - `data/tower_debug_defaults.json`
+  - `data/nobag_debug_defaults.json`
+  - `data/debug_defaults.json`
+    - 默认值统一新增：`"battlePlayerPortraitFourHeroScale": 1`。
+- 验证：待执行构建验证。
+- 当前阶段：等待用户按视觉体感调节四英雄基础比例并反馈目标值。
+
+## 验收追加修正（2026-03-26，四英雄并排立绘固定使用 b 版本）
+
+- 用户反馈：并排 4 英雄立绘不应在普通/受击图之间切换，需始终使用 `*b.png` 版本。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 四英雄资源加载策略调整为优先加载 `magab/archerb/assassinb/warriorb`；
+    - 若个别 `b` 图缺失，再回退普通图兜底；
+    - 四英雄模式下普通态与受击态统一使用同一套 `b` 图，避免贴图切换抖动。
+- 验证：待执行构建验证。
+- 当前阶段：等待用户验收“四英雄并排始终显示 b 立绘”是否符合预期。
+
+## 验收追加调整（2026-03-26，整理按钮位置回退原方案）
+
+- 用户需求：整理按钮不要放到左上角联排，恢复到原来的位置逻辑。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 撤回“整理按钮跟随左上联排”的定位覆盖；
+    - 整理按钮恢复为原位置规则：`x` 保持既有值，仅 `y` 继续读取独立配置 `battleOrganizeBtnY`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“物品测试/重置/倍速在左上，整理维持原位置”布局。
+
+## 验收优化追加（2026-03-26，四英雄立绘开关 + 受击全体生效）
+
+- 用户需求：
+  - 网页上增加开关，可切换“4 英雄并排立绘”与“原单英雄立绘”；
+  - 开启 4 英雄时，底部显示 `maga/archer/assassin/warrior` 四张立绘并居中对齐；
+  - 受击时四张立绘都要一起生效（切到 `magab/archerb/assassinb/warriorb`）。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增 4 英雄立绘层与资源加载（`maga/archer/assassin/warrior` + 对应 `b` 图）；
+    - 新增调试开关读取：`battlePlayerPortraitFourHeroEnabled`；
+    - 开关开启时隐藏单英雄立绘，显示四英雄并排（底部居中）；关闭时恢复原单英雄表现；
+    - 玩家受击触发统一改为 `triggerPlayerPortraitHitFx()`：4 英雄模式下全体切 hit 图并回弹，满足“受击都会生效”。
+  - `src/debug/DebugPage.ts`
+    - 将 `battlePlayerPortraitFourHeroEnabled` 加入战斗 VFX 调参分组，网页调试面板可直接开关。
+  - `src/tower/config/debugConfig.ts`
+  - `src/nobag/config/debugConfig.ts`
+  - `src/config/debugConfig.ts`
+    - 三套配置定义同步新增 `battlePlayerPortraitFourHeroEnabled`（0/1 开关）。
+  - `data/tower_debug_defaults.json`
+  - `data/nobag_debug_defaults.json`
+  - `data/debug_defaults.json`
+    - 默认值统一新增：`"battlePlayerPortraitFourHeroEnabled": 0`（默认保持单英雄）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“4 英雄开关切换 + 受击全体 hit 图”表现。
+- 重要决定记录：默认关闭开关，保证线上现有单英雄表现不受影响；仅在显式开启后启用四英雄方案。
+
+## 验收优化追加（2026-03-26，物品测试/重置/倍速按钮左上对齐等间距）
+
+- 用户需求：将“物品测试”“重置”“倍速”三个按钮都放到左上角，且间隔一致、对齐一致。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增左上角按钮布局函数：`getTowerTopLeftActionBtnX()`、`getTowerTopLeftActionBtnY(order)`；
+    - 塔防模式下按钮改为统一左上纵向排布：
+      - `物品测试` 使用 `order=0`
+      - `重置` 使用 `order=1`
+      - `倍速` 使用 `order=2`
+    - 间隔采用统一步进（按钮高 + 固定 gap），保证三者严格等间距；
+    - `整理` 按钮同步放到同一列 `order=3`，避免与前三个按钮重叠。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“三按钮左上角纵向对齐与间距一致”视觉是否符合预期。
+- 重要决定记录：
+  - 仅塔防模式应用该左上布局；非塔防模式保持原按钮位置逻辑，避免影响其他模式体验。
+
+## 验收优化追加（2026-03-26，近战小怪撞击后消失 + 攻击数值对齐新表）
+
+- 用户需求：更新近战小怪攻击力与攻击方式；近战小怪攻击玩家时应直接撞向玩家，造成 1 次伤害后立即消失。
+- 已完成：
+  - `data/tower_game_config.json`
+    - 按提供表更新近战小怪攻击力：
+      - `enemy1: 20`、`enemy2: 20`、`enemy7: 20`、`enemy5: 20`、`enemy6: 40`、`enemy4: 20`、`enemy9: 20`、`enemy10: 40`；
+      - 其余远程/首领攻击力保持与提供表一致（`enemy3/8/11/12=10`，`boss2/3/boss=50`）。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 近战敌人命中玩家后触发一次性自灭：命中结算后将该敌人置为死亡并发出 `battle:unit_die`（`reason: impact_player`）。
+  - `src/tower/core/EventBus.ts`
+    - 扩展 `battle:unit_die` 事件载荷，新增可选 `reason?: 'normal' | 'impact_player'`。
+  - `src/tower/battle/BattleScene.ts`
+    - 对 `impact_player` 死亡原因走“立即消失”分支（不播放死亡飞行动画）；
+    - 且该分支不触发击杀金币掉落，避免“撞到玩家还掉金币”。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“近战撞击后立即消失 + 仅造成一次伤害 + 新攻击力生效”表现是否符合预期。
+
+## 验收优化追加（2026-03-26，物品测试/重置按钮样式对齐倍速按钮）
+
+- 用户需求：战斗界面中的“物品测试”“重置”两个按钮，严格按“倍速”按钮的大小和样式统一。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `makeItemTestButton()` 改为与顶栏行动按钮同尺寸（`TOP_ACTION_BTN_W/TOP_ACTION_BTN_H`）与同圆角算法；
+    - `makeItemTestButton()` 背景/描边/文字样式改为与“倍速”一致（蓝色描边与同文本风格）；
+    - `makeRestartButton()` 同步改为与“倍速”一致的尺寸、圆角与配色风格；
+    - 两按钮文本字号统一读取 `textSizes.phaseButtonLabel`，与倍速按钮保持一致。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“物品测试/重置”与“倍速”在视觉上是否完全一致。
+- 重要决定记录：
+  - 采用与倍速按钮同一套尺寸常量与样式参数，后续若调整顶栏按钮风格可保持联动一致。
+
+## 验收优化追加（2026-03-26，扩容时提示“背包扩大了”）
+
+- 用户需求：扩容触发时提示“背包扩大了”。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 在切到下一天时对比扩容前后上阵区列/行；
+    - 若发生扩容（列或行增加），弹出提示：`背包扩大了`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“在第3/5/7/10/12天扩容时出现提示文案”是否符合预期。
+
+## 验收优化追加（2026-03-26，上阵区“整理”按钮 Y 坐标独立配置）
+
+- 用户需求：上阵区“整理”按钮的 Y 坐标可单独配置，不再和“倍速”按钮绑定同一个 Y。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增整理按钮专用读取键：`battleOrganizeBtnY`；
+    - `makeOrganizeButton()` 初始化时使用独立 Y；
+    - 每帧刷新整理按钮位置时改为独立 Y（倍速按钮继续使用 `battleSpeedBtnY`）。
+  - `src/config/debugConfig.ts`
+  - `src/tower/config/debugConfig.ts`
+  - `src/nobag/config/debugConfig.ts`
+    - 补充新调试项 `battleOrganizeBtnY`（中文名“战斗整理按钮 Y 坐标”）。
+  - `src/debug/DebugPage.ts`
+    - 将 `battleOrganizeBtnY` 加入调试页分组，支持在线调参。
+  - `data/debug_defaults.json`
+  - `data/nobag_debug_defaults.json`
+  - `data/tower_debug_defaults.json`
+    - 新增默认值：普通/无背包 `1080`，塔防 `700`（与原按钮位置保持一致，避免视觉突变）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“整理按钮可独立调 Y，且不影响倍速按钮”。
+- 重要决定记录：
+  - 为避免历史布局变化，新增字段默认值对齐旧行为（初始与倍速一致），后续由你按需单独调整。
+
+## 验收优化追加（2026-03-26，上阵区整理补充“同职业同等级按最低品质排序”）
+
+- 用户需求：上阵区整理时，相同职业、相同等级的物品，按最低等级品质排序：`钻石 > 黄金 > 白银 > 青铜`。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `organizeBattleZoneItemsByRule()` 新增同级次序规则：在“职业优先 + 等级降序”之后，增加“最低品质降序”；
+    - 品质来源按物品 `starting_tier`（最低品质）计算，排序优先级为 `Diamond > Gold > Silver > Bronze`；
+    - 当职业/等级/最低品质都一致时，仍按 `defId` 与 `instanceId` 稳定排序，保证整理结果可预期。
+- 验证：待执行构建验证。
+- 当前阶段：等待用户验收“同职业同等级下品质高的排前面”是否符合预期。
+- 重要决定记录：排序口径采用物品最低品质（`starting_tier`），避免受当前实例运行态品质漂移影响。
+
+## 验收追加调整（2026-03-26，上阵区扩容触发天数改为 3/5/7/10/12）
+
+- 用户需求：将上阵区 5 次扩容触发日从 `2/4/6/8/11` 改为 `3/5/7/10/12`。
+- 已完成：
+  - `data/tower_game_config.json`
+    - `tower_defense_rules.playerZoneSizeByDay` 阶梯调整为：
+      - Day1: `2x2`
+      - Day3: `3x2`
+      - Day5: `3x3`
+      - Day7: `4x3`
+      - Day10: `5x3`
+      - Day12: `6x3`
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收新的扩容触发节奏是否符合预期。
+
+## 验收追加修正（2026-03-26，购买落位限制到可见列）
+
+- 用户反馈：点击购买后，物品会被放到横向不可见区域（超出当前已解锁列）。
+- 根因定位：
+  - 战斗内购买与测试投放使用 `pickFirstEmptyCell(..., 6)` 固定按 6 列找空位；
+  - 当前塔防上阵区已改为按天逐步解锁列数（如 Day1 仅 2 列），导致会选中“未解锁隐藏列”。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 购买落位改为 `pickFirstEmptyCell(editableSystem, size, playerZone.activeColCount)`；
+    - 物品测试投放同样改为按 `playerZone.activeColCount` 限制可见列。
+- 效果：购买与测试添加均只会落在当前可见/已解锁列中，不再放进隐藏横向区域。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“购买落位始终在当前可见上阵区”是否符合预期。
+
+## 验收追加修正（2026-03-26，扩容动画期间隐藏旧格线）
+
+- 用户需求：背包/上阵区扩大动画过程中先隐藏旧格线，等扩大结束后再重新画线，避免穿帮。
+- 已完成：
+  - `src/tower/common/grid/GridZone.ts`
+    - `drawCells()` 新增缩放态判定：当背景处于放缩中（`cellBgDrawScaleX/Y != 1`）时，暂不绘制内部格线；
+    - 动画结束并恢复到 `1x1` 后，内部格线自动按最终行列重绘。
+- 效果：扩容过程中只看到背景板与外边框，不再出现旧格线穿帮；结束后一次性显示新格线。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“扩容中无旧线、结束后重绘新线”的表现。
+
+## 验收优化追加（2026-03-26，上阵区改为“按天增行增列”到 6x3）
+
+- 用户需求：上阵区初始 `2x2`，并按天数执行 5 次扩容：Day2 +1列、Day4 +1行、Day6 +1列、Day8 +1列、Day11 +1列，最终 `6x3`；同时需保持列数变化时始终水平居中、行数变化时位置按行数修正。
+- 已完成：
+  - `data/tower_game_config.json`
+    - `tower_defense_rules` 新增 `playerZoneSizeByDay` 配置，写入以下阶梯：
+      - Day1: `2x2`
+      - Day2: `3x2`
+      - Day4: `3x3`
+      - Day6: `4x3`
+      - Day8: `5x3`
+      - Day11: `6x3`
+  - `src/tower/shop/ShopMathHelpers.ts`
+    - 新增 `getTowerBattleColsByDay(day)`；
+    - `getTowerBattleRowsByDay(day)` 改为与 `playerZoneSizeByDay` 同源读取；
+    - `getDayActiveCols(day)` 在塔防模式下改为读取 `getTowerBattleColsByDay(day)`。
+  - `src/tower/battle/BattleScene.ts`
+    - 塔防战斗区列数计算改为读取 `getTowerBattleColsByDay(day)`，与行数规则统一；
+    - 既有“位移+背景放缩后再重绘”过渡逻辑继续生效于“增列/增行”两类变化。
+  - `src/tower/shop/ShopScene.ts`
+    - `setDay()` 的上阵区列数改为统一走 `getDayActiveCols()`，去掉塔防固定 6 列分支。
+  - `src/tower/shop/ui/ShopBattleZoneBuilder.ts`
+    - 塔防上阵区初始列数改为 `getDayActiveCols(ctx.currentDay)`，确保 Day1 即按 `2x2` 初始化并保持居中。
+  - `src/tower/common/items/ItemDef.ts`
+    - 补充 `towerDefenseRules.playerZoneSizeByDay` 类型声明。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收 Day1/2/4/6/8/11 的上阵区尺寸与居中偏移是否符合预期。
+
+## 验收优化追加（2026-03-26，Toast Y 偏移可调范围扩展）
+
+- 用户需求：将 toast 偏移可调范围改为 `-1000 ~ +1000`。
+- 已完成：
+  - `src/tower/config/debugConfig.ts`
+    - `toastOffsetY` 的 `min/max` 由 `-500/500` 调整为 `-1000/1000`。
+  - `src/nobag/config/debugConfig.ts`
+    - `toastOffsetY` 的 `min/max` 同步调整为 `-1000/1000`。
+  - `src/config/debugConfig.ts`
+    - `toastOffsetY` 的 `min/max` 同步调整为 `-1000/1000`。
+- 验证：待执行构建验证。
+- 当前阶段：等待用户在调试面板实机确认滑杆范围与交互是否符合预期。
+- 重要决定记录：统一三套模式配置口径，避免不同模式下调试范围不一致。
+
+## 验收追加修正（2026-03-26，上阵区放缩时圆角保持不变）
+
+- 用户反馈：上阵区背景变大动画中，圆角不应跟随放缩，需始终保持固定圆角观感。
+- 根因定位：此前通过 `cellBg.scale` 做背景缩放，导致圆角几何一并被缩放。
+- 已完成：
+  - `src/tower/common/grid/GridZone.ts`
+    - 背景动画由“容器缩放”改为“按目标宽高重绘”：新增 `cellBgDrawScaleX/Y`；
+    - `drawCells()` 改为使用缩放后的绘制宽高与格线步进，但圆角半径仍使用固定 `cornerRadius`；
+    - `setCellBackgroundScale()` 改为更新绘制缩放并触发重绘，不再改 `cellBg.scale`；
+    - `setActiveColCount()/setActiveRowCount()` 在正式重绘前重置背景绘制缩放，避免残留态。
+- 效果：放缩过程中背景尺寸变化与格线变化保留，但圆角视觉尺寸保持恒定。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“上阵区过渡动画期间圆角恒定”的视觉效果。
+
+## 验收追加修正（2026-03-26，上阵区变化动画“看起来立即变化”）
+
+- 用户反馈：已将动画时长配很长，但上阵区看起来仍然是立即变化。
+- 根因定位：
+  - 之前只对“列数变化”做过渡；塔防实机主要变化是“行数变化”（如 Day4 1 行 -> 2 行）；
+  - 且在切波逻辑里提前调用了 `setActiveRowCount()` 与 `applyLayout()`，导致视觉先瞬时切到新状态。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 过渡从“仅列”升级为“列+行+位置（x/y）”统一动画：`playerZoneResizeTransition`；
+    - 动画期只做容器位移与背景 X/Y 缩放，结束后才 `setActiveColCount()/setActiveRowCount()` 重绘新格子；
+    - 移除切波流程中的提前 `setActiveRowCount()` 与立即 `applyLayout(6)`，避免抢先瞬切。
+  - `src/tower/common/grid/GridZone.ts`
+    - 背景缩放接口升级为 `setCellBackgroundScale(scaleX, scaleY)`，支持行数变化时 Y 向放缩。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“行数变化（如 Day4）时也会按配置时长执行位移+放缩，再重绘新格子”。
+
+## 验收优化追加（2026-03-26，塔防购买按钮 Y 坐标配置化）
+
+- 用户需求：购买按钮高度 `y` 需要可配置，便于在线调位置。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增 `getTowerBattleBuyButtonY()`，优先读取 `towerDefenseRules.battleBuyButtonY`；
+    - 购买按钮每帧布局由硬编码 `CANVAS_H - 63` 改为走配置值。
+  - `src/tower/common/items/ItemDef.ts`
+    - 补充类型字段 `towerDefenseRules.battleBuyButtonY?: number`。
+  - `data/tower_game_config.json`
+    - 新增配置 `battleBuyButtonY: 1321`（与当前默认位置等价）。
+- 验证：待执行构建验证。
+- 当前阶段：等待用户按实际机型反馈按钮高度，再做数值微调。
+- 重要决定记录：
+  - 采用“配置优先 + 旧默认回退”策略，保证老配置兼容且可平滑调参。
+
+## 验收优化追加（2026-03-26，非Boss自动刷新跳过“开始下一波”按钮与倒计时）
+
+- 用户需求：塔防模式下，非 Boss 关卡怪物自动刷新时，不弹出顶部“开始下一波”按钮和倒计时，直接刷新下一波，并给出文字提示“新的敌人刷新了”。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 非 Boss 自动触发下一波时，改为直接调用切波逻辑，不再显示“开始下一波（倒计时）”按钮文案；
+    - 顶部继续按钮在塔防模式下仅保留 Boss 关卡手动切波显示；
+    - 自动切波成功后新增提示文案：`新的敌人刷新了`；
+    - `startNextTowerWaveInPlace()` 增加可选参数用于区分是否显示自动刷新提示。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“非 Boss 自动切波无按钮倒计时 + 自动提示文案”。
+- 重要决定记录：
+  - 保留 Boss 关卡手动“开始下一波”交互，避免影响既有 Boss 关节奏；
+  - 自动切波提示复用现有 toast 体系，避免新增 UI 组件和维护成本。
+
+## 验收优化追加（2026-03-26，塔防购买按钮“金币刚好可买”提示）
+
+- 用户需求：塔防模式下，当金币从“不足购买”变为“足够购买”时，给出明确提示（按钮变黄 + 周围边框放大提醒）。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 购买按钮新增“可购买态”视觉：由蓝色切换为黄色，并同步更新文字颜色；
+    - 新增“由不可买 -> 可买”瞬间触发的环形放大描边动画（一次 pulse 提示）；
+    - 提示触发改为状态跃迁驱动，仅在金额跨过购买门槛时触发，避免每帧重复闪烁；
+    - 动画参数改为读取塔防配置，便于后续调参。
+  - `src/tower/common/items/ItemDef.ts`
+    - 补充塔防规则类型字段：
+      - `battleBuyAffordPulseDurationMs`
+      - `battleBuyAffordPulseScaleMax`
+      - `battleBuyAffordPulsePaddingPx`
+  - `data/tower_game_config.json`
+    - 新增上述 3 个配置项，当前值分别为 `820 / 1.2 / 12`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“金币刚达到可买时的黄色高亮 + 边框放大提示”体感与强度。
+- 重要决定记录：
+  - 提示采用“状态跃迁触发”而非“持续闪烁”，优先保证信息明确且不过度打扰；
+  - 动画参数配置化，后续可直接通过 JSON 调整节奏与幅度，无需改代码。
+
+## 验收优化追加（2026-03-26，上阵区格子变化过渡动画）
+
+- 用户需求：当上阵区格子数量发生变化时，增加 1 秒过渡动画：上阵区整体位移到目标点、背景在 1 秒内放缩到目标大小，动画结束后再绘制新的格子。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增塔防上阵区列数变化过渡状态机（`playerZoneColTransition`）；
+    - 列数变化时改为：先保留旧列数绘制，1 秒内插值 `playerZone.x` 与背景缩放，再在结束时 `setActiveColCount(target)` 重绘新格子；
+    - `applyLayout()` 增加可选参数 `keepPlayerZoneX`，用于动画期间避免位置被瞬时覆盖。
+  - `src/tower/common/grid/GridZone.ts`
+    - 新增 `setCellBackgroundScaleX()`，用于仅缩放格子背景；
+    - `setActiveColCount()/setActiveRowCount()` 重绘前重置背景缩放，避免残留缩放状态。
+  - `data/tower_game_config.json`
+    - `tower_defense_rules` 新增 `playerZoneResizeAnimMs: 1000`，统一由配置控制动画时长。
+  - `src/tower/common/items/ItemDef.ts`
+    - 补充 `towerDefenseRules.playerZoneResizeAnimMs?: number` 类型声明。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“上阵区列数变化时 1 秒位移+背景放缩，结束后再出现新格线”的表现是否符合预期。
+- 下一步计划：若你反馈节奏偏快/偏慢，可直接调 `tower_defense_rules.playerZoneResizeAnimMs`；若需要，还可加 easing 或分段动画（先缩放后位移）。
+
+## 发布执行（2026-03-25，TestFlight 上传 + Android 出包）
+
+- 用户需求：执行 TestFlight 上传，并打 Android 包；确保新图片资源进入包体。
+- 已完成：
+  - iOS/TestFlight：执行 `npm run release:tf`（流程含 `npm run build` + `npx cap sync ios` + archive/export/upload）。
+  - TestFlight 上传成功：日志包含 `Upload succeeded.`，并完成 `CURRENT_PROJECT_VERSION=39`。
+  - Android：执行 `npm run build` + `npx cap sync android`，随后在 JDK21 环境下执行 `./gradlew bundleRelease assembleRelease`。
+  - Android 产物：
+    - `android/app/build/outputs/bundle/release/app-release.aab`
+    - `android/app/build/outputs/apk/release/app-release.apk`
+- 资源入包确认：
+  - iOS 侧日志确认 `Copying web assets from dist to ios/App/App/public` 已执行；
+  - Android 侧日志确认 `Copying web assets from dist to android/app/src/main/assets/public` 已执行；
+  - 两端均基于最新 `dist` 同步，确保新图片资源被打入本次包体。
+- 当前阶段：已完成双端打包与 iOS 上传，等待用户在 TestFlight/App Store Connect 与 Android 安装包侧验收。
+
 ## 冰锥多发改为“分锁目标”而非“同目标连射”（2026-03-25）
 
 - 用户需求：当冰锥同时发射数量为 `N` 时，应锁定 `N` 个不同目标；若目标不足则按实际目标数发射，不要对同一目标多发。

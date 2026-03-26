@@ -29,26 +29,18 @@ function parseTierStar(raw?: string): 1 | 2 {
   return 2
 }
 
-function tierScore(tier: TierName, star: 1 | 2): number {
-  if (tier === 'Bronze') return star === 2 ? 2 : 1
-  if (tier === 'Silver') return star === 2 ? 4 : 3
-  if (tier === 'Gold') return star === 2 ? 6 : 5
-  return star === 2 ? 8 : 7
-}
-
-function startTierScore(item: ItemDef): number {
-  const start = parseTierName(item.starting_tier)
-  if (start === 'Silver') return 3
-  if (start === 'Gold') return 5
-  if (start === 'Diamond') return 7
-  return 1
+function tierStep(tier: TierName, star: 1 | 2): number {
+  if (tier === 'Silver') return 1
+  if (tier === 'Gold') return 2
+  if (tier === 'Diamond') return star >= 2 ? 4 : 3
+  return 0
 }
 
 function pickTierSeriesValue(series: string, tierIndex: number): number {
   const parts = series.split(/[\/|]/).map((v) => v.trim()).filter(Boolean)
   if (parts.length === 0) return 0
   const idx = Math.max(0, Math.min(parts.length - 1, tierIndex))
-  const n = Number(parts[idx])
+  const n = Number((parts[idx] ?? '').replace(/^\+/, '').replace(/%$/u, ''))
   return Number.isFinite(n) ? n : 0
 }
 
@@ -70,10 +62,13 @@ function parseCooldownMsByTier(item: ItemDef, tierIndex: number): number {
   return Number.isFinite(fallback) ? Math.max(0, fallback) : 0
 }
 
-export function resolveItemTierBaseStats(item: ItemDef, tierRaw?: string): ItemTierBaseStats {
+export function resolveItemTierBaseStats(item: ItemDef, tierRaw?: string, levelOverride?: number): ItemTierBaseStats {
   const tier = parseTierName(tierRaw)
   const star = parseTierStar(tierRaw)
-  const tierIndex = Math.max(0, tierScore(tier, star) - startTierScore(item))
+  const byLevel = Number(levelOverride)
+  const tierIndex = Number.isFinite(byLevel) && byLevel > 0
+    ? Math.max(0, Math.min(4, Math.round(byLevel) - 1))
+    : Math.max(0, tierStep(tier, star))
   const skillText = (item.skills ?? []).map((s) => s.cn ?? '').join('\n')
 
   const damage = extractTierSeriesValue(skillText, /攻击造成\s*([0-9]+(?:[\/|][0-9]+)*)\s*伤害/, tierIndex)
