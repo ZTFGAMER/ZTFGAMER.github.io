@@ -1883,7 +1883,10 @@ function buildEditableSnapshotFromBoard(day: number): ReturnType<typeof getBattl
   const playerShield = Math.max(0, Math.round(engine?.getBoardState().player.shield ?? enteredSnapshot?.playerShield ?? 0))
   const entities = editableSystem.getCombatEntities(6).map((it) => {
     const meta = editableMeta.get(it.instanceId)
-    const level = tierStarToTowerLevel((meta?.tier ?? 'Bronze') as TierKey, (meta?.tierStar ?? 1) as 1 | 2)
+    const level = Math.max(
+      1,
+      Math.min(5, Number(meta?.level) || tierStarToTowerLevel((meta?.tier ?? 'Bronze') as TierKey, (meta?.tierStar ?? 1) as 1 | 2)),
+    ) as 1 | 2 | 3 | 4 | 5
     const byLevel = levelToTowerTierStar(level)
     const tier = (byLevel?.tier ?? meta?.tier ?? 'Bronze') as TierKey
     const tierStar = (byLevel?.star ?? meta?.tierStar ?? 1) as 1 | 2
@@ -2514,7 +2517,7 @@ function ensureEditableBuildMode(stage: Container): void {
     editableSystem.place(one.col, one.row, one.size as GridItemSizeNorm, one.defId, one.instanceId)
     const tier = (one.tier ?? 'Bronze') as TierKey
     const tierStar = (one.tierStar ?? 1) as 1 | 2
-    const normalizedLevel = tierStarToTowerLevel(tier, tierStar)
+    const normalizedLevel = Math.max(1, Math.min(5, Number(one.level) || tierStarToTowerLevel(tier, tierStar))) as 1 | 2 | 3 | 4 | 5
     editableMeta.set(one.instanceId, {
       defId: one.defId,
       size: one.size as GridItemSizeNorm,
@@ -3668,7 +3671,13 @@ function showBattleItemInfo(instanceId: string, side: 'player' | 'enemy', keepMo
         : {}),
     }
     : undefined
-  itemInfoPopup.show(item, 0, 'none', hit.tier, undefined, selectedItemInfoMode, runtimeOverride, customDisplay, enchantmentDisplay)
+  const displayTier = (() => {
+    if (!isTowerDefenseBattle() || side !== 'player') return hit.tier
+    const lv = Math.max(1, Math.min(5, Number(hit.level) || Number(editableMeta.get(instanceId)?.level) || 1)) as 1 | 2 | 3 | 4 | 5
+    const byLevel = levelToTowerTierStar(lv)
+    return byLevel ? `${byLevel.tier}#${byLevel.star}` : hit.tier
+  })()
+  itemInfoPopup.show(item, 0, 'none', displayTier, undefined, selectedItemInfoMode, runtimeOverride, customDisplay, enchantmentDisplay)
 }
 
 export const BattleScene: Scene = {
@@ -3702,7 +3711,7 @@ export const BattleScene: Scene = {
       const normalizedEntities = snapshot.entities.map((one) => {
         const tier = (one.tier ?? 'Bronze') as TierKey
         const tierStar = (one.tierStar ?? 1) as 1 | 2
-        const level = tierStarToTowerLevel(tier, tierStar)
+        const level = Math.max(1, Math.min(5, Number(one.level) || tierStarToTowerLevel(tier, tierStar))) as 1 | 2 | 3 | 4 | 5
         const normalizedTierStar = levelToTowerTierStar(level) ?? { tier, star: tierStar }
         return {
           ...one,
@@ -4167,6 +4176,9 @@ export const BattleScene: Scene = {
     settlement.attachStatsBtn(settlementStatsBtnNew)
 
     damageStats.buildPanel(root)
+    damageStats.buildButton(root, () => {
+      damageStats.setVisible(!damageStats.isVisible())
+    })
 
     await ensureTowerEnemyAssetWarmup()
     await ensureTowerEnemyProjectileAssetWarmupForDay(snapshot.day)
@@ -5172,6 +5184,21 @@ export const BattleScene: Scene = {
         speedBtn.y = getClampedTopActionBtnY()
       }
       if (speedBtnText) speedBtnText.text = `倍速:${battleSpeed}x`
+    }
+
+    {
+      const statsBtn = damageStats.getTopLeftButton()
+      if (statsBtn) {
+        const towerMode = isTowerDefenseBattle()
+        const showTopActionButtons = !towerWaveAdvanceInProgress
+          && transition.battleExitTransitionDurationMs <= 0
+          && !settlement.isGameOver()
+        statsBtn.visible = towerMode ? showTopActionButtons : false
+        if (towerMode) {
+          statsBtn.x = getTowerTopLeftActionBtnX()
+          statsBtn.y = getTowerTopLeftActionBtnY(3)
+        }
+      }
     }
 
     if (organizeBtn) {

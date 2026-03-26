@@ -364,6 +364,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
         col: it.col,
         row: it.row,
         size: it.size,
+        level: it.level,
         tier: it.tier,
         tierStar: it.tierStar,
         enchantment: it.enchantment,

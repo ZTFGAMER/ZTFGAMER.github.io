@@ -163,6 +163,7 @@ export interface CombatBoardItem {
   col: number
   row: number
   size: ItemSizeNorm
+  level?: number
   tier: string
   tierStar: 1 | 2
   enchantment?: ItemEnchantmentKey
