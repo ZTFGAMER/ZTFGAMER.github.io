@@ -72,6 +72,7 @@ export interface BattleEngineLike {
   getQueuePerfStats(): BattleQueuePerfStats
   getRuntimeCachePerfStats(): BattleRuntimeCachePerfStats
   syncPlayerEntities?(entities: BattleSnapshotBundle['entities'], options?: { resetChargeIds?: string[] }): void
+  syncTowerBattleSkillPickCounts?(pickCounts: Record<string, number>): void
   queueNextTowerWave?(nextDay: number): void
   getTowerEnemyUnits?(): TowerEnemyUnitView[]
   getTowerEnemyStats?(): TowerEnemyStatsView

@@ -3575,8 +3575,8 @@
       "playerItemBaseBounceByIcon": {},
       "playerBounceProjectileFlyMs": 200,
       "playerBounceProjectileSpeedPxPerSec": 500,
-      "enemyAttackDoubleAfterAllSpawnMs": 40000,
-      "enemyForceNextWaveAfterAllSpawnMs": 35000,
+      "enemyAttackDoubleAfterAllSpawnMs": 4000000,
+      "enemyForceNextWaveAfterAllSpawnMs": 45000,
       "playerZoneResizeAnimMs": 1000,
       "playerZoneSizeByDay": [
         {
@@ -3740,6 +3740,8 @@
       "battleBuyAffordPulseScaleMax": 1.2,
       "battleBuyAffordPulsePaddingPx": 12,
       "battleBuyButtonY": 1313,
+      "battleSkillBuyUnlockItemCount": 5,
+      "battleSkillBuyCostByPurchaseCount": [5, 10, 15, 20, 25, 30, 38, 53, 74, 103, 145, 202, 283, 397, 556],
       "playerZoneBackgroundAlpha": 0.95,
       "nextWaveAutoStartMs": 5000,
       "finalDay": 15,
@@ -3748,7 +3750,7 @@
       "enemyKillGoldFxMs": 700,
       "enemyKillGoldFxRisePx": 44,
       "spawnLanes": 5,
-      "defaultSpawnDurationMs": 25000,
+      "defaultSpawnDurationMs": 35000,
       "enemyDefs": [
         {
           "id": "enemy1",
@@ -4032,7 +4034,7 @@
           "enemies": [
             {
               "id": "enemy1",
-              "count": 10
+              "count": 15
             }
           ]
         },

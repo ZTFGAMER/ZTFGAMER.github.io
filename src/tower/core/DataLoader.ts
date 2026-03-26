@@ -299,6 +299,10 @@ function normalizeItem(raw: unknown): ItemDef | null {
     skills,
     simple_desc: toSafeString(r.simple_desc).trim(),
     simple_desc_tiered: toSafeString(r.simple_desc_tiered).trim(),
+    max_active_count: (() => {
+      const n = Math.round(toNumber(r.max_active_count, 0))
+      return n > 0 ? n : undefined
+    })(),
     enchantments,
   }
 }

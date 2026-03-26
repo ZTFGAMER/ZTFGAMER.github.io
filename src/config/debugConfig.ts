@@ -1235,6 +1235,15 @@ export const CONFIG_DEFS: Record<string, ConfigDef> = {
     step: 1,
     unit: '',
   },
+  gameplayAttackOutOfRangeEnabled: {
+    labelCn:      '未达攻击距离也攻击',
+    description:  '1=即使目标超出攻击距离也会照常攻击（旧行为）；0=必须进入攻击距离才会攻击（含近战）',
+    defaultValue: 0,
+    min:  0,
+    max:  1,
+    step: 1,
+    unit: '',
+  },
   gameplayPvpDisableSpeedup: {
     labelCn:      'PVP禁用战斗加速',
     description:  '1=PVP 战斗强制 x1 且不显示倍速按钮；0=PVP 允许倍速',

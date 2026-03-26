@@ -283,6 +283,7 @@ const GAMEPLAY_CHECKBOX_KEYS = [
   'gameplayGrantAllClassItems',
   'gameplayShowSpeedButton',
   'gameplayShowTowerClassAttackDistance',
+  'gameplayAttackOutOfRangeEnabled',
   'gameplayPvpDisableSpeedup',
   'gameplayCrossSynthesisConfirm',
   'gameplayBattleZoneNoSynthesis',

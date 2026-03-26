@@ -35,6 +35,8 @@ export interface BattleSnapshotBundle {
   playerBattleHp?: number
   playerShield?: number
   towerBattleBuyCount?: number
+  towerBattleSkillBuyCount?: number
+  towerBattleSkillPickCounts?: Record<string, number>
   showBasicSynthesisGuide?: boolean
   entities: BattleSnapshotEntity[]
   /** 快照所有者自身的技能 ID（PVP 提交时附带，对手用作 enemySkillIds） */
@@ -69,6 +71,8 @@ function cloneSnapshot(snapshot: BattleSnapshotBundle): BattleSnapshotBundle {
     playerBattleHp: typeof snapshot.playerBattleHp === 'number' ? Math.max(1, Math.round(snapshot.playerBattleHp)) : undefined,
     playerShield: typeof snapshot.playerShield === 'number' ? Math.max(0, Math.round(snapshot.playerShield)) : undefined,
     towerBattleBuyCount: typeof snapshot.towerBattleBuyCount === 'number' ? Math.max(0, Math.round(snapshot.towerBattleBuyCount)) : undefined,
+    towerBattleSkillBuyCount: typeof snapshot.towerBattleSkillBuyCount === 'number' ? Math.max(0, Math.round(snapshot.towerBattleSkillBuyCount)) : undefined,
+    towerBattleSkillPickCounts: snapshot.towerBattleSkillPickCounts ? { ...snapshot.towerBattleSkillPickCounts } : undefined,
     showBasicSynthesisGuide: snapshot.showBasicSynthesisGuide === true,
     entities: snapshot.entities.map((it) => ({ ...it })),
     ownerSkillIds: snapshot.ownerSkillIds ? [...snapshot.ownerSkillIds] : undefined,

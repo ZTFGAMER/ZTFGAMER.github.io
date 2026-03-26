@@ -132,6 +132,7 @@
   "levelQuickRewardOffsetY": -200,
   "gameplayGrantAllClassItems": 0,
   "gameplayShowSpeedButton": 0,
+  "gameplayAttackOutOfRangeEnabled": 0,
   "gameplayPvpDisableSpeedup": 1,
   "gameplayCrossSynthesisConfirm": 0,
   "gameplayShowStarterSynthesisGuide": 0,

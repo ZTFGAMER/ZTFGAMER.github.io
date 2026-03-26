@@ -443,6 +443,8 @@ export interface GameConfig {
     battleBuyButtonY?: number
     playerZoneBackgroundAlpha?: number
     battleBuyCostByPurchaseCount?: number[]
+    battleSkillBuyUnlockItemCount?: number
+    battleSkillBuyCostByPurchaseCount?: number[]
     nextWaveAutoStartMs?: number
     finalDay?: number
     enemyKillGold: number
