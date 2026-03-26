@@ -1,5 +1,25 @@
 # 大巴扎 — 开发进度记录
 
+## 验收执行记录（2026-03-26，Git同步 + TestFlight上传 + Android出包）
+
+- 用户需求：同步 Git 上传；打 TF 包并上传；打 Android 包。
+- 已完成：
+  - Git：
+    - 已提交并推送到 `origin/main`；
+    - 提交：`bfe4c85`（`同步塔防技能重配与怪物速度配置并更新进度记录`）。
+  - TestFlight：
+    - 执行 `npm run release:tf` 全流程成功（build/sync/archive/export/upload）；
+    - 上传成功，Delivery UUID：`f547b749-c2ce-4d14-903b-a6e55d57df23`；
+    - `CURRENT_PROJECT_VERSION` 自动更新：`42 -> 43`；
+    - IPA 路径：`ios/build/export-testflight/App.ipa`。
+  - Android：
+    - 执行 `npm run build:android-web && npm run android:sync` 成功；
+    - 使用 JDK21 执行 `./android/gradlew -p android assembleRelease bundleRelease` 成功；
+    - APK：`android/app/build/outputs/apk/release/app-release.apk`；
+    - AAB：`android/app/build/outputs/bundle/release/app-release.aab`。
+- 过程说明：首次 Android Release 构建因环境落在 Java 17 报错（`无效的源发行版：21`），切换到 `/opt/homebrew/opt/openjdk@21` 后构建通过。
+- 当前阶段：等待用户验收 TF 构建状态与 Android 包安装/上传结果。
+
 ## 验收追加调整（2026-03-26，怪物移动速度按新表更新）
 
 - 用户需求：按最新表统一更新 15 种怪物的移动速度（含 3 个首领）。
