@@ -1,5 +1,127 @@
 # 大巴扎 — 开发进度记录
 
+## 验收追加调整（2026-03-27，物品购买价格100档按新表更新）
+
+- 用户需求：按新表更新战斗内物品购买价格（第 1~100 次）。
+- 已完成：
+  - `data/tower_game_config.json`
+    - `towerDefenseRules.battleBuyCostByPurchaseCount` 已更新为你给定的 100 档序列：
+      - 前段：`2,2,3,3,4,4,5,5,5,5,5,10,10,10,10,10`；
+      - 中段按每 5 次 `+5` 递增（`15 -> 20 -> ... -> 90`）；
+      - 末段：`95,95,95,95`（第 97~100 次）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“物品购买第1~100次价格”是否与目标表一致。
+
+## 验收追加调整（2026-03-27，减速冰锥改为“减速后额外伤害”）
+
+- 用户需求：`toweritem14`（减速冰锥）改为：
+  - 冷却 `3000|2500|2100|1700|1400`；
+  - 基础伤害 `10|16|26|41|66`；
+  - 基础词条“攻击距离:50，减速:2秒”；
+  - 第三词条改为“所有冰锥命中减速后目标造成额外伤害+4|+6|+10|+16|+26”；
+  - 额外伤害可叠加。
+- 已完成：
+  - `data/tower_items.json`
+    - `toweritem14` 第三条技能文案改为“减速后额外伤害+4|+6|+10|+16|+26”；
+    - `simple_desc` / `simple_desc_tiered` 同步改为“对减速目标造成额外伤害”口径；
+    - 冷却、基础伤害、基础攻击距离/减速行保持为你给定值。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 新增 `resolveIceExtraDamageVsSlowed()`：从 `toweritem14` 词条解析额外伤害并按件数累加；
+    - 在冰法师伤害结算中接入：当目标处于减速状态（`enemy.slowMs > 0`）时，追加该额外伤害；
+    - 结算口径为“额外伤害相加”，与需求一致。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“减速冰锥新词条文案 + 实战增伤触发/叠加”是否符合预期。
+
+## 验收追加调整（2026-03-27，塔防金币相关数值更新）
+
+- 用户需求：更新金币相关配置，包括“物品购买价格表（1~100 次）”“技能购买价格表（1~15 次）”及怪物掉落金币。
+- 已完成：
+  - `data/tower_game_config.json`
+    - `battleBuyCostByPurchaseCount` 更新为新 100 档：前段 `2,2,3,3,4,4,5...`，后续按每 5 次 +10 递增，末段为 `...170,170,170,170,170,180,180,180,180`；
+    - `battleSkillBuyCostByPurchaseCount` 更新为 15 档线性表：`5,10,15,20,25,30,35,40,45,50,55,60,65,70,75`；
+    - `enemyDefs[*].killGold` 按新表同步：
+      - 骷髅系：`enemy1=1, enemy2=2, enemy3=2, enemy7=2, boss2=10`；
+      - 灰色系：`enemy5=2, enemy6=4, enemy8=4, enemy4=4, boss3=20`；
+      - 红色系：`enemy9=3, enemy10=6, enemy11=6, enemy12=6, boss=30`。
+- 验证：已用脚本校验数组长度与关键值（买物品 100 档、技能 15 档、15 个怪物掉落金币）均与新表一致。
+- 当前阶段：等待用户验收“金币相关三项（物品购买/技能购买/怪物掉落）”是否符合预期。
+
+## 验收追加调整（2026-03-27，怪物基础数值与关卡倍率按新表更新）
+
+- 用户需求：按新表更新 15 种怪物基础数值（血量/攻击）与第 1~15 关 `Hp比例/Atk比例`。
+- 已完成：
+  - `data/tower_game_config.json`
+    - `towerDefenseRules.enemyDefs` 数值同步：
+      - 骷髅战士 `hp: 60 -> 80`
+      - 骷髅弓手 `hp: 30 -> 40`
+      - 骷髅犬 `hp: 20 -> 30`
+      - 灰色小妖队长 `hp: 100 -> 150`
+      - 灰色小妖弹弓 `hp: 30 -> 40`
+      - 蝙蝠小妖 `hp: 20 -> 30`
+      - 红色领主 `hp: 100 -> 120`
+      - 红色魅魔 `hp: 50 -> 70`
+      - 红色飞龙 `hp: 40 -> 50`
+      - 其余（骷髅小兵/骷髅王/灰色小妖/双头食人魔/红色小恶魔/撒旦首领）本就与新表一致，保持不变。
+    - `towerDefenseRules.dayWaves` 第 1~15 关倍率同步：
+      - Day3 `hpMultiplier: 1.4 -> 1.6`
+      - Day4 `hpMultiplier: 1.6 -> 2.4`
+      - Day7 `hpMultiplier: 4 -> 5`
+      - Day8 `hpMultiplier: 5 -> 7`
+      - Day9 `hpMultiplier: 6 -> 9`
+      - Day12 `hpMultiplier: 12 -> 14`
+      - Day13 `hpMultiplier: 14 -> 18`
+      - Day14 `hpMultiplier: 16 -> 22`
+      - 其余 Day1/2/5/6/10/11/15 与新表一致，保持不变。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“怪物基础数值 + 第1~15关倍率”是否与目标表一致。
+
+## 验收追加修正（2026-03-27，塔防首领死亡后跨关保留血量与护甲）
+
+- 用户需求：塔防模式下，首领死亡自动进入下一关时，玩家血量和护甲不要重置。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `buildEditableSnapshotFromBoard()` 新增写入 `playerBattleHp`（从当前战斗引擎实时读取玩家 HP），并继续写入 `playerShield`，确保跨波次快照携带实时生命/护甲。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - `start(snapshot)` 初始化玩家生命时优先读取 `snapshot.playerBattleHp`（并限制在 `fixedPlayerHp` 上限内），不再无条件回满；
+    - 护甲继续从 `snapshot.playerShield` 读取，保持跨关连续。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“首领死亡后进入下一关时 HP/护甲均连续不重置”。
+
+## 验收追加修正（2026-03-27，切到下一关时 CD 短暂停顿）
+
+- 用户反馈：进入下一关后，武器 CD 会先停顿一下再继续走。
+- 根因定位：
+  - `src/tower/battle/BattleScene.ts` 的 `startNextTowerWaveInPlace()` 在切关前会 `await ensureTowerEnemyProjectileAssetWarmupForDay(nextDay)`；
+  - 该等待期间引擎仍处于上一关 `finished` 状态，`engine.update()` 不推进，导致 CD 视觉上出现短暂停顿。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增 `useTowerQueueWave` 分支；
+    - 塔防切关（走 `queueNextTowerWave`）时改为后台预热投射物资源（`void ensureTowerEnemyProjectileAssetWarmupForDay(nextDay)`），不再阻塞切关；
+    - 非塔防或需重启引擎路径仍保留 `await` 预热，维持原有稳态。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“下一关开始时 CD 不再短暂停顿，且继续保持跨关不断档”。
+
+## 验收追加修正（2026-03-27，下一关不重置武器冷却）
+
+- 用户需求：进入下一关后，武器冷却（CD）不应重新从 0 开始计算。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `startNextTowerWaveInPlace()` 中，塔防模式推进下一关时统一走 `engine.queueNextTowerWave(nextDay)`，不再在“上一关已结算完成”场景回退到 `engine.start(...)` 重建引擎；
+    - 从而保留当前玩家武器运行时状态（含 `currentChargeMs`），避免切关后全体武器 CD 被重置。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“进入下一关后武器 CD 连续、不重置”表现。
+
+## 验收追加优化（2026-03-27，塔防首领死亡后自动进入下一关）
+
+- 用户需求：塔防模式下，首领死亡后不需要手动点击“下一关”，改为自动进入下一关。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 波次自动推进触发条件从“仅非首领波可自动推进”调整为“战斗结算后统一自动推进（非失败/非最终胜利）”；
+    - 保留非首领波“超时强制推进”逻辑不变；
+    - 塔防模式下隐藏手动“继续/下一波”按钮，避免与自动推进冲突。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“首领死亡后是否无点击直接进入下一关”。
+
 ## 验收执行记录（2026-03-26，Git同步 + TestFlight上传 + Android出包）
 
 - 用户需求：同步 Git 上传；打 TF 包并上传；打 Android 包。

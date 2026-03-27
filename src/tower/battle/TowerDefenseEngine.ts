@@ -228,8 +228,19 @@ export class TowerDefenseEngine implements BattleEngineLike {
     this.rebuildPlayerDerivedParams()
 
     const playerHp = this.getFixedPlayerHp()
+    const snapshotHpRaw = Number(snapshot.playerBattleHp)
+    const startHp = Number.isFinite(snapshotHpRaw) ? Math.max(1, Math.round(snapshotHpRaw)) : playerHp
     const startShield = Math.max(0, Math.round(Number(snapshot.playerShield) || 0))
-    this.playerHero = { id: 'hero_player', side: 'player', maxHp: playerHp, hp: playerHp, shield: startShield, burn: 0, poison: 0, regen: 0 }
+    this.playerHero = {
+      id: 'hero_player',
+      side: 'player',
+      maxHp: playerHp,
+      hp: Math.max(1, Math.min(startHp, playerHp)),
+      shield: startShield,
+      burn: 0,
+      poison: 0,
+      regen: 0,
+    }
     this.enemyHero = { id: 'hero_enemy', side: 'enemy', maxHp: 1, hp: 1, shield: 0, burn: 0, poison: 0, regen: 0 }
 
     this.buildSpawnPlan()
@@ -2099,6 +2110,14 @@ export class TowerDefenseEngine implements BattleEngineLike {
     return Math.max(0, Math.round(sec * 1000))
   }
 
+  private resolveIceExtraDamageVsSlowed(): number {
+    let total = 0
+    for (const one of this.getPlayerItemsByIcon('toweritem14')) {
+      total += Math.max(0, Math.round(this.resolveNumericValueFromItemLine(one, /额外伤害\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/)))
+    }
+    return Math.max(0, total)
+  }
+
   private resolveIceFreezeChance(target: EnemyUnit): number {
     let totalPct = 0
     for (const one of this.getPlayerItemsByIcon('toweritem16')) {
@@ -2164,6 +2183,10 @@ export class TowerDefenseEngine implements BattleEngineLike {
       const bonusPerHit = Math.max(0, Math.round(this.resolveArcherComboBonusPerHit() * this.towerArcherBloodBonusMul))
       const comboBonus = Math.max(0, nextComboCount - 1) * bonusPerHit
       if (comboBonus > 0) finalDamage += comboBonus
+    }
+    if (sourceArch === '冰法师' && enemy.slowMs > 0) {
+      const bonus = this.resolveIceExtraDamageVsSlowed()
+      if (bonus > 0) finalDamage += bonus
     }
     if (enemy.bleedMs > 0) {
       const bleedMul = this.isBossEnemyUnit(enemy) ? this.towerWarriorBleedMulBoss : this.towerWarriorBleedMulNormal

@@ -1957,6 +1957,7 @@ function getTowerAllowedLevelsByStartingTier(tier: TierKey): Array<1 | 2 | 3 | 4
 function buildEditableSnapshotFromBoard(day: number): ReturnType<typeof getBattleSnapshot> {
   if (!editableSystem) return enteredSnapshot
   const maxLevel = getTowerItemSynthesisMaxLevel()
+  const playerHp = Math.max(1, Math.round(engine?.getBoardState().player.hp ?? enteredSnapshot?.playerBattleHp ?? 1))
   const playerShield = Math.max(0, Math.round(engine?.getBoardState().player.shield ?? enteredSnapshot?.playerShield ?? 0))
   const entities = editableSystem.getCombatEntities(6).map((it) => {
     const meta = editableMeta.get(it.instanceId)
@@ -1983,6 +1984,7 @@ function buildEditableSnapshotFromBoard(day: number): ReturnType<typeof getBattl
     createdAtMs: Date.now(),
     entities,
     playerGold: Math.max(0, Math.round(editableGold)),
+    playerBattleHp: playerHp,
     playerShield,
     towerBattleBuyCount: Math.max(0, Math.round(towerBattleBuyCount)),
     towerBattleSkillBuyCount: Math.max(0, Math.round(towerBattleSkillBuyCount)),
@@ -2901,6 +2903,7 @@ async function startNextTowerWaveInPlace(options?: { showNewEnemyToast?: boolean
   const nextCols = getDayActiveCols(nextDay)
   const nextRows = getTowerBattleRowsByDay(nextDay)
   const zoneExpanded = nextCols > prevCols || nextRows > prevRows
+  const useTowerQueueWave = isTowerDefenseBattle() && !!engine.queueNextTowerWave
   const nextSnapshot = {
     ...baseSnapshot,
     day: nextDay,
@@ -2910,7 +2913,11 @@ async function startNextTowerWaveInPlace(options?: { showNewEnemyToast?: boolean
 
   towerWaveAdvanceInProgress = true
   try {
-    await ensureTowerEnemyProjectileAssetWarmupForDay(nextDay)
+    if (useTowerQueueWave) {
+      void ensureTowerEnemyProjectileAssetWarmupForDay(nextDay)
+    } else {
+      await ensureTowerEnemyProjectileAssetWarmupForDay(nextDay)
+    }
     setBattleSnapshot(nextSnapshot)
     enteredSnapshot = nextSnapshot
     battleDay = nextDay
@@ -2924,7 +2931,7 @@ async function startNextTowerWaveInPlace(options?: { showNewEnemyToast?: boolean
     clearTowerEnemyGoldDropFx()
     if (!preserveExistingEnemies) clearItemRoundStatTracking()
 
-    if (preserveExistingEnemies && engine.queueNextTowerWave) {
+    if (useTowerQueueWave && engine.queueNextTowerWave) {
       engine.queueNextTowerWave(nextDay)
     } else {
       const playerSkillIds = (PvpContext.isActive() && nextSnapshot.ownerSkillIds != null)
@@ -6239,20 +6246,19 @@ export const BattleScene: Scene = {
         && !bossWave
         && !towerWaveTriggerConsumed
         && waveElapsedMs >= getTowerForceNextWaveAfterLastSpawnMs()
-      const autoByClear = canContinue && !bossWave && !towerWaveTriggerConsumed
+      const autoByClear = canContinue && !towerWaveTriggerConsumed
       if (towerMode && (autoByClear || reachedPostSpawnLimit)) {
         towerWaveTriggerConsumed = true
       }
       const shouldAutoAdvanceWave = towerMode
         && !settlement.isGameOver()
         && !settlement.isFinalVictory()
-        && !bossWave
         && !towerWaveAdvanceInProgress
         && transition.battleExitTransitionDurationMs <= 0
         && towerWaveTriggerConsumed
       continueBtn.x = CANVAS_W / 2
       continueBtn.y = 92 + topSafeYOffset + 50
-      continueBtn.visible = towerMode ? (bossWave && canContinue) : canContinue
+      continueBtn.visible = towerMode ? false : canContinue
       if (towerMode && shouldAutoAdvanceWave) {
         if (towerForceAutoStartOnEnter) towerForceAutoStartOnEnter = false
         void startNextTowerWaveInPlace({ showNewEnemyToast: true })
