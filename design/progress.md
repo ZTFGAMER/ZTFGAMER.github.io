@@ -1,5 +1,65 @@
 # 大巴扎 — 开发进度记录
 
+## 验收追加调整（2026-03-27，减速冰锥额外伤害档位更新）
+
+- 用户需求：更新 `减速冰锥（toweritem14）` 额外伤害档位为 `+3|5|8|12|20`（其余口径保持：冷却 `3000|2500|2100|1700|1400`、基础伤害 `10|16|26|41|66`、攻击距离50、减速2秒）。
+- 已完成：
+  - `data/tower_items.json`
+    - `toweritem14.skills[2]` 文案更新为：`所有冰锥命中减速后目标造成额外伤害+3|5|8|12|20。`
+    - `toweritem14.simple_desc_tiered` 同步更新为：`所有冰锥命中减速后目标造成额外伤害+3|5|8|12|20`。
+- 验证：本次为配置文案/数值档位更新，未单独执行构建。
+- 当前阶段：等待用户验收“减速冰锥额外伤害档位”是否与目标表一致。
+
+## 验收追加调整（2026-03-27，真机卡顿/闪退专项自动回传打点）
+
+- 用户需求：沿用“特殊网页 + 自动回传日志”方式，增加足够多打点，尽量一次定位移动端卡顿/闪退（偏逻辑 Bug/计算异常）。
+- 已完成：
+  - `src/perf/DiagRuntime.ts`
+    - 新增诊断事件桥（`bigbazzar:diag-event`），支持 URL 开关 `diag=1`、级别 `diagLevel=basic|verbose`、按事件节流上报。
+  - `src/main.ts`
+    - 诊断模式下自动强制开启 PerfReporter，并提高采样/批量上报容量；
+    - 新增 `diagEndpoint` / `diagToken` 参数兼容（未传 `perfEndpoint/perfToken` 时回退使用）；
+    - 战斗性能快照采集扩展到 `battle/nobag-battle/tower-battle`，确保塔防真机日志可回传；
+    - 监听诊断事件并自动写入 `diag_*` 上报；
+    - 新增 `diag_heartbeat` 心跳事件（含关键 battle perf 指标）。
+  - `src/tower/battle/BattleScene.ts`
+    - 新增波次切换链路打点：`tower_wave_advance_*`；
+    - 新增逻辑停摆检测：`tower_tick_stall`；
+    - 新增 2 秒周期状态采样：`tower_runtime_sample`。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 新增引擎异常打点：`tower_engine_invalid_dt/tower_engine_invalid_state/tower_engine_queue_spike`；
+    - 新增跨波次队列事件：`tower_engine_queue_wave_start/tower_engine_queue_wave_done`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户用“特殊网页参数链接”真机复现并回传自动采集日志，再做一次性定位与修复。
+
+## 验收追加修正（2026-03-27，塔防合成品质桶按1~5级口径）
+
+- 用户反馈：塔防里合成出 Lv4 物品时仍可能出现白银品质，与目标桶（Lv4 白银=0）不一致。
+- 根因定位：
+  - 合成品质桶选择默认使用 `tierStarLevelIndex + 1` 的 1~8 级口径；
+  - 塔防的 Lv4/Lv5（`Diamond#1/#2`）会映射到全局 7/8 级，命中到 7/8 级中白银权重，导致出现白银。
+- 已完成：
+  - `src/tower/shop/systems/ShopSynthesisController.ts`
+    - `pickCrossSynthesisDesiredMinTier()` 与 `pickCrossSynthesisResultWithCycle()` 新增可选参数 `levelOverride`，允许按调用方指定的等级桶取权重。
+  - `src/tower/battle/BattleScene.ts`
+    - 塔防合成调用 `pickCrossSynthesisResultWithCycle()` 时传入 `tierStarToTowerLevel(resultTier, resultStar)`（1~5级），使品质桶与塔防等级口径一致。
+- 预期结果：塔防合成出 Lv4 物品时不再出现白银（按你给的表，Lv4 白银权重=0）。
+- 验证：`npm run build` 受仓库现有 `src/main.ts` 未使用导入/缺失符号错误影响失败（与本次改动文件无关），待主线错误修复后复验。
+- 当前阶段：等待用户验收“塔防 Lv4/Lv5 合成品质分布”是否符合目标桶。
+
+## 验收执行记录（2026-03-27，Android 出包）
+
+- 用户需求：打 Android 包。
+- 已完成：
+  - 执行 `npm run build:android-web`（产出 `dist-android`）;
+  - 执行 `npm run android:sync`（同步 Capacitor Android 工程）;
+  - 使用 JDK21 执行 `./android/gradlew -p android assembleRelease bundleRelease` 成功。
+- 产物：
+  - APK：`android/app/build/outputs/apk/release/app-release.apk`
+  - AAB：`android/app/build/outputs/bundle/release/app-release.aab`
+- 备注：构建成功，存在 Capacitor 版本提示（`@capacitor/core@8.2.0` 与 `@capacitor/android@8.1.0` 不一致），不影响本次出包。
+- 当前阶段：等待用户验收 Android 安装包与商店包结果。
+
 ## 验收执行记录（2026-03-27，Git同步 + TestFlight上传）
 
 - 用户需求：同步 Git 上传；打 TF 包并上传。

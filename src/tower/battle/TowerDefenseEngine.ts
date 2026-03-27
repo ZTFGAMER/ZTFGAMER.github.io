@@ -3,6 +3,7 @@ import { EventBus } from '@/tower/core/EventBus'
 import { getConfig } from '@/tower/core/DataLoader'
 import { getConfig as getDebugCfg } from '@/tower/config/debugConfig'
 import { CANVAS_W } from '@/tower/config/layoutConstants'
+import { emitDiagEvent } from '@/perf/DiagRuntime'
 import type { CombatBoardItem, CombatItemRuntimeState, CombatResult } from '@/tower/battle/CombatEngine'
 import type { CombatItemRunner } from '@/tower/battle/CombatTypes'
 import { toRunner } from '@/tower/battle/EnemyBuilder'
@@ -176,6 +177,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
   private towerWarriorDualShieldGainMul = 1
   private towerWarriorRangeBonusMeters = 0
   private towerWarriorReflectMul = 1
+  private diagLastAnomalyEmitAtMs = 0
 
   start(snapshot: BattleSnapshotBundle): void {
     this.day = Math.max(1, Math.round(snapshot.day || 1))
@@ -305,8 +307,19 @@ export class TowerDefenseEngine implements BattleEngineLike {
 
   update(dt: number): void {
     if (this.finished) return
+    if (!Number.isFinite(dt)) {
+      this.emitDiagAnomaly('tower_engine_invalid_dt', { dt })
+      return
+    }
     const dtMs = Math.max(0, dt * 1000)
     if (dtMs <= 0) return
+    if (dtMs >= 250) {
+      emitDiagEvent('tower_engine_large_dt', {
+        dtMs: Math.round(dtMs),
+        tickIndex: this.tickIndex,
+        day: this.day,
+      }, { throttleMs: 1200, level: 'verbose' })
+    }
     this.elapsedMs += dtMs
     this.tickIndex += 1
     this.tickPlayerShieldDecay(dtMs)
@@ -323,6 +336,24 @@ export class TowerDefenseEngine implements BattleEngineLike {
     const fixedHp = this.getFixedPlayerHp()
     this.playerHero.maxHp = fixedHp
     this.playerHero.hp = Math.max(0, Math.min(this.playerHero.hp, fixedHp))
+    if (!Number.isFinite(this.playerHero.hp) || !Number.isFinite(this.playerHero.shield) || !Number.isFinite(this.elapsedMs)) {
+      this.emitDiagAnomaly('tower_engine_invalid_state', {
+        playerHp: this.playerHero.hp,
+        playerShield: this.playerHero.shield,
+        elapsedMs: this.elapsedMs,
+        tickIndex: this.tickIndex,
+      })
+    }
+    if (this.pendingPlayerHits.length > 1600 || this.pendingEnemyHits.length > 1600 || this.pendingPlayerFires.length > 1200) {
+      emitDiagEvent('tower_engine_queue_spike', {
+        pendingPlayerHits: this.pendingPlayerHits.length,
+        pendingEnemyHits: this.pendingEnemyHits.length,
+        pendingPlayerFires: this.pendingPlayerFires.length,
+        pendingMelee: this.pendingPlayerMeleeTriggers.length,
+        day: this.day,
+        tickIndex: this.tickIndex,
+      }, { throttleMs: 1500 })
+    }
     this.checkFinish()
   }
 
@@ -772,6 +803,13 @@ export class TowerDefenseEngine implements BattleEngineLike {
     const cfg = getConfig().towerDefenseRules
     if (!cfg || cfg.enabled === false) return
     const safeDay = Math.max(1, Math.round(nextDay || (this.day + 1)))
+    emitDiagEvent('tower_engine_queue_wave_start', {
+      fromDay: this.day,
+      nextDay: safeDay,
+      finished: this.finished,
+      elapsedMs: Math.round(this.elapsedMs),
+      pendingJobs: Math.max(0, this.spawnJobs.length - this.nextSpawnIdx),
+    })
     const picked = this.pickWaveByDay(cfg.dayWaves ?? [], safeDay)
     if (!picked) return
     const wave = ('wave' in picked ? picked.wave : picked)
@@ -806,6 +844,25 @@ export class TowerDefenseEngine implements BattleEngineLike {
     this.totalWaveCount = Math.max(0, aliveCount + this.spawnJobs.length)
     this.totalWaveHp = Math.max(1, aliveHp + appendTotalHp)
     this.refreshEnemyHeroHp()
+    emitDiagEvent('tower_engine_queue_wave_done', {
+      day: this.day,
+      totalWaveCount: this.totalWaveCount,
+      totalWaveHp: this.totalWaveHp,
+      aliveCarryCount: aliveCount,
+      appendCount: appendTotalCount,
+      pendingJobsAfterMerge: this.spawnJobs.length,
+    })
+  }
+
+  private emitDiagAnomaly(type: string, payload: Record<string, unknown>): void {
+    const now = Date.now()
+    if (now - this.diagLastAnomalyEmitAtMs < 1200) return
+    this.diagLastAnomalyEmitAtMs = now
+    emitDiagEvent(type, {
+      day: this.day,
+      tickIndex: this.tickIndex,
+      ...payload,
+    })
   }
 
   private spawnDueEnemies(): void {

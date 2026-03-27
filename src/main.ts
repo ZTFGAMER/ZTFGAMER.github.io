@@ -6,11 +6,11 @@
 import { Application, Assets, Sprite, Texture } from 'pixi.js'
 import { SceneManager } from '@/core/SceneManager'
 import { ShopScene }    from '@/shop/ShopScene'
-import { BattleScene, getBattleFxPerfStats }  from '@/battle/BattleScene'
+import { BattleScene, getBattleFxPerfStats as getNormalBattleFxPerfStats }  from '@/battle/BattleScene'
 import { ShopScene as NobagShopScene } from '@/nobag/shop/ShopScene'
-import { BattleScene as NobagBattleScene } from '@/nobag/battle/BattleScene'
+import { BattleScene as NobagBattleScene, getBattleFxPerfStats as getNobagBattleFxPerfStats } from '@/nobag/battle/BattleScene'
 import { ShopScene as TowerShopScene } from '@/tower/shop/ShopScene'
-import { BattleScene as TowerBattleScene } from '@/tower/battle/BattleScene'
+import { BattleScene as TowerBattleScene, getBattleFxPerfStats as getTowerBattleFxPerfStats } from '@/tower/battle/BattleScene'
 import { MenuScene }    from '@/menu/MenuScene'
 import { PvpLobbyScene } from '@/pvp/PvpLobbyScene'
 import { PvpResultScene } from '@/pvp/PvpResultScene'
@@ -35,6 +35,7 @@ import { normalizeSize } from '@/common/items/ItemDef'
 import { CANVAS_W as BASE_W, CANVAS_H as BASE_H } from '@/config/layoutConstants'
 import { EventBus, type SceneName } from '@/core/EventBus'
 import { PerfReporter, resolvePerfReporterConfig } from '@/perf/PerfReporter'
+import { getDiagEventName, getDiagLevel, isDiagEnabled } from '@/perf/DiagRuntime'
 import { markAssetUrlLoaded } from '@/core/AssetRuntimeTracker'
 import {
   isMobileImageDownscaleBypassed,
@@ -77,6 +78,13 @@ let soakState: SoakTestStats | null = null
 let perfReporter: PerfReporter | null = null
 let originalAssetsLoad: typeof Assets.load | null = null
 let webgpuDeviceLostCount = 0
+
+function getBattlePerfStatsForScene(scene: SceneName | null) {
+  if (scene === 'battle') return getNormalBattleFxPerfStats()
+  if (scene === 'nobag-battle') return getNobagBattleFxPerfStats()
+  if (scene === 'tower-battle') return getTowerBattleFxPerfStats()
+  return null
+}
 
 async function detectWebGpuFallbackAdapter(): Promise<boolean> {
   if (typeof navigator === 'undefined') return false
@@ -343,7 +351,8 @@ function startSoakPolling(): void {
   }
   soakPollTimer = window.setInterval(() => {
     if (!soakState || SceneManager.currentName() !== 'battle') return
-    const fx = getBattleFxPerfStats()
+    const fx = getBattlePerfStatsForScene('battle')
+    if (!fx) return
     soakState.maxActiveFx = Math.max(soakState.maxActiveFx, fx.activeFx)
     soakState.maxActiveProjectiles = Math.max(soakState.maxActiveProjectiles, fx.activeProjectiles)
     soakState.maxActiveFloatingNumbers = Math.max(soakState.maxActiveFloatingNumbers, fx.activeFloatingNumbers)
@@ -608,19 +617,32 @@ async function bootstrap(): Promise<void> {
 
   const perfCfg = resolvePerfReporterConfig(getConfig().runRules?.perfReporter)
   const perfParams = new URLSearchParams(window.location.search)
+  const diagEnabled = isDiagEnabled()
+  const diagLevel = getDiagLevel()
   if (perfParams.get('perf') === '1') perfCfg.enabled = true
   if (perfParams.get('perf') === '0') perfCfg.enabled = false
+  if (diagEnabled) perfCfg.enabled = true
   const perfEndpoint = String(perfParams.get('perfEndpoint') ?? '').trim()
   const perfToken = String(perfParams.get('perfToken') ?? '').trim()
+  const diagEndpoint = String(perfParams.get('diagEndpoint') ?? '').trim()
+  const diagToken = String(perfParams.get('diagToken') ?? '').trim()
   if (perfEndpoint) perfCfg.endpoint = perfEndpoint
   if (perfToken) perfCfg.bearerToken = perfToken
+  if (!perfEndpoint && diagEndpoint) perfCfg.endpoint = diagEndpoint
+  if (!perfToken && diagToken) perfCfg.bearerToken = diagToken
+  if (diagEnabled) {
+    perfCfg.sampleMs = Math.max(100, Math.min(perfCfg.sampleMs, 300))
+    perfCfg.flushMs = Math.max(1500, Math.min(perfCfg.flushMs, 4000))
+    perfCfg.batchSize = Math.max(perfCfg.batchSize, 100)
+    perfCfg.maxEvents = Math.max(perfCfg.maxEvents, 4000)
+    perfCfg.maxPoints = Math.max(perfCfg.maxPoints, 4000)
+  }
   if (perfCfg.enabled) {
     perfReporter = new PerfReporter(perfCfg, {
       getScene: () => SceneManager.currentName(),
       getRendererType: () => (app.renderer.type === 0 ? 'webgl' : 'webgpu'),
       getBattlePerf: () => {
-        if (SceneManager.currentName() !== 'battle') return null
-        return getBattleFxPerfStats()
+        return getBattlePerfStatsForScene(SceneManager.currentName())
       },
     })
     perfReporter.markEvent('boot', {
@@ -660,6 +682,28 @@ async function bootstrap(): Promise<void> {
       perfReporter?.markEvent('visibility_change', { state: document.visibilityState })
       if (document.visibilityState === 'hidden') perfReporter?.flushByBeacon()
     })
+    if (diagEnabled) {
+      perfReporter.markEvent('diag_enabled', {
+        level: diagLevel,
+        endpointConfigured: !!perfCfg.endpoint,
+        tokenConfigured: !!perfCfg.bearerToken,
+      })
+      window.addEventListener(getDiagEventName(), (evt: Event) => {
+        const detail = (evt as CustomEvent<{ type?: unknown; payload?: unknown; level?: unknown; atMs?: unknown }>).detail
+        const type = String(detail?.type ?? '').trim()
+        if (!type) return
+        const level = detail?.level === 'verbose' ? 'verbose' : 'basic'
+        if (diagLevel !== 'verbose' && level === 'verbose') return
+        const payload = (detail?.payload && typeof detail.payload === 'object')
+          ? (detail.payload as Record<string, unknown>)
+          : {}
+        perfReporter?.markEvent(`diag_${type}`, {
+          ...payload,
+          diagLevel: level,
+          atMs: Number(detail?.atMs ?? Date.now()),
+        })
+      })
+    }
   } else {
     perfReporter = null
   }
@@ -946,9 +990,35 @@ async function bootstrap(): Promise<void> {
   }
 
   // 6. 接入 PixiJS Ticker（取代手写 RAF）
+  let diagHeartbeatElapsedMs = 0
   app.ticker.add((ticker) => {
     const dt = ticker.deltaMS / 1000
     perfReporter?.tick(ticker.deltaMS)
+    if (diagEnabled && perfReporter) {
+      const scene = SceneManager.currentName()
+      if (scene === 'battle' || scene === 'nobag-battle' || scene === 'tower-battle') {
+        diagHeartbeatElapsedMs += ticker.deltaMS
+        if (diagHeartbeatElapsedMs >= 1500) {
+          diagHeartbeatElapsedMs = 0
+          const battlePerf = getBattlePerfStatsForScene(scene)
+          perfReporter.markEvent('diag_heartbeat', {
+            scene,
+            renderer: app.renderer.type === 0 ? 'webgl' : 'webgpu',
+            perfLevel: battlePerf ? {
+              activeFx: battlePerf.activeFx,
+              droppedProjectiles: battlePerf.droppedProjectiles,
+              droppedFloatingNumbers: battlePerf.droppedFloatingNumbers,
+              battleUpdateMsP95: battlePerf.battleUpdateMsP95,
+              battleFrameDtMsP95: battlePerf.battleFrameDtMsP95,
+              battleQueuePendingRatioMax: battlePerf.battleQueuePendingRatioMax,
+              battleTickDeltaMax: battlePerf.battleTickDeltaMax,
+            } : null,
+          })
+        }
+      } else {
+        diagHeartbeatElapsedMs = 0
+      }
+    }
     SceneManager.update(dt)
   })
 

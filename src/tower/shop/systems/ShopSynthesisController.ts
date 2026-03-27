@@ -74,8 +74,16 @@ export function isBattleZoneNoSynthesisEnabled(): boolean {
 
 // ---- 合成结果选取辅助 ----
 
-export function pickCrossSynthesisDesiredMinTier(resultTier: TierKey, resultStar: 1 | 2, available?: TierKey[]): TierKey {
-  const level = Math.max(1, Math.min(8, tierStarLevelIndex(resultTier, resultStar) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
+export function pickCrossSynthesisDesiredMinTier(
+  resultTier: TierKey,
+  resultStar: 1 | 2,
+  available?: TierKey[],
+  levelOverride?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
+): TierKey {
+  const fallbackLevel = Math.max(1, Math.min(8, tierStarLevelIndex(resultTier, resultStar) + 1)) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
+  const level = (typeof levelOverride === 'number'
+    ? Math.max(1, Math.min(8, Math.round(levelOverride)))
+    : fallbackLevel) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   return pickQualityByPseudoRandomBag(level, available ?? ['Bronze', 'Silver', 'Gold', 'Diamond'])
 }
 
@@ -84,10 +92,11 @@ export function pickCrossSynthesisResultWithCycle(
   resultTier: TierKey,
   resultStar: 1 | 2,
   _minStartingTier: TierKey,
+  levelOverride?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
 ): ItemDef | null {
   if (candidates.length <= 0) return null
   const availableMinTiers = Array.from(new Set(candidates.map((it) => parseTierName(it.starting_tier) ?? 'Bronze')))
-  const desiredMinTier = pickCrossSynthesisDesiredMinTier(resultTier, resultStar, availableMinTiers)
+  const desiredMinTier = pickCrossSynthesisDesiredMinTier(resultTier, resultStar, availableMinTiers, levelOverride)
   let targetMinTier = desiredMinTier
   let pool = candidates.filter((it) => (parseTierName(it.starting_tier) ?? 'Bronze') === targetMinTier)
   if (pool.length <= 0) {

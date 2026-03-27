@@ -33,6 +33,7 @@ import { BattleDamageStats } from './BattleDamageStats'
 import { BattleFXPool, type BattleFxPerfStats } from './BattleFXPool'
 import { BattleTransition } from './BattleTransition'
 import { BattleSettlement } from './BattleSettlement'
+import { emitDiagEvent } from '@/perf/DiagRuntime'
 import { CANVAS_W, CANVAS_H, BTN_RADIUS } from '@/tower/config/layoutConstants'
 import { getAdjustedBattleZoneY, getAdjustedBattleZoneYInBattleOffset, getTowerBattleColsByDay, getTowerBattleRowsByDay } from '@/tower/shop/ShopMathHelpers'
 import { getTopLeftControlYOffset } from '@/tower/shop/ui/ShopSafeArea'
@@ -786,6 +787,10 @@ let monitorSampleElapsedMs = 0
 let monitorHighStreak = 0
 let monitorRecoverStreak = 0
 let autoFxDegradeLevel = 0
+let diagTickStallElapsedMs = 0
+let diagTickStallLastTick = -1
+let diagTickStallLastEmitAtMs = 0
+let diagBattleSampleElapsedMs = 0
 let fpsHudText: Text | null = null
 let fpsSampleElapsedMs = 0
 let fpsSampleFrames = 0
@@ -2130,7 +2135,8 @@ function pickBattleSynthesisResultDef(
     candidates = filterCrossSynthesisPool(allByTier)
   }
   candidates = candidates.filter((it) => !reachesMaxActiveCount(it, currentCountByDefId))
-  const evolvedDef = pickCrossSynthesisResultWithCycle(candidates, resultTier, resultStar, minStartingTier)
+  const qualityBucketLevel = tierStarToTowerLevel(resultTier, resultStar)
+  const evolvedDef = pickCrossSynthesisResultWithCycle(candidates, resultTier, resultStar, minStartingTier, qualityBucketLevel)
   return evolvedDef
 }
 
@@ -2904,6 +2910,14 @@ async function startNextTowerWaveInPlace(options?: { showNewEnemyToast?: boolean
   const nextRows = getTowerBattleRowsByDay(nextDay)
   const zoneExpanded = nextCols > prevCols || nextRows > prevRows
   const useTowerQueueWave = isTowerDefenseBattle() && !!engine.queueNextTowerWave
+  emitDiagEvent('tower_wave_advance_start', {
+    fromDay: battleDay,
+    nextDay,
+    preserveExistingEnemies,
+    useTowerQueueWave,
+    zoneExpanded,
+    draggingPlayerItemId: draggingPlayerItemId ?? '',
+  })
   const nextSnapshot = {
     ...baseSnapshot,
     day: nextDay,
@@ -2913,10 +2927,31 @@ async function startNextTowerWaveInPlace(options?: { showNewEnemyToast?: boolean
 
   towerWaveAdvanceInProgress = true
   try {
+    const warmupStartedAt = performance.now()
+    emitDiagEvent('tower_wave_warmup_start', { nextDay }, { level: 'verbose' })
     if (useTowerQueueWave) {
       void ensureTowerEnemyProjectileAssetWarmupForDay(nextDay)
+        .then(() => {
+          emitDiagEvent('tower_wave_warmup_done', {
+            nextDay,
+            elapsedMs: Math.round(performance.now() - warmupStartedAt),
+            background: true,
+          }, { level: 'verbose' })
+        })
+        .catch((err) => {
+          emitDiagEvent('tower_wave_warmup_error', {
+            nextDay,
+            background: true,
+            message: err instanceof Error ? err.message : String(err),
+          })
+        })
     } else {
       await ensureTowerEnemyProjectileAssetWarmupForDay(nextDay)
+      emitDiagEvent('tower_wave_warmup_done', {
+        nextDay,
+        elapsedMs: Math.round(performance.now() - warmupStartedAt),
+        background: false,
+      }, { level: 'verbose' })
     }
     setBattleSnapshot(nextSnapshot)
     enteredSnapshot = nextSnapshot
@@ -2933,6 +2968,10 @@ async function startNextTowerWaveInPlace(options?: { showNewEnemyToast?: boolean
 
     if (useTowerQueueWave && engine.queueNextTowerWave) {
       engine.queueNextTowerWave(nextDay)
+      emitDiagEvent('tower_wave_queued', {
+        nextDay,
+        queueMode: true,
+      })
     } else {
       const playerSkillIds = (PvpContext.isActive() && nextSnapshot.ownerSkillIds != null)
         ? nextSnapshot.ownerSkillIds
@@ -2946,6 +2985,10 @@ async function startNextTowerWaveInPlace(options?: { showNewEnemyToast?: boolean
       })
       syncTowerBattleSkillPickCountsToEngine()
       damageStats.bootstrapFromBoard(engine)
+      emitDiagEvent('tower_wave_queued', {
+        nextDay,
+        queueMode: false,
+      })
     }
     if (options?.showNewEnemyToast) {
       showFatigueToast('新的敌人刷新了', 1200)
@@ -2955,6 +2998,19 @@ async function startNextTowerWaveInPlace(options?: { showNewEnemyToast?: boolean
     }
     ensureEditableBuildMode(getApp().stage)
     fxPool.refreshSourceDefMap()
+    emitDiagEvent('tower_wave_advance_done', {
+      day: battleDay,
+      nextDay,
+      preserveExistingEnemies,
+      zoneExpanded,
+      playerGold: editableGold,
+    })
+  } catch (err) {
+    emitDiagEvent('tower_wave_advance_error', {
+      day: battleDay,
+      message: err instanceof Error ? err.message : String(err),
+    })
+    throw err
   } finally {
     towerWaveAdvanceInProgress = false
   }
@@ -5817,6 +5873,10 @@ export const BattleScene: Scene = {
     monitorHighStreak = 0
     monitorRecoverStreak = 0
     autoFxDegradeLevel = 0
+    diagTickStallElapsedMs = 0
+    diagTickStallLastTick = -1
+    diagTickStallLastEmitAtMs = 0
+    diagBattleSampleElapsedMs = 0
     lastHudTickIndex = -1
     damageStats.reset()
     clearBattleRuntimePerfSampleWindow()
@@ -5920,6 +5980,33 @@ export const BattleScene: Scene = {
     ammoReloadUiElapsedSinceTickMs = (!allowCdUiInterpolation || tickChanged)
       ? 0
       : (ammoReloadUiElapsedSinceTickMs + dtMs)
+    if (allowSimUpdate && !isBattleFinished) {
+      if (diagTickStallLastTick === debugState.tickIndex) {
+        diagTickStallElapsedMs += dtMs
+      } else {
+        diagTickStallLastTick = debugState.tickIndex
+        diagTickStallElapsedMs = 0
+      }
+      if (diagTickStallElapsedMs >= 1200) {
+        const nowMs = Date.now()
+        if (nowMs - diagTickStallLastEmitAtMs >= 2500) {
+          diagTickStallLastEmitAtMs = nowMs
+          emitDiagEvent('tower_tick_stall', {
+            day: battleDay,
+            tickIndex: debugState.tickIndex,
+            stallMs: Math.round(diagTickStallElapsedMs),
+            playerAlive: debugState.playerAlive,
+            enemyAlive: debugState.enemyAlive,
+            playerHp: debugState.playerHp,
+            enemyHp: debugState.enemyHp,
+            inFatigue: debugState.inFatigue,
+          })
+        }
+      }
+    } else {
+      diagTickStallLastTick = debugState.tickIndex
+      diagTickStallElapsedMs = 0
+    }
     const combatRuntimeCfg = getGameCfg().combatRuntime
     const slowFactor = Math.max(0, Math.min(0.95, combatRuntimeCfg.cardSlowFactor ?? 0.4))
     const hasteFactor = Math.max(0, combatRuntimeCfg.cardHasteFactor ?? 0.4)
@@ -6094,6 +6181,29 @@ export const BattleScene: Scene = {
       queueStats.pendingChargePulses / Math.max(1, queueStats.maxPendingChargePulses),
       queueStats.pendingAmmoRefills / Math.max(1, queueStats.maxPendingAmmoRefills),
     )
+    diagBattleSampleElapsedMs += dtMs
+    if (diagBattleSampleElapsedMs >= 2000) {
+      diagBattleSampleElapsedMs = 0
+      const towerStats = engine.getTowerEnemyStats?.()
+      emitDiagEvent('tower_runtime_sample', {
+        day: battleDay,
+        tickIndex: debugState.tickIndex,
+        isFinished: isBattleFinished,
+        settlementResolved: settlement.isResolved(),
+        playerAlive: debugState.playerAlive,
+        enemyAlive: debugState.enemyAlive,
+        playerHp: debugState.playerHp,
+        enemyHp: debugState.enemyHp,
+        pendingHits: queueStats.pendingHits,
+        pendingItemFires: queueStats.pendingItemFires,
+        pendingChargePulses: queueStats.pendingChargePulses,
+        pendingAmmoRefills: queueStats.pendingAmmoRefills,
+        queuePendingRatio: Math.round(queuePendingRatio * 1000) / 1000,
+        remainingCount: towerStats?.remainingCount,
+        totalCount: towerStats?.totalCount,
+        allEnemiesSpawnedAtMs: towerStats?.allEnemiesSpawnedAtMs,
+      }, { level: 'verbose' })
+    }
     const prevTick = battleLastTickIndexForPerf
     const tickDelta = prevTick < 0 ? 0 : Math.max(0, debugState.tickIndex - prevTick)
     battleLastTickIndexForPerf = debugState.tickIndex
