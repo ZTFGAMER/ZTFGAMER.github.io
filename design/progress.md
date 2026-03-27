@@ -1,5 +1,26 @@
 # 大巴扎 — 开发进度记录
 
+## 验收执行记录（2026-03-27，Git同步 + TestFlight上传）
+
+- 用户需求：同步 Git，打 TF 包上传。
+- 已完成：
+  - Git：
+    - 已提交并推送：`dc5fbbd`（`同步移动端拖拽防多点与渲染/队列稳定性修正`）。
+  - TestFlight：
+    - 执行 `npm run release:tf` 全流程成功（build/sync/archive/export/upload）；
+    - 上传成功，Delivery UUID：`8392f3e5-097b-4680-a64f-54c6233a8f29`；
+    - `CURRENT_PROJECT_VERSION` 自动更新：`45 -> 46`；
+    - IPA 路径：`ios/build/export-testflight/App.ipa`。
+- 当前阶段：等待用户在 App Store Connect 验收本次构建处理状态。
+
+## 验收执行记录（2026-03-27，掉帧平滑修复已发布 Vercel）
+
+- 用户指令：发布“掉帧平滑修复”到线上真机复测。
+- 已完成：执行 `vercel --prod --yes` 成功。
+  - Production：`https://bigbazzar-ld6w78e6v-zhengtengfeis-projects.vercel.app`
+  - Alias：`https://bigbazzar.vercel.app`
+- 当前阶段：等待用户在同机型复测掉帧表现并回传结果。
+
 ## 验收追加修正（2026-03-27，移动端拖拽期间锁定多点输入）
 
 - 用户反馈：手机上一个手指拖动物品时，另一个手指拖动物品或点击按钮会导致异常操作/出错。
