@@ -1,5 +1,18 @@
 # 大巴扎 — 开发进度记录
 
+## 验收执行记录（2026-03-27，Git同步 + TestFlight上传）
+
+- 用户需求：同步 Git，并上传 TestFlight。
+- 已完成：
+  - Git：
+    - 已提交并推送：`88132d8`（`同步塔防合成品质桶与冰锥词条更新并补充诊断打点`）。
+  - TestFlight：
+    - 执行 `npm run release:tf` 全流程成功（build/sync/archive/export/upload）；
+    - 上传成功，Delivery UUID：`e288a4a7-1a3f-4998-8748-3cff3264cb48`；
+    - `CURRENT_PROJECT_VERSION` 自动更新：`44 -> 45`；
+    - IPA 路径：`ios/build/export-testflight/App.ipa`。
+- 当前阶段：等待用户在 App Store Connect 验收该构建处理状态。
+
 ## 验收追加调整（2026-03-27，减速冰锥额外伤害档位更新）
 
 - 用户需求：更新 `减速冰锥（toweritem14）` 额外伤害档位为 `+3|5|8|12|20`（其余口径保持：冷却 `3000|2500|2100|1700|1400`、基础伤害 `10|16|26|41|66`、攻击距离50、减速2秒）。
