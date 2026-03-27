@@ -1,5 +1,19 @@
 # 大巴扎 — 开发进度记录
 
+## 验收执行记录（2026-03-27，Git同步 + TestFlight上传）
+
+- 用户需求：同步 Git 上传；打 TF 包并上传。
+- 已完成：
+  - Git：
+    - 已提交并推送到 `origin/main`；
+    - 提交：`c0156c6`（`同步塔防金币配置与跨关状态修正并更新进度`）。
+  - TestFlight：
+    - 执行 `npm run release:tf` 全流程成功（build/sync/archive/export/upload）；
+    - 上传成功，Delivery UUID：`67f128b3-96d2-474f-91a5-8200b402cd63`；
+    - `CURRENT_PROJECT_VERSION` 自动更新：`43 -> 44`；
+    - IPA 路径：`ios/build/export-testflight/App.ipa`。
+- 当前阶段：等待用户验收 TF 构建状态与包处理结果。
+
 ## 验收追加调整（2026-03-27，物品购买价格100档按新表更新）
 
 - 用户需求：按新表更新战斗内物品购买价格（第 1~100 次）。
