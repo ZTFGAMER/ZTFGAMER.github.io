@@ -1,5 +1,95 @@
 # 大巴扎 — 开发进度记录
 
+## 验收追加修正（2026-03-27，移动端拖拽期间锁定多点输入）
+
+- 用户反馈：手机上一个手指拖动物品时，另一个手指拖动物品或点击按钮会导致异常操作/出错。
+- 已完成：
+  - `src/tower/common/grid/DragController.ts`
+    - 新增 `activePointerId` 跟踪当前拖拽主指针；
+    - `onMove/onUp` 仅响应主指针事件，忽略其他手指；
+    - 新增 `pointerdowncapture` 级别拦截：拖拽（或按住待拖）期间，其他手指的 `pointerdown` 会被 `stopPropagation()`，从而屏蔽按钮点击与二次拖拽；
+    - `onDown` 在已有激活指针时不再 `reset`，避免第二根手指导致当前拖拽状态被重置。
+- 结果：拖动物品时，其他位置点击在移动端不再生效，避免多点并发交互引发异常。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户真机验收“拖拽中是否彻底屏蔽第二指点击/拖拽”。
+
+## 验收追加修正（2026-03-27，塔防掉帧：战斗队列分帧消费平滑）
+
+- 用户反馈：崩溃已解决，但仍有中途掉帧。
+- 日志结论：
+  - 会话 `perf-mn8bjsh9-phjfc0` 中多次出现 `diag_tower_engine_large_dt`；
+  - 崩溃前 `queuePendingRatio` 常见 `3~7`，说明单帧存在队列积压并在下一帧集中消费，易形成卡顿峰值。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 为四类队列增加“每 tick 最大消费量”平滑阈值（默认）：
+      - `playerFires` 36
+      - `playerHits` 80
+      - `enemyHits` 64
+      - `meleeTriggers` 24
+    - 超出预算的到期任务不丢弃，顺延至下一 tick，避免单帧大爆发；
+    - `getQueuePerfStats()` 的 `maxPendingHits/maxPendingItemFires` 改为软上限（默认 220/120），使监控比例可读；
+    - `tower_engine_queue_spike` 告警阈值改为基于软上限，而非固定 1600/1200。
+  - 以上阈值均支持从 `towerDefenseRules` 扩展字段覆盖（未配置时使用默认值）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户真机复测掉帧改善；若仍有峰值，再按日志继续压缩单帧预算与特效上限。
+
+## 验收追加修正（2026-03-27，iOS WebGPU `Length out of range of buffer` 崩溃兜底）
+
+- 用户反馈：再次真机复现时“又崩了/卡死”，崩溃出现更快。
+- 日志定位：
+  - 新会话 `sessionId: perf-mn8bjsh9-phjfc0`；
+  - 最后一包包含 `window_error`：`RangeError: Length out of range of buffer`，文件 `assets/index-*.js`；
+  - 崩溃前伴随 `diag_tower_engine_large_dt`，但主因是 WebGPU 路径触发底层 buffer 范围错误。
+- 已完成：
+  - `src/main.ts`
+    - 新增移动端渲染崩溃保护：检测到该 RangeError 且当前为 WebGPU 时，写入 `localStorage` 标记，后续 24 小时强制使用 WebGL；
+    - 支持 URL 参数 `renderer=webgl` 显式强制 WebGL（仅覆盖当前会话参数，不改默认策略）；
+    - 命中保护时自动一次性重载到 `renderer=webgl`，并写入诊断事件 `renderer_crash_guard_force_webgl`；
+    - 保持默认策略仍为 `preference: 'webgpu'`，仅在崩溃保护或显式参数下回退。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认是否立即发布 Vercel 后进行同机型复测（预期不再出现该 WebGPU buffer 崩溃）。
+
+## 验收追加调整（2026-03-27，已拿到真机日志并增强服务端明细打印）
+
+- 用户反馈：真机出现中途掉帧，最终卡死。
+- 已完成：
+  - 通过 `vercel logs --environment production --no-branch --since 2h` 抓到本次会话日志：
+    - sessionId：`perf-mn8b8ss4-eb92ow`
+    - 场景：持续 `tower-battle`
+    - 关键事件：大量 `diag_tower_runtime_sample`、多次 `diag_tower_wave_advance_*`、出现 `diag_tower_engine_large_dt`，末尾出现 `window_error`。
+  - 为避免下一轮信息不足，增强 `api/perf-ingest.ts`：
+    - 服务端日志新增输出 `window_error/unhandled_rejection` 详细 payload（message/filename/line/col）；
+    - 输出关键 `diag_*` 事件的核心字段（tick/dt/queue/hp/stall 等）；
+    - 输出 `lastPoint` 指标摘要（fps、frameMsP95、battleQueuePendingRatioMax、battleTickDeltaMax 等）。
+  - 已发布 Vercel 生产：
+    - Production：`https://bigbazzar-bxbd34yvn-zhengtengfeis-projects.vercel.app`
+    - Alias：`https://bigbazzar.vercel.app`
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户用同一诊断链接复现一次；下一轮可直接根据 `window_error` 明细定位并修复具体崩点。
+
+## 验收追加执行（2026-03-27，诊断日志服务不可达改为 Vercel 内置接收）
+
+- 用户反馈：`peer.kkopttarr.com` 打不开，无法查看自动回传日志。
+- 已完成：
+  - 新增 Vercel 内置诊断接口：
+    - `api/perf-health.ts`（健康检查）
+    - `api/perf-ingest.ts`（接收 Perf/Diag 上报并写入 Vercel Function logs）
+  - 已执行生产发布：`vercel --prod --yes` 成功；
+    - Production：`https://bigbazzar-fnr46sx61-zhengtengfeis-projects.vercel.app`
+    - Alias：`https://bigbazzar.vercel.app`
+  - 验证：`https://bigbazzar.vercel.app/api/perf-health` 返回 `ok: true`。
+- 当前阶段：等待用户用新链接复现，随后从 Vercel logs 抓取 `perf-ingest` 日志进行定位。
+
+## 验收执行记录（2026-03-27，Vercel 线上诊断包发布）
+
+- 用户需求：更新 Vercel，给出可直接真机联调的最终网址。
+- 已完成：
+  - 执行 `vercel --prod --yes --name bigbazzar` 成功发布；
+  - Production：`https://bigbazzar-3ctn9tp03-zhengtengfeis-projects.vercel.app`；
+  - Alias：`https://bigbazzar.vercel.app`（已切换到本次构建）。
+- 备注：首次直接 `vercel --prod --yes` 触发项目名校验报错（目录名含大写），改为显式项目名后发布成功并自动生成 `.vercel` 关联。
+- 当前阶段：等待用户使用新链接进行真机复现，自动回传诊断日志后进入定位修复。
+
 ## 验收执行记录（2026-03-27，Git同步 + TestFlight上传）
 
 - 用户需求：同步 Git，并上传 TestFlight。

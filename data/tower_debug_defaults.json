@@ -96,7 +96,7 @@
   "battlePlayerPortraitFlashMs": 300,
   "battlePlayerPortraitFlashColor": 16777215,
   "battlePlayerPortraitFlashAlpha": 1,
-  "battlePlayerPortraitFourHeroEnabled": 1,
+  "battlePlayerPortraitFourHeroEnabled": 0,
   "battlePlayerPortraitFourHeroScale": 5.2,
   "battlePlayerPortraitFourHeroSpacingPx": 0,
   "battlePlayerPortraitFourHeroFrontOffsetX": -20,

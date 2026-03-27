@@ -100,6 +100,7 @@ export class DragController {
   private homeZone:  ZonePair | null = null
   private startX     = 0
   private startY     = 0
+  private activePointerId: number | null = null
 
   // ---- 拖拽阶段状态 ----
   private isDragging      = false
@@ -137,6 +138,15 @@ export class DragController {
     stage.on('pointermove',      (e: FederatedPointerEvent) => this.onMove(e))
     stage.on('pointerup',        (e: FederatedPointerEvent) => this.onUp(e))
     stage.on('pointerupoutside', (e: FederatedPointerEvent) => this.onUp(e))
+    stage.on('pointerdowncapture', (e: FederatedPointerEvent) => this.onDownCapture(e))
+  }
+
+  private onDownCapture(e: FederatedPointerEvent): void {
+    if (!this.enabled) return
+    if (!this.activeId) return
+    if (this.activePointerId == null) return
+    if (e.pointerId === this.activePointerId) return
+    e.stopPropagation()
   }
 
   private isDragDebugEnabled(): boolean {
@@ -193,8 +203,10 @@ export class DragController {
       return
     }
     e.stopPropagation()
+    if (this.activeId) return
     this.reset()
     this.activeId = instanceId
+    this.activePointerId = e.pointerId
     this.homeZone = this.findZoneOf(instanceId)
     const p = this.stage.toLocal(e.global)
     this.startX   = p.x
@@ -210,6 +222,7 @@ export class DragController {
   private onMove(e: FederatedPointerEvent): void {
     if (!this.enabled) return
     if (!this.activeId) return
+    if (this.activePointerId != null && e.pointerId !== this.activePointerId) return
     const p = this.stage.toLocal(e.global)
     this.pointerGlobalX = e.global.x
     this.pointerGlobalY = e.global.y
@@ -245,9 +258,10 @@ export class DragController {
     this.updateHighlight()
   }
 
-  private onUp(_e: FederatedPointerEvent): void {
+  private onUp(e: FederatedPointerEvent): void {
     if (!this.enabled) return
     if (!this.activeId) return
+    if (this.activePointerId != null && e.pointerId !== this.activePointerId) return
 
     if (this.isDragging) {
       this.tryDrop()
@@ -1054,6 +1068,7 @@ export class DragController {
 
   private reset(): void {
     this.activeId       = null
+    this.activePointerId = null
     this.homeZone       = null
     this.isDragging     = false
     this.pointerOffsetX = 0
@@ -1071,6 +1086,7 @@ export class DragController {
     this.stage.removeAllListeners('pointermove')
     this.stage.removeAllListeners('pointerup')
     this.stage.removeAllListeners('pointerupoutside')
+    this.stage.removeAllListeners('pointerdowncapture')
     if (this.dragLayer.parent) this.dragLayer.parent.removeChild(this.dragLayer)
   }
 

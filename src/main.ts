@@ -78,12 +78,45 @@ let soakState: SoakTestStats | null = null
 let perfReporter: PerfReporter | null = null
 let originalAssetsLoad: typeof Assets.load | null = null
 let webgpuDeviceLostCount = 0
+const WEBGL_FORCE_UNTIL_KEY = 'bigbazzar_force_webgl_until_ms'
+const WEBGL_AUTO_RELOAD_MARK_KEY = 'bigbazzar_webgl_auto_reload_once'
 
 function getBattlePerfStatsForScene(scene: SceneName | null) {
   if (scene === 'battle') return getNormalBattleFxPerfStats()
   if (scene === 'nobag-battle') return getNobagBattleFxPerfStats()
   if (scene === 'tower-battle') return getTowerBattleFxPerfStats()
   return null
+}
+
+function shouldForceWebglByCrashGuard(): boolean {
+  try {
+    const untilMs = Number(localStorage.getItem(WEBGL_FORCE_UNTIL_KEY) ?? 0)
+    return Number.isFinite(untilMs) && untilMs > Date.now()
+  } catch {
+    return false
+  }
+}
+
+function markForceWebglForHours(hours: number): void {
+  try {
+    const h = Math.max(1, Math.round(hours || 12))
+    const until = Date.now() + (h * 60 * 60 * 1000)
+    localStorage.setItem(WEBGL_FORCE_UNTIL_KEY, String(until))
+  } catch {
+    // ignore
+  }
+}
+
+function triggerOneShotReloadToWebgl(): void {
+  try {
+    if (sessionStorage.getItem(WEBGL_AUTO_RELOAD_MARK_KEY) === '1') return
+    sessionStorage.setItem(WEBGL_AUTO_RELOAD_MARK_KEY, '1')
+    const url = new URL(window.location.href)
+    url.searchParams.set('renderer', 'webgl')
+    window.location.replace(url.toString())
+  } catch {
+    // ignore
+  }
 }
 
 async function detectWebGpuFallbackAdapter(): Promise<boolean> {
@@ -592,10 +625,16 @@ async function bootstrap(): Promise<void> {
     webgpuDeviceLostCount: 0,
     lastDeviceLostReason: '',
   })
+  const rendererParams = new URLSearchParams(window.location.search)
+  const rendererParam = String(rendererParams.get('renderer') ?? '').trim().toLowerCase()
+  const forceWebglByCrashGuard = shouldForceWebglByCrashGuard()
+  const forcedWebgl = rendererParam === 'webgl' || (isMobile && forceWebglByCrashGuard)
+  const preferredRenderer: 'webgpu' | 'webgl' = forcedWebgl ? 'webgl' : 'webgpu'
+
   const resolution = isMobile ? Math.min(window.devicePixelRatio || 1, 1.5) : (window.devicePixelRatio || 1)
   const app = new Application()
   await app.init({
-    preference:      'webgpu',
+    preference:      preferredRenderer,
     width:           window.innerWidth,
     height:          window.innerHeight,
     backgroundColor: 0x1a1a2e,
@@ -607,6 +646,12 @@ async function bootstrap(): Promise<void> {
     textureGCCheckCountMax: isMobile ? 300 : 600,
   })
   console.log(`[Renderer] ${app.renderer.type === 0 ? 'WebGL' : 'WebGPU'} | DPR=${window.devicePixelRatio} resolution=${resolution} | canvas=${app.renderer.width}x${app.renderer.height} | antialias=${!isMobile}`)
+  if (forcedWebgl) {
+    console.warn('[Renderer] WebGL forced by query or crash guard', {
+      rendererParam,
+      forceWebglByCrashGuard,
+    })
+  }
   if (webgpuFallbackAdapter) {
     console.warn('[Renderer] Detected WebGPU fallback adapter, forcing low FX mode for battle runtime')
   }
@@ -651,12 +696,25 @@ async function bootstrap(): Promise<void> {
       renderer: app.renderer.type === 0 ? 'webgl' : 'webgpu',
     })
     window.addEventListener('error', (evt) => {
+      const msg = String(evt.message ?? '')
       perfReporter?.markEvent('window_error', {
-        message: evt.message,
+        message: msg,
         filename: evt.filename,
         lineno: evt.lineno,
         colno: evt.colno,
       })
+      const isRendererBufferRange = msg.includes('Length out of range of buffer')
+      const isRunningWebgpu = app.renderer.type !== 0
+      if (isMobile && isRunningWebgpu && isRendererBufferRange) {
+        markForceWebglForHours(24)
+        perfReporter?.markEvent('renderer_crash_guard_force_webgl', {
+          reason: 'Length out of range of buffer',
+          filename: evt.filename,
+          lineno: evt.lineno,
+          colno: evt.colno,
+        })
+        triggerOneShotReloadToWebgl()
+      }
     })
     window.addEventListener('unhandledrejection', (evt) => {
       const reason = evt.reason

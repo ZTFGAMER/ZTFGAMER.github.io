@@ -344,7 +344,10 @@ export class TowerDefenseEngine implements BattleEngineLike {
         tickIndex: this.tickIndex,
       })
     }
-    if (this.pendingPlayerHits.length > 1600 || this.pendingEnemyHits.length > 1600 || this.pendingPlayerFires.length > 1200) {
+    if (
+      this.pendingPlayerHits.length + this.pendingEnemyHits.length > this.getQueuePendingHitsSoftCap()
+      || this.pendingPlayerFires.length > this.getQueuePendingFiresSoftCap()
+    ) {
       emitDiagEvent('tower_engine_queue_spike', {
         pendingPlayerHits: this.pendingPlayerHits.length,
         pendingEnemyHits: this.pendingEnemyHits.length,
@@ -710,6 +713,10 @@ export class TowerDefenseEngine implements BattleEngineLike {
       ...EMPTY_QUEUE_STATS,
       pendingHits: this.pendingPlayerHits.length + this.pendingEnemyHits.length,
       pendingItemFires: this.pendingPlayerFires.length,
+      maxPendingHits: this.getQueuePendingHitsSoftCap(),
+      maxPendingItemFires: this.getQueuePendingFiresSoftCap(),
+      maxPendingChargePulses: 1,
+      maxPendingAmmoRefills: 1,
     }
   }
 
@@ -1149,10 +1156,11 @@ export class TowerDefenseEngine implements BattleEngineLike {
 
   private consumePendingEnemyHits(): void {
     if (this.pendingEnemyHits.length <= 0) return
+    const maxDue = this.getMaxConsumeEnemyHitsPerTick()
     const due: PendingEnemyHit[] = []
     const pending: PendingEnemyHit[] = []
     for (const one of this.pendingEnemyHits) {
-      if (one.dueAtMs <= this.elapsedMs) due.push(one)
+      if (one.dueAtMs <= this.elapsedMs && due.length < maxDue) due.push(one)
       else pending.push(one)
     }
     this.pendingEnemyHits = pending
@@ -1380,13 +1388,16 @@ export class TowerDefenseEngine implements BattleEngineLike {
       return
     }
     const stepMs = this.getPlayerMeleeQueueTriggerIntervalMs()
+    const maxConsume = this.getMaxConsumeMeleeTriggersPerTick()
+    let consumed = 0
     if (this.nextPlayerMeleeTriggerAtMs < 0) this.nextPlayerMeleeTriggerAtMs = this.elapsedMs
-    while (this.pendingPlayerMeleeTriggers.length > 0 && this.elapsedMs >= this.nextPlayerMeleeTriggerAtMs) {
+    while (this.pendingPlayerMeleeTriggers.length > 0 && this.elapsedMs >= this.nextPlayerMeleeTriggerAtMs && consumed < maxConsume) {
       const sourceItemId = this.pendingPlayerMeleeTriggers.shift()
       if (!sourceItemId) break
       const source = this.playerItems.find((it) => it.id === sourceItemId)
       if (source) this.firePlayerItemTrigger(source)
       this.nextPlayerMeleeTriggerAtMs += stepMs
+      consumed += 1
     }
   }
 
@@ -1833,6 +1844,48 @@ export class TowerDefenseEngine implements BattleEngineLike {
     return Math.max(1, Math.round(Number(getConfig().combatRuntime.tickMs) || 100))
   }
 
+  private getQueuePendingHitsSoftCap(): number {
+    const rules = getConfig().towerDefenseRules as unknown as Record<string, unknown>
+    const raw = Number(rules.queuePendingHitsSoftCap)
+    if (Number.isFinite(raw) && raw > 0) return Math.max(20, Math.round(raw))
+    return 220
+  }
+
+  private getQueuePendingFiresSoftCap(): number {
+    const rules = getConfig().towerDefenseRules as unknown as Record<string, unknown>
+    const raw = Number(rules.queuePendingFiresSoftCap)
+    if (Number.isFinite(raw) && raw > 0) return Math.max(10, Math.round(raw))
+    return 120
+  }
+
+  private getMaxConsumePlayerFiresPerTick(): number {
+    const rules = getConfig().towerDefenseRules as unknown as Record<string, unknown>
+    const raw = Number(rules.queueConsumePlayerFiresPerTickMax)
+    if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.round(raw))
+    return 36
+  }
+
+  private getMaxConsumePlayerHitsPerTick(): number {
+    const rules = getConfig().towerDefenseRules as unknown as Record<string, unknown>
+    const raw = Number(rules.queueConsumePlayerHitsPerTickMax)
+    if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.round(raw))
+    return 80
+  }
+
+  private getMaxConsumeEnemyHitsPerTick(): number {
+    const rules = getConfig().towerDefenseRules as unknown as Record<string, unknown>
+    const raw = Number(rules.queueConsumeEnemyHitsPerTickMax)
+    if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.round(raw))
+    return 64
+  }
+
+  private getMaxConsumeMeleeTriggersPerTick(): number {
+    const rules = getConfig().towerDefenseRules as unknown as Record<string, unknown>
+    const raw = Number(rules.queueConsumeMeleeTriggersPerTickMax)
+    if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.round(raw))
+    return 24
+  }
+
   private enqueuePlayerFireBurst(source: CombatItemRunner, repeatCount: number): void {
     const count = Math.max(1, Math.round(repeatCount || 1))
     const sourceArch = itemArchetype(findItemDef(source.defId))
@@ -1856,10 +1909,11 @@ export class TowerDefenseEngine implements BattleEngineLike {
 
   private consumePendingPlayerFires(): void {
     if (this.pendingPlayerFires.length <= 0) return
+    const maxDue = this.getMaxConsumePlayerFiresPerTick()
     const due: PendingPlayerFire[] = []
     const pending: PendingPlayerFire[] = []
     for (const one of this.pendingPlayerFires) {
-      if (one.dueAtMs <= this.elapsedMs) due.push(one)
+      if (one.dueAtMs <= this.elapsedMs && due.length < maxDue) due.push(one)
       else pending.push(one)
     }
     this.pendingPlayerFires = pending
@@ -2033,10 +2087,11 @@ export class TowerDefenseEngine implements BattleEngineLike {
 
   private consumePendingPlayerHits(): void {
     if (this.pendingPlayerHits.length <= 0) return
+    const maxDue = this.getMaxConsumePlayerHitsPerTick()
     const due: PendingPlayerHit[] = []
     const pending: PendingPlayerHit[] = []
     for (const one of this.pendingPlayerHits) {
-      if (one.dueAtMs <= this.elapsedMs) due.push(one)
+      if (one.dueAtMs <= this.elapsedMs && due.length < maxDue) due.push(one)
       else pending.push(one)
     }
     this.pendingPlayerHits = pending
