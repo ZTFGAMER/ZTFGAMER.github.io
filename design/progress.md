@@ -1,5 +1,32 @@
 # 大巴扎 — 开发进度记录
 
+## 验收执行记录（2026-03-27，Git 同步 + TestFlight 上传 + Android 打包）
+
+- 用户需求：同步 Git 上传；打 TF 包并上传；打 Android 包。
+- 已完成：
+  - Git：
+    - 已提交并推送 `main`：`8c791ad`（`19a6dd7 -> 8c791ad`）。
+  - iOS / TestFlight：
+    - 执行 `npm run release:tf` 完成构建、归档、导出、上传；
+    - 日志结果：`UPLOAD SUCCEEDED with no errors`；
+    - 构建号：`CURRENT_PROJECT_VERSION=47`；
+    - 产物：`ios/build/export-testflight/App.ipa`（约 `51M`）。
+  - Android：
+    - 执行 `npm run build:android-web` + `npm run android:sync`；
+    - 首次 `gradlew` 因 Java 版本口径失败（`无效的源发行版：21`）；
+    - 使用 JDK21 环境变量重跑成功：
+      - `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`
+      - `PATH=/opt/homebrew/opt/openjdk@21/bin:$PATH`
+      - `./gradlew assembleRelease bundleRelease`
+    - 产物：
+      - `android/app/build/outputs/apk/release/app-release.apk`（约 `55M`）
+      - `android/app/build/outputs/bundle/release/app-release.aab`（约 `53M`）
+- 验证：
+  - Web 构建通过；
+  - TestFlight 上传成功；
+  - Android APK/AAB 产物生成成功。
+- 当前阶段：等待用户验收“上传状态与包体产物”是否满足发布要求。
+
 ## 验收追加修正（2026-03-27，子弹不再阻挡物品点击）
 
 - 用户反馈：战斗中飞行子弹会偶发挡住点击，导致点不到下方物品。
