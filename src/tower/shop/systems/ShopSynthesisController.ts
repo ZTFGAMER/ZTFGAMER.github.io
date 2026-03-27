@@ -11,7 +11,7 @@ import { GridZone } from '@/tower/common/grid/GridZone'
 import { CELL_SIZE, CELL_HEIGHT } from '@/tower/common/grid/GridZone'
 import type { ItemDef } from '@/tower/common/items/ItemDef'
 import type { TierKey } from '@/tower/shop/ShopManager'
-import { getRunClassItemPoolIds } from '@/tower/core/DataLoader'
+import { getConfig as getGameCfg, getRunClassItemPoolIds } from '@/tower/core/DataLoader'
 import {
   TIER_ORDER,
   nextTierLevel,
@@ -436,6 +436,7 @@ export function synthesizeTarget(
   const isSameIdSynthesis = defId === targetItem.defId
   const sameItemRandomSynthesis = getDebugCfg('gameplaySameItemRandomSynthesis') >= 0.5
   const forceSynthesisActive = !!(ctx.dayEventState.forceSynthesisArchetype && ctx.dayEventState.forceSynthesisRemaining > 0)
+  const towerAllowCrossArchetypeOnSameId = getGameCfg().towerDefenseRules?.enabled === true
   const minStartingTier = getCrossSynthesisMinStartingTier(sourceDef, targetDef)
   let guaranteeNewUnlock = shouldGuaranteeNewUnlock(upgradeTo.tier, upgradeTo.star)
   let resultLevel = tierStarLevelIndex(upgradeTo.tier, upgradeTo.star) + 1
@@ -449,11 +450,11 @@ export function synthesizeTarget(
   }
   const filterCrossSynthesisPool = (list: ItemDef[]): ItemDef[] => {
     let out = list.filter((it) => it.id !== sourceDef.id && it.id !== targetDef.id)
-    if (sameItemRandomSynthesis) return out
+    if (sameItemRandomSynthesis && !towerAllowCrossArchetypeOnSameId) return out
     const sourceArch = toSkillArchetype(getPrimaryArchetype(sourceDef.tags))
     const targetArch = toSkillArchetype(getPrimaryArchetype(targetDef.tags))
     const shouldExcludeSameArch = (
-      sourceArch === 'warrior' || sourceArch === 'archer' || sourceArch === 'assassin'
+      sourceArch === 'warrior' || sourceArch === 'archer' || sourceArch === 'assassin' || sourceArch === 'mage'
     ) && sourceArch === targetArch
     if (shouldExcludeSameArch) {
       out = out.filter((it) => toSkillArchetype(getPrimaryArchetype(it.tags)) !== sourceArch)
@@ -481,7 +482,11 @@ export function synthesizeTarget(
       return isSameIdSynthesis ? [sourceDef] : []
     }
     if (isSameIdSynthesis) {
-      if (sameItemRandomSynthesis) return all.length > 0 ? all : [sourceDef]
+      if (sameItemRandomSynthesis && !towerAllowCrossArchetypeOnSameId) return all.length > 0 ? all : [sourceDef]
+      if (towerAllowCrossArchetypeOnSameId) {
+        const towerSameIdPool = filterCrossSynthesisPool(allByTier)
+        if (towerSameIdPool.length > 0) return towerSameIdPool
+      }
       return [sourceDef]
     }
     return all

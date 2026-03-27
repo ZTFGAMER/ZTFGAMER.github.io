@@ -129,10 +129,12 @@ function pickTierNumericValue(series: string, tierIndex: number): number | null 
   return Number.isFinite(n) ? n : null
 }
 
-function classifyRangeText(distance: number): '近' | '中' | '远' {
-  if (distance < 20) return '近'
-  if (distance < 32) return '中'
-  return '远'
+function normalizeRangeDistanceValue(distance: number): string {
+  const n = Number(distance)
+  if (!Number.isFinite(n) || n <= 0) return ''
+  const rounded = Math.round(n)
+  if (Math.abs(n - rounded) < 1e-6) return `${rounded}`
+  return `${Math.round(n * 10) / 10}`
 }
 
 function formatDescByTier(raw: string, tierIndex: number): string {
@@ -210,6 +212,25 @@ function extractSimpleStatEntries(
   }
 
   const damage = find(/(?:造成|攻击造成)\s*([+\-]?\d+(?:\.\d+)?)\s*伤害/)
+  const rangeDistanceText = (() => {
+    const cfg = getGameConfig().towerDefenseRules
+    const byIcon = cfg?.playerItemAttackDistanceByIcon
+    const iconKey = String(item.icon || '').trim()
+    if (byIcon && iconKey) {
+      const byIconValue = Number(byIcon[iconKey])
+      if (Number.isFinite(byIconValue) && byIconValue > 0) {
+        return normalizeRangeDistanceValue(byIconValue)
+      }
+    }
+    for (const line of lines) {
+      const m = line.match(/攻击距离\s*[:：]\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/)
+      if (!m?.[1]) continue
+      const value = pickTierNumericValue(m[1], tierIndex)
+      if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) continue
+      return normalizeRangeDistanceValue(value)
+    }
+    return null
+  })()
   const multicast = (() => {
     if (typeof rt?.multicast === 'number') return Math.max(1, Math.round(rt.multicast))
     for (const line of lines) {
@@ -235,7 +256,7 @@ function extractSimpleStatEntries(
   if (damage) {
     out.push({
       label: '伤害',
-      value: multicast > 1 ? `${damage}*${multicast}` : damage,
+      value: `${multicast > 1 ? `${damage}*${multicast}` : damage}${rangeDistanceText ? ` 攻击距离:${rangeDistanceText}` : ''}`,
       color: getBattleEffectColor('hp'),
       icon: '✦',
     })
@@ -316,34 +337,6 @@ function extractSimpleStatEntries(
       value: `${bounceCount}`,
       color: 0x8ad6ff,
       icon: '➶',
-    })
-  }
-
-  const rangeText = (() => {
-    const cfg = getGameConfig().towerDefenseRules
-    const byIcon = cfg?.playerItemAttackDistanceByIcon
-    const iconKey = String(item.icon || '').trim()
-    if (byIcon && iconKey) {
-      const byIconValue = Number(byIcon[iconKey])
-      if (Number.isFinite(byIconValue) && byIconValue > 0) {
-        return classifyRangeText(byIconValue)
-      }
-    }
-    for (const line of lines) {
-      const m = line.match(/攻击距离\s*[:：]\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/)
-      if (!m?.[1]) continue
-      const value = pickTierNumericValue(m[1], tierIndex)
-      if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) continue
-      return classifyRangeText(value)
-    }
-    return null
-  })()
-  if (rangeText) {
-    out.push({
-      label: '距离',
-      value: rangeText,
-      color: 0x62a8ff,
-      icon: '↔',
     })
   }
 
@@ -980,8 +973,8 @@ export class SellPopup extends Container {
     this.nameT.x = rightX
     this.nameT.y = top
     this.nameT.visible = !isSimple && !customDisplay?.hideName
-    const headerStartX = rightX + this.nameT.width + 12
-    const headerMaxRight = this.panelW - pad - cooldownBadgeReserve - 6
+    const headerStartX = rightX
+    const headerMaxRight = rightX + rightW
     const headerAvailableW = Math.max(0, headerMaxRight - headerStartX)
     let headerScale = 1
     const headerContentW = this.headerStatsCon.width
@@ -990,7 +983,7 @@ export class SellPopup extends Container {
     }
     this.headerStatsCon.scale.set(headerScale)
     this.headerStatsCon.x = headerStartX
-    this.headerStatsCon.y = top + 2 + (1 - headerScale) * 4
+    this.headerStatsCon.y = this.nameT.y + this.nameT.height + 4 + (1 - headerScale) * 4
     this.headerStatsCon.visible = this.nameT.visible && this.headerStatTexts.length > 0 && headerAvailableW >= 24
 
     this.tierBadgeT.text = inUpgradePreview && fromTierLabel !== tierLabel ? `${fromTierLabel}->${tierLabel}` : tierLabel
@@ -1049,9 +1042,10 @@ export class SellPopup extends Container {
       this.tierBadgeT.visible ? this.tierBadgeT.height : 0,
       this.cooldownT.visible ? this.cooldownT.height : 0,
     )
+    const headerStatsH = this.headerStatsCon.visible ? Math.max(0, this.headerStatsCon.height) : 0
     this.descCon.y = isSimple
       ? (simpleNarrowLayout ? (frameY + frameH + 8) : top)
-      : (top + headerH + 10)
+      : (top + headerH + headerStatsH + 12)
     this.descDividerG.clear()
     for (const t of this.descTexts) {
       if (t.parent) t.parent.removeChild(t)

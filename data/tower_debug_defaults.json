@@ -86,7 +86,7 @@
   "battleEnemyPortraitFlashColor": 16777215,
   "battleEnemyPortraitFlashAlpha": 1,
   "battleEnemyPortraitDeathFadeMs": 600,
-  "battlePlayerPortraitWidthRatio": 1.25,
+  "battlePlayerPortraitWidthRatio": 1.33,
   "battlePlayerPortraitOffsetY": 0,
   "battlePlayerPortraitHitYFactor": 0.42,
   "battlePlayerPortraitHitScaleMax": 1.03,

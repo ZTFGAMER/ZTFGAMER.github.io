@@ -522,7 +522,8 @@ type BattleBuyOffer = { item: ItemDef; level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; tie
 let pendingBattleBuyOffer: BattleBuyOffer | null = null
 let buyBtnLastCanAfford: boolean | null = null
 let buyBtnAffordPulseStartAtMs: number | null = null
-let buyBtnAffordVisualState: boolean | null = null
+type TowerBattleBuyBtnVisualState = 'ready' | 'no_gold' | 'full' | 'disabled'
+let buyBtnAffordVisualState: TowerBattleBuyBtnVisualState | null = null
 let towerZoneExpandBtnBg: Graphics | null = null
 let towerZoneExpandBtnPulseFrame: Graphics | null = null
 let towerZoneExpandBtnText: Text | null = null
@@ -584,6 +585,10 @@ type TowerEnemyAnimState = {
   meleeDashStartMs: number
   meleeDashOutMs: number
   meleeDashBackMs: number
+  meleeDashOriginX: number
+  meleeDashOriginY: number
+  meleeDashTargetX: number
+  meleeDashTargetY: number
 }
 
 type TowerEnemyDeathFlyState = {
@@ -778,6 +783,20 @@ function recordBattleRuntimePerfFrame(
   if (battlePerfSampleElapsedMs >= 1000) flushBattleRuntimePerfSampleWindow()
 }
 
+function getTowerDiagFrameSpikeMs(): number {
+  const runRules = getGameCfg().runRules as { perfReporter?: { diagTowerFrameSpikeMs?: number } } | undefined
+  const raw = Number(runRules?.perfReporter?.diagTowerFrameSpikeMs)
+  if (Number.isFinite(raw) && raw > 0) return Math.max(10, Math.round(raw))
+  return 45
+}
+
+function getTowerDiagFrameSpikeThrottleMs(): number {
+  const runRules = getGameCfg().runRules as { perfReporter?: { diagFrameEventThrottleMs?: number } } | undefined
+  const raw = Number(runRules?.perfReporter?.diagFrameEventThrottleMs)
+  if (Number.isFinite(raw) && raw > 0) return Math.max(200, Math.round(raw))
+  return 1200
+}
+
 export type { BattleFxPerfStats }
 export function getBattleFxPerfStats(): BattleFxPerfStats {
   return {
@@ -817,6 +836,7 @@ let diagTickStallElapsedMs = 0
 let diagTickStallLastTick = -1
 let diagTickStallLastEmitAtMs = 0
 let diagBattleSampleElapsedMs = 0
+let diagFrameSpikeLastEmitAtMs = 0
 let fpsHudText: Text | null = null
 let fpsSampleElapsedMs = 0
 let fpsSampleFrames = 0
@@ -982,6 +1002,10 @@ function ensureTowerEnemyAnimState(enemyUnitId: string): TowerEnemyAnimState {
     meleeDashStartMs: -1,
     meleeDashOutMs: 0,
     meleeDashBackMs: 0,
+    meleeDashOriginX: Number.NaN,
+    meleeDashOriginY: Number.NaN,
+    meleeDashTargetX: Number.NaN,
+    meleeDashTargetY: Number.NaN,
   }
   towerEnemyAnimStateById.set(enemyUnitId, st)
   return st
@@ -1003,9 +1027,19 @@ function triggerTowerEnemyAttack(enemyUnitId: string): void {
 
 function triggerTowerEnemyMeleeDash(enemyUnitId: string, outMs: number, backMs: number): void {
   const st = ensureTowerEnemyAnimState(enemyUnitId)
+  const cfg = getGameCfg().towerDefenseRules
+  const targetOffsetYRaw = Number(cfg?.enemyMeleeDashTargetOffsetYPx)
+  const targetOffsetY = Number.isFinite(targetOffsetYRaw) ? targetOffsetYRaw : 0
+  const from = towerEnemyPosById.get(enemyUnitId) ?? getHeroBarCenter('enemy')
+  const playerHitBase = portraitFX.getPlayerHitPoint() ?? getHeroBarCenter('player')
+  const to = { x: playerHitBase.x, y: playerHitBase.y + targetOffsetY }
   st.meleeDashStartMs = battlePresentationMs
   st.meleeDashOutMs = Math.max(1, Math.round(outMs))
   st.meleeDashBackMs = Math.max(1, Math.round(backMs))
+  st.meleeDashOriginX = from.x
+  st.meleeDashOriginY = from.y
+  st.meleeDashTargetX = to.x
+  st.meleeDashTargetY = to.y
 }
 
 function triggerTowerEnemyDeathFly(enemyUnitId: string, lastHitDir?: { x: number; y: number } | null): void {
@@ -1072,10 +1106,12 @@ function triggerTowerEnemyHit(enemyUnitId: string): void {
 }
 
 function getTowerEnemyMoveWave(nowMs: number, offsetMs: number): { rotDeg: number; yOff: number; scaleMul: number } {
-  const loopMs = 1333
-  const p = ((nowMs + offsetMs) % loopMs) / loopMs
-  const swing = Math.sin(p * Math.PI * 2)
-  const arch = Math.abs(swing)
+  const swayLoopMs = 800
+  const jumpLoopMs = 400
+  const swayP = ((nowMs + offsetMs) % swayLoopMs) / swayLoopMs
+  const jumpP = ((nowMs + offsetMs) % jumpLoopMs) / jumpLoopMs
+  const swing = Math.sin(swayP * Math.PI * 2)
+  const arch = (Math.sin(jumpP * Math.PI * 2 - Math.PI / 2) + 1) * 0.5
   return {
     rotDeg: 5 * swing,
     yOff: -8 * arch,
@@ -1084,8 +1120,8 @@ function getTowerEnemyMoveWave(nowMs: number, offsetMs: number): { rotDeg: numbe
 }
 
 function getTowerEnemyFlyingMoveWave(nowMs: number, offsetMs: number): { rotDeg: number; yOff: number; scaleMul: number } {
-  const loopMs = 1333
-  const p = ((nowMs + offsetMs) % loopMs) / loopMs
+  const jumpLoopMs = 400
+  const p = ((nowMs + offsetMs) % jumpLoopMs) / jumpLoopMs
   const swing = Math.sin(p * Math.PI * 2)
   return {
     rotDeg: 0,
@@ -1125,6 +1161,13 @@ function syncTowerEnemyPresentation(activeCols: number): void {
   const defaultShadowYOffset = Number.isFinite(defaultShadowYOffsetRaw) ? defaultShadowYOffsetRaw : -10
   const defaultShadowScaleRaw = Number(cfg.enemyShadowScale)
   const defaultShadowScale = Math.max(0.2, Number.isFinite(defaultShadowScaleRaw) ? defaultShadowScaleRaw : 0.7)
+  const meleeDashTargetOffsetYRaw = Number(cfg.enemyMeleeDashTargetOffsetYPx)
+  const meleeDashTargetOffsetY = Number.isFinite(meleeDashTargetOffsetYRaw) ? meleeDashTargetOffsetYRaw : 0
+  const dashVisualCfg = cfg as { enemyMeleeDashScaleMul?: number; enemyMeleeDashShadowFadeMs?: number }
+  const meleeDashScaleMulRaw = Number(dashVisualCfg.enemyMeleeDashScaleMul)
+  const meleeDashScaleMul = Math.max(0.2, Number.isFinite(meleeDashScaleMulRaw) ? meleeDashScaleMulRaw : 1.5)
+  const meleeDashShadowFadeMsRaw = Number(dashVisualCfg.enemyMeleeDashShadowFadeMs)
+  const meleeDashShadowFadeMs = Math.max(1, Number.isFinite(meleeDashShadowFadeMsRaw) ? meleeDashShadowFadeMsRaw : 200)
   const aliveIds = new Set<string>()
   towerEnemyPosById.clear()
 
@@ -1214,6 +1257,8 @@ function syncTowerEnemyPresentation(activeCols: number): void {
     let animXOff = 0
     let flyingDiveP = 0
     let preparePulse = 0
+    let meleeDashActive = false
+    let meleeDashElapsedMs = 0
 
     if (useStandAnim) {
       const standP = (battlePresentationMs % 1000) / 1000
@@ -1257,20 +1302,29 @@ function syncTowerEnemyPresentation(activeCols: number): void {
       const dashBackMs = Math.max(1, anim.meleeDashBackMs)
       const dashTotalMs = dashOutMs + dashBackMs
       if (dashElapsed < dashTotalMs) {
+        meleeDashActive = true
+        meleeDashElapsedMs = Math.max(0, dashElapsed)
         const towardP = dashElapsed < dashOutMs
           ? (dashElapsed / dashOutMs)
           : Math.max(0, 1 - (dashElapsed - dashOutMs) / dashBackMs)
-        const playerHit = portraitFX.getPlayerHitPoint() ?? getHeroBarCenter('player')
-        const dx = playerHit.x - laneX
-        const dy = playerHit.y - y
-        const dist = Math.max(1, Math.hypot(dx, dy))
-        const lungePx = Math.min(160, dist * 0.4)
-        animXOff += (dx / dist) * lungePx * towardP
-        animYOff += (dy / dist) * lungePx * towardP
+        const dashScaleMul = 1 + (Math.max(0.2, meleeDashScaleMul) - 1) * towardP
+        animScaleMul *= dashScaleMul
+        const dashOriginX = Number.isFinite(anim.meleeDashOriginX) ? anim.meleeDashOriginX : laneX
+        const dashOriginY = Number.isFinite(anim.meleeDashOriginY) ? anim.meleeDashOriginY : y
+        const dashTargetX = Number.isFinite(anim.meleeDashTargetX) ? anim.meleeDashTargetX : laneX
+        const dashTargetY = Number.isFinite(anim.meleeDashTargetY) ? anim.meleeDashTargetY : (y + meleeDashTargetOffsetY)
+        const dashX = dashOriginX + (dashTargetX - dashOriginX) * towardP
+        const dashY = dashOriginY + (dashTargetY - dashOriginY) * towardP
+        animXOff += dashX - laneX
+        animYOff += dashY - y
         if (isFlying) flyingDiveP = Math.max(flyingDiveP, towardP)
         animRotRad = 0
       } else {
         anim.meleeDashStartMs = -1
+        anim.meleeDashOriginX = Number.NaN
+        anim.meleeDashOriginY = Number.NaN
+        anim.meleeDashTargetX = Number.NaN
+        anim.meleeDashTargetY = Number.NaN
       }
     }
 
@@ -1329,14 +1383,22 @@ function syncTowerEnemyPresentation(activeCols: number): void {
       const animScaleSafe = Math.max(0.01, finalAnimScaleMul)
       const shadowSizeByLift = Math.max(0.72, Math.min(1.28, 1 + animYOff * 0.012))
       const shadowWorldYOffset = scale * unitShadowYOffset
-      spritePack.shadow.x = -animXOff / Math.max(0.01, finalScale)
-      spritePack.shadow.y = (shadowWorldYOffset - animYOff) / Math.max(0.01, finalScale)
+      if (meleeDashActive) {
+        const fadeP = Math.max(0, Math.min(1, meleeDashElapsedMs / meleeDashShadowFadeMs))
+        spritePack.shadow.x = 0
+        spritePack.shadow.y = shadowWorldYOffset / Math.max(0.01, finalScale)
+        spritePack.shadow.alpha = 0.4 * alpha * (1 - fadeP)
+      } else {
+        spritePack.shadow.x = -animXOff / Math.max(0.01, finalScale)
+        spritePack.shadow.y = (shadowWorldYOffset - animYOff) / Math.max(0.01, finalScale)
+        spritePack.shadow.alpha = 0.4 * alpha
+      }
       spritePack.shadow.scale.set((unitShadowScale * shadowSizeByLift) / animScaleSafe)
       spritePack.shadow.rotation = 0
-      spritePack.shadow.alpha = 0.4 * alpha
+      spritePack.shadow.visible = spritePack.shadow.alpha > 0.001
     }
     const hpRatio = one.maxHp > 0 ? Math.max(0, Math.min(1, one.hp / one.maxHp)) : 0
-    const showHpBar = one.hp > 0 && one.maxHp > 0 && one.hp < one.maxHp
+    const showHpBar = !meleeDashActive && one.hp > 0 && one.maxHp > 0 && one.hp < one.maxHp
     if (showHpBar) {
       const barW = 52 * unitHpBarScale
       const barH = 8
@@ -2284,6 +2346,7 @@ function pickBattleSynthesisResultDef(
   const runPoolSet = new Set(getRunClassItemPoolIds())
   const isSameIdSynthesis = sourceDef.id === targetDef.id
   const sameItemRandomSynthesis = getDebugCfg('gameplaySameItemRandomSynthesis') >= 0.5
+  const towerMode = isTowerDefenseBattle()
   const minStartingTier = getCrossSynthesisMinStartingTier(sourceDef, targetDef)
   const excludedInstanceIds = new Set<string>()
   if (sourceInstanceId) excludedInstanceIds.add(sourceInstanceId)
@@ -2300,7 +2363,7 @@ function pickBattleSynthesisResultDef(
   }
   const filterCrossSynthesisPool = (list: ItemDef[]): ItemDef[] => {
     let out = list.filter((it) => it.id !== sourceDef.id && it.id !== targetDef.id)
-    if (sameItemRandomSynthesis) return out
+    if (sameItemRandomSynthesis && !towerMode) return out
     const sourceArch = toSkillArchetype(getPrimaryArchetype(sourceDef.tags))
     const targetArch = toSkillArchetype(getPrimaryArchetype(targetDef.tags))
     const shouldExcludeSameArch = (
@@ -2318,9 +2381,14 @@ function pickBattleSynthesisResultDef(
   const allByTier = filterByResultTierCeiling(allRaw, resultTier)
   let candidates: ItemDef[] = []
   if (isSameIdSynthesis) {
-    candidates = sameItemRandomSynthesis
-      ? allByTier.filter((it) => it.id !== sourceDef.id && it.id !== targetDef.id)
-      : [sourceDef]
+    const towerAllowCrossArchetypeOnSameId = towerMode
+    if (sameItemRandomSynthesis && !towerAllowCrossArchetypeOnSameId) {
+      candidates = allByTier.filter((it) => it.id !== sourceDef.id && it.id !== targetDef.id)
+    } else if (towerAllowCrossArchetypeOnSameId) {
+      candidates = filterCrossSynthesisPool(allByTier)
+    } else {
+      candidates = [sourceDef]
+    }
   } else {
     candidates = filterCrossSynthesisPool(allByTier)
   }
@@ -2654,7 +2722,7 @@ function getTowerSkillDetailById(id: string): string {
   const map: Record<string, string> = {
     td_skill_ninja_super_bounce: '所有手里剑弹射次数额外+1',
     td_skill_ninja_super_multicast: '所有手里剑连发次数+1，伤害-25%',
-    td_skill_ninja_super_heavy: '手里剑命中减速目标造成额外50%伤害',
+    td_skill_ninja_super_heavy: '所有手里剑命中后造成减速3秒',
     td_skill_ninja_super_crystal: '水晶手里剑弹射后伤害增加10%',
     td_skill_ninja_super_split: '分裂手里剑分裂后伤害增加50%',
     td_skill_archer_super_high_damage: '所有弓箭伤害额外+5',
@@ -2671,7 +2739,7 @@ function getTowerSkillDetailById(id: string): string {
     td_skill_warrior_super_guard: '护盾值低于50时不自动下降',
     td_skill_warrior_super_bleed: '长剑重伤效果翻倍',
     td_skill_warrior_super_dual: '双持长剑获得护盾翻倍',
-    td_skill_warrior_super_counter: '反击长剑反弹伤害翻倍',
+    td_skill_warrior_super_counter: '反击长剑的伤害加成翻倍',
   }
   return map[id] ?? '强化对应职业技能效果'
 }
@@ -2982,22 +3050,51 @@ function getTowerPlayerZoneBackgroundAlpha(): number {
   return 0.58
 }
 
-function redrawTowerBattleBuyButtonVisual(canAfford: boolean): void {
+function shouldHideBattleCooldownOverlay(): boolean {
+  const rules = getGameCfg().towerDefenseRules as { hideBattleCooldownOverlay?: unknown } | undefined
+  const raw = rules?.hideBattleCooldownOverlay
+  if (raw === true) return true
+  if (raw === false || raw == null) return false
+  if (typeof raw === 'number') return raw > 0
+  if (typeof raw === 'string') {
+    const normalized = raw.trim().toLowerCase()
+    return normalized === '1' || normalized === 'true' || normalized === 'on'
+  }
+  return false
+}
+
+function redrawTowerBattleBuyButtonVisual(state: TowerBattleBuyBtnVisualState): void {
   if (!buyBtnBg) return
   const w = TOWER_BOTTOM_ACTION_BTN_W
   const h = TOWER_BOTTOM_ACTION_BTN_H
   const corner = Math.max(10, Math.round(getDebugCfg('gridItemCornerRadius') + 8))
-  const strokeColor = canAfford ? 0xffcf4a : 0x44aaff
-  const fillColor = canAfford ? 0xffcf4a : 0x44aaff
-  const fillAlpha = canAfford ? 0.34 : 0.18
+  const isReady = state === 'ready'
+  const isFull = state === 'full'
+  const isDisabled = state === 'disabled'
+  const strokeColor = isFull
+    ? 0xff5a5a
+    : (isReady ? 0xffcf4a : (isDisabled ? 0x8da3c4 : 0x44aaff))
+  const fillColor = isFull
+    ? 0xff5a5a
+    : (isReady ? 0xffcf4a : (isDisabled ? 0x8da3c4 : 0x44aaff))
+  const fillAlpha = isFull ? 0.32 : (isReady ? 0.34 : (isDisabled ? 0.16 : 0.18))
   buyBtnBg.clear()
   buyBtnBg.roundRect(-w / 2, -h / 2, w, h, corner)
   buyBtnBg.stroke({ color: strokeColor, width: 3 })
   buyBtnBg.fill({ color: fillColor, alpha: fillAlpha })
   if (buyBtnText) {
-    buyBtnText.style.fill = canAfford ? 0xffffff : 0x44aaff
-    buyBtnText.style.stroke = canAfford ? { color: 0x000000, width: 3 } : { color: 0x000000, width: 0 }
+    buyBtnText.style.fill = isReady || isFull ? 0xffffff : (isDisabled ? 0xc9d8ea : 0x44aaff)
+    buyBtnText.style.stroke = isReady || isFull ? { color: 0x000000, width: 3 } : { color: 0x000000, width: 0 }
   }
+}
+
+function hasRoomForCurrentTowerBattleOffer(): boolean {
+  if (!editableSystem || !playerZone) return false
+  const offer = pendingBattleBuyOffer ?? rollBattleBuyOffer(battleDay)
+  if (!offer) return false
+  if (!pendingBattleBuyOffer) pendingBattleBuyOffer = offer
+  const size = normalizeSize(offer.item.size)
+  return !!pickFirstEmptyCell(editableSystem, size, playerZone.activeColCount)
 }
 
 function tickTowerBattleBuyAffordPulse(): void {
@@ -3339,7 +3436,7 @@ function makeBuyButton(): Container {
   txt.anchor.set(0.5)
   con.addChild(txt)
   buyBtnAffordVisualState = null
-  redrawTowerBattleBuyButtonVisual(false)
+  redrawTowerBattleBuyButtonVisual('no_gold')
   buyBtnText = txt
   con.eventMode = 'static'
   con.cursor = 'pointer'
@@ -3501,7 +3598,7 @@ function ensureEditableBuildMode(stage: Container): void {
     }
   }
   pendingBattleBuyOffer = null
-  buyBtnLastCanAfford = editableGold >= getTowerBattleBuyCost()
+  buyBtnLastCanAfford = null
   buyBtnAffordPulseStartAtMs = null
   buyBtnAffordVisualState = null
   towerZoneExpandBtnLastCanAfford = null
@@ -5149,7 +5246,7 @@ export const BattleScene: Scene = {
     if (towerBottomFocusBg.visible) {
       towerBottomFocusBg.clear()
       towerBottomFocusBg.rect(0, CANVAS_H - 150, CANVAS_W, 150)
-      towerBottomFocusBg.fill({ color: 0x000000, alpha: 0.62 })
+      towerBottomFocusBg.fill({ color: 0x000000, alpha: 1 })
     }
     root.addChild(towerBottomFocusBg)
 
@@ -6501,8 +6598,13 @@ export const BattleScene: Scene = {
     syncRemovedZoneItems(enemyZone, 'enemy', enemyAliveIdsScratch)
     const syncRemovedCostMs = performance.now() - syncRemovedStartMs
     const overlayStartMs = performance.now()
-    drawCooldownOverlay(playerZone, playerCdOverlay, playerItemsScratch, runtimeChargePercentByIdScratch)
-    drawCooldownOverlay(enemyZone, enemyCdOverlay, enemyItemsScratch, runtimeChargePercentByIdScratch)
+    if (shouldHideBattleCooldownOverlay()) {
+      playerCdOverlay.clear()
+      enemyCdOverlay.clear()
+    } else {
+      drawCooldownOverlay(playerZone, playerCdOverlay, playerItemsScratch, runtimeChargePercentByIdScratch)
+      drawCooldownOverlay(enemyZone, enemyCdOverlay, enemyItemsScratch, runtimeChargePercentByIdScratch)
+    }
     const overlayCostMs = performance.now() - overlayStartMs
     let statusFxCostMs = 0
     if (tickChanged || pulseActive) {
@@ -6845,21 +6947,26 @@ export const BattleScene: Scene = {
       buyBtn.visible = canEditInBattle
       const buyCost = getTowerBattleBuyCost()
       const canAfford = editableGold >= buyCost
+      const hasRoom = hasRoomForCurrentTowerBattleOffer()
+      const canBuy = canAfford && hasRoom
+      const buyVisualState: TowerBattleBuyBtnVisualState = getTowerBattleBuyOfferLevel() <= 0
+        ? 'disabled'
+        : (hasRoom ? (canAfford ? 'ready' : 'no_gold') : 'full')
       if (buyBtnLastCanAfford === null) {
-        buyBtnLastCanAfford = canAfford
-      } else if (!buyBtnLastCanAfford && canAfford && canEditInBattle) {
+        buyBtnLastCanAfford = canBuy
+      } else if (!buyBtnLastCanAfford && canBuy && canEditInBattle) {
         buyBtnAffordPulseStartAtMs = battlePresentationMs
       }
-      buyBtnLastCanAfford = canAfford
-      if (!canAfford) buyBtnAffordPulseStartAtMs = null
-      if (buyBtnAffordVisualState !== canAfford) {
-        redrawTowerBattleBuyButtonVisual(canAfford)
-        buyBtnAffordVisualState = canAfford
+      buyBtnLastCanAfford = canBuy
+      if (!canBuy) buyBtnAffordPulseStartAtMs = null
+      if (buyBtnAffordVisualState !== buyVisualState) {
+        redrawTowerBattleBuyButtonVisual(buyVisualState)
+        buyBtnAffordVisualState = buyVisualState
       }
-      if (canEditInBattle) tickTowerBattleBuyAffordPulse()
+      if (canEditInBattle && canBuy) tickTowerBattleBuyAffordPulse()
       else if (buyBtnPulseFrame) buyBtnPulseFrame.visible = false
-      buyBtn.alpha = canAfford ? 1 : 0.55
-      buyBtn.cursor = canAfford ? 'pointer' : 'default'
+      buyBtn.alpha = canBuy ? 1 : 0.65
+      buyBtn.cursor = canBuy ? 'pointer' : 'default'
       if (buyBtnText) buyBtnText.text = formatTowerBattleBuyButtonText(editableGold, buyCost, getTowerBattleBuyOfferLevel())
     }
     if (skillBuyBtn) {
@@ -6936,6 +7043,45 @@ export const BattleScene: Scene = {
     }
 
     const frameUpdateCostMs = performance.now() - framePerfStartMs
+    const frameSpikeThresholdMs = getTowerDiagFrameSpikeMs()
+    const frameSpikeThrottleMs = getTowerDiagFrameSpikeThrottleMs()
+    if (frameUpdateCostMs >= frameSpikeThresholdMs) {
+      const nowMs = Date.now()
+      if (nowMs - diagFrameSpikeLastEmitAtMs >= frameSpikeThrottleMs) {
+        diagFrameSpikeLastEmitAtMs = nowMs
+        const phaseCosts: Record<string, number> = {
+          engineUpdateMs: engineUpdateCostMs,
+          runtimeBuildMs: runtimeBuildCostMs,
+          queueConsumeMs: queueConsumeCostMs,
+          overlayMs: overlayCostMs,
+          statusFxMs: statusFxCostMs,
+          layoutMs: layoutCostMs,
+          syncRemovedMs: syncRemovedCostMs,
+          badgesMs: badgesCostMs,
+          heroBarsMs: heroBarsCostMs,
+          portraitMs: portraitCostMs,
+          settlementMs: settlementCostMs,
+          damageStatsMs: damageStatsCostMs,
+          fxTickMs: fxTickCostMs,
+        }
+        const topPhases = Object.entries(phaseCosts)
+          .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
+          .slice(0, 4)
+          .map(([name, value]) => ({ name, ms: Math.round(Math.max(0, value) * 100) / 100 }))
+        emitDiagEvent('tower_frame_spike', {
+          day: battleDay,
+          tickIndex: debugState.tickIndex,
+          frameDtMs: Math.round(dtMs * 100) / 100,
+          frameUpdateMs: Math.round(frameUpdateCostMs * 100) / 100,
+          spikeThresholdMs: frameSpikeThresholdMs,
+          queuePendingRatio: Math.round(queuePendingRatio * 1000) / 1000,
+          tickDelta,
+          runtimeCallsDelta,
+          runtimeCacheHitsDelta,
+          topPhases,
+        }, { throttleMs: frameSpikeThrottleMs, level: 'verbose' })
+      }
+    }
     const mainResidualCostMs = frameUpdateCostMs
       - engineUpdateCostMs
       - runtimeBuildCostMs

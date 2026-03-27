@@ -1,5 +1,429 @@
 # 大巴扎 — 开发进度记录
 
+## 验收执行记录（2026-03-27，Vercel 更新发布 + 复测链接）
+
+- 用户需求：更新 Vercel，并给出测试网址。
+- 已完成：
+  - 执行 `vercel --prod --yes` 成功发布；
+  - Production：`https://bigbazzar-ig4lz3tfm-zhengtengfeis-projects.vercel.app`；
+  - Alias：`https://bigbazzar.vercel.app`（已指向本次构建）。
+- 提供复测网址：
+  - 标准诊断（复现崩溃/卡死）：`https://bigbazzar.vercel.app/?diag=1&diagLevel=verbose&diagEndpoint=https%3A%2F%2Fbigbazzar.vercel.app%2Fapi%2Fperf-ingest`；
+  - WebGL 对照（判定是否 WebGPU 路径问题）：`https://bigbazzar.vercel.app/?diag=1&diagLevel=verbose&renderer=webgl&diagEndpoint=https%3A%2F%2Fbigbazzar.vercel.app%2Fapi%2Fperf-ingest`。
+- 当前阶段：等待问题机按两条链接对照复测并回传时间点，继续按会话日志定位。
+
+## 验收追加修正（2026-03-27，冰冻免疫计时改为“结束后开始”）
+
+- 用户反馈：冰冻免疫时间应从“冰冻结束后”开始计时，而不是冻结生效时同时计时。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 调整计时触发点：当 `freezeMs` 从 `>0` 下降到 `0` 的瞬间，才写入 `freezeReapplyImmuneMs`；
+    - 冻结成功时不再立即写入免疫计时；
+    - 仍保持门槛判定：`freezeMs <= 0 && freezeReapplyImmuneMs <= 0` 才可再次冻结。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“免疫时间从解冻后开始”规则是否符合预期。
+
+## 验收追加调整（2026-03-27，冰冻重置免疫窗口规则）
+
+- 用户需求：小怪被冰冻后 `2秒` 内不可再次冰冻；首领按通用规则改为 `5秒`。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 敌人状态新增 `freezeReapplyImmuneMs`（冰冻重置免疫计时）；
+    - 冰冻判定新增免疫门槛：仅当 `freezeMs <= 0` 且 `freezeReapplyImmuneMs <= 0` 才允许再次冻结；
+    - 冻结成功后写入免疫窗口（普通敌人 2000ms、首领 5000ms）；
+    - 每帧递减免疫计时，归零后恢复可冻结。
+  - `data/tower_game_config.json`
+    - `towerDefenseRules.enemyFreezeReapplyImmuneMs: 2000`
+    - `towerDefenseRules.bossFreezeReapplyImmuneMs: 5000`
+  - `src/tower/common/items/ItemDef.ts`
+    - `towerDefenseRules` 类型补充以上两个配置字段。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“小怪2秒/首领5秒 冰冻重置免疫”是否符合预期。
+
+## 验收追加调整（2026-03-27，长剑全系 CD 按新表更新）
+
+- 用户需求：更新长剑 6 件物品（`toweritem19~24`）CD 为 `3000|2500|2100|1700|1400`。
+- 已完成：
+  - `data/tower_items.json`
+    - `长剑/伸缩长剑/重伤长剑/守护长剑/双持长剑/反击长剑` 的 `cooldown` 统一改为 `3000`；
+    - `cooldown_tiers` 统一改为 `3000|2500|2100|1700|1400`。
+- 验证：配置检索确认 6 条均已更新，无旧档位残留。
+- 当前阶段：等待用户验收“长剑全系 CD 档位”是否与目标表一致。
+
+## 验收追加排查（2026-03-27，崩溃/卡死定位打点增强）
+
+- 用户需求：补充打点定位“中途崩溃 + 突然掉帧/卡死”根因，判断是否逻辑路径导致。
+- 已完成：
+  - `src/perf/PerfReporter.ts`
+    - 新增诊断阈值配置解析：`diagFrameHitchMs` / `diagFrameFreezeMs` / `diagFrameEventThrottleMs`。
+  - `src/main.ts`
+    - 新增主循环卡顿事件：`diag_frame_hitch`、`diag_frame_freeze`；
+    - 事件携带 `dtMs`、渲染后端、场景与战斗性能快照（`battleUpdateMsP95` / `battleQueuePendingRatioMax` 等）。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 增加引擎更新分段耗时采样，新增 `diag_tower_engine_update_spike`；
+    - 事件含子阶段耗时（`spawn` / `enemyMove` / `consumeHits` 等）与队列积压量。
+  - `src/tower/battle/BattleScene.ts`
+    - 新增渲染帧尖峰事件 `diag_tower_frame_spike`，输出 Top phase 耗时（如 `engineUpdateMs`、`layoutMs`、`fxTickMs`）。
+  - `api/perf-ingest.ts`
+    - 服务端日志补充设备维度（`ua` / `deviceMemory` / `hardwareConcurrency` / `screen`）；
+    - 扩展崩溃事件压缩字段，支持 `frameUpdateMs` / `updateCostMs` / `topPhases` 等关键信息。
+  - `data/game_config.json`、`data/tower_game_config.json`、`data/nobag_game_config.json`
+    - 新增上述诊断阈值配置并统一默认值：`120/280/1200/45/35`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在问题机复测；复现后可按 `sessionId` 直接定位“是 WebGPU 崩溃还是逻辑/渲染阶段尖峰导致卡死”。
+
+## 验收追加微调（2026-03-27，底部遮罩改为纯黑不透明）
+
+- 用户需求：下方区域遮罩改为纯黑，取消半透明效果。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `towerBottomFocusBg` 底部遮罩填充透明度由 `0.62` 调整为 `1`（纯黑不透明）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“底部区域纯黑遮罩”视觉效果。
+
+## 验收追加修正（2026-03-27，近战前冲影子跟随淡出 + 血条立即隐藏）
+
+- 用户需求：近战怪冲向玩家时，影子需跟随本体移动并在 `0.2s` 内半透消失；血条需立即隐藏。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 近战前冲期间改为“影子跟随本体”（不再反向抵消位移）；
+    - 新增前冲影子淡出逻辑：按 `enemyMeleeDashShadowFadeMs` 在冲刺开始后线性淡出至不可见；
+    - 前冲期间强制隐藏敌方血条（`showHpBar` 增加前冲态判定）。
+  - `data/tower_game_config.json`
+    - 新增 `towerDefenseRules.enemyMeleeDashShadowFadeMs: 200`。
+  - `src/tower/common/items/ItemDef.ts`
+    - `towerDefenseRules` 类型新增 `enemyMeleeDashShadowFadeMs?: number`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“近战前冲时影子跟随并0.2秒淡出、血条立即隐藏”是否符合预期。
+- 重要决定：影子淡出时长配置化，避免后续动画节奏调整再次改代码。
+
+## 验收追加排查（2026-03-27，机型中途崩溃日志复核）
+
+- 用户需求：复核“中间有些机型崩溃过”的线上证据。
+- 已完成排查：
+  - 拉取生产日志并检索崩溃事件（`vercel logs --environment production --since 72h --query "window_error"`）；
+  - 复核命中会话全量日志：`sessionId = perf-mn8ohkk7-8kcgdc`。
+- 明确结论：
+  - 存在机型崩溃证据，事件类型为 `window_error`；
+  - 错误内容：`RangeError: Length out of range of buffer`；
+  - 发生场景：`tower-battle`；渲染器：`webgpu`；
+  - 发生时间：`2026-03-27 17:16:56`（日志中重复记录为同次崩溃重复上报）。
+- 当前阶段：已确认“部分机型在 WebGPU 路径存在崩溃”；下一步可按机型/UA 做强制 WebGL 兜底。
+
+## 验收追加调整（2026-03-27，反击长剑与超级反击按新配置更新）
+
+- 用户需求：
+  - `反击长剑(toweritem24)` 调整为：攻击距离 `20`，并改为“所有长剑额外造成当前护盾值 `20%|20%|20%|20%|30%` 的伤害”；
+  - `长剑·超级反击` 文案与效果口径改为“反击长剑的伤害加成翻倍”。
+- 已完成：
+  - `data/tower_items.json`
+    - `toweritem24` 第二条词条更新为 `攻击距离:20，护盾+1`；
+    - `toweritem24` 主效果更新为“所有长剑额外造成当前护盾值20%|20%|20%|20%|30%的伤害”；
+    - `simple_desc/simple_desc_tiered` 同步为新口径。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 新增反击长剑增伤结算：剑士命中时按“当前护盾值 * 词条百分比 * 超级反击倍率”追加额外伤害；
+    - `长剑·超级反击` 继续通过倍率 `x2` 生效于该额外伤害加成。
+  - `src/tower/battle/BattleScene.ts`
+    - `td_skill_warrior_super_counter` 描述更新为“反击长剑的伤害加成翻倍”。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“反击长剑伤害加成与超级反击翻倍效果”是否符合预期。
+
+## 验收追加排查（2026-03-27，Android 单机卡顿原因初查）
+
+- 用户反馈：某一台 Android 机器明显卡顿。
+- 已完成排查：
+  - 拉取生产日志并按 `perf-ingest` 会话聚合（最近 6 小时）；
+  - 重点检查 `tower-battle` 会话帧指标与异常事件（`window_error` / `unhandled_rejection` / `diag_tower_engine_large_dt` 等）。
+- 结果：
+  - 当前日志窗口未见崩溃/引擎异常事件；
+  - 主要塔防会话（`webgpu`）最低帧约 `57.3fps`、`frameMsP95≈20ms`，无明显全局级掉帧证据；
+  - 现有上报缺少设备型号维度，暂无法直接定位“哪一台 Android”对应会话。
+- 初步判断：更可能是特定机型/GPU 与 WebGPU 路径兼容或热降频导致的“机型特异性卡顿”，而非全量配置回退。
+- 当前阶段：等待该问题机使用诊断链接复测并做 WebGL 对照（`renderer=webgl`），确认是否为渲染后端导致。
+
+## 验收追加调整（2026-03-27，弓手全系数值按新表更新）
+
+- 用户需求：按新表更新弓手 6 件物品（`toweritem7~12`）的冷却档位与部分效果数值。
+- 已完成：
+  - `data/tower_items.json`
+    - `toweritem7/8/9/10/11/12` 的 `cooldown` 与 `cooldown_tiers` 统一改为：`1500` 与 `1500|1300|1000|900|700`；
+    - `toweritem8 高伤弓箭` 由 `+2|+3|+5|+8|+13` 调整为 `+3|+5|+8|+12|+20`；
+    - `toweritem12 嗜血弓箭` 由 `+1|+1|+1|+1|+2` 调整为 `+2|+2|+2|+2|+4`（文案为“伤害叠加”）。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 嗜血弓箭词条解析正则兼容“`伤害叠加+...`”与“`伤害+...`”两种写法，确保新文案下数值生效。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“弓手6件物品冷却与词条数值”是否与新表一致。
+
+## 验收追加排查（2026-03-27，用户反馈“偶发崩溃”日志复查）
+
+- 用户反馈：多次游玩中出现 1 次崩溃。
+- 已完成排查：
+  - 拉取线上生产日志（最近 30 分钟，`vercel logs --environment production --since 30m --no-follow --json`）；
+  - 解析 `perf-ingest` 诊断事件并重点检查：`window_error` / `unhandled_rejection` / `renderer_crash_guard_force_webgl` / `diag_tower_tick_stall` / `diag_tower_engine_*`；
+  - 本轮日志未发现上述崩溃类事件，最近会话主要为 `tower-battle` 正常心跳与波次推进日志。
+- 结论：本次“偶发崩溃”未在当前采样窗口内留下可定位异常栈，偏向“崩溃瞬断导致来不及上报”的场景。
+- 当前阶段：等待用户按诊断链接继续复测；复现后立即回传时间点，下一轮按时间窗抓取并定位。
+
+## 验收执行记录（2026-03-27，Vercel 再次同步发布）
+
+- 用户需求：更新 Vercel。
+- 已完成：
+  - 执行 `vercel --prod --yes` 成功；
+  - Production：`https://bigbazzar-b3ugfwy2a-zhengtengfeis-projects.vercel.app`；
+  - Alias：`https://bigbazzar.vercel.app`（已指向本次构建）。
+- 验证：Vercel 构建完成并成功 alias 到线上主域。
+- 当前阶段：等待用户继续在线复测并回传结果。
+
+## 验收追加修正（2026-03-27，塔防同职业合成结果彻底排除）
+
+- 用户反馈：塔防中两个长剑仍可能合成出长剑系（如伸缩长剑）。
+- 根因：`gameplaySameItemRandomSynthesis` 开启时，会提前走“纯随机池”分支，绕过同职业排除逻辑。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 塔防模式下同/异 ID 合成统一复用跨职业过滤；即使开启 `gameplaySameItemRandomSynthesis` 也不再绕过“排除本职业”规则。
+  - `src/tower/shop/systems/ShopSynthesisController.ts`
+    - 商店同 ID 合成同样改为塔防强制跨职业过滤，保持与战斗内一致。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“塔防中长剑+长剑是否已不再产出剑士职业物品”。
+
+## 验收追加微调（2026-03-27，伤害+攻击距离移至名称下方一行）
+
+- 用户需求：详情中“伤害+攻击距离”显示位置调整到名称下方一行（不放在名称右侧）。
+- 已完成：
+  - `src/tower/common/ui/SellPopup.ts`
+    - 头部属性行（含“伤害 攻击距离”）由标题右侧改为标题下方；
+    - 同步下移描述区起始位置，避免与头部属性行重叠。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“名称下方一行展示”是否符合预期。
+
+## 验收追加调整（2026-03-27，攻击距离并入伤害行 + 各职业距离更新）
+
+- 用户需求：
+  - 物品详情中“攻击距离”需与“伤害”显示在同一行；
+  - 按最新表更新塔防四职业各物品攻击距离。
+- 已完成：
+  - `src/tower/common/ui/SellPopup.ts`
+    - 将攻击距离从独立条目改为并入伤害值展示：`伤害 … 攻击距离:xx`；
+    - 移除单独“攻击距离”行，避免重复信息。
+  - `data/tower_game_config.json`
+    - `towerDefenseRules.playerItemAttackDistanceByIcon` 更新为：
+      - 忍者（`toweritem1~6`）：`40`
+      - 弓手（`toweritem7~12`）：`50`
+      - 冰法师（`toweritem13~18`）：`40`
+      - 剑士（`toweritem19~24`）：`20`
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“详情展示口径 + 攻击距离数值”是否符合预期。
+
+## 验收追加修正（2026-03-27，塔防同ID合成排除本职业结果）
+
+- 用户反馈：塔防模式下两个长剑仍可能合成为“伸缩长剑”（本职业结果），与“同 ID 合成不出本职业”目标不一致。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 同 ID 合成在塔防模式下改为复用跨职业候选过滤（排除同职业结果 + 排除输入 ID + 池子与上限约束）。
+  - `src/tower/shop/systems/ShopSynthesisController.ts`
+    - 商店同 ID 合成塔防分支同步改为复用跨职业过滤逻辑；
+    - 同职业排除补齐 `mage`，与战斗内四职业口径一致。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“塔防同ID合成是否已不再产出本职业物品”。
+
+## 验收追加修正（2026-03-27，近战前冲补回撤并放大随冲刺进度变化）
+
+- 用户反馈：近战前冲“没有回撤”，且放大节奏希望在接近终点时才达到最大。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 近战冲刺改为记录“冲刺起点/终点”并按进度插值，确保冲出后会按回程时长稳定回撤；
+    - 前冲放大改为随冲刺进度渐变（起点接近 `1x`，到达终点时达到 `enemyMeleeDashScaleMul`，回撤时同步回落）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“近战前冲到位 + 回撤 + 放大节奏”是否符合预期。
+
+## 验收追加调整（2026-03-27，物品详情攻击距离改为具体数值）
+
+- 用户需求：物品详情中不再显示“近/中/远”概念，改为显示具体攻击距离数值（示例：`攻击距离:16`）。
+- 已完成：
+  - `src/tower/common/ui/SellPopup.ts`
+    - 距离展示由分档文本改为数值文本；
+    - 指标标题由 `距离` 改为 `攻击距离`；
+    - 支持配置与词条解析两路来源，统一显示具体值。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“物品详情攻击距离显示口径”是否符合预期。
+
+## 验收追加调整（2026-03-27，伸缩长剑攻击距离加成档位更新）
+
+- 用户需求：更新 `伸缩长剑（toweritem20）` 的攻击距离加成为 `+2|+2|+4|+6|+8`，其余口径（白银/剑士/冷却与基础词条）保持不变。
+- 已完成：
+  - `data/tower_items.json`
+    - `toweritem20.skills[2]` 更新为：`所有长剑攻击距离+2|+2|+4|+6|+8。`
+    - `toweritem20.simple_desc_tiered` 同步更新为：`所有长剑攻击距离+2|+2|+4|+6|+8`。
+- 验证：本次为配置文案/数值档位更新，未单独执行构建。
+- 当前阶段：等待用户验收“伸缩长剑攻击距离加成档位”是否与目标表一致。
+
+## 验收追加微调（2026-03-27，近战前冲放大倍率可配置）
+
+- 用户需求：近战小怪前冲过程中角色放大 `1.5` 倍，并支持配置该值。
+- 已完成：
+  - `data/tower_game_config.json`
+    - 新增 `towerDefenseRules.enemyMeleeDashScaleMul: 1.5`。
+  - `src/tower/common/items/ItemDef.ts`
+    - `towerDefenseRules` 类型新增 `enemyMeleeDashScaleMul?: number`。
+  - `src/tower/battle/BattleScene.ts`
+    - 近战前冲动画读取 `enemyMeleeDashScaleMul`，前冲期间按该倍率放大角色；未配置时默认 `1.5`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“近战前冲放大倍率（默认1.5）及配置生效”是否符合预期。
+
+## 验收追加修正（2026-03-27，近战小怪前冲改为实际冲到玩家命中点）
+
+- 用户反馈：当前近战小怪前冲仍未冲到玩家所在位置。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 近战前冲位移由“目标方向的 40% 且最多 160px”改为“按目标方向完整位移到命中点”（冲刺峰值到达玩家命中点）；
+    - 保持此前偏移配置 `enemyMeleeDashTargetOffsetYPx=50` 生效，即命中点仍在玩家位置下方 `50px`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“近战小怪是否已真正冲到玩家命中点（下移50px）”。
+
+## 验收追加调整（2026-03-27，战斗CD显示开关）
+
+- 用户需求：在玩法数值中新增开关，控制“战斗内是否显示 CD 线与 CD 遮罩”；默认关闭该开关，打开后隐藏 CD 线和 CD 遮罩。
+- 已完成：
+  - `data/tower_game_config.json`
+    - 新增 `towerDefenseRules.hideBattleCooldownOverlay: false`（默认关闭）。
+  - `src/tower/common/items/ItemDef.ts`
+    - `towerDefenseRules` 类型新增 `hideBattleCooldownOverlay`（兼容 `boolean/0/1/'on'/'off'` 等输入）。
+  - `src/tower/battle/BattleScene.ts`
+    - 新增 `shouldHideBattleCooldownOverlay()` 配置读取；
+    - 战斗帧更新中，当开关开启时不再绘制 CD 线与 CD 遮罩，并主动 `clear()` 现有覆盖层，确保即时生效。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“开关关闭时正常显示 CD；开启时隐藏 CD 线与遮罩”是否符合预期。
+- 重要决定：该开关仅影响 CD 可视化表现，不改真实充能/触发逻辑与数值计算。
+
+## 验收追加微调（2026-03-27，近战小怪攻击前冲时长与命中点下移）
+
+- 用户需求：近战小怪攻击动画飞到玩家位置的时间增加 `0.2s`，且飞到的目标点下移 `50px`。
+- 已完成：
+  - `data/tower_game_config.json`
+    - 新增 `towerDefenseRules.enemyMeleeDashOutExtraMs: 200`；
+    - 新增 `towerDefenseRules.enemyMeleeDashTargetOffsetYPx: 50`。
+  - `src/tower/common/items/ItemDef.ts`
+    - `towerDefenseRules` 类型新增上述两个可选字段，确保配置可类型安全读取。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - `resolveEnemyMeleeDashOutMs()` 接入 `enemyMeleeDashOutExtraMs`，近战前冲时长统一额外增加 `200ms`（同时影响受击结算延迟，保持视效与伤害同步）。
+  - `src/tower/battle/BattleScene.ts`
+    - 近战冲刺目标点 Y 接入 `enemyMeleeDashTargetOffsetYPx`，攻击动画目标点整体下移 `50px`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“近战小怪前冲速度与命中位置”是否符合预期。
+
+## 验收追加调整（2026-03-27，小怪移动动画节奏改为 ms 指定值）
+
+- 用户需求：塔防小怪移动动画节奏调整为“左右晃动 `800ms/轮`，跳动 `400ms/轮`”。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `getTowerEnemyMoveWave()`：
+      - 左右晃动周期改为 `swayLoopMs = 800`；
+      - 跳动周期改为 `jumpLoopMs = 400`（与旋转解耦）。
+    - `getTowerEnemyFlyingMoveWave()`：纵向摆动周期同步改为 `400ms`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“小怪移动左右/跳动节奏”是否符合预期。
+
+## 验收追加调整（2026-03-27，怪物统一2秒前摇 + 攻击间隔表更新）
+
+- 用户需求：
+  - 所有怪物攻击前摇统一为 `2秒`（包含近战小怪）；
+  - 攻击间隔较长（`4秒`）的怪物在非前摇阶段保持 idle 站立；
+  - 按最新表更新怪物攻击间隔。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - `getEnemyAttackPrepareLeadMs()` 改为读取塔防配置 `enemyAttackPrepareLeadMs`，统一前摇时长；
+    - 默认兜底为 `2000ms`，并已在配置中显式下发 `2000`。
+  - `src/tower/common/items/ItemDef.ts`
+    - `towerDefenseRules` 类型新增 `enemyAttackPrepareLeadMs?: number`。
+  - `data/tower_game_config.json`
+    - 新增 `towerDefenseRules.enemyAttackPrepareLeadMs: 2000`；
+    - 按表更新攻击间隔：
+      - `enemy7(骷髅犬): 1000 -> 2000`；
+      - `enemy11(红色魅魔): 2000 -> 4000`；
+      - `enemy12(红色飞龙): 2000 -> 4000`；
+    - 其余与新表一致的攻击间隔保持不变（如 `enemy3/enemy8/boss2/boss3/boss` 为 `4000`）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“全怪2秒前摇（含近战小怪）+ 最新攻击间隔表”表现是否符合预期。
+- 重要决定：前摇时长统一走 `towerDefenseRules.enemyAttackPrepareLeadMs` 配置口径，避免代码硬编码导致后续调参分叉。
+
+## 验收追加调整（2026-03-27，物品/技能口径按新配置对齐）
+
+- 用户需求：按最新表统一对齐物品与技能配置（含 `重型手里剑`、`狙击弓箭`、`重伤长剑` 与 `手里剑·超级重型`）。
+- 已完成：
+  - `data/tower_items.json`
+    - `toweritem4` 改为“命中减速后目标额外伤害 `+3|5|8|12|20`”；
+    - `toweritem11` 改为“最远增伤上限 `+200%`”；
+    - `toweritem21` 流血时长改为 `3|3|3|4|5` 秒。
+  - `src/tower/battle/BattleScene.ts`
+    - `td_skill_ninja_super_heavy` 技能文案改为“所有手里剑命中后造成减速3秒”。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - `手里剑·超级重型` 实装为“命中附加减速3秒”（前置 `toweritem4` + 技能）；
+    - `重型手里剑(toweritem4)` 实装为“对减速目标追加固定额外伤害（按词条档位累加）”；
+    - `重伤长剑` 伤害倍率改为基础：普通 `x2` / 首领 `x1.2`；超级重伤后：普通 `x3` / 首领 `x1.4`，与“重伤效果翻倍”口径一致。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“物品/技能口径与实战效果”是否与新配置一致。
+
+## 验收追加调整（2026-03-27，塔防合成允许非本职业结果）
+
+- 用户需求：塔防模式下，物品合成不应被限制为本职业结果，希望可以合成出非本职业物品。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 在塔防战斗内，同 ID 合成不再固定回本体；改为走跨池候选（排除两个输入实例对应物品），因此可产出非本职业结果。
+  - `src/tower/shop/systems/ShopSynthesisController.ts`
+    - 在塔防模式下，商店场景同 ID 合成同样放开为跨池候选，保持与战斗内口径一致。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“塔防合成结果是否已可出现非本职业物品”。
+
+## 验收执行记录（2026-03-27，Vercel 同步 + 在线闪退复测链接）
+
+- 用户需求：同步 Vercel，并提供可在线复测“闪退”的网址。
+- 已完成：
+  - 执行 `vercel --prod --yes` 成功发布；
+  - Production：`https://bigbazzar-e5kte5sty-zhengtengfeis-projects.vercel.app`；
+  - Alias：`https://bigbazzar.vercel.app`（当前指向本次构建）；
+  - 健康检查：`https://bigbazzar.vercel.app/api/perf-health` 返回 `ok: true`。
+- 在线闪退复测链接（自动回传诊断到 Vercel）：
+  - `https://bigbazzar.vercel.app/?diag=1&diagLevel=verbose&diagEndpoint=https%3A%2F%2Fbigbazzar.vercel.app%2Fapi%2Fperf-ingest`
+- 当前阶段：等待用户使用上述链接在目标机型复测“闪退/卡死”并回传日志后继续定位。
+
+## 验收追加调整（2026-03-27，塔防等级品质桶概率按新表更新）
+
+- 用户需求：更新塔防 `Lv1~Lv5` 品质桶概率为新表：
+  - 青铜：`1, 0.4, 0.1, 0, 0`
+  - 白银：`0, 0.6, 0.3, 0.1, 0`
+  - 黄金：`0, 0, 0.6, 0.3, 0.2`
+  - 钻石：`0, 0, 0, 0.6, 0.8`
+- 已完成：
+  - `data/tower_game_config.json`
+    - `towerDefenseRules.quickBuyQualityWeightsByLevel` 的 Lv1~Lv5 概率已同步为新表；
+    - `towerDefenseRules.qualityPseudoRandomWeightsByLevel` 的 Lv1~Lv5 概率已同步为新表；
+    - `Lv6~Lv8` 保持现有配置不变。
+- 验证：本次为配置数值更新，未单独执行构建。
+- 当前阶段：等待用户验收“塔防 Lv1~Lv5 品质桶概率”是否与目标表一致。
+
+## 验收追加微调（2026-03-27，物品购买按钮满格红色态）
+
+- 用户需求：当上阵区满后，“物品购买”按钮改为红色，明确表达当前无法购买。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增物品购买按钮视觉状态枚举：`ready/no_gold/full/disabled`；
+    - 新增 `hasRoomForCurrentTowerBattleOffer()`，按当前购买候选物品尺寸实时判断是否还有可放置格；
+    - 上阵区无可放置空间时，按钮改为红色（描边+填充+白字），并停止“可购买脉冲”；
+    - 购买按钮可交互态由“仅金币足够”调整为“金币足够且有可放置空间”，避免满格时仍显示可点击高亮。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“上阵区满时物品购买按钮红色态”是否符合预期。
+- 重要决定：按钮红色态基于“当前待售物品尺寸是否可放下”判定（与实际购买判定一致），不是仅按剩余空格数量粗略判断。
+
+## 验收追加调整（2026-03-27，冰冻冰锥概率档位更新）
+
+- 用户需求：更新 `冰冻冰锥（toweritem16）` 的冰冻概率档位为 `20%|20%|25%|30%|35%`。
+- 已完成：
+  - `data/tower_items.json`
+    - `toweritem16.skills[2]` 更新为：`所有冰锥有20%|20%|25%|30%|35%几率冰冻2秒，冰冻：无法行动。`
+    - `toweritem16.simple_desc_tiered` 同步更新为：`所有冰锥有20%|20%|25%|30%|35%几率冰冻2秒，冰冻：无法行动`。
+- 验证：本次为配置数值文案更新，未单独执行构建。
+- 当前阶段：等待用户验收“冰冻冰锥概率档位”是否与目标表一致。
+
 ## 验收执行记录（2026-03-27，Git 同步 + TestFlight 上传 + Android 打包）
 
 - 用户需求：同步 Git 上传；打 TF 包并上传；打 Android 包。

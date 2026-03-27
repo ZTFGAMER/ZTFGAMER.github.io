@@ -441,6 +441,7 @@ export interface GameConfig {
     battleBuyAffordPulseScaleMax?: number
     battleBuyAffordPulsePaddingPx?: number
     battleBuyButtonY?: number
+    hideBattleCooldownOverlay?: boolean | 0 | 1 | '0' | '1' | 'false' | 'true' | 'off' | 'on'
     playerZoneBackgroundAlpha?: number
     battleBuyCostByPurchaseCount?: number[]
     towerBattleZoneExpandUnlockItemCount?: number
@@ -455,6 +456,13 @@ export interface GameConfig {
     finalDay?: number
     enemyKillGold: number
     enemyKillGoldBoss: number
+    enemyAttackPrepareLeadMs?: number
+    enemyFreezeReapplyImmuneMs?: number
+    bossFreezeReapplyImmuneMs?: number
+    enemyMeleeDashOutExtraMs?: number
+    enemyMeleeDashTargetOffsetYPx?: number
+    enemyMeleeDashScaleMul?: number
+    enemyMeleeDashShadowFadeMs?: number
     enemyKillGoldFxMs: number
     enemyKillGoldFxRisePx: number
     spawnLanes: number

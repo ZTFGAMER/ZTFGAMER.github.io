@@ -18,6 +18,9 @@ type PerfReporterConfig = {
   criticalFrameDropRate: number
   warnBattleDropRate: number
   criticalBattleDropRate: number
+  diagFrameHitchMs: number
+  diagFrameFreezeMs: number
+  diagFrameEventThrottleMs: number
 }
 
 type PerfBattleSnapshot = {
@@ -381,6 +384,9 @@ export function resolvePerfReporterConfig(raw: unknown): PerfReporterConfig {
   const criticalFrameDropRate = Math.max(warnFrameDropRate, Math.min(1, Number(obj.criticalFrameDropRate) || 0.3))
   const warnBattleDropRate = Math.max(0, Math.min(1, Number(obj.warnBattleDropRate) || 0.05))
   const criticalBattleDropRate = Math.max(warnBattleDropRate, Math.min(1, Number(obj.criticalBattleDropRate) || 0.1))
+  const diagFrameHitchMs = clampInt(Number(obj.diagFrameHitchMs), 60, 2000)
+  const diagFrameFreezeMs = Math.max(diagFrameHitchMs, clampInt(Number(obj.diagFrameFreezeMs), 120, 3000))
+  const diagFrameEventThrottleMs = clampInt(Number(obj.diagFrameEventThrottleMs), 200, 10000)
   return {
     enabled: obj.enabled === true,
     endpoint: typeof obj.endpoint === 'string' ? obj.endpoint.trim() : '',
@@ -399,5 +405,8 @@ export function resolvePerfReporterConfig(raw: unknown): PerfReporterConfig {
     criticalFrameDropRate,
     warnBattleDropRate,
     criticalBattleDropRate,
+    diagFrameHitchMs,
+    diagFrameFreezeMs,
+    diagFrameEventThrottleMs,
   }
 }

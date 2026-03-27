@@ -2146,7 +2146,12 @@
         "warnFrameDropRate": 0.15,
         "criticalFrameDropRate": 0.3,
         "warnBattleDropRate": 0.05,
-        "criticalBattleDropRate": 0.1
+        "criticalBattleDropRate": 0.1,
+        "diagFrameHitchMs": 120,
+        "diagFrameFreezeMs": 280,
+        "diagFrameEventThrottleMs": 1200,
+        "diagTowerFrameSpikeMs": 45,
+        "diagTowerEngineUpdateSpikeMs": 35
       },
       "playerExpToNextLevel": [
         3,

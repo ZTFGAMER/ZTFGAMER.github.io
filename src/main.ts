@@ -1056,16 +1056,53 @@ async function bootstrap(): Promise<void> {
 
   // 6. 接入 PixiJS Ticker（取代手写 RAF）
   let diagHeartbeatElapsedMs = 0
+  let diagFrameHitchLastEmitAtMs = 0
+  let diagFrameFreezeLastEmitAtMs = 0
   app.ticker.add((ticker) => {
     const dt = ticker.deltaMS / 1000
+    const dtMs = Math.max(0, ticker.deltaMS)
     perfReporter?.tick(ticker.deltaMS)
+    const scene = SceneManager.currentName()
+    const isBattleScene = scene === 'battle' || scene === 'nobag-battle' || scene === 'tower-battle'
     if (diagEnabled && perfReporter) {
-      const scene = SceneManager.currentName()
-      if (scene === 'battle' || scene === 'nobag-battle' || scene === 'tower-battle') {
-        diagHeartbeatElapsedMs += ticker.deltaMS
+      if (isBattleScene) {
+        const nowMs = Date.now()
+        const battlePerf = getBattlePerfStatsForScene(scene)
+        if (dtMs >= perfCfg.diagFrameHitchMs && nowMs - diagFrameHitchLastEmitAtMs >= perfCfg.diagFrameEventThrottleMs) {
+          diagFrameHitchLastEmitAtMs = nowMs
+          perfReporter.markEvent('diag_frame_hitch', {
+            scene,
+            renderer: app.renderer.type === 0 ? 'webgl' : 'webgpu',
+            dtMs: Math.round(dtMs * 100) / 100,
+            hitchThresholdMs: perfCfg.diagFrameHitchMs,
+            activeFx: battlePerf?.activeFx,
+            droppedProjectiles: battlePerf?.droppedProjectiles,
+            droppedFloatingNumbers: battlePerf?.droppedFloatingNumbers,
+            battleUpdateMsP95: battlePerf?.battleUpdateMsP95,
+            battleFrameDtMsP95: battlePerf?.battleFrameDtMsP95,
+            battleQueuePendingRatioMax: battlePerf?.battleQueuePendingRatioMax,
+            battleTickDeltaMax: battlePerf?.battleTickDeltaMax,
+          })
+        }
+        if (dtMs >= perfCfg.diagFrameFreezeMs && nowMs - diagFrameFreezeLastEmitAtMs >= perfCfg.diagFrameEventThrottleMs) {
+          diagFrameFreezeLastEmitAtMs = nowMs
+          perfReporter.markEvent('diag_frame_freeze', {
+            scene,
+            renderer: app.renderer.type === 0 ? 'webgl' : 'webgpu',
+            dtMs: Math.round(dtMs * 100) / 100,
+            freezeThresholdMs: perfCfg.diagFrameFreezeMs,
+            activeFx: battlePerf?.activeFx,
+            droppedProjectiles: battlePerf?.droppedProjectiles,
+            droppedFloatingNumbers: battlePerf?.droppedFloatingNumbers,
+            battleUpdateMsP95: battlePerf?.battleUpdateMsP95,
+            battleFrameDtMsP95: battlePerf?.battleFrameDtMsP95,
+            battleQueuePendingRatioMax: battlePerf?.battleQueuePendingRatioMax,
+            battleTickDeltaMax: battlePerf?.battleTickDeltaMax,
+          })
+        }
+        diagHeartbeatElapsedMs += dtMs
         if (diagHeartbeatElapsedMs >= 1500) {
           diagHeartbeatElapsedMs = 0
-          const battlePerf = getBattlePerfStatsForScene(scene)
           perfReporter.markEvent('diag_heartbeat', {
             scene,
             renderer: app.renderer.type === 0 ? 'webgl' : 'webgpu',

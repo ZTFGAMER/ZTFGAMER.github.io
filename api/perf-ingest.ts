@@ -1,5 +1,13 @@
 type PerfBody = {
-  meta?: { sessionId?: string; href?: string; ua?: string; renderer?: string }
+  meta?: {
+    sessionId?: string
+    href?: string
+    ua?: string
+    renderer?: string
+    deviceMemory?: number
+    hardwareConcurrency?: number
+    screen?: { w?: number; h?: number; dpr?: number }
+  }
   points?: Array<{
     ts?: number
     scene?: string
@@ -91,9 +99,35 @@ export default function handler(req: any, res: any): void {
       } else if (t === 'unhandled_rejection') {
         compact.reason = safeString((p as Record<string, unknown>).reason)
       } else {
-        const keys = ['day', 'nextDay', 'tickIndex', 'stallMs', 'dtMs', 'queuePendingRatio', 'pendingPlayerHits', 'pendingEnemyHits', 'pendingPlayerFires', 'isFinished', 'playerHp', 'enemyHp']
+        const keys = [
+          'day',
+          'nextDay',
+          'tickIndex',
+          'stallMs',
+          'dtMs',
+          'queuePendingRatio',
+          'pendingPlayerHits',
+          'pendingEnemyHits',
+          'pendingPlayerFires',
+          'pendingMelee',
+          'isFinished',
+          'playerHp',
+          'enemyHp',
+          'frameUpdateMs',
+          'frameDtMs',
+          'updateCostMs',
+          'engineUpdateMs',
+          'runtimeBuildMs',
+          'layoutMs',
+          'statusFxMs',
+          'fxTickMs',
+        ]
         for (const k of keys) {
           if (k in p) compact[k] = (p as Record<string, unknown>)[k]
+        }
+        const topPhases = (p as Record<string, unknown>).topPhases
+        if (Array.isArray(topPhases) && topPhases.length > 0) {
+          compact.topPhases = topPhases.slice(0, 3)
         }
       }
       return { type: t, payload: compact }
@@ -107,6 +141,14 @@ export default function handler(req: any, res: any): void {
     events: events.length,
     sceneHint: safeString(events[events.length - 1]?.scene, ''),
     renderer: safeString(body.meta?.renderer, ''),
+    ua: safeString(body.meta?.ua, ''),
+    deviceMemory: Number(body.meta?.deviceMemory ?? 0) || 0,
+    hardwareConcurrency: Number(body.meta?.hardwareConcurrency ?? 0) || 0,
+    screen: {
+      w: Number(body.meta?.screen?.w ?? 0) || 0,
+      h: Number(body.meta?.screen?.h ?? 0) || 0,
+      dpr: Number(body.meta?.screen?.dpr ?? 0) || 0,
+    },
     tokenPresent: token.length > 0,
     href: safeString(body.meta?.href, ''),
     interestingEvents,
