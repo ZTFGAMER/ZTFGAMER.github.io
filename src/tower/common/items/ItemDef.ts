@@ -55,10 +55,10 @@ export interface ItemDef {
 
 /** 将原始 size 字段标准化为 1x1 / 2x1 / 3x1 */
 export function normalizeSize(raw: string): ItemSizeNorm {
-  const s = raw.toLowerCase()
-  if (s.includes('small'))  return '1x1'
-  if (s.includes('medium')) return '2x1'
-  if (s.includes('large'))  return '3x1'
+  const s = String(raw || '').toLowerCase().trim()
+  if (s === '1x1' || s === '1*1' || s === 'small' || s.includes('small') || s.includes('小型')) return '1x1'
+  if (s === '2x1' || s === '2*1' || s === 'medium' || s.includes('medium') || s.includes('中型')) return '2x1'
+  if (s === '3x1' || s === '3*1' || s === 'large' || s.includes('large') || s.includes('大型')) return '3x1'
   throw new Error(`Unknown item size: ${raw}`)
 }
 
@@ -443,6 +443,12 @@ export interface GameConfig {
     battleBuyButtonY?: number
     playerZoneBackgroundAlpha?: number
     battleBuyCostByPurchaseCount?: number[]
+    towerBattleZoneExpandUnlockItemCount?: number
+    towerBattleZoneExpandStages?: Array<{
+      rows: number
+      cols: number
+      price: number
+    }>
     battleSkillBuyUnlockItemCount?: number
     battleSkillBuyCostByPurchaseCount?: number[]
     nextWaveAutoStartMs?: number

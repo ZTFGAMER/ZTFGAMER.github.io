@@ -36,6 +36,7 @@ export interface BattleSnapshotBundle {
   playerShield?: number
   towerBattleBuyCount?: number
   towerBattleSkillBuyCount?: number
+  towerBattleZoneExpandStep?: number
   towerBattleSkillPickCounts?: Record<string, number>
   showBasicSynthesisGuide?: boolean
   entities: BattleSnapshotEntity[]
@@ -72,6 +73,7 @@ function cloneSnapshot(snapshot: BattleSnapshotBundle): BattleSnapshotBundle {
     playerShield: typeof snapshot.playerShield === 'number' ? Math.max(0, Math.round(snapshot.playerShield)) : undefined,
     towerBattleBuyCount: typeof snapshot.towerBattleBuyCount === 'number' ? Math.max(0, Math.round(snapshot.towerBattleBuyCount)) : undefined,
     towerBattleSkillBuyCount: typeof snapshot.towerBattleSkillBuyCount === 'number' ? Math.max(0, Math.round(snapshot.towerBattleSkillBuyCount)) : undefined,
+    towerBattleZoneExpandStep: typeof snapshot.towerBattleZoneExpandStep === 'number' ? Math.max(0, Math.round(snapshot.towerBattleZoneExpandStep)) : undefined,
     towerBattleSkillPickCounts: snapshot.towerBattleSkillPickCounts ? { ...snapshot.towerBattleSkillPickCounts } : undefined,
     showBasicSynthesisGuide: snapshot.showBasicSynthesisGuide === true,
     entities: snapshot.entities.map((it) => ({ ...it })),

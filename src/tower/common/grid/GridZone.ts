@@ -1595,35 +1595,19 @@ export class GridZone extends Container {
     if (quality === 'Silver') {
       drawRegularPolygon(node.qualityDot, 4, radius, Math.PI / 2)
     } else if (quality === 'Gold') {
-      drawRegularPolygon(node.qualityDot, 6, radius, Math.PI / 6)
+      drawRegularPolygon(node.qualityDot, 5, radius, -Math.PI / 2)
     } else {
-      drawRegularPolygon(node.qualityDot, 8, radius, Math.PI / 8)
+      drawRegularPolygon(node.qualityDot, 6, radius, Math.PI / 6)
     }
     node.qualityDot.fill({ color, alpha: 0.95 })
     if (quality === 'Silver') {
       drawRegularPolygon(node.qualityDot, 4, radius, Math.PI / 2)
     } else if (quality === 'Gold') {
-      drawRegularPolygon(node.qualityDot, 6, radius, Math.PI / 6)
+      drawRegularPolygon(node.qualityDot, 5, radius, -Math.PI / 2)
     } else {
-      drawRegularPolygon(node.qualityDot, 8, radius, Math.PI / 8)
+      drawRegularPolygon(node.qualityDot, 6, radius, Math.PI / 6)
     }
     node.qualityDot.stroke({ color: isDiamond ? 0xf4feff : 0x111827, width: 5, alpha: 0.95 })
-    if (isDiamond) {
-      drawRegularPolygon(node.qualityDot, 8, radius - 5, Math.PI / 8)
-      node.qualityDot.fill({ color: 0xffffff, alpha: 0.45 })
-      const sparkleOuter = Math.max(9, Math.round(18 * this.qualityDiamondMarkerScale))
-      const sparkleInner = Math.max(6, Math.round(12 * this.qualityDiamondMarkerScale))
-      node.qualitySparkle.moveTo(-sparkleOuter, 0)
-      node.qualitySparkle.lineTo(sparkleOuter, 0)
-      node.qualitySparkle.moveTo(0, -sparkleOuter)
-      node.qualitySparkle.lineTo(0, sparkleOuter)
-      node.qualitySparkle.moveTo(-sparkleInner, -sparkleInner)
-      node.qualitySparkle.lineTo(sparkleInner, sparkleInner)
-      node.qualitySparkle.moveTo(sparkleInner, -sparkleInner)
-      node.qualitySparkle.lineTo(-sparkleInner, sparkleInner)
-      node.qualitySparkle.stroke({ color: 0xe8ffff, width: 5, alpha: 0.75 })
-      node.qualitySparkle.visible = true
-    }
     node.qualityDot.visible = true
     this.ensureQualityDotAnimState()
   }

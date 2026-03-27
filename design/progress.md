@@ -1,5 +1,441 @@
 # 大巴扎 — 开发进度记录
 
+## 验收追加修正（2026-03-27，子弹不再阻挡物品点击）
+
+- 用户反馈：战斗中飞行子弹会偶发挡住点击，导致点不到下方物品。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 将战斗特效层 `fxLayerContainer` 设为 `eventMode = 'none'`，整体不参与命中测试。
+  - `src/tower/battle/BattleFXPool.ts`
+    - 投射物 Sprite、投射物 Dot、飘字 Text 在复用获取时统一设为 `eventMode = 'none'`，确保所有子弹/特效点击穿透。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“子弹经过时仍可稳定点击物品”。
+
+## 验收追加修正（2026-03-27，技能卡只显示当前档效果）
+
+- 用户反馈：技能购买卡不应显示整段序列（如 `10|8|6|4|2`）和“本次+xx%”，只需显示当前档信息（如“所有手里剑间隔缩短10%”）。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `formatTowerSkillSeriesDetail()` 改为仅输出当前可购买档位数值；
+    - 当达到上限或异常时，回退展示最后一档数值，不再展示序列字符串。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“技能购买卡文案显示口径”是否符合预期。
+
+## 验收追加调整（2026-03-27，技能表全量口径对齐）
+
+- 用户需求：按最新技能表核对并统一 28 条技能（名称/前置/效果）口径，确认“递减收益”适用于四职业伤害与间隔技能。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 忍者超级弹射改为 `+1`（原 `+2`）；
+    - 忍者超级重型改为“减速目标额外 +50% 伤害”（倍率 `2 -> 1.5`）；
+    - 忍者/弓手超级连发、冰法师超级多发：统一接入 `-25%` 伤害惩罚；
+    - 冰法师超级多发目标加成改为 `+1`（原 `+2`）。
+  - `src/tower/battle/BattleScene.ts`
+    - 对应技能描述同步改为表格口径（`+1`、`额外50%`、`伤害-25%` 等）。
+  - `src/tower/battle/TowerBattleSkillDefs.ts`
+    - 基础“伤害/间隔”技能补充“场上有任意该职业武器”前置校验（任意同职业 6 个图标之一即可出现）。
+- 验证：待本次构建验证。
+- 当前阶段：等待用户验收“技能表 28 条口径一致性（前置 + 描述 + 实效）”。
+
+## 验收追加调整（2026-03-27，四职业伤害/间隔技能改递减收益）
+
+- 用户需求：四职业“伤害/间隔”这类可重复购买技能改为“越选收益越低”，按表使用：
+  - 伤害：`20%|15%|10%|5%|3%`
+  - 间隔缩短：`10%|8%|6%|4%|2%`
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 战斗结算由固定线性叠加改为序列累计：
+      - 伤害技能不再 `每层+20%`，改为按 `20/15/10/5/3` 累加；
+      - 间隔技能不再 `每层-10%`，改为按 `10/8/6/4/2` 累加。
+  - `src/tower/battle/BattleScene.ts`
+    - 技能卡描述改为显示完整序列，并显示“本次”增益（如第二次会显示本次 `+15%` / `-8%`），避免始终显示首档数值。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“四职业伤害/间隔技能递减收益（展示+实效）”是否与目标一致。
+
+## 验收追加微调（2026-03-27，黄金/钻石角标多边形与钻石再放大）
+
+- 用户需求：黄金角标改为五边形，钻石角标改为六边形，且钻石角标在现有基础上再放大 `15%`。
+- 已完成：
+  - `src/tower/common/grid/GridZone.ts`
+    - 黄金角标由六边形改为五边形；
+    - 钻石角标由五边形改为六边形；
+    - 保持钻石无闪光、无内层高光，仅主形状与描边。
+  - `src/tower/battle/BattleScene.ts`
+    - 塔防模式钻石角标缩放由 `0.6 -> 0.69`（+15%）。
+- 验证：待构建验证。
+- 当前阶段：等待用户验收“黄金五边形 + 钻石六边形 + 钻石放大15%”是否符合预期。
+
+## 验收追加微调（2026-03-27，钻石角标改五边形并去闪光）
+
+- 用户需求：钻石物品右下角角标改为“五菱形（按五边形实现）”，并移除闪光效果。
+- 已完成：
+  - `src/tower/common/grid/GridZone.ts`
+    - 钻石角标绘制由 8 边形改为 5 边形；
+    - 去除钻石角标内层高光填充与十字闪光线条，仅保留主角标与描边。
+- 验证：待构建验证。
+- 当前阶段：等待用户验收“钻石角标形状与无闪光表现”是否符合预期。
+
+## 验收追加调整（2026-03-27，技能购买价格与解锁条件更新）
+
+- 用户需求：塔防“技能购买”价格改为 15 档新表，且改为“购买 10 个物品后解锁”。
+- 已完成：
+  - `data/tower_game_config.json`
+    - `towerDefenseRules.battleSkillBuyUnlockItemCount`：`5 -> 10`；
+    - `towerDefenseRules.battleSkillBuyCostByPurchaseCount` 更新为：
+      - `20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 130, 150, 170, 190, 210`。
+- 验证：配置改动，未单独执行构建。
+- 当前阶段：等待用户验收“技能购买价格与10物品解锁条件”是否符合预期。
+
+## 验收追加调整（2026-03-27，护盾自动下降频率与阈值更新）
+
+- 用户需求：护盾改为“每 `0.5` 秒降低当前值 `1/20`（向下取整）”，且“低于 `20` 不下降”。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - `tickPlayerShieldDecay()` 的结算步长由 `1000ms` 调整为 `500ms`；
+    - 每跳仍按 `Math.floor(currentShield / 20)` 扣减；
+    - 低于阈值不扣减规则保持生效（基础阈值 `20`，若有“超级守护”则按更高阈值）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“护盾下降节奏与低于20不下降”是否符合预期。
+
+## 验收追加微调（2026-03-27，钻石右下角标放大20%并保持描边口径）
+
+- 用户需求：钻石物品右下角角标放大 `20%`，且描边宽度与白银/黄金一致。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `applyZoneVisualStyle()` 中塔防模式钻石角标缩放由 `0.5 -> 0.6`（即放大 20%）；
+    - 描边宽度保持统一口径（沿用 `GridZone` 中与白银/黄金一致的 `width: 5`）。
+- 验证：本次为 UI 参数微调，未单独执行构建。
+- 当前阶段：等待用户验收“钻石右下角标大小与描边观感”是否符合预期。
+
+## 验收追加修正（2026-03-27，扩容上移幅度增加 +5px/每新增行）
+
+- 用户反馈：背包每次扩容向上移动距离不够；从 `2x1 -> 2x2` 视觉偏移不明显。要求每次增加行数时，背包与玩家血量上移距离额外 `+5px`。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增 `getTowerExpandExtraLiftPx(rows)`，按规则计算额外上移：`(rows - 1) * 5`；
+    - 背包区域 Y 计算（`getPlayerZoneY`）加入该额外上移；
+    - 玩家血条目标偏移（`getTowerPlayerHpBarTargetRowYOffset`）加入同样额外上移，保持背包与血条同步移动。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“每次扩容新增行时背包与血条上移幅度”是否达标。
+
+## 验收追加微调（2026-03-27，金币图标与文字增距+去背景）
+
+- 用户需求：金币图标与数字间距再增加约 `10px`，并移除金币角标背景。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 金币文案从 `💰{数值}` 改为 `💰 {数值}`（增加一位空格，约 `10px` 视觉间距）；
+    - 取消金币角标背景绘制，`towerGoldBadgeBg` 改为仅清空并隐藏。
+- 验证：本次为 UI 微调，未单独执行构建。
+- 当前阶段：等待用户验收“金币图标-数字间距 + 背景移除”是否符合预期。
+
+## 验收追加修正（2026-03-27，背包扩容按钮被底部遮底层压住）
+
+- 用户反馈：新增底部 150px 黑色遮底后，“背包扩容”按钮被遮住。
+- 根因定位：
+  - `背包扩容` 按钮容器 `zIndex` 为 `185`；
+  - 底部遮底层 `towerBottomFocusBg` 的 `zIndex` 为 `187`；
+  - 导致遮底层绘制在扩容按钮之上。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 将 `makeOrganizeButton()` 中塔防扩容按钮层级调整为 `zIndex = 190`，与“物品购买/技能购买”一致，确保三按钮与金币都在遮底层上方。
+- 验证：本次为层级修正，未单独执行构建。
+- 当前阶段：等待用户验收“底部遮底在最下层、三个按钮均不被遮挡”是否符合预期。
+
+## 验收追加微调（2026-03-27，当前金币图标与文字放大并上移）
+
+- 用户需求：当前金币角标中的图标与数字整体放大约 30%，并整体上移 `5px`。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 金币角标文本样式：`fontSize 24 -> 31`（约 +29%），描边 `3 -> 4`；
+    - 金币角标背景内边距同步放大：`padX 14 -> 18`、`padY 8 -> 10`；
+    - 金币角标 Y 位置上移：锚点偏移 `-13 -> -18`（上移 `5px`）。
+- 验证：本次为 UI 参数微调，未单独执行构建。
+- 当前阶段：等待用户验收“金币图标与文字大小、位置”是否符合预期。
+
+## 验收追加微调（2026-03-27，底部150px黑色遮底突出购买区）
+
+- 用户需求：在整个游戏底部 `150px` 范围增加黑色遮底，用于突出“物品购买 / 背包扩容 / 技能购买”三个按钮及当前金币。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增 `towerBottomFocusBg`（`Graphics`）作为底部聚焦遮底层；
+    - 塔防模式下绘制 `rect(0, CANVAS_H - 150, CANVAS_W, 150)`，黑色半透明填充（`alpha: 0.62`）；
+    - 图层位于按钮与金币徽章下方（`zIndex: 187`），不会遮挡按钮交互。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“底部黑色遮底视觉与购买区突出效果”是否符合预期。
+
+## 验收追加微调（2026-03-27，当前金币徽章位移与图标显示）
+
+- 用户需求：当前金币显示整体“左移 15px、上移 5px”，并显示金币图标。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `drawTowerGoldBadgeAtExpandButton()` 中金币文案由 `金币：数值` 调整为 `💰数值`；
+    - 金币徽章锚点偏移调整为：在原位置基础上 `x-15`、`y-5`。
+- 验证：本次为 UI 微调，未单独执行构建。
+- 当前阶段：等待用户验收“当前金币位置与图标显示”是否符合预期。
+
+## 验收追加调整（2026-03-27，塔防上阵区扩容价格按新表更新）
+
+- 用户需求：更新上阵区扩容价格为：`初始1x2=2`，后续 `2x2=5 -> 2x3=10 -> 3x3=15 -> 3x4=20 -> 3x5=30 -> 3x6=50`。
+- 已完成：
+  - `data/tower_game_config.json`
+    - `towerDefenseRules.towerBattleZoneExpandStages` 末两档价格更新为：
+      - `3x5: 25 -> 30`
+      - `3x6: 30 -> 50`
+    - 其余档位保持与目标表一致（`2/5/10/15/20`）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“上阵区扩容价格曲线”是否与目标表一致。
+
+## 验收追加调整（2026-03-27，塔防技能购买价格按新表再次更新）
+
+- 用户需求：更新塔防“技能购买价格（第1~15次）”为：
+  - `10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200`
+- 已完成：
+  - `data/tower_game_config.json`
+    - `towerDefenseRules.battleSkillBuyCostByPurchaseCount` 已替换为上述 15 档。
+- 验证：本次为配置数值更新，未单独执行构建。
+- 当前阶段：等待用户验收“技能购买第1~15次价格”是否与目标表一致。
+
+## 验收追加修正（2026-03-27，塔防底部三按钮金币文案与尺寸/位置调整）
+
+- 用户需求：
+  - 背包扩容/物品购买/技能购买按钮中的金币显示改为“仅显示消耗金币”，不再显示 `x/x`；
+  - 当前金币数量改到“背包扩容”按钮左上角，样式完全参考“剩余敌人”；
+  - 三个底部按钮高度减少 `30px`，并整体下移 `15px`。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `formatTowerZoneExpandButtonText` / `formatTowerBattleBuyButtonText` / `formatTowerBattleSkillBuyButtonText` 的可购买文案统一改为仅显示 `💰消耗值`；
+    - 新增金币角标（`towerGoldBadgeBg/towerGoldBadgeText`），字体、描边、背景透明度与“剩余敌人”一致，并实时跟随背包扩容按钮左上角；
+    - 底部按钮高度常量 `TOWER_BOTTOM_ACTION_BTN_H` 改为在原基础上 `-30`；
+    - `getTowerBattleBuyButtonY()` 统一下移 `+15`（含配置覆盖与默认值路径）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“金币展示样式 + 三按钮尺寸/位置”是否符合预期。
+
+## 验收追加修正（2026-03-27，上阵区扩容动画过冲修复）
+
+- 用户反馈：扩容动画出现“先放大很多列，再弹回目标列数”的过冲。
+- 根因定位：扩容后为支持“立即购买”提前应用了新行列，但复用了旧动画缩放公式（`1 -> to/from`），导致在“已是目标尺寸”的前提下又额外放大一次。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `startPlayerZoneResizeTransition()` 新增 `countsAlreadyApplied` 模式；
+    - 当行列已提前应用时，背景缩放改为 `from/to -> 1`（由旧尺寸平滑过渡到新尺寸），不再 `1 -> to/from` 过冲；
+    - 扩容点击路径改为使用该模式，保持“立即可购买”与“视觉平滑扩容”同时成立。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“上阵区扩容动画不再过冲，按目标列数平滑到位”。
+
+## 验收追加修正（2026-03-27，上阵区扩容动画恢复）
+
+- 用户反馈：背包扩容后，上阵区不再按原逻辑“逐步变大并移动到目标位置”。
+- 根因定位：为修复“扩容后立即购买误判”而提前写入 `playerZone` 行列，导致帧循环里 `shouldAnimatePlayerResize` 判定为无变化，原 `startPlayerZoneResizeTransition()` 未再触发。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 扩容点击成功时，先记录旧行列并在变更时主动触发 `startPlayerZoneResizeTransition(expandedCols, expandedRows)`；
+    - 帧循环布局分支中增加 `playerZoneResizeTransition` 保护：存在过渡时不再用 `applyLayout(activeCols)` 立即改写 Y，而是保持过渡驱动。
+- 结果：上阵区扩容动画（区域变大 + 位置过渡）已恢复，同时保留“扩容后立即可购买”的即时容量生效。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“上阵区扩容动画是否恢复到预期”。
+
+## 验收追加调整（2026-03-27，塔防24件物品间隔与攻击距离按新表更新）
+
+- 用户需求：按新表统一更新塔防 24 件物品的“间隔五档 + 基础攻击距离”。
+- 已完成：
+  - `data/tower_items.json`
+    - 忍者系（`toweritem1~6`）：
+      - `cooldown/cooldown_tiers` 统一为 `2500` 与 `2500|2100|1700|1400|1200`；
+      - 基础行保持 `攻击距离:40，弹射次数:1`。
+    - 弓手系（`toweritem7~12`）：
+      - `cooldown/cooldown_tiers` 统一为 `1700` 与 `1700|1400|1200|1000|800`；
+      - 基础行统一为 `攻击距离:50`。
+    - 冰法师系（`toweritem13~18`）：
+      - `cooldown/cooldown_tiers` 统一为 `1900` 与 `1900|1600|1300|1100|900`；
+      - 基础行统一为 `攻击距离:40，减速:2秒`。
+    - 剑士系（`toweritem19~24`）：
+      - `cooldown/cooldown_tiers` 统一为 `2200` 与 `2200|1800|1500|1300|1100`；
+      - 基础行保持 `攻击距离:16，护盾+1`。
+- 验证：已逐项校验 24 条 `cooldown/cooldown_tiers` 与基础攻击距离字段匹配新表；未单独执行构建。
+- 当前阶段：等待用户验收“24件物品间隔与攻击距离”是否与目标表一致。
+
+## 验收追加调整（2026-03-27，塔防怪物移动速度按新表更新）
+
+- 用户需求：更新塔防 15 个怪物/首领的移动速度为新表口径。
+- 已完成：
+  - `data/tower_game_config.json`
+    - `towerDefenseRules.enemyDefs[*].moveSpeed` 已同步：
+      - 骷髅系：`enemy1=4, enemy2=4, enemy3=4, enemy7=8, boss2=4`；
+      - 灰色系：`enemy5=4, enemy6=4, enemy8=4, enemy4=8, boss3=4`；
+      - 红色系：`enemy9=4, enemy10=4, enemy11=4, enemy12=8, boss=4`。
+- 验证：本次为配置数值更新，未单独执行构建。
+- 当前阶段：等待用户验收“怪物移动速度”是否与目标表一致。
+
+## 验收追加修正（2026-03-27，扩容后立即购买判满问题）
+
+- 用户反馈：点击“背包扩容”后立刻点“物品购买”，会短暂提示“上阵区已满/空间不足”，期望扩容完成后可立即购买。
+- 根因定位：扩容点击时仅更新扩容阶段状态，网格可放置范围依赖的 `playerZone.activeColCount/activeRowCount` 与 `editableSystem` 行数在下一帧才刷新，导致同帧快速购买仍按旧格子判定。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 在“背包扩容”点击成功后，立即同步应用新容量：
+      - `editableSystem.setActiveRows(expandedRows)`
+      - `playerZone.setActiveColCount(expandedCols)`
+      - `playerZone.setActiveRowCount(expandedRows)`
+      - 立即刷新 `applyZoneVisualStyle(playerZone, 'player')`
+    - 扩容成功当帧即可按新容量进行“物品购买”判定。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“扩容后立即购买不再误判上阵区不足”。
+
+## 验收追加修正（2026-03-27，背包扩容时玩家血条跟随缓动）
+
+- 用户反馈：背包扩容导致上阵区行数变化时，玩家血条位置会立即跳到新位置，期望与背包区域同速度平滑移动。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增玩家血条独立偏移过渡状态（`towerPlayerHpBarRowYOffset` + transition），扩容时按与背包一致的 `playerZoneResizeAnimMs` 进行缓动；
+    - `drawHeroBars()` 的玩家血条 Y 偏移改为读取该过渡值，不再直接按“当前扩容行数”瞬移计算；
+    - 扩容点击成功时保留“立即扩容可购买”逻辑（同步更新 `editableSystem/playerZone` 容量），同时单独触发血条位移动画，避免“位置不变/无过渡”。
+- 结果：当背包扩容触发行数变化时，玩家血条会按上阵区同一缓动过程逐步移动到目标位置。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“背包扩容时玩家血条移动是否已与背包变化速度一致”。
+
+## 验收追加调整（2026-03-27，塔防24件物品描述与逻辑按新表同步）
+
+- 用户需求：按最新表同步塔防 24 件物品的表现描述与战斗逻辑，并确认手里剑默认弹射衰减按 `-40%` 执行。
+- 已完成：
+  - `data/tower_items.json`
+    - 品质调整：
+      - `toweritem8` 改为黄金（`Gold/Diamond`）；
+      - `toweritem10` 改为白银（`Silver/Gold/Diamond`）；
+      - `toweritem14` 改为黄金（`Gold/Diamond`）；
+      - `toweritem16` 改为白银（`Silver/Gold/Diamond`）。
+    - 数值/文案调整：
+      - `toweritem1` 默认弹射衰减改为 `-40%`；
+      - `toweritem3/toweritem9` 连发惩罚改为 `-25%`；
+      - `toweritem6` 分裂额外目标改为 `+2|+2|+2|+2|+4`；
+      - `toweritem7` 增加“优先锁定首领”描述；
+      - `toweritem10` 中毒时长改为 `2|2|3|4|5`；
+      - `toweritem15` 增加 `-25%` 伤害惩罚并统一“减速:2秒”；
+      - `toweritem17/toweritem18` 第二词条统一“减速:2秒”；
+      - `toweritem18` 改为“受到伤害时降低25%，所有冰锥充能1|1|1|1|1秒”。
+    - 最大数量调整：
+      - `toweritem4` 改为 `2`；
+      - `toweritem10` 改为 `2`；
+      - `toweritem16` 改为 `2`。
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 手里剑弹射衰减默认系数由 `0.7` 改为 `0.6`（即弹射后伤害 `-40%`）；
+    - 弓手目标选择接入首领优先（与冰法师一致走优先首领路径）；
+    - `toweritem15` 接入连发降伤逻辑（`-25%` 可按件叠加）；
+    - `toweritem18` 接入受击减伤逻辑（每件按词条百分比叠加）；
+    - 中毒结算改为每 `0.5s` 触发，比例改为普通 `10%` / 首领 `2%`（按当前生命值，超级剧毒时按最大生命值）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“24件物品文案展示 + 关键战斗逻辑（弹射衰减/首领优先/连发降伤/反击减伤/中毒节奏）”是否与目标表一致。
+
+## 验收追加修正（2026-03-27，塔防初始1行位置与扩容按钮金币居中）
+
+- 用户反馈：
+  - 初始只有 1 行上阵区时，位置应更靠下；
+  - “背包扩容”按钮的金币行需要居中显示。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `getPlayerZoneY()` 在塔防模式下改为按当前扩容行数（`towerBattleZoneExpandStep`）计算纵向偏移，不再复用按天数的行数口径；
+    - `背包扩容` 按钮文案 `TextStyle` 增加 `align: 'center'`，多行（标题+金币）居中。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“初始1行位置下移 + 扩容按钮金币居中”是否符合预期。
+
+## 验收追加修正（2026-03-27，尺寸口径兼容兜底）
+
+- 用户反馈：塔防入场存在 `Unknown item size: 1x1` 崩溃风险。
+- 已完成：
+  - `src/tower/common/items/ItemDef.ts`
+    - `normalizeSize()` 扩展兼容 `1x1/2x1/3x1`、`1*1/2*1/3*1`，并兼容中英文尺寸关键词，避免规范尺寸字符串触发异常。
+  - `src/tower/battle/BattleScene.ts`
+    - `inferTowerZoneExpandStepFromSnapshot()` 改为优先使用 `normalizeSize()` 解析宽度并加 `try/catch` 回退，确保历史/异常口径都不会中断流程。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“进入塔防模式是否稳定无崩溃”。
+
+## 验收追加修正（2026-03-27，塔防扩容快照初始化崩溃修复）
+
+- 用户反馈：进入塔防时首屏报错 `Unknown item size: 1x1`，调用栈指向 `inferTowerZoneExpandStepFromSnapshot`。
+- 根因定位：该函数误用 `normalizeSize()` 解析战斗快照里的 `size`（快照中本身已是 `1x1/2x1/3x1` 规范值），而 `normalizeSize()` 仅支持 `Small/Medium/Large` 原始文案，导致抛错。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `inferTowerZoneExpandStepFromSnapshot()` 改为直接按快照规范值计算宽度（`1x1/2x1/3x1`），不再调用 `normalizeSize()`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“进入塔防不再首屏报错 + 扩容功能正常”。
+
+## 验收执行记录（2026-03-27，塔防上阵区改为“背包扩容”主动购买）
+
+- 用户需求：塔防模式中“上阵区扩大”不再按天数自动，改为玩家主动购买；入口放在原“整理”按钮位置；按钮表现与“物品购买”一致（可购买时高亮/描边提示）；默认解锁条件为“已购买2个物品”；按钮文案为“背包扩容”；按给定表控制行列与价格。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增塔防上阵区扩容阶段配置读取与状态（`towerBattleZoneExpandStep`），并从快照恢复；
+    - 上阵区行列改为按“扩容阶段”驱动，不再随天数自动扩张；
+    - 将塔防“整理”按钮改为“背包扩容”按钮，位置保持在底部左侧原整理位；
+    - 扩容按钮增加与“物品购买”一致的可负担视觉和脉冲提示；
+    - 扩容按钮解锁条件改为“已购买物品数量达阈值”（默认2），未解锁显示 `解锁:x/y`；
+    - 购买成功后扣金币、提升扩容阶段、即时持久化快照。
+  - `src/tower/battle/BattleSnapshotStore.ts`
+    - 新增并持久化 `towerBattleZoneExpandStep` 字段。
+  - `src/tower/common/items/ItemDef.ts`
+    - `towerDefenseRules` 类型新增 `towerBattleZoneExpandUnlockItemCount` 与 `towerBattleZoneExpandStages`。
+  - `data/tower_game_config.json`
+    - 新增扩容配置：
+      - `towerBattleZoneExpandUnlockItemCount: 2`
+      - `towerBattleZoneExpandStages`：`1x2(2) -> 2x2(5) -> 2x3(10) -> 3x3(15) -> 3x4(20) -> 3x5(25) -> 3x6(30)`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“塔防扩容改为主动购买”交互与数值是否符合预期。
+
+## 验收追加调整（2026-03-27，塔防物品购买价格100档按新表更新）
+
+- 用户需求：更新塔防模式“物品购买价格（第1~100次）”为新表（含第12~13次保持 `5`、第14次起进入 `10` 档，末段第98~100次为 `70`）。
+- 已完成：
+  - `data/tower_game_config.json`
+    - `towerDefenseRules.battleBuyCostByPurchaseCount` 已按你给的 100 档完整替换；
+    - 关键段校验：
+      - 前段：`2,2,3,3,4,4,5,5,5,5,5,5,5,10...`
+      - 中段：每 7 次提升 5（`10 -> 15 -> 20 -> ... -> 65`）
+      - 末段：`65,65,65,65,65,65,65,70,70,70`。
+- 验证：已脚本校验数组长度为 `100`，首尾值与关键分段符合目标表。
+- 当前阶段：等待用户验收“塔防物品购买第1~100次价格”是否与目标表一致。
+
+## 验收追加调整（2026-03-27，塔防技能购买价格按新表更新）
+
+- 用户需求：更新塔防模式“技能购买价格（第 1~15 次）”为新表：
+  - `5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140`
+- 已完成：
+  - `data/tower_game_config.json`
+    - `towerDefenseRules.battleSkillBuyCostByPurchaseCount` 已替换为上述 15 档价格。
+- 验证：本次为配置数值更新，未单独执行构建。
+- 当前阶段：等待用户验收“技能购买第 1~15 次价格”是否与目标表一致。
+
+## 验收追加调整（2026-03-27，塔防品质桶概率按新表更新）
+
+- 用户需求：更新塔防模式“最低等级 × Lv1~Lv5”品质桶概率为新表：
+  - 青铜：`1, 0.5, 0.2, 0, 0`
+  - 白银：`0, 0.5, 0.3, 0.2, 0`
+  - 黄金：`0, 0, 0.5, 0.3, 0.5`
+  - 钻石：`0, 0, 0, 0.5, 0.5`
+- 已完成：
+  - `data/tower_game_config.json`
+    - 同步更新 `quickBuyQualityWeightsByLevel`（普通权重）Lv1~Lv5；
+    - 同步更新 `qualityPseudoRandomWeightsByLevel`（伪随机袋权重）Lv1~Lv5；
+    - `Lv6~Lv8` 保持现有配置不变（本次需求仅针对塔防 1~5 级口径）。
+- 验证：配置改动，未单独执行构建。
+- 当前阶段：等待用户验收“塔防 Lv1~Lv5 品质桶概率”是否与目标表一致。
+
+## 验收执行记录（2026-03-27，拖动系统窗体导致卡死修复并发布）
+
+- 用户反馈：移动端偶发“拖动系统窗体/手势打断”后游戏卡死。
+- 根因判断：拖拽进行中若发生 `pointercancel`、`blur`、`pagehide`、`visibility hidden`，可能丢失 `pointerup`，导致 `DragController` 保留激活指针并持续拦截后续输入，表现为“卡死”。
+- 已完成：
+  - `src/tower/common/grid/DragController.ts`
+    - 增加 `pointercancel` 监听；
+    - 增加窗口级兜底监听：`blur` / `pagehide` / `visibilitychange(hidden)`；
+    - 新增 `cancelActiveGesture()`：在系统打断时统一清理高亮并回弹/重置拖拽状态，避免输入锁死；
+    - `destroy()` 同步移除新增监听。
+  - `src/main.ts`
+    - iOS WebKit 保护增强：在 `root` 与 `document` 层补充 `touchstart/touchmove/touchend` 的 `preventDefault`（仅 root 内生效），减少系统手势接管导致的中断。
+- 验证：`npm run build` 通过。
+- 发布：`vercel --prod --yes` 成功。
+  - Production：`https://bigbazzar-na60zmxm7-zhengtengfeis-projects.vercel.app`
+  - Alias：`https://bigbazzar.vercel.app`
+- 当前阶段：等待用户同机型复测“拖拽中触发系统窗体/手势后是否还会卡死”。
+
 ## 验收执行记录（2026-03-27，Git同步 + TestFlight上传）
 
 - 用户需求：同步 Git，打 TF 包上传。

@@ -126,6 +126,20 @@ export class DragController {
     revert?: Array<{ instanceId: string; fromCol: number; fromRow: number; toCol: number; toRow: number }>
   } | null = null
 
+  private readonly onWindowBlur = () => {
+    this.cancelActiveGesture('window_blur')
+  }
+
+  private readonly onPageHide = () => {
+    this.cancelActiveGesture('page_hide')
+  }
+
+  private readonly onVisibilityChange = () => {
+    if (document.visibilityState === 'hidden') {
+      this.cancelActiveGesture('visibility_hidden')
+    }
+  }
+
   constructor(
     private stage:  Container,
     private canvas: HTMLCanvasElement,
@@ -138,7 +152,12 @@ export class DragController {
     stage.on('pointermove',      (e: FederatedPointerEvent) => this.onMove(e))
     stage.on('pointerup',        (e: FederatedPointerEvent) => this.onUp(e))
     stage.on('pointerupoutside', (e: FederatedPointerEvent) => this.onUp(e))
+    stage.on('pointercancel',    (e: FederatedPointerEvent) => this.onCancel(e))
     stage.on('pointerdowncapture', (e: FederatedPointerEvent) => this.onDownCapture(e))
+
+    window.addEventListener('blur', this.onWindowBlur)
+    window.addEventListener('pagehide', this.onPageHide)
+    document.addEventListener('visibilitychange', this.onVisibilityChange)
   }
 
   private onDownCapture(e: FederatedPointerEvent): void {
@@ -271,6 +290,29 @@ export class DragController {
     }
 
     this.clearAllHighlight()
+    this.reset()
+  }
+
+  private onCancel(e: FederatedPointerEvent): void {
+    if (!this.enabled) return
+    if (!this.activeId) return
+    if (this.activePointerId != null && e.pointerId !== this.activePointerId) return
+    this.cancelActiveGesture('pointer_cancel')
+  }
+
+  private cancelActiveGesture(reason: string): void {
+    if (!this.activeId) return
+    this.dragDebug('force_cancel', {
+      reason,
+      activeId: this.activeId,
+      isDragging: this.isDragging,
+      pointerId: this.activePointerId,
+    })
+    this.clearAllHighlight()
+    if (this.isDragging) {
+      this.doSnapBack()
+      return
+    }
     this.reset()
   }
 
@@ -1086,7 +1128,11 @@ export class DragController {
     this.stage.removeAllListeners('pointermove')
     this.stage.removeAllListeners('pointerup')
     this.stage.removeAllListeners('pointerupoutside')
+    this.stage.removeAllListeners('pointercancel')
     this.stage.removeAllListeners('pointerdowncapture')
+    window.removeEventListener('blur', this.onWindowBlur)
+    window.removeEventListener('pagehide', this.onPageHide)
+    document.removeEventListener('visibilitychange', this.onVisibilityChange)
     if (this.dragLayer.parent) this.dragLayer.parent.removeChild(this.dragLayer)
   }
 

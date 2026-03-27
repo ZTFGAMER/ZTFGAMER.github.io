@@ -432,6 +432,7 @@ export class BattleFXPool {
 
   private acquireProjectileSprite(from: { x: number; y: number }): Sprite {
     const sprite = this.projectileSpritePool.pop() ?? new Sprite(Texture.WHITE)
+    sprite.eventMode = 'none'
     sprite.anchor.set(0.5)
     sprite.x = from.x
     sprite.y = from.y
@@ -458,6 +459,7 @@ export class BattleFXPool {
 
   private acquireProjectileDot(from: { x: number; y: number }, color: number, radius: number): Graphics {
     const dot = this.projectileDotPool.pop() ?? new Graphics()
+    dot.eventMode = 'none'
     dot.clear()
     dot.circle(0, 0, Math.max(3, radius))
     dot.fill({ color, alpha: 0.95 })
@@ -484,6 +486,7 @@ export class BattleFXPool {
 
   private acquireFloatingNumber(text: string, color: number, fontSize: number): Text {
     const t = this.floatingNumberPool.pop() ?? new Text({ text: '' })
+    t.eventMode = 'none'
     t.text = text
     t.style.fill = color
     t.style.fontSize = fontSize

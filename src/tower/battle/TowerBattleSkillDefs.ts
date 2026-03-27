@@ -89,7 +89,30 @@ export function canPickTowerBattleSkill(def: TowerBattleSkillDef, pickedCounts: 
   const cur = Math.max(0, Math.round(pickedCounts.get(def.id) ?? 0))
   if (cur >= def.maxPick) return false
   if (def.requiresItemIcon && !itemIconsOnBoard.has(def.requiresItemIcon)) return false
+  if (isBaseDamageOrCdSkill(def.id) && !hasAnyArchetypeIconOnBoard(def.archetype, itemIconsOnBoard)) return false
   return true
+}
+
+function isBaseDamageOrCdSkill(id: string): boolean {
+  return id === 'td_skill_ninja_damage'
+    || id === 'td_skill_ninja_cd'
+    || id === 'td_skill_archer_damage'
+    || id === 'td_skill_archer_cd'
+    || id === 'td_skill_mage_damage'
+    || id === 'td_skill_mage_cd'
+    || id === 'td_skill_warrior_damage'
+    || id === 'td_skill_warrior_cd'
+}
+
+function hasAnyArchetypeIconOnBoard(archetype: TowerSkillArchetype, itemIconsOnBoard: Set<string>): boolean {
+  const iconList = archetype === '忍者'
+    ? ['toweritem1', 'toweritem2', 'toweritem3', 'toweritem4', 'toweritem5', 'toweritem6']
+    : archetype === '弓手'
+      ? ['toweritem7', 'toweritem8', 'toweritem9', 'toweritem10', 'toweritem11', 'toweritem12']
+      : archetype === '冰法师'
+        ? ['toweritem13', 'toweritem14', 'toweritem15', 'toweritem16', 'toweritem17', 'toweritem18']
+        : ['toweritem19', 'toweritem20', 'toweritem21', 'toweritem22', 'toweritem23', 'toweritem24']
+  return iconList.some((icon) => itemIconsOnBoard.has(icon))
 }
 
 export function pickTowerBattleSkillChoices(

@@ -579,6 +579,13 @@ function installMobileLongPressGuards(root: HTMLElement, canvas: HTMLCanvasEleme
   canvas.addEventListener('contextmenu', preventDefault, nonPassive)
   canvas.addEventListener('selectstart', preventDefault, nonPassive)
 
+  root.addEventListener('touchstart', preventDefault, nonPassive)
+  root.addEventListener('touchmove', preventDefault, nonPassive)
+  root.addEventListener('touchend', preventDefault, nonPassive)
+
+  document.addEventListener('touchmove', preventDefaultIfInsideRoot, nonPassive)
+  document.addEventListener('touchend', preventDefaultIfInsideRoot, nonPassive)
+
   document.addEventListener('contextmenu', preventDefaultIfInsideRoot, nonPassive)
   document.addEventListener('selectstart', preventDefaultIfInsideRoot, nonPassive)
   document.addEventListener('gesturestart', preventDefaultIfInsideRoot, nonPassive)

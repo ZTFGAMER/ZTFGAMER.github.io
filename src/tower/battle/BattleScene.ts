@@ -35,7 +35,7 @@ import { BattleTransition } from './BattleTransition'
 import { BattleSettlement } from './BattleSettlement'
 import { emitDiagEvent } from '@/perf/DiagRuntime'
 import { CANVAS_W, CANVAS_H, BTN_RADIUS } from '@/tower/config/layoutConstants'
-import { getAdjustedBattleZoneY, getAdjustedBattleZoneYInBattleOffset, getTowerBattleColsByDay, getTowerBattleRowsByDay } from '@/tower/shop/ShopMathHelpers'
+import { getAdjustedBattleZoneY, getAdjustedBattleZoneYInBattleOffset } from '@/tower/shop/ShopMathHelpers'
 import { getTopLeftControlYOffset } from '@/tower/shop/ui/ShopSafeArea'
 import { clearLoadedAssetUrls, getLoadedAssetUrls, hasAssetUrlLoaded, markAssetUrlUnloaded } from '@/tower/core/AssetRuntimeTracker'
 import { clearMobileImageDownscaleRuntimeCache } from '@/tower/core/MobileImageDownscaleCache'
@@ -57,6 +57,22 @@ import {
 const ENEMY_HERO_VISUAL_IDS = ['hero1', 'hero2', 'hero3', 'hero4', 'hero5', 'hero6', 'hero7', 'hero8', 'hero9', 'hero10'] as const
 const HERO_VISUAL_IDS = [...ENEMY_HERO_VISUAL_IDS, 'warrior', 'archer', 'assassin'] as const
 type HeroVisualId = typeof HERO_VISUAL_IDS[number]
+
+type TowerZoneExpandStage = {
+  rows: number
+  cols: number
+  price: number
+}
+
+const DEFAULT_TOWER_ZONE_EXPAND_STAGES: TowerZoneExpandStage[] = [
+  { rows: 1, cols: 2, price: 2 },
+  { rows: 2, cols: 2, price: 5 },
+  { rows: 2, cols: 3, price: 10 },
+  { rows: 3, cols: 3, price: 15 },
+  { rows: 3, cols: 4, price: 20 },
+  { rows: 3, cols: 5, price: 25 },
+  { rows: 3, cols: 6, price: 30 },
+]
 
 const HERO_VISUAL_ALIAS: Record<string, HeroVisualId> = {
   swordsman: 'warrior',
@@ -406,6 +422,9 @@ let fatigueToastUntilMs = 0
 let towerRemainBarG: Graphics | null = null
 let towerRemainBarTextBg: Graphics | null = null
 let towerRemainBarText: Text | null = null
+let towerBottomFocusBg: Graphics | null = null
+let towerGoldBadgeBg: Graphics | null = null
+let towerGoldBadgeText: Text | null = null
 const portraitFX = new BattlePortraitFX()
 let enemyPresentationVisible = true
 let battleSpeed = 1
@@ -427,7 +446,7 @@ const TOP_ACTION_BTN_W = BTN_RADIUS * 2
 const TOP_ACTION_BTN_HALF_H = TOP_ACTION_BTN_H / 2
 const TOP_ACTION_BTN_SAFE_PAD = 8
 const TOWER_BOTTOM_ACTION_BTN_W = Math.max(1, Math.round(BTN_RADIUS * 4 * 0.8))
-const TOWER_BOTTOM_ACTION_BTN_H = BTN_RADIUS * 2
+const TOWER_BOTTOM_ACTION_BTN_H = Math.max(24, BTN_RADIUS * 2 - 30)
 const TOWER_BOTTOM_ACTION_BTN_GAP = 24
 const fxPool = new BattleFXPool()
 
@@ -494,6 +513,7 @@ let towerWaveTriggerConsumed = false
 let towerForceAutoStartOnEnter = false
 let towerBattleBuyCount = 0
 let towerBattleSkillBuyCount = 0
+let towerBattleZoneExpandStep = 0
 const towerBattleSkillPickCounts = new Map<string, number>()
 let towerHasPlayerItemFiredOnce = false
 let towerPreFirstAttackSpeedBoostActive = false
@@ -503,6 +523,12 @@ let pendingBattleBuyOffer: BattleBuyOffer | null = null
 let buyBtnLastCanAfford: boolean | null = null
 let buyBtnAffordPulseStartAtMs: number | null = null
 let buyBtnAffordVisualState: boolean | null = null
+let towerZoneExpandBtnBg: Graphics | null = null
+let towerZoneExpandBtnPulseFrame: Graphics | null = null
+let towerZoneExpandBtnText: Text | null = null
+let towerZoneExpandBtnLastCanAfford: boolean | null = null
+let towerZoneExpandBtnAffordPulseStartAtMs: number | null = null
+let towerZoneExpandBtnAffordVisualState: boolean | null = null
 let skillBuyBtn: Container | null = null
 let skillBuyBtnBg: Graphics | null = null
 let skillBuyBtnText: Text | null = null
@@ -806,12 +832,22 @@ type PlayerZoneResizeTransition = {
   toX: number
   fromY: number
   toY: number
-  targetBgScaleX: number
-  targetBgScaleY: number
+  bgScaleFromX: number
+  bgScaleToX: number
+  bgScaleFromY: number
+  bgScaleToY: number
   durationMs: number
   elapsedMs: number
 }
 let playerZoneResizeTransition: PlayerZoneResizeTransition | null = null
+type TowerPlayerHpBarYOffsetTransition = {
+  from: number
+  to: number
+  durationMs: number
+  elapsedMs: number
+}
+let towerPlayerHpBarRowYOffset = 0
+let towerPlayerHpBarRowYOffsetTransition: TowerPlayerHpBarYOffsetTransition | null = null
 
 function updateFpsHud(dt: number): void {
   if (!fpsHudText) return
@@ -1639,10 +1675,95 @@ function getDefaultItemInfoMode(): ItemInfoMode {
   return shouldShowSimpleDescriptions() ? 'simple' : 'detailed'
 }
 
+function getTowerZoneExpandStages(): TowerZoneExpandStage[] {
+  const raw = getGameCfg().towerDefenseRules?.towerBattleZoneExpandStages
+  const list = Array.isArray(raw) ? raw : []
+  const normalized = list
+    .map((one) => {
+      const rows = Math.max(1, Math.min(3, Math.round(Number(one?.rows) || 0)))
+      const cols = Math.max(1, Math.min(6, Math.round(Number(one?.cols) || 0)))
+      const price = Math.max(0, Math.round(Number(one?.price) || 0))
+      if (!Number.isFinite(rows) || !Number.isFinite(cols)) return null
+      return { rows, cols, price }
+    })
+    .filter((one): one is TowerZoneExpandStage => !!one)
+  if (normalized.length <= 0) return DEFAULT_TOWER_ZONE_EXPAND_STAGES
+  return normalized
+}
+
+function getTowerZoneExpandCurrentStep(): number {
+  const maxStep = Math.max(0, getTowerZoneExpandStages().length - 1)
+  return Math.max(0, Math.min(maxStep, Math.round(Number(towerBattleZoneExpandStep) || 0)))
+}
+
+function getTowerZoneExpandCurrentStage(): TowerZoneExpandStage {
+  const stages = getTowerZoneExpandStages()
+  const step = getTowerZoneExpandCurrentStep()
+  return stages[step] ?? stages[0] ?? DEFAULT_TOWER_ZONE_EXPAND_STAGES[0]
+}
+
+function getTowerZoneExpandNextStage(): TowerZoneExpandStage | null {
+  const stages = getTowerZoneExpandStages()
+  const next = getTowerZoneExpandCurrentStep() + 1
+  return next < stages.length ? (stages[next] ?? null) : null
+}
+
+function inferTowerZoneExpandStepFromSnapshot(snapshot: ReturnType<typeof getBattleSnapshot> | null): number {
+  const stages = getTowerZoneExpandStages()
+  const explicit = Number(snapshot?.towerBattleZoneExpandStep)
+  if (Number.isFinite(explicit)) {
+    return Math.max(0, Math.min(stages.length - 1, Math.round(explicit)))
+  }
+  let requiredCols = 1
+  let requiredRows = 1
+  const entities = snapshot?.entities ?? []
+  for (const it of entities) {
+    const sizeRaw = String((it as { size?: string }).size ?? '1x1')
+    let width = 1
+    try {
+      const normalized = normalizeSize(sizeRaw)
+      width = normalized === '3x1' ? 3 : (normalized === '2x1' ? 2 : 1)
+    } catch {
+      width = sizeRaw === '3x1' ? 3 : (sizeRaw === '2x1' ? 2 : 1)
+    }
+    const colEnd = Math.max(1, Math.round(Number(it.col) || 0) + width)
+    const rowEnd = Math.max(1, Math.round(Number(it.row) || 0) + 1)
+    requiredCols = Math.max(requiredCols, colEnd)
+    requiredRows = Math.max(requiredRows, rowEnd)
+  }
+  for (let i = 0; i < stages.length; i++) {
+    const one = stages[i]
+    if (!one) continue
+    if (one.cols >= requiredCols && one.rows >= requiredRows) return i
+  }
+  return Math.max(0, stages.length - 1)
+}
+
+function getTowerBattleColsForCurrentExpandStep(): number {
+  return getTowerZoneExpandCurrentStage().cols
+}
+
+function getTowerBattleRowsForCurrentExpandStep(): number {
+  return getTowerZoneExpandCurrentStage().rows
+}
+
+function getTowerZoneExpandBuyUnlockItemCount(): number {
+  const raw = Number(getGameCfg().towerDefenseRules?.towerBattleZoneExpandUnlockItemCount)
+  if (Number.isFinite(raw) && raw > 0) return Math.max(1, Math.round(raw))
+  return 2
+}
+
+function getTowerZoneExpandBuyCost(): number {
+  const next = getTowerZoneExpandNextStage()
+  if (!next) return 0
+  const current = getTowerZoneExpandCurrentStage()
+  return Math.max(0, Math.round(current.price || 0))
+}
+
 
 
 function getDayActiveCols(day: number): number {
-  if (getGameCfg().towerDefenseRules?.enabled === true) return getTowerBattleColsByDay(day)
+  if (getGameCfg().towerDefenseRules?.enabled === true) return getTowerBattleColsForCurrentExpandStep()
   const slots = getGameCfg().dailyBattleSlots
   if (day <= 2) return slots[0] ?? 4
   if (day <= 4) return slots[1] ?? 5
@@ -1655,7 +1776,7 @@ function getTowerPlayerZoneResizeAnimMs(): number {
   return 1000
 }
 
-function startPlayerZoneResizeTransition(toCols: number, toRows: number): void {
+function startPlayerZoneResizeTransition(toCols: number, toRows: number, options?: { countsAlreadyApplied?: boolean }): void {
   if (!playerZone) return
   const fromCols = Math.max(1, playerZone.activeColCount)
   const fromRows = Math.max(1, playerZone.activeRowCount)
@@ -1672,6 +1793,12 @@ function startPlayerZoneResizeTransition(toCols: number, toRows: number): void {
     playerZone.setActiveRowCount(toRows)
     return
   }
+  const countsAlreadyApplied = options?.countsAlreadyApplied === true
+  const bgScaleFromX = countsAlreadyApplied ? (fromCols / Math.max(1, toCols)) : 1
+  const bgScaleToX = countsAlreadyApplied ? 1 : (toCols / Math.max(1, fromCols))
+  const bgScaleFromY = countsAlreadyApplied ? (fromRows / Math.max(1, toRows)) : 1
+  const bgScaleToY = countsAlreadyApplied ? 1 : (toRows / Math.max(1, fromRows))
+  playerZone.setCellBackgroundScale(bgScaleFromX, bgScaleFromY)
   playerZoneResizeTransition = {
     fromCols,
     toCols,
@@ -1681,8 +1808,10 @@ function startPlayerZoneResizeTransition(toCols: number, toRows: number): void {
     toX: getPlayerZoneX(toCols),
     fromY: playerZone.y,
     toY: getPlayerZoneY(battleDay),
-    targetBgScaleX: toCols / Math.max(1, fromCols),
-    targetBgScaleY: toRows / Math.max(1, fromRows),
+    bgScaleFromX,
+    bgScaleToX,
+    bgScaleFromY,
+    bgScaleToY,
     durationMs,
     elapsedMs: 0,
   }
@@ -1697,8 +1826,8 @@ function updatePlayerZoneResizeTransition(dtMs: number): void {
   playerZone.x = state.fromX + (state.toX - state.fromX) * ease
   playerZone.y = state.fromY + (state.toY - state.fromY) * ease
   playerZone.setCellBackgroundScale(
-    1 + (state.targetBgScaleX - 1) * ease,
-    1 + (state.targetBgScaleY - 1) * ease,
+    state.bgScaleFromX + (state.bgScaleToX - state.bgScaleFromX) * ease,
+    state.bgScaleFromY + (state.bgScaleToY - state.bgScaleFromY) * ease,
   )
   if (t < 1) return
   playerZone.setCellBackgroundScale(1, 1)
@@ -1726,9 +1855,69 @@ function getPlayerZoneX(activeCols: number): number {
   return getDebugCfg('battleZoneX') + (CANVAS_W - activeCols * CELL_SIZE * s) / 2
 }
 
+function getTowerExpandExtraLiftPx(rows: number): number {
+  const rowCount = Math.max(1, Math.round(Number(rows) || 1))
+  return Math.max(0, rowCount - 1) * 10
+}
+
 function getPlayerZoneY(day: number): number {
   const playerScale = getBattleItemScale()
+  if (isTowerDefenseBattle()) {
+    const rows = getTowerBattleRowsForCurrentExpandStep()
+    const baseY = getDebugCfg('battleZoneY') + (3 - rows) * 120 - getTowerExpandExtraLiftPx(rows)
+    return baseY + getAdjustedBattleZoneYInBattleOffset(day) + (CELL_HEIGHT * (1 - playerScale)) / 2
+  }
   return getAdjustedBattleZoneY(day) + getAdjustedBattleZoneYInBattleOffset(day) + (CELL_HEIGHT * (1 - playerScale)) / 2
+}
+
+function getTowerPlayerHpBarTargetRowYOffset(): number {
+  if (!isTowerDefenseBattle()) return 0
+  const rows = getTowerBattleRowsForCurrentExpandStep()
+  return (3 - rows) * 120 - getTowerExpandExtraLiftPx(rows)
+}
+
+function syncTowerPlayerHpBarRowYOffset(animate: boolean): void {
+  const target = getTowerPlayerHpBarTargetRowYOffset()
+  if (!animate) {
+    towerPlayerHpBarRowYOffsetTransition = null
+    towerPlayerHpBarRowYOffset = target
+    return
+  }
+  const from = towerPlayerHpBarRowYOffset
+  if (Math.abs(from - target) < 0.01) {
+    towerPlayerHpBarRowYOffsetTransition = null
+    towerPlayerHpBarRowYOffset = target
+    return
+  }
+  const durationMs = getTowerPlayerZoneResizeAnimMs()
+  if (durationMs <= 0) {
+    towerPlayerHpBarRowYOffsetTransition = null
+    towerPlayerHpBarRowYOffset = target
+    return
+  }
+  towerPlayerHpBarRowYOffsetTransition = {
+    from,
+    to: target,
+    durationMs,
+    elapsedMs: 0,
+  }
+}
+
+function updateTowerPlayerHpBarRowYOffsetTransition(dtMs: number): void {
+  if (!towerPlayerHpBarRowYOffsetTransition) return
+  const state = towerPlayerHpBarRowYOffsetTransition
+  state.elapsedMs = Math.min(state.durationMs, state.elapsedMs + Math.max(0, dtMs))
+  const t = state.durationMs <= 0 ? 1 : Math.min(1, state.elapsedMs / state.durationMs)
+  const ease = 1 - Math.pow(1 - t, 3)
+  towerPlayerHpBarRowYOffset = state.from + (state.to - state.from) * ease
+  if (t < 1) return
+  towerPlayerHpBarRowYOffset = state.to
+  towerPlayerHpBarRowYOffsetTransition = null
+}
+
+function getTowerPlayerHpBarRowYOffset(): number {
+  if (!isTowerDefenseBattle()) return 0
+  return towerPlayerHpBarRowYOffset
 }
 
 function getEnemyZoneX(activeCols: number): number {
@@ -1993,6 +2182,7 @@ function buildEditableSnapshotFromBoard(day: number): ReturnType<typeof getBattl
     playerShield,
     towerBattleBuyCount: Math.max(0, Math.round(towerBattleBuyCount)),
     towerBattleSkillBuyCount: Math.max(0, Math.round(towerBattleSkillBuyCount)),
+    towerBattleZoneExpandStep: getTowerZoneExpandCurrentStep(),
     towerBattleSkillPickCounts: serializeTowerBattleSkillPickCounts(),
   }
 }
@@ -2421,31 +2611,62 @@ function getTowerSkillDisplayName(id: string, name: string): string {
   return text
 }
 
+function formatTowerSkillSeriesDetail(
+  id: string,
+  prefix: string,
+  series: number[],
+  suffix: string,
+): string {
+  const picked = Math.max(0, Math.round(towerBattleSkillPickCounts.get(id) ?? 0))
+  const next = picked < series.length ? Math.max(0, Math.round(Number(series[picked]) || 0)) : 0
+  if (next > 0) return `${prefix}${next}${suffix}`
+  const fallback = Math.max(0, Math.round(Number(series[Math.max(0, series.length - 1)]) || 0))
+  if (fallback > 0) return `${prefix}${fallback}${suffix}`
+  return `${prefix}${suffix}`
+}
+
 function getTowerSkillDetailById(id: string): string {
+  if (id === 'td_skill_ninja_damage') {
+    return formatTowerSkillSeriesDetail(id, '所有手里剑伤害+', [20, 15, 10, 5, 3], '%')
+  }
+  if (id === 'td_skill_archer_damage') {
+    return formatTowerSkillSeriesDetail(id, '所有弓箭伤害+', [20, 15, 10, 5, 3], '%')
+  }
+  if (id === 'td_skill_mage_damage') {
+    return formatTowerSkillSeriesDetail(id, '所有冰锥伤害+', [20, 15, 10, 5, 3], '%')
+  }
+  if (id === 'td_skill_warrior_damage') {
+    return formatTowerSkillSeriesDetail(id, '所有长剑伤害+', [20, 15, 10, 5, 3], '%')
+  }
+  if (id === 'td_skill_ninja_cd') {
+    return formatTowerSkillSeriesDetail(id, '所有手里剑间隔缩短', [10, 8, 6, 4, 2], '%')
+  }
+  if (id === 'td_skill_archer_cd') {
+    return formatTowerSkillSeriesDetail(id, '所有弓箭间隔缩短', [10, 8, 6, 4, 2], '%')
+  }
+  if (id === 'td_skill_mage_cd') {
+    return formatTowerSkillSeriesDetail(id, '所有冰锥间隔缩短', [10, 8, 6, 4, 2], '%')
+  }
+  if (id === 'td_skill_warrior_cd') {
+    return formatTowerSkillSeriesDetail(id, '所有长剑间隔缩短', [10, 8, 6, 4, 2], '%')
+  }
+
   const map: Record<string, string> = {
-    td_skill_ninja_damage: '所有手里剑伤害+20%',
-    td_skill_ninja_cd: '所有手里剑间隔缩短10%',
-    td_skill_ninja_super_bounce: '所有手里剑弹射次数额外+2',
-    td_skill_ninja_super_multicast: '所有手里剑连发次数+1',
-    td_skill_ninja_super_heavy: '手里剑命中减速目标造成双倍伤害',
+    td_skill_ninja_super_bounce: '所有手里剑弹射次数额外+1',
+    td_skill_ninja_super_multicast: '所有手里剑连发次数+1，伤害-25%',
+    td_skill_ninja_super_heavy: '手里剑命中减速目标造成额外50%伤害',
     td_skill_ninja_super_crystal: '水晶手里剑弹射后伤害增加10%',
     td_skill_ninja_super_split: '分裂手里剑分裂后伤害增加50%',
-    td_skill_archer_damage: '所有弓箭伤害+20%',
-    td_skill_archer_cd: '所有弓箭间隔缩短10%',
     td_skill_archer_super_high_damage: '所有弓箭伤害额外+5',
-    td_skill_archer_super_multicast: '所有弓箭连发次数+1',
+    td_skill_archer_super_multicast: '所有弓箭连发次数+1，伤害-25%',
     td_skill_archer_super_poison: '所有弓箭中毒按目标最大生命值百分比结算',
     td_skill_archer_super_sniper: '狙击弓箭效果翻倍',
     td_skill_archer_super_blood: '嗜血弓箭效果翻倍',
-    td_skill_mage_damage: '所有冰锥伤害+20%',
-    td_skill_mage_cd: '所有冰锥间隔缩短10%',
     td_skill_mage_super_slow: '冰锥减速效果提升为减速66%',
-    td_skill_mage_super_multitarget: '所有冰锥同时发射目标+2',
+    td_skill_mage_super_multitarget: '所有冰锥同时发射目标+1，伤害-25%',
     td_skill_mage_super_freeze: '冰冻持续时间翻倍',
     td_skill_mage_super_explode: '爆炸冰锥半径提升50%（6m→9m）',
     td_skill_mage_super_counter: '反击冰锥受击获得的充能值翻倍',
-    td_skill_warrior_damage: '所有长剑伤害+20%',
-    td_skill_warrior_cd: '所有长剑间隔缩短10%',
     td_skill_warrior_super_range: '所有长剑攻击距离+3',
     td_skill_warrior_super_guard: '护盾值低于50时不自动下降',
     td_skill_warrior_super_bleed: '长剑重伤效果翻倍',
@@ -2456,9 +2677,10 @@ function getTowerSkillDetailById(id: string): string {
 }
 
 function formatTowerBattleSkillBuyButtonText(gold: number, cost: number, unlockCount: number): string {
+  void gold
   const unlocked = towerBattleBuyCount >= unlockCount
   if (!unlocked) return `技能购买\n解锁:${towerBattleBuyCount}/${unlockCount}`
-  return `技能购买\n💰${Math.max(0, Math.round(gold))}/${Math.max(0, Math.round(cost))}`
+  return `技能购买\n💰${Math.max(0, Math.round(cost))}`
 }
 
 function tickTowerBattleSkillBuyAffordPulse(): void {
@@ -2702,9 +2924,19 @@ function restoreTowerPreFirstAttackSpeed(): void {
 }
 
 function formatTowerBattleBuyButtonText(gold: number, cost: number, level: number): string {
+  void gold
   void level
   if (cost <= 0 || level <= 0) return '物品购买\n暂无'
-  return `物品购买\n💰${Math.max(0, Math.round(gold))}/${Math.max(0, Math.round(cost))}`
+  return `物品购买\n💰${Math.max(0, Math.round(cost))}`
+}
+
+function formatTowerZoneExpandButtonText(gold: number, cost: number, unlockCount: number): string {
+  void gold
+  const unlocked = towerBattleBuyCount >= unlockCount
+  const next = getTowerZoneExpandNextStage()
+  if (!next) return '背包扩容\n已满级'
+  if (!unlocked) return `背包扩容\n解锁:${towerBattleBuyCount}/${unlockCount}`
+  return `背包扩容\n💰${Math.max(0, Math.round(cost))}`
 }
 
 function getTowerBattleBuyAffordPulseDurationMs(): number {
@@ -2727,8 +2959,21 @@ function getTowerBattleBuyAffordPulsePaddingPx(): number {
 
 function getTowerBattleBuyButtonY(): number {
   const raw = Number(getGameCfg().towerDefenseRules?.battleBuyButtonY)
-  if (Number.isFinite(raw)) return Math.round(raw)
-  return CANVAS_H - 63
+  if (Number.isFinite(raw)) return Math.round(raw) + 15
+  return CANVAS_H - 48
+}
+
+function drawTowerGoldBadgeAtExpandButton(): void {
+  if (!towerGoldBadgeBg || !towerGoldBadgeText || !organizeBtn || !isTowerDefenseBattle()) return
+  const text = `💰 ${Math.max(0, Math.round(editableGold))}`
+  towerGoldBadgeText.text = text
+  const x = organizeBtn.x - TOWER_BOTTOM_ACTION_BTN_W / 2 - 23
+  const y = organizeBtn.y - TOWER_BOTTOM_ACTION_BTN_H / 2 - towerGoldBadgeText.height - 18
+  towerGoldBadgeText.x = x
+  towerGoldBadgeText.y = y
+  towerGoldBadgeBg.clear()
+  towerGoldBadgeBg.visible = false
+  towerGoldBadgeText.visible = true
 }
 
 function getTowerPlayerZoneBackgroundAlpha(): number {
@@ -2782,6 +3027,63 @@ function tickTowerBattleBuyAffordPulse(): void {
   buyBtnPulseFrame.roundRect(-w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad * 2, corner)
   buyBtnPulseFrame.stroke({ color: 0xffda67, width: 4, alpha })
   buyBtnPulseFrame.scale.set(scale)
+}
+
+function redrawTowerZoneExpandButtonVisual(canAfford: boolean, unlocked: boolean, upgradable: boolean): void {
+  if (!towerZoneExpandBtnBg) return
+  const w = TOWER_BOTTOM_ACTION_BTN_W
+  const h = TOWER_BOTTOM_ACTION_BTN_H
+  const corner = Math.max(10, Math.round(getDebugCfg('gridItemCornerRadius') + 8))
+  const strokeColor = !upgradable
+    ? 0x8da3c4
+    : (!unlocked ? 0x7f8ca8 : (canAfford ? 0xffcf4a : 0x44aaff))
+  const fillColor = !upgradable
+    ? 0x8da3c4
+    : (!unlocked ? 0x5f6a80 : (canAfford ? 0xffcf4a : 0x44aaff))
+  const fillAlpha = !upgradable
+    ? 0.16
+    : (!unlocked ? 0.2 : (canAfford ? 0.34 : 0.18))
+  towerZoneExpandBtnBg.clear()
+  towerZoneExpandBtnBg.roundRect(-w / 2, -h / 2, w, h, corner)
+  towerZoneExpandBtnBg.stroke({ color: strokeColor, width: 3 })
+  towerZoneExpandBtnBg.fill({ color: fillColor, alpha: fillAlpha })
+  if (towerZoneExpandBtnText) {
+    towerZoneExpandBtnText.style.fill = !upgradable
+      ? 0xc9d8ea
+      : (!unlocked ? 0xc6d2ea : (canAfford ? 0xffffff : 0x44aaff))
+    towerZoneExpandBtnText.style.stroke = canAfford && unlocked && upgradable
+      ? { color: 0x000000, width: 3 }
+      : { color: 0x000000, width: 0 }
+  }
+}
+
+function tickTowerZoneExpandAffordPulse(): void {
+  if (!towerZoneExpandBtnPulseFrame) return
+  if (towerZoneExpandBtnAffordPulseStartAtMs === null) {
+    towerZoneExpandBtnPulseFrame.visible = false
+    return
+  }
+  const durationMs = getTowerBattleBuyAffordPulseDurationMs()
+  const elapsed = Math.max(0, battlePresentationMs - towerZoneExpandBtnAffordPulseStartAtMs)
+  const p = Math.max(0, Math.min(1, elapsed / Math.max(1, durationMs)))
+  if (p >= 1) {
+    towerZoneExpandBtnAffordPulseStartAtMs = null
+    towerZoneExpandBtnPulseFrame.visible = false
+    return
+  }
+  const w = TOWER_BOTTOM_ACTION_BTN_W
+  const h = TOWER_BOTTOM_ACTION_BTN_H
+  const pad = getTowerBattleBuyAffordPulsePaddingPx()
+  const corner = Math.max(10, Math.round(getDebugCfg('gridItemCornerRadius') + 8)) + pad
+  const scaleMax = Math.max(1.01, getTowerBattleBuyAffordPulseScaleMax())
+  const wave = Math.sin(p * Math.PI)
+  const alpha = (1 - p) * 0.95
+  const scale = 1 + (scaleMax - 1) * wave
+  towerZoneExpandBtnPulseFrame.visible = true
+  towerZoneExpandBtnPulseFrame.clear()
+  towerZoneExpandBtnPulseFrame.roundRect(-w / 2 - pad, -h / 2 - pad, w + pad * 2, h + pad * 2, corner)
+  towerZoneExpandBtnPulseFrame.stroke({ color: 0xffda67, width: 4, alpha })
+  towerZoneExpandBtnPulseFrame.scale.set(scale)
 }
 
 function getTowerForceNextWaveAfterLastSpawnMs(): number {
@@ -2903,12 +3205,8 @@ async function startNextTowerWaveInPlace(options?: { showNewEnemyToast?: boolean
   const preserveExistingEnemies = !engine.isFinished()
   const baseSnapshot = buildEditableSnapshotFromBoard(battleDay)
   if (!baseSnapshot) return
-  const prevCols = getDayActiveCols(battleDay)
-  const prevRows = getTowerBattleRowsByDay(battleDay)
   const nextDay = Math.max(1, Math.round((baseSnapshot.day || 1) + 1))
-  const nextCols = getDayActiveCols(nextDay)
-  const nextRows = getTowerBattleRowsByDay(nextDay)
-  const zoneExpanded = nextCols > prevCols || nextRows > prevRows
+  const zoneExpanded = false
   const useTowerQueueWave = isTowerDefenseBattle() && !!engine.queueNextTowerWave
   emitDiagEvent('tower_wave_advance_start', {
     fromDay: battleDay,
@@ -2956,7 +3254,7 @@ async function startNextTowerWaveInPlace(options?: { showNewEnemyToast?: boolean
     setBattleSnapshot(nextSnapshot)
     enteredSnapshot = nextSnapshot
     battleDay = nextDay
-    editableSystem?.setActiveRows(nextRows)
+    editableSystem?.setActiveRows(getTowerBattleRowsForCurrentExpandStep())
     editableGold = Math.max(0, Math.round(nextSnapshot.playerGold ?? 0))
     clearBattleItemSelection()
     if (settlement.isResolved()) settlement.prepareForNextWave()
@@ -2992,9 +3290,6 @@ async function startNextTowerWaveInPlace(options?: { showNewEnemyToast?: boolean
     }
     if (options?.showNewEnemyToast) {
       showFatigueToast('新的敌人刷新了', 1200)
-    }
-    if (zoneExpanded) {
-      showFatigueToast('背包扩大了', 1200)
     }
     ensureEditableBuildMode(getApp().stage)
     fxPool.refreshSourceDefMap()
@@ -3171,7 +3466,7 @@ function makeSkillBuyButton(): Container {
 
 function ensureEditableBuildMode(stage: Container): void {
   if (!playerZone) return
-  const battleRows = isTowerDefenseBattle() ? getTowerBattleRowsByDay(battleDay) : 3
+  const battleRows = isTowerDefenseBattle() ? getTowerBattleRowsForCurrentExpandStep() : 3
   if (!editableSystem) editableSystem = new GridSystem(6, 3)
   editableSystem.setActiveRows(battleRows)
   editableSystem.clear()
@@ -3196,6 +3491,8 @@ function ensureEditableBuildMode(stage: Container): void {
   editableGold = Math.max(0, Math.round(enteredSnapshot?.playerGold ?? getEditableStartGold(battleDay)))
   towerBattleBuyCount = Math.max(0, Math.round(enteredSnapshot?.towerBattleBuyCount ?? 0))
   towerBattleSkillBuyCount = Math.max(0, Math.round(enteredSnapshot?.towerBattleSkillBuyCount ?? 0))
+  towerBattleZoneExpandStep = inferTowerZoneExpandStepFromSnapshot(enteredSnapshot)
+  syncTowerPlayerHpBarRowYOffset(false)
   towerBattleSkillPickCounts.clear()
   if (enteredSnapshot?.towerBattleSkillPickCounts && typeof enteredSnapshot.towerBattleSkillPickCounts === 'object') {
     for (const [k, v] of Object.entries(enteredSnapshot.towerBattleSkillPickCounts)) {
@@ -3207,6 +3504,9 @@ function ensureEditableBuildMode(stage: Container): void {
   buyBtnLastCanAfford = editableGold >= getTowerBattleBuyCost()
   buyBtnAffordPulseStartAtMs = null
   buyBtnAffordVisualState = null
+  towerZoneExpandBtnLastCanAfford = null
+  towerZoneExpandBtnAffordPulseStartAtMs = null
+  towerZoneExpandBtnAffordVisualState = null
   skillBuyBtnLastCanAfford = editableGold >= getTowerBattleSkillBuyCost() && towerBattleBuyCount >= getTowerBattleSkillBuyUnlockItemCount()
   skillBuyBtnAffordPulseStartAtMs = null
   void getTowerBattleBuyCost()
@@ -3397,7 +3697,12 @@ function makeSpeedButton(): Container {
 function makeOrganizeButton(): Container {
   if (isTowerDefenseBattle()) {
     const con = new Container()
+    const pulse = new Graphics()
+    pulse.visible = false
+    con.addChild(pulse)
+    towerZoneExpandBtnPulseFrame = pulse
     const bg = new Graphics()
+    towerZoneExpandBtnBg = bg
     const w = TOWER_BOTTOM_ACTION_BTN_W
     const h = TOWER_BOTTOM_ACTION_BTN_H
     const corner = Math.max(10, Math.round(getDebugCfg('gridItemCornerRadius') + 8))
@@ -3406,16 +3711,53 @@ function makeOrganizeButton(): Container {
     bg.fill({ color: 0x44aaff, alpha: 0.18 })
     con.addChild(bg)
     const txt = new Text({
-      text: '整理',
-      style: { fontSize: getGameCfg().textSizes.phaseButtonLabel, fill: 0x44aaff, fontFamily: 'Arial', fontWeight: 'bold' },
+      text: formatTowerZoneExpandButtonText(editableGold, getTowerZoneExpandBuyCost(), getTowerZoneExpandBuyUnlockItemCount()),
+      style: { fontSize: getGameCfg().textSizes.phaseButtonLabel, fill: 0x44aaff, fontFamily: 'Arial', fontWeight: 'bold', align: 'center' },
     })
     txt.anchor.set(0.5)
     con.addChild(txt)
+    towerZoneExpandBtnText = txt
+    redrawTowerZoneExpandButtonVisual(false, false, true)
     con.eventMode = 'static'
     con.cursor = 'pointer'
-    con.zIndex = 185
+    con.zIndex = 190
     con.on('pointerdown', () => {
-      organizeBattleZoneItemsByRule()
+      if (!isTowerDefenseBattle() || !playerZone) return
+      const unlockCount = getTowerZoneExpandBuyUnlockItemCount()
+      if (towerBattleBuyCount < unlockCount) {
+        showFatigueToast(`购买${unlockCount}件后解锁`)
+        return
+      }
+      const next = getTowerZoneExpandNextStage()
+      if (!next) {
+        showFatigueToast('背包扩容已满级')
+        return
+      }
+      const cost = getTowerZoneExpandBuyCost()
+      if (editableGold < cost) {
+        showFatigueToast('金币不足')
+        return
+      }
+      editableGold -= cost
+      const prevCols = Math.max(1, playerZone.activeColCount)
+      const prevRows = Math.max(1, playerZone.activeRowCount)
+      towerBattleZoneExpandStep = getTowerZoneExpandCurrentStep() + 1
+      const expandedCols = getTowerBattleColsForCurrentExpandStep()
+      const expandedRows = getTowerBattleRowsForCurrentExpandStep()
+      editableSystem?.setActiveRows(expandedRows)
+      if (prevCols !== expandedCols || prevRows !== expandedRows) {
+        startPlayerZoneResizeTransition(expandedCols, expandedRows, { countsAlreadyApplied: true })
+      }
+      playerZone.setActiveColCount(expandedCols)
+      playerZone.setActiveRowCount(expandedRows)
+      applyZoneVisualStyle(playerZone, 'player')
+      syncTowerPlayerHpBarRowYOffset(true)
+      const persistNow = buildEditableSnapshotFromBoard(battleDay)
+      if (persistNow) {
+        enteredSnapshot = persistNow
+        setBattleSnapshot(persistNow)
+      }
+      showFatigueToast('背包扩容成功', 900)
     })
     return con
   }
@@ -4034,7 +4376,7 @@ function drawHeroBars(
   if (!heroHudG || !enemyHpInfoCon || !playerHpInfoCon) return
   const towerMode = isTowerDefenseBattle()
   const yEnemy = getDebugCfg('enemyHpBarY')
-  const towerRowYOffset = towerMode ? (3 - getTowerBattleRowsByDay(battleDay)) * 120 : 0
+  const towerRowYOffset = towerMode ? getTowerPlayerHpBarRowYOffset() : 0
   const yPlayer = getDebugCfg('playerHpBarY') + towerRowYOffset
   const baseBarH = getDebugCfg('battleHpBarH')
   const barR = getDebugCfg('battleHpBarRadius')
@@ -4095,7 +4437,7 @@ function applyZoneVisualStyle(zone: GridZone, side: 'player' | 'enemy'): void {
   const towerMode = isTowerDefenseBattle()
   const showClassName = getDebugCfg('gameplayShowClassName') >= 0.5
   zone.setItemQualityMarkerEnabled(towerMode)
-  zone.setQualityDiamondMarkerScale(towerMode ? 0.5 : 1)
+  zone.setQualityDiamondMarkerScale(towerMode ? 0.69 : 1)
   zone.setTierBadgeVisible(!towerMode)
   zone.setItemFrameUseArchetypeColor(towerMode ? true : (getDebugCfg('gameplayItemFrameColorByArchetype') >= 0.5))
   zone.setArchetypeBadgeShowClassPrefix(towerMode && showClassName)
@@ -4660,6 +5002,7 @@ export const BattleScene: Scene = {
           activeColCount: 6,
           createdAtMs: Date.now(),
           playerGold: getEditableStartGold(fallbackDay),
+          towerBattleZoneExpandStep: 0,
           entities: [],
         }
         setBattleSnapshot(snapshot)
@@ -4689,6 +5032,8 @@ export const BattleScene: Scene = {
       setBattleSnapshot(snapshot)
     }
     enteredSnapshot = snapshot
+    towerBattleZoneExpandStep = inferTowerZoneExpandStepFromSnapshot(snapshot)
+    syncTowerPlayerHpBarRowYOffset(false)
     towerBattleSkillBuyCount = Math.max(0, Math.round(snapshot.towerBattleSkillBuyCount ?? 0))
     towerBattleSkillPickCounts.clear()
     if (snapshot.towerBattleSkillPickCounts && typeof snapshot.towerBattleSkillPickCounts === 'object') {
@@ -4741,6 +5086,8 @@ export const BattleScene: Scene = {
     battleLastTickIndexForPerf = -1
     appliedActiveCols = -1
     playerZoneResizeTransition = null
+    towerPlayerHpBarRowYOffsetTransition = null
+    towerPlayerHpBarRowYOffset = 0
     root = new Container()
     root.sortableChildren = true
     stage.addChild(root)
@@ -4794,6 +5141,31 @@ export const BattleScene: Scene = {
     towerRemainBarText.zIndex = 43
     towerRemainBarText.eventMode = 'none'
     root.addChild(towerRemainBarText)
+
+    towerBottomFocusBg = new Graphics()
+    towerBottomFocusBg.zIndex = 187
+    towerBottomFocusBg.eventMode = 'none'
+    towerBottomFocusBg.visible = isTowerDefenseBattle()
+    if (towerBottomFocusBg.visible) {
+      towerBottomFocusBg.clear()
+      towerBottomFocusBg.rect(0, CANVAS_H - 150, CANVAS_W, 150)
+      towerBottomFocusBg.fill({ color: 0x000000, alpha: 0.62 })
+    }
+    root.addChild(towerBottomFocusBg)
+
+    towerGoldBadgeBg = new Graphics()
+    towerGoldBadgeBg.zIndex = 188
+    towerGoldBadgeBg.eventMode = 'none'
+    towerGoldBadgeBg.visible = false
+    root.addChild(towerGoldBadgeBg)
+    towerGoldBadgeText = new Text({
+      text: '',
+      style: { fontSize: 31, fill: 0xfff2f2, fontFamily: 'Arial', fontWeight: 'bold', stroke: { color: 0x000000, width: 4 } },
+    })
+    towerGoldBadgeText.zIndex = 189
+    towerGoldBadgeText.eventMode = 'none'
+    towerGoldBadgeText.visible = false
+    root.addChild(towerGoldBadgeText)
 
     heroHudG = new Graphics()
     heroHudG.zIndex = 40
@@ -4948,7 +5320,7 @@ export const BattleScene: Scene = {
     const activeCols = getDayActiveCols(day)
     const towerMode = getGameCfg().towerDefenseRules?.enabled === true
     const playerRows = towerMode
-      ? getTowerBattleRowsByDay(day)
+      ? getTowerBattleRowsForCurrentExpandStep()
       : Math.max(1, Math.min(3,
         snapshot.entities.reduce((maxRow, one) => Math.max(maxRow, Math.max(0, Math.round(one.row ?? 0))), 0) + 1,
       ))
@@ -5028,6 +5400,7 @@ export const BattleScene: Scene = {
 
     const fxLayerContainer = new Container()
     fxLayerContainer.zIndex = 60
+    fxLayerContainer.eventMode = 'none'
     root.addChild(fxLayerContainer)
 
     towerGoldDropLayer = new Container()
@@ -5844,6 +6217,9 @@ export const BattleScene: Scene = {
     towerRemainBarG = null
     towerRemainBarTextBg = null
     towerRemainBarText = null
+    towerGoldBadgeBg = null
+    towerGoldBadgeText = null
+    towerBottomFocusBg = null
     towerDayTextBg = null
     fatigueToastUntilMs = 0
     portraitFX.reset()
@@ -5884,6 +6260,8 @@ export const BattleScene: Scene = {
     battleLastTickIndexForPerf = -1
     appliedActiveCols = -1
     playerZoneResizeTransition = null
+    towerPlayerHpBarRowYOffsetTransition = null
+    towerPlayerHpBarRowYOffset = 0
     replayMode = false
     replayRandomSourceValues = null
     replayRandomCursor = 0
@@ -5893,11 +6271,18 @@ export const BattleScene: Scene = {
     battleReplaySaved = false
     towerBattleBuyCount = 0
     towerBattleSkillBuyCount = 0
+    towerBattleZoneExpandStep = 0
     towerBattleSkillPickCounts.clear()
     pendingBattleBuyOffer = null
     buyBtnLastCanAfford = null
     buyBtnAffordPulseStartAtMs = null
     buyBtnAffordVisualState = null
+    towerZoneExpandBtnLastCanAfford = null
+    towerZoneExpandBtnAffordPulseStartAtMs = null
+    towerZoneExpandBtnAffordVisualState = null
+    towerZoneExpandBtnBg = null
+    towerZoneExpandBtnPulseFrame = null
+    towerZoneExpandBtnText = null
     skillBuyBtnLastCanAfford = null
     skillBuyBtnAffordPulseStartAtMs = null
     playerFourHeroPortraitLayer = null
@@ -6051,7 +6436,7 @@ export const BattleScene: Scene = {
     const runtimeBuildCostMs = performance.now() - runtimeBuildStartMs
     const layoutStartMs = performance.now()
     const activeCols = getDayActiveCols(battleDay)
-    const desiredPlayerRows = isTowerDefenseBattle() ? getTowerBattleRowsByDay(battleDay) : (playerZone?.activeRowCount ?? 1)
+    const desiredPlayerRows = isTowerDefenseBattle() ? getTowerBattleRowsForCurrentExpandStep() : (playerZone?.activeRowCount ?? 1)
     const rowNeedsUpdate = !!playerZone && playerZone.activeRowCount !== desiredPlayerRows
     if (activeCols !== appliedActiveCols || (rowNeedsUpdate && !playerZoneResizeTransition)) {
       enemyZone.setActiveColCount(activeCols)
@@ -6067,11 +6452,13 @@ export const BattleScene: Scene = {
         playerZone.setActiveColCount(activeCols)
         playerZone.setActiveRowCount(desiredPlayerRows)
         applyZoneVisualStyle(playerZone, 'player')
-        applyLayout(activeCols)
+        if (playerZoneResizeTransition) applyLayout(activeCols, { keepPlayerZoneX: true, keepPlayerZoneY: true })
+        else applyLayout(activeCols)
       }
       appliedActiveCols = activeCols
     }
     updatePlayerZoneResizeTransition(dtMs)
+    updateTowerPlayerHpBarRowYOffsetTransition(dtMs)
     if (isBattlePlayerFourHeroPortraitEnabled() || playerFourHeroSwapAnim) {
       applyLayout(activeCols, { keepPlayerZoneX: true, keepPlayerZoneY: true })
     }
@@ -6308,9 +6695,42 @@ export const BattleScene: Scene = {
       if (towerMode) {
         organizeBtn.x = CANVAS_W / 2 - (TOWER_BOTTOM_ACTION_BTN_W + TOWER_BOTTOM_ACTION_BTN_GAP)
         organizeBtn.y = getTowerBattleBuyButtonY()
+        const unlockCount = getTowerZoneExpandBuyUnlockItemCount()
+        const expandCost = getTowerZoneExpandBuyCost()
+        const unlocked = towerBattleBuyCount >= unlockCount
+        const upgradable = !!getTowerZoneExpandNextStage()
+        const canAfford = upgradable && unlocked && editableGold >= expandCost
+        if (towerZoneExpandBtnLastCanAfford === null) {
+          towerZoneExpandBtnLastCanAfford = canAfford
+        } else if (!towerZoneExpandBtnLastCanAfford && canAfford && canShowTowerOrganizeBtn) {
+          towerZoneExpandBtnAffordPulseStartAtMs = battlePresentationMs
+        }
+        towerZoneExpandBtnLastCanAfford = canAfford
+        if (!canAfford) towerZoneExpandBtnAffordPulseStartAtMs = null
+        const nextVisualState = canAfford
+        if (towerZoneExpandBtnAffordVisualState !== nextVisualState) {
+          redrawTowerZoneExpandButtonVisual(canAfford, unlocked, upgradable)
+          towerZoneExpandBtnAffordVisualState = nextVisualState
+        }
+        if (canShowTowerOrganizeBtn) tickTowerZoneExpandAffordPulse()
+        else if (towerZoneExpandBtnPulseFrame) towerZoneExpandBtnPulseFrame.visible = false
+        organizeBtn.alpha = upgradable ? (canAfford ? 1 : 0.6) : 0.7
+        organizeBtn.cursor = canAfford ? 'pointer' : 'default'
+        if (towerZoneExpandBtnText) {
+          towerZoneExpandBtnText.text = formatTowerZoneExpandButtonText(editableGold, expandCost, unlockCount)
+        }
       } else {
         organizeBtn.y = getClampedTopActionBtnY('battleOrganizeBtnY')
       }
+    }
+    if (isTowerDefenseBattle() && organizeBtn?.visible) {
+      drawTowerGoldBadgeAtExpandButton()
+    } else {
+      if (towerGoldBadgeBg) {
+        towerGoldBadgeBg.clear()
+        towerGoldBadgeBg.visible = false
+      }
+      if (towerGoldBadgeText) towerGoldBadgeText.visible = false
     }
 
     if (skillTestBtn) {

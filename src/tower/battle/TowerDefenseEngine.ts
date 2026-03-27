@@ -154,6 +154,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
   private playerBounceDamageFactorByItemId = new Map<string, number>()
   private playerNinjaDamagePenaltyPct = 0
   private playerArcherDamagePenaltyPct = 0
+  private playerMageDamagePenaltyPct = 0
   private playerWarriorDamagePenaltyPct = 0
   private bloodBowComboByTargetId = new Map<string, number>()
   private playerShieldDecayCarryMs = 0
@@ -372,8 +373,8 @@ export class TowerDefenseEngine implements BattleEngineLike {
       return
     }
     this.playerShieldDecayCarryMs += dtMs
-    while (this.playerShieldDecayCarryMs >= 1000 && this.playerHero.shield > 0) {
-      this.playerShieldDecayCarryMs -= 1000
+    while (this.playerShieldDecayCarryMs >= 500 && this.playerHero.shield > 0) {
+      this.playerShieldDecayCarryMs -= 500
       if (this.playerHero.shield < Math.max(20, this.towerWarriorShieldNoDecayBelow)) continue
       const decay = Math.floor(this.playerHero.shield / 20)
       if (decay <= 0) continue
@@ -401,9 +402,9 @@ export class TowerDefenseEngine implements BattleEngineLike {
       if (enemy.poisonMs > 0) {
         enemy.poisonMs = Math.max(0, enemy.poisonMs - dtMs)
         enemy.poisonTickCarryMs += dtMs
-        while (enemy.poisonTickCarryMs >= 1000 && enemy.hp > 0 && enemy.poisonMs > 0) {
-          enemy.poisonTickCarryMs -= 1000
-          const rateBase = this.isBossEnemyUnit(enemy) ? 0.01 : 0.05
+        while (enemy.poisonTickCarryMs >= 500 && enemy.hp > 0 && enemy.poisonMs > 0) {
+          enemy.poisonTickCarryMs -= 500
+          const rateBase = this.isBossEnemyUnit(enemy) ? 0.02 : 0.1
           const rate = rateBase
           const poisonDamageBaseHp = this.towerArcherPoisonUseMaxHp
             ? Math.max(1, enemy.maxHp)
@@ -529,6 +530,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
 
     this.playerNinjaDamagePenaltyPct = 0
     this.playerArcherDamagePenaltyPct = 0
+    this.playerMageDamagePenaltyPct = 0
     this.playerWarriorDamagePenaltyPct = 0
     this.towerNinjaVsSlowedMul = 1
     this.towerNinjaCrystalBounceBonusPct = 0
@@ -554,8 +556,8 @@ export class TowerDefenseEngine implements BattleEngineLike {
     const hasSkill = (id: string): boolean => skillCount(id) > 0
     const itemIconSet = new Set(this.playerItems.map((it) => this.getItemIcon(it)))
 
-    this.towerNinjaVsSlowedMul = (hasSkill('td_skill_ninja_super_heavy') && itemIconSet.has('toweritem4')) ? 2 : 1
-    this.towerNinjaSuperBounceExtraCount = (hasSkill('td_skill_ninja_super_bounce') && itemIconSet.has('toweritem2')) ? 2 : 0
+    this.towerNinjaVsSlowedMul = (hasSkill('td_skill_ninja_super_heavy') && itemIconSet.has('toweritem4')) ? 1.5 : 1
+    this.towerNinjaSuperBounceExtraCount = (hasSkill('td_skill_ninja_super_bounce') && itemIconSet.has('toweritem2')) ? 1 : 0
     this.towerNinjaCrystalBounceBonusPct = (hasSkill('td_skill_ninja_super_crystal') && itemIconSet.has('toweritem5')) ? 10 : 0
     this.towerNinjaSplitDamageMul = (hasSkill('td_skill_ninja_super_split') && itemIconSet.has('toweritem6')) ? 1.5 : 1
 
@@ -578,18 +580,35 @@ export class TowerDefenseEngine implements BattleEngineLike {
     this.towerWarriorDualShieldGainMul = (hasSkill('td_skill_warrior_super_dual') && itemIconSet.has('toweritem23')) ? 2 : 1
     this.towerWarriorReflectMul = (hasSkill('td_skill_warrior_super_counter') && itemIconSet.has('toweritem24')) ? 2 : 1
 
-    const ninjaDamagePct = Math.min(100, skillCount('td_skill_ninja_damage') * 20)
-    const archerDamagePct = Math.min(100, skillCount('td_skill_archer_damage') * 20)
-    const mageDamagePct = Math.min(100, skillCount('td_skill_mage_damage') * 20)
-    const warriorDamagePct = Math.min(100, skillCount('td_skill_warrior_damage') * 20)
-    const ninjaCdReducePct = Math.min(50, skillCount('td_skill_ninja_cd') * 10)
-    const archerCdReducePct = Math.min(50, skillCount('td_skill_archer_cd') * 10)
-    const mageCdReducePct = Math.min(50, skillCount('td_skill_mage_cd') * 10)
-    const warriorCdReducePct = Math.min(50, skillCount('td_skill_warrior_cd') * 10)
+    const sumSkillSeriesByPick = (count: number, series: number[]): number => {
+      const n = Math.max(0, Math.round(count))
+      if (n <= 0 || series.length <= 0) return 0
+      let out = 0
+      const limit = Math.min(n, series.length)
+      for (let i = 0; i < limit; i++) out += Math.max(0, Number(series[i]) || 0)
+      return out
+    }
+    const damageSeries = [20, 15, 10, 5, 3]
+    const cdSeries = [10, 8, 6, 4, 2]
+    const ninjaDamagePct = Math.min(100, sumSkillSeriesByPick(skillCount('td_skill_ninja_damage'), damageSeries))
+    const archerDamagePct = Math.min(100, sumSkillSeriesByPick(skillCount('td_skill_archer_damage'), damageSeries))
+    const mageDamagePct = Math.min(100, sumSkillSeriesByPick(skillCount('td_skill_mage_damage'), damageSeries))
+    const warriorDamagePct = Math.min(100, sumSkillSeriesByPick(skillCount('td_skill_warrior_damage'), damageSeries))
+    const ninjaCdReducePct = Math.min(50, sumSkillSeriesByPick(skillCount('td_skill_ninja_cd'), cdSeries))
+    const archerCdReducePct = Math.min(50, sumSkillSeriesByPick(skillCount('td_skill_archer_cd'), cdSeries))
+    const mageCdReducePct = Math.min(50, sumSkillSeriesByPick(skillCount('td_skill_mage_cd'), cdSeries))
+    const warriorCdReducePct = Math.min(50, sumSkillSeriesByPick(skillCount('td_skill_warrior_cd'), cdSeries))
 
     const ninjaSuperMulticast = hasSkill('td_skill_ninja_super_multicast') ? 1 : 0
     const archerSuperMulticast = hasSkill('td_skill_archer_super_multicast') ? 1 : 0
-    const mageSuperExtraTargets = hasSkill('td_skill_mage_super_multitarget') ? 2 : 0
+    const mageSuperExtraTargets = hasSkill('td_skill_mage_super_multitarget') ? 1 : 0
+    const ninjaSuperMulticastPenaltyPct = hasSkill('td_skill_ninja_super_multicast') ? 25 : 0
+    const archerSuperMulticastPenaltyPct = hasSkill('td_skill_archer_super_multicast') ? 25 : 0
+    const mageSuperMultitargetPenaltyPct = hasSkill('td_skill_mage_super_multitarget') ? 25 : 0
+
+    this.playerNinjaDamagePenaltyPct += ninjaSuperMulticastPenaltyPct
+    this.playerArcherDamagePenaltyPct += archerSuperMulticastPenaltyPct
+    this.playerMageDamagePenaltyPct += mageSuperMultitargetPenaltyPct
 
     const applyPercentDamage = (base: number, pct: number): number => {
       if (pct <= 0 || base <= 0) return base
@@ -666,11 +685,14 @@ export class TowerDefenseEngine implements BattleEngineLike {
       }
       if (icon === 'toweritem15') {
         const multicastBonus = Math.max(0, Math.round(this.resolveNumericValueFromItemLine(aura, /发射目标\+\s*([+\-]?\d+(?:\.\d+)?(?:[\/|][+\-]?\d+(?:\.\d+)?)*)/)))
+        const penaltyRaw = this.resolveNumericValueFromItemLine(aura, /伤害\s*([+\-]?\d+(?:\.\d+)?(?:%?[\/|][+\-]?\d+(?:\.\d+)?)*%?)\s*%?/)
+        const damagePenaltyPct = Math.max(0, Math.round(Math.abs(penaltyRaw)))
         for (const target of this.playerItems) {
           if (itemArchetype(findItemDef(target.defId)) !== '冰法师') continue
           if (target.baseStats.damage <= 0) continue
           target.baseStats.multicast = Math.max(1, target.baseStats.multicast + multicastBonus)
         }
+        this.playerMageDamagePenaltyPct += damagePenaltyPct
         continue
       }
       if (icon === 'toweritem23') continue
@@ -1687,7 +1709,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
       this.playerBounceDamageBonusPerHopByItemId.set(item.id, 0)
       const bounceFactor = hasNoDecayBounce
         ? (1 + Math.max(0, this.towerNinjaCrystalBounceBonusPct) / 100)
-        : 0.7
+        : 0.6
       this.playerBounceDamageFactorByItemId.set(item.id, isNinjaDamage ? bounceFactor : 1)
       void icon
     }
@@ -1996,7 +2018,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
       } else {
         const burstCount = Math.max(1, Math.round(one.burstCount || 1))
         const splitTargets = one.splitTargets === true
-        const prioritizeBossTarget = sourceArch === '冰法师'
+        const prioritizeBossTarget = sourceArch === '冰法师' || sourceArch === '弓手'
         const targets = splitTargets
           ? this.pickNearestEnemiesByPredictedHp(predictedHpById, burstCount, attackDistance, prioritizeBossTarget)
           : ((): EnemyUnit[] => {
@@ -2115,6 +2137,10 @@ export class TowerDefenseEngine implements BattleEngineLike {
     }
     if (sourceArch === '弓手' && damage > 0) {
       const factor = Math.max(0, 1 - (this.playerArcherDamagePenaltyPct / 100))
+      damage = Math.max(1, Math.round(damage * factor))
+    }
+    if (sourceArch === '冰法师' && damage > 0) {
+      const factor = Math.max(0, 1 - (this.playerMageDamagePenaltyPct / 100))
       damage = Math.max(1, Math.round(damage * factor))
     }
     if (sourceArch === '剑士' && damage > 0) {
@@ -2332,7 +2358,10 @@ export class TowerDefenseEngine implements BattleEngineLike {
   }
 
   private applyEnemyDamageToPlayer(enemy: EnemyUnit, damageRaw?: number): void {
-    const panel = Math.max(0, Math.round(typeof damageRaw === 'number' ? damageRaw : enemy.attack))
+    const basePanel = Math.max(0, Math.round(typeof damageRaw === 'number' ? damageRaw : enemy.attack))
+    const reducePct = this.resolveMageCounterDamageReducePct()
+    const reduceFactor = Math.max(0, 1 - (reducePct / 100))
+    const panel = Math.max(0, Math.round(basePanel * reduceFactor))
     if (panel <= 0 || this.playerHero.hp <= 0) return
     const shieldBeforeHit = this.playerHero.shield
     let left = panel
@@ -2354,7 +2383,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
       targetSide: 'player',
       sourceType: 'item',
       sourceSide: 'enemy',
-      baseDamage: panel,
+      baseDamage: basePanel,
       finalDamage: panel,
     })
     if (this.getPlayerItemsByIcon('toweritem18').length > 0) {
@@ -2371,6 +2400,14 @@ export class TowerDefenseEngine implements BattleEngineLike {
       }
     }
     this.applySpikeShieldReflect(enemy, shieldBeforeHit)
+  }
+
+  private resolveMageCounterDamageReducePct(): number {
+    let totalPct = 0
+    for (const one of this.getPlayerItemsByIcon('toweritem18')) {
+      totalPct += Math.max(0, this.resolveNumericValueFromItemLine(one, /降低\s*([+\-]?\d+(?:\.\d+)?(?:%?[\/|][+\-]?\d+(?:\.\d+)?)*%?)\s*%/))
+    }
+    return Math.max(0, Math.min(95, Math.round(totalPct)))
   }
 
   private cleanupDeadEnemies(): void {
