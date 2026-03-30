@@ -380,6 +380,7 @@ export interface GameConfig {
     enemyHpBarScale?: number
     enemyShadowYOffset?: number
     enemyShadowScale?: number
+    enemyBodyScaleMul?: number
     flyingEnemyLiftNear?: number
     projectileScaleTopY?: number
     projectileScaleBottomY?: number
@@ -488,6 +489,7 @@ export interface GameConfig {
       enemyHpBarScale?: number
       enemyShadowYOffset?: number
       enemyShadowScale?: number
+      enemyBodyScaleMul?: number
       isFlying?: boolean
       killGold?: number
     }>

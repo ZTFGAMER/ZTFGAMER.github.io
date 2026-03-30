@@ -1161,6 +1161,8 @@ function syncTowerEnemyPresentation(activeCols: number): void {
   const defaultShadowYOffset = Number.isFinite(defaultShadowYOffsetRaw) ? defaultShadowYOffsetRaw : -10
   const defaultShadowScaleRaw = Number(cfg.enemyShadowScale)
   const defaultShadowScale = Math.max(0.2, Number.isFinite(defaultShadowScaleRaw) ? defaultShadowScaleRaw : 0.7)
+  const defaultEnemyBodyScaleMulRaw = Number((cfg as { enemyBodyScaleMul?: number }).enemyBodyScaleMul)
+  const defaultEnemyBodyScaleMul = Math.max(0.1, Number.isFinite(defaultEnemyBodyScaleMulRaw) ? defaultEnemyBodyScaleMulRaw : 0.5)
   const meleeDashTargetOffsetYRaw = Number(cfg.enemyMeleeDashTargetOffsetYPx)
   const meleeDashTargetOffsetY = Number.isFinite(meleeDashTargetOffsetYRaw) ? meleeDashTargetOffsetYRaw : 0
   const dashVisualCfg = cfg as { enemyMeleeDashScaleMul?: number; enemyMeleeDashShadowFadeMs?: number }
@@ -1175,6 +1177,8 @@ function syncTowerEnemyPresentation(activeCols: number): void {
     aliveIds.add(one.id)
     towerEnemyDefIdByUnitId.set(one.id, one.enemyId)
     const unitDef = enemyDefById.get(one.enemyId)
+    const unitBodyScaleMulRaw = Number((unitDef as { enemyBodyScaleMul?: number } | undefined)?.enemyBodyScaleMul)
+    const unitBodyScaleMul = Math.max(0.1, Number.isFinite(unitBodyScaleMulRaw) ? unitBodyScaleMulRaw : defaultEnemyBodyScaleMul)
     const unitShadowYOffsetRaw = Number(unitDef?.enemyShadowYOffset)
     const unitShadowYOffset = Number.isFinite(unitShadowYOffsetRaw) ? unitShadowYOffsetRaw : defaultShadowYOffset
     const unitShadowScaleRaw = Number(unitDef?.enemyShadowScale)
@@ -1366,6 +1370,8 @@ function syncTowerEnemyPresentation(activeCols: number): void {
     spritePack.root.visible = true
     spritePack.body.anchor.set(0.5, 1)
     spritePack.flash.anchor.set(0.5, 1)
+    spritePack.body.scale.set(unitBodyScaleMul)
+    spritePack.flash.scale.set(unitBodyScaleMul)
     spritePack.body.y = -effectiveFlyingLift
     spritePack.flash.y = -effectiveFlyingLift
     spritePack.root.x = laneX + animXOff

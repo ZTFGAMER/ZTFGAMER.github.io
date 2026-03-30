@@ -1,5 +1,72 @@
 # 大巴扎 — 开发进度记录
 
+## 验收追加修复（2026-03-30，敌人本体贴图统一缩放）
+
+- 用户需求：确认“敌人本体变大”并非影子/血条缩放问题，要求直接修正本体图显示并默认 `0.5` 倍。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增塔防配置读取 `enemyBodyScaleMul`（默认值回退 `0.5`）；
+    - 敌人本体 `body/flash` 统一应用 `unitBodyScaleMul`，与影子/血条缩放解耦，避免资源图内容占比变化导致本体异常放大。
+  - `src/tower/common/items/ItemDef.ts`
+    - `towerDefenseRules` 与 `enemyDefs` 类型补充 `enemyBodyScaleMul?: number`。
+  - `data/tower_game_config.json`
+    - 新增 `towerDefenseRules.enemyBodyScaleMul: 0.5` 作为默认配置。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在线验收敌人本体尺寸是否恢复正常；如需可再按单个敌人加 `enemyDefs[].enemyBodyScaleMul` 微调。
+
+## 验收追加排查（2026-03-30，敌人本体异常放大原因）
+
+- 用户反馈：战斗中“敌人影子和血条正常，但本体 image 明显变大”。
+- 已完成排查：
+  - `src/tower/battle/BattleScene.ts`：敌人本体缩放来自透视参数 `farScale/nearScale`；
+  - `data/tower_game_config.json`：确认 `towerDefenseRules.nearScale=2.3`（放大系数偏高）。
+- 结论：当前“仅本体明显变大”的主因是塔防透视缩放配置过大（近景敌人会被放大到约 2.3x）。
+- 当前阶段：等待用户确认是否回调 `nearScale`（建议先回到 `1.0~1.2` 区间）后再发布验证。
+
+## 验收追加修复（2026-03-30，iOS 切后台恢复卡死保护）
+
+- 用户需求：补上“切 App 恢复后偶发卡死”防护并验证。
+- 已完成：
+  - `src/main.ts`
+    - 新增生命周期恢复保护窗口：`pageshow(persisted)` / `resume` / `visibility=visible` 后进入恢复期；
+    - 恢复期内对主循环 `dt` 做限幅（`lifecycleDtClampMs`），避免后台回前台首帧超大 `dt` 触发逻辑突刺；
+    - 新增诊断事件 `diag_lifecycle_dt_clamp`（含 `rawDtMs/clampedDtMs/reason`）；
+    - 扩展 WebGPU 崩溃保护：除 `Length out of range of buffer` 外，命中 `GPUDevice.createCommandEncoder` 无效状态也会强制回退 WebGL；
+    - `gpu_device_lost` 触发后同样自动标记并单次重载到 WebGL。
+  - `src/perf/PerfReporter.ts`
+    - 增加配置项：`lifecycleDtClampMs`、`lifecycleDtRecoveryWindowMs`。
+  - `api/perf-ingest.ts`
+    - 扩展事件压缩字段，支持记录 `rawDtMs/clampedDtMs/reason/persisted` 等生命周期诊断信息。
+  - `data/game_config.json`、`data/tower_game_config.json`、`data/nobag_game_config.json`
+    - 新增默认阈值：`lifecycleDtClampMs=40`、`lifecycleDtRecoveryWindowMs=1400`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在 iOS 上通过“上滑切后台->恢复”场景复测，观察是否消除卡死并收集新日志。
+
+## 发布执行记录（2026-03-30，TestFlight 打包上传）
+
+- 用户指令：执行 TF 打包并上传。
+- 执行内容：
+  - 使用 `ios/packaging.config.local.json` 跑完整链路：`npm run build && npx cap sync ios` -> `xcodebuild archive` -> `xcodebuild exportArchive` -> `xcrun altool upload`；
+  - 首次上传失败：`cfBundleVersion` 不高于已上传版本（要求大于 `48`）；
+  - 已修复并重试：将 `ios/App/App.xcodeproj/project.pbxproj` 中 `CURRENT_PROJECT_VERSION` 从 `47` 提升到 `49`，二次上传成功。
+- 本次产物：
+  - Archive：`ios/build/App.xcarchive`
+  - IPA：`ios/build/export-testflight/App.ipa`
+  - Delivery UUID：`877664a0-f621-44bb-8bea-31d4ff52e7ce`
+- 当前阶段：已进入 App Store Connect 处理中，等待 TestFlight 可见后验收。
+- 重要决定：后续每次 TF 发包前先递增 `CURRENT_PROJECT_VERSION`，避免重复版本上传失败。
+
+## 验收追加排查（2026-03-30，iOS 切后台后卡死风险研判）
+
+- 用户反馈：苹果设备上滑切 App 后，偶发直接卡死。
+- 已完成排查：
+  - 复查线上 `perf-ingest`（近 `24h~7d`）的 `lifecycle_*` 与 WebGPU 异常关键词；
+  - 结合运行时代码检查主循环与战斗引擎的 `dt` 传递路径。
+- 研判结论：
+  - 当前现象更像“切后台恢复后首帧 `dt` 异常偏大，触发战斗更新突刺”导致主线程长帧/假死；
+  - 与 WebGPU 驱动稳定性问题可并存（并非只在 Android）。
+- 当前阶段：建议优先加“恢复首帧 `dt` 限幅 + 生命周期恢复保护”，再继续观察是否仍需扩大 WebGL 降级范围。
+
 ## 验收执行记录（2026-03-27，Vercel 更新发布 + 复测链接）
 
 - 用户需求：更新 Vercel，并给出测试网址。

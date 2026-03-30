@@ -121,6 +121,11 @@ export default function handler(req: any, res: any): void {
           'layoutMs',
           'statusFxMs',
           'fxTickMs',
+          'rawDtMs',
+          'clampedDtMs',
+          'reason',
+          'state',
+          'persisted',
         ]
         for (const k of keys) {
           if (k in p) compact[k] = (p as Record<string, unknown>)[k]

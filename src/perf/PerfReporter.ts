@@ -21,6 +21,8 @@ type PerfReporterConfig = {
   diagFrameHitchMs: number
   diagFrameFreezeMs: number
   diagFrameEventThrottleMs: number
+  lifecycleDtClampMs: number
+  lifecycleDtRecoveryWindowMs: number
 }
 
 type PerfBattleSnapshot = {
@@ -387,6 +389,8 @@ export function resolvePerfReporterConfig(raw: unknown): PerfReporterConfig {
   const diagFrameHitchMs = clampInt(Number(obj.diagFrameHitchMs), 60, 2000)
   const diagFrameFreezeMs = Math.max(diagFrameHitchMs, clampInt(Number(obj.diagFrameFreezeMs), 120, 3000))
   const diagFrameEventThrottleMs = clampInt(Number(obj.diagFrameEventThrottleMs), 200, 10000)
+  const lifecycleDtClampMs = clampInt(Number(obj.lifecycleDtClampMs), 16, 120)
+  const lifecycleDtRecoveryWindowMs = clampInt(Number(obj.lifecycleDtRecoveryWindowMs), 200, 5000)
   return {
     enabled: obj.enabled === true,
     endpoint: typeof obj.endpoint === 'string' ? obj.endpoint.trim() : '',
@@ -408,5 +412,7 @@ export function resolvePerfReporterConfig(raw: unknown): PerfReporterConfig {
     diagFrameHitchMs,
     diagFrameFreezeMs,
     diagFrameEventThrottleMs,
+    lifecycleDtClampMs,
+    lifecycleDtRecoveryWindowMs,
   }
 }

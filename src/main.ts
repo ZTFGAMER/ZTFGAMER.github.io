@@ -119,6 +119,13 @@ function triggerOneShotReloadToWebgl(): void {
   }
 }
 
+function isWebGpuCommandEncoderInvalidState(message: string): boolean {
+  const msg = String(message || '').toLowerCase()
+  return msg.includes('gpudevice.createcommandencoder')
+    || msg.includes('unable to make command encoder')
+    || msg.includes('invalidstateerror')
+}
+
 async function detectWebGpuFallbackAdapter(): Promise<boolean> {
   if (typeof navigator === 'undefined') return false
   const gpu = (navigator as Navigator & { gpu?: { requestAdapter?: () => Promise<unknown> } }).gpu
@@ -174,6 +181,14 @@ function bindWebGpuDeviceLostGuard(app: Application): void {
       message,
       count: webgpuDeviceLostCount,
     })
+    if (app.renderer.type !== 0) {
+      markForceWebglForHours(24)
+      perfReporter?.markEvent('renderer_crash_guard_force_webgl', {
+        reason: 'gpu_device_lost',
+        deviceLostReason: reason,
+      })
+      triggerOneShotReloadToWebgl()
+    }
     console.warn(`[Renderer] GPU device lost reason=${reason} count=${webgpuDeviceLostCount} message=${message}`)
   })
 }
@@ -689,6 +704,19 @@ async function bootstrap(): Promise<void> {
     perfCfg.maxEvents = Math.max(perfCfg.maxEvents, 4000)
     perfCfg.maxPoints = Math.max(perfCfg.maxPoints, 4000)
   }
+  let lifecycleRecoveryUntilMs = 0
+  let lifecycleRecoveryReason = ''
+  let lifecycleClampLastEmitAtMs = 0
+  const armLifecycleRecovery = (reason: string): void => {
+    const nowMs = Date.now()
+    lifecycleRecoveryUntilMs = Math.max(lifecycleRecoveryUntilMs, nowMs + perfCfg.lifecycleDtRecoveryWindowMs)
+    lifecycleRecoveryReason = reason
+    perfReporter?.markEvent('lifecycle_recovery_arm', {
+      reason,
+      clampMs: perfCfg.lifecycleDtClampMs,
+      windowMs: perfCfg.lifecycleDtRecoveryWindowMs,
+    })
+  }
   if (perfCfg.enabled) {
     perfReporter = new PerfReporter(perfCfg, {
       getScene: () => SceneManager.currentName(),
@@ -711,11 +739,14 @@ async function bootstrap(): Promise<void> {
         colno: evt.colno,
       })
       const isRendererBufferRange = msg.includes('Length out of range of buffer')
+      const isCommandEncoderInvalidState = isWebGpuCommandEncoderInvalidState(msg)
       const isRunningWebgpu = app.renderer.type !== 0
-      if (isMobile && isRunningWebgpu && isRendererBufferRange) {
+      if (isMobile && isRunningWebgpu && (isRendererBufferRange || isCommandEncoderInvalidState)) {
         markForceWebglForHours(24)
         perfReporter?.markEvent('renderer_crash_guard_force_webgl', {
-          reason: 'Length out of range of buffer',
+          reason: isRendererBufferRange
+            ? 'Length out of range of buffer'
+            : 'GPUDevice.createCommandEncoder invalid state',
           filename: evt.filename,
           lineno: evt.lineno,
           colno: evt.colno,
@@ -732,8 +763,10 @@ async function bootstrap(): Promise<void> {
             : String(reason))
       perfReporter?.markEvent('unhandled_rejection', { reason: reasonText })
     })
-    window.addEventListener('pageshow', () => {
-      perfReporter?.markEvent('lifecycle_pageshow', { persisted: false })
+    window.addEventListener('pageshow', (evt) => {
+      const persisted = (evt as PageTransitionEvent).persisted === true
+      perfReporter?.markEvent('lifecycle_pageshow', { persisted })
+      if (persisted) armLifecycleRecovery('pageshow_persisted')
     })
     window.addEventListener('freeze', () => {
       perfReporter?.markEvent('lifecycle_freeze')
@@ -741,11 +774,13 @@ async function bootstrap(): Promise<void> {
     })
     window.addEventListener('resume', () => {
       perfReporter?.markEvent('lifecycle_resume')
+      armLifecycleRecovery('resume')
     })
     window.addEventListener('pagehide', () => perfReporter?.flushByBeacon())
     document.addEventListener('visibilitychange', () => {
       perfReporter?.markEvent('visibility_change', { state: document.visibilityState })
       if (document.visibilityState === 'hidden') perfReporter?.flushByBeacon()
+      if (document.visibilityState === 'visible') armLifecycleRecovery('visibility_visible')
     })
     if (diagEnabled) {
       perfReporter.markEvent('diag_enabled', {
@@ -1059,21 +1094,36 @@ async function bootstrap(): Promise<void> {
   let diagFrameHitchLastEmitAtMs = 0
   let diagFrameFreezeLastEmitAtMs = 0
   app.ticker.add((ticker) => {
-    const dt = ticker.deltaMS / 1000
-    const dtMs = Math.max(0, ticker.deltaMS)
-    perfReporter?.tick(ticker.deltaMS)
+    const rawDtMs = Math.max(0, ticker.deltaMS)
+    let simDtMs = rawDtMs
+    const nowMs = Date.now()
+    if (perfCfg.enabled && simDtMs > perfCfg.lifecycleDtClampMs && nowMs < lifecycleRecoveryUntilMs) {
+      simDtMs = perfCfg.lifecycleDtClampMs
+      if (perfReporter && nowMs - lifecycleClampLastEmitAtMs >= perfCfg.diagFrameEventThrottleMs) {
+        lifecycleClampLastEmitAtMs = nowMs
+        perfReporter.markEvent('diag_lifecycle_dt_clamp', {
+          scene: SceneManager.currentName(),
+          rawDtMs: Math.round(rawDtMs * 100) / 100,
+          clampedDtMs: Math.round(simDtMs * 100) / 100,
+          reason: lifecycleRecoveryReason,
+        })
+      }
+    }
+    const dt = simDtMs / 1000
+    const dtMs = simDtMs
+    perfReporter?.tick(rawDtMs)
     const scene = SceneManager.currentName()
     const isBattleScene = scene === 'battle' || scene === 'nobag-battle' || scene === 'tower-battle'
     if (diagEnabled && perfReporter) {
       if (isBattleScene) {
         const nowMs = Date.now()
         const battlePerf = getBattlePerfStatsForScene(scene)
-        if (dtMs >= perfCfg.diagFrameHitchMs && nowMs - diagFrameHitchLastEmitAtMs >= perfCfg.diagFrameEventThrottleMs) {
+        if (rawDtMs >= perfCfg.diagFrameHitchMs && nowMs - diagFrameHitchLastEmitAtMs >= perfCfg.diagFrameEventThrottleMs) {
           diagFrameHitchLastEmitAtMs = nowMs
           perfReporter.markEvent('diag_frame_hitch', {
             scene,
             renderer: app.renderer.type === 0 ? 'webgl' : 'webgpu',
-            dtMs: Math.round(dtMs * 100) / 100,
+            dtMs: Math.round(rawDtMs * 100) / 100,
             hitchThresholdMs: perfCfg.diagFrameHitchMs,
             activeFx: battlePerf?.activeFx,
             droppedProjectiles: battlePerf?.droppedProjectiles,
@@ -1084,12 +1134,12 @@ async function bootstrap(): Promise<void> {
             battleTickDeltaMax: battlePerf?.battleTickDeltaMax,
           })
         }
-        if (dtMs >= perfCfg.diagFrameFreezeMs && nowMs - diagFrameFreezeLastEmitAtMs >= perfCfg.diagFrameEventThrottleMs) {
+        if (rawDtMs >= perfCfg.diagFrameFreezeMs && nowMs - diagFrameFreezeLastEmitAtMs >= perfCfg.diagFrameEventThrottleMs) {
           diagFrameFreezeLastEmitAtMs = nowMs
           perfReporter.markEvent('diag_frame_freeze', {
             scene,
             renderer: app.renderer.type === 0 ? 'webgl' : 'webgpu',
-            dtMs: Math.round(dtMs * 100) / 100,
+            dtMs: Math.round(rawDtMs * 100) / 100,
             freezeThresholdMs: perfCfg.diagFrameFreezeMs,
             activeFx: battlePerf?.activeFx,
             droppedProjectiles: battlePerf?.droppedProjectiles,

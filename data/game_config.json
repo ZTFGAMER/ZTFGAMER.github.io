@@ -2150,6 +2150,8 @@
         "diagFrameHitchMs": 120,
         "diagFrameFreezeMs": 280,
         "diagFrameEventThrottleMs": 1200,
+        "lifecycleDtClampMs": 40,
+        "lifecycleDtRecoveryWindowMs": 1400,
         "diagTowerFrameSpikeMs": 45,
         "diagTowerEngineUpdateSpikeMs": 35
       },
