@@ -1,5 +1,22 @@
 # 大巴扎 — 开发进度记录
 
+## 发布执行记录（2026-03-30，Vercel + Git + TestFlight 同步）
+
+- 用户指令：更新 Vercel、同步 Git 上传、打 TF 包并上传。
+- 已完成：
+  - Vercel 生产发布成功：
+    - Production: `https://bigbazzar-oep95jonf-zhengtengfeis-projects.vercel.app`
+    - Alias: `https://bigbazzar.vercel.app`
+  - Git 同步：
+    - 提交：`3795cd5`（`同步iOS恢复防卡死与敌人本体缩放修正`）
+    - 已推送到 `origin/main`。
+  - TestFlight 打包上传：
+    - 通过 `ios/scripts/release_testflight.py --config ios/packaging.config.local.json` 完整执行 build/archive/export/upload；
+    - 上传成功：`UPLOAD SUCCEEDED with no errors`；
+    - Delivery UUID：`36ca7bec-6d84-4f1b-9ade-a541df36163f`；
+    - 构建号：`CURRENT_PROJECT_VERSION=50`。
+- 当前阶段：等待 TestFlight 处理完成后在目标设备验收（重点关注 iOS 切后台恢复与敌人本体缩放表现）。
+
 ## 验收追加修复（2026-03-30，敌人本体贴图统一缩放）
 
 - 用户需求：确认“敌人本体变大”并非影子/血条缩放问题，要求直接修正本体图显示并默认 `0.5` 倍。
