@@ -75,6 +75,20 @@ export interface MergeDropPayload {
   targetView: GridZone
 }
 
+export interface SwapDropPayload {
+  sourceInstanceId: string
+  targetInstanceId: string
+  sourceOriginCol: number
+  sourceOriginRow: number
+  sourceSize: ItemSizeNorm
+  targetCol: number
+  targetRow: number
+  homeSystem: GridSystem
+  homeView: GridZone
+  targetSystem: GridSystem
+  targetView: GridZone
+}
+
 // ============================================================
 export class DragController {
   private pairs: ZonePair[] = []
@@ -84,6 +98,7 @@ export class DragController {
   onDragMove:  (payload: DragMovePayload) => void = () => {}
   onSpecialDrop: (payload: SpecialDropPayload) => boolean = () => false
   onMergeDrop: (payload: MergeDropPayload) => boolean = () => false
+  onSwapDrop: (payload: SwapDropPayload) => boolean = () => false
   onDropCellLocked: (payload: { view: GridZone; col: number; row: number; size: ItemSizeNorm; instanceId: string }) => boolean = () => false
   onItemPlaced: (payload: { view: GridZone; instanceId: string }) => void = () => {}
   shouldShowLockedHighlight: (payload: { view: GridZone; col: number; row: number; size: ItemSizeNorm; instanceId: string }) => boolean = () => true
@@ -433,6 +448,44 @@ export class DragController {
         if (this.dragContainer === dragged) this.dragContainer = null
         this.onDragEnd()
         return
+      }
+
+      const swapAllowed = this.onSwapDrop({
+        sourceInstanceId: id,
+        targetInstanceId: hitInstanceId,
+        sourceOriginCol: this.dragOrigItem.col,
+        sourceOriginRow: this.dragOrigItem.row,
+        sourceSize: item.size,
+        targetCol: cell.col,
+        targetRow: finalRow,
+        homeSystem: home.system,
+        homeView: home.view,
+        targetSystem: targetPair.system,
+        targetView: targetPair.view,
+      })
+      if (swapAllowed && targetPair === home) {
+        const targetItem = targetPair.system.getItem(hitInstanceId)
+        if (targetItem) {
+          const targetFromCol = targetItem.col
+          const targetFromRow = targetItem.row
+          targetPair.system.remove(hitInstanceId)
+          const placedSource = targetPair.system.place(targetFromCol, targetFromRow, item.size, item.defId, id)
+          const placedTarget = placedSource
+            ? targetPair.system.place(this.dragOrigItem.col, this.dragOrigItem.row, targetItem.size, targetItem.defId, hitInstanceId)
+            : false
+          if (placedSource && placedTarget) {
+            this.clearSqueezePreview()
+            this.dragContainer = null
+            const squeezeMs = getConfig('squeezeMs')
+            home.view.animateToCell(hitInstanceId, this.dragOrigItem.col, this.dragOrigItem.row, squeezeMs)
+            this.dragLayer.removeChild(container)
+            home.view.snapToCellFromDrag(id, container, targetFromCol, targetFromRow)
+            this.onDragEnd()
+            return
+          }
+          if (placedSource) targetPair.system.remove(id)
+          targetPair.system.place(targetFromCol, targetFromRow, targetItem.size, targetItem.defId, hitInstanceId)
+        }
       }
     }
     if (this.onDropCellLocked({ view: targetPair.view, col: cell.col, row: finalRow, size: item.size, instanceId: id })) {

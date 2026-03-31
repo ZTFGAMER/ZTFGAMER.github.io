@@ -1,5 +1,5 @@
 // ============================================================
-// MenuScene — 启动菜单（PVE / PVP 模式选择）
+// MenuScene — 启动菜单（合成冒险）
 // ============================================================
 
 import type { Scene } from '@/core/SceneManager'
@@ -9,10 +9,47 @@ import { Container, Graphics, Text } from 'pixi.js'
 import { CANVAS_W, CANVAS_H } from '@/config/layoutConstants'
 
 let root: Container | null = null
+let panel: Container | null = null
 let fadeAlpha = 0
 let fadeIn = true
 
+type MenuPage = 'root' | 'other' | 'tower'
+type TowerDifficulty = { label: string; scale: number }
+
+const TOWER_DIFFICULTY_STORAGE_KEY = 'bigbazzar_tower_difficulty_scale'
+const TOWER_DIFFICULTIES: TowerDifficulty[] = [
+  { label: '简单', scale: 0.6 },
+  { label: '普通', scale: 0.8 },
+  { label: '困难', scale: 1.0 },
+  { label: '极难', scale: 1.2 },
+  { label: '地狱', scale: 1.4 },
+]
+
+let currentPage: MenuPage = 'root'
+let selectedTowerDifficultyIndex = 2
+
+function readTowerDifficultyIndex(): number {
+  try {
+    const raw = Number(localStorage.getItem(TOWER_DIFFICULTY_STORAGE_KEY) || '')
+    if (!Number.isFinite(raw) || raw <= 0) return 2
+    const idx = TOWER_DIFFICULTIES.findIndex((it) => Math.abs(it.scale - raw) < 1e-6)
+    return idx >= 0 ? idx : 2
+  } catch {
+    return 2
+  }
+}
+
+function persistTowerDifficulty(scale: number): void {
+  try {
+    localStorage.setItem(TOWER_DIFFICULTY_STORAGE_KEY, `${scale}`)
+  } catch {
+    // ignore
+  }
+}
+
 function enterTowerMode(): void {
+  const hit = TOWER_DIFFICULTIES[Math.max(0, Math.min(TOWER_DIFFICULTIES.length - 1, selectedTowerDifficultyIndex))]
+  if (hit) persistTowerDifficulty(hit.scale)
   SceneManager.goto('tower-battle')
 }
 
@@ -34,6 +71,7 @@ function makeBtn(
   borderColor: number,
   y: number,
   onClick: () => void,
+  active = false,
 ): Container {
   const con = new Container()
   con.x = CANVAS_W / 2
@@ -43,12 +81,12 @@ function makeBtn(
 
   // 外边框光效
   const glow = new Graphics()
-  glow.roundRect(-W / 2 - 2, -H / 2 - 2, W + 4, H + 4, R + 2).fill({ color: borderColor, alpha: 0.35 })
+  glow.roundRect(-W / 2 - 2, -H / 2 - 2, W + 4, H + 4, R + 2).fill({ color: borderColor, alpha: active ? 0.6 : 0.35 })
   con.addChild(glow)
 
   // 主背景
   const bg = new Graphics()
-  bg.roundRect(-W / 2, -H / 2, W, H, R).fill({ color: bgColor })
+  bg.roundRect(-W / 2, -H / 2, W, H, R).fill({ color: bgColor, alpha: active ? 0.88 : 1 })
   con.addChild(bg)
 
   // 左侧色块装饰
@@ -91,8 +129,8 @@ function makeBtn(
   con.eventMode = 'static'
   con.cursor = 'pointer'
   con.on('pointerdown', onClick)
-  con.on('pointerover', () => { bg.alpha = 0.85 })
-  con.on('pointerout', () => { bg.alpha = 1 })
+  con.on('pointerover', () => { bg.alpha = active ? 0.8 : 0.85 })
+  con.on('pointerout', () => { bg.alpha = active ? 0.88 : 1 })
 
   return con
 }
@@ -109,6 +147,121 @@ function makePvpBtn(y: number): Container {
   )
 }
 
+function makeTowerDifficultySelector(y: number): Container {
+  const con = new Container()
+  con.x = CANVAS_W / 2
+  con.y = y
+
+  const W = 480
+  const H = 124
+  const R = 20
+
+  const bg = new Graphics()
+  bg.roundRect(-W / 2, -H / 2, W, H, R).fill({ color: 0x3a2413 })
+  bg.roundRect(-W / 2, -H / 2, W, H, R).stroke({ color: 0xffa64d, width: 3, alpha: 0.8 })
+  con.addChild(bg)
+
+  const picked = TOWER_DIFFICULTIES[Math.max(0, Math.min(TOWER_DIFFICULTIES.length - 1, selectedTowerDifficultyIndex))]
+  const title = new Text({
+    text: picked?.label ?? '困难',
+    style: { fill: 0xffffff, fontSize: 40, fontWeight: 'bold', align: 'center' },
+  })
+  title.anchor.set(0.5, 0.5)
+  title.y = -12
+  con.addChild(title)
+
+  const sub = new Text({
+    text: '左右切换难度',
+    style: { fill: 0xffcf9b, fontSize: 20, align: 'center' },
+  })
+  sub.anchor.set(0.5, 0.5)
+  sub.y = 24
+  con.addChild(sub)
+
+  const makeArrow = (dir: 'left' | 'right', x: number): Container => {
+    const btn = new Container()
+    btn.x = x
+    btn.y = 0
+    const hit = new Graphics()
+    hit.circle(0, 0, 36).fill({ color: 0x000000, alpha: 0.001 })
+    btn.addChild(hit)
+    const arrow = new Text({
+      text: dir === 'left' ? '◀' : '▶',
+      style: { fill: 0xffa64d, fontSize: 38, fontWeight: 'bold' },
+    })
+    arrow.anchor.set(0.5, 0.5)
+    btn.addChild(arrow)
+    btn.eventMode = 'static'
+    btn.cursor = 'pointer'
+    btn.on('pointerdown', () => {
+      const count = TOWER_DIFFICULTIES.length
+      if (count <= 0) return
+      selectedTowerDifficultyIndex = dir === 'left'
+        ? ((selectedTowerDifficultyIndex - 1 + count) % count)
+        : ((selectedTowerDifficultyIndex + 1) % count)
+      rebuildPanel()
+    })
+    return btn
+  }
+
+  con.addChild(makeArrow('left', -W / 2 + 40))
+  con.addChild(makeArrow('right', W / 2 - 40))
+
+  return con
+}
+
+function rebuildPanel(): void {
+  if (!panel) return
+  panel.removeChildren().forEach((one) => one.destroy({ children: true }))
+
+  const label = new Text({
+    text: currentPage === 'root' ? '选择模式' : (currentPage === 'other' ? '其他模式' : '塔防难度'),
+    style: { fill: 0x6677aa, fontSize: 22, align: 'center' },
+  })
+  label.anchor.set(0.5, 0)
+  label.x = CANVAS_W / 2
+  label.y = CANVAS_H * 0.46
+  panel.addChild(label)
+
+  if (currentPage === 'root') {
+    panel.addChild(makeBtn('塔防模式', '选择难度后开始', 0xffa64d, 0x3a2413, 0xffa64d, CANVAS_H * 0.56, () => {
+      currentPage = 'tower'
+      rebuildPanel()
+    }))
+    panel.addChild(makeBtn('其他模式', '冒险 / 同步对战 / 无背包', 0x5aa6ff, 0x18243d, 0x5aa6ff, CANVAS_H * 0.56 + 144, () => {
+      currentPage = 'other'
+      rebuildPanel()
+    }))
+    return
+  }
+
+  if (currentPage === 'other') {
+    panel.addChild(makeBtn('冒险模式', '单人闯关  击败电脑  收集奖杯', 0x4caf50, 0x1a2e1c, 0x4caf50, CANVAS_H * 0.54, () => {
+      SceneManager.goto('shop')
+    }))
+    panel.addChild(makePvpBtn(CANVAS_H * 0.54 + 144))
+    panel.addChild(makeBtn('无背包模式', '独立玩法  零耦合  无背包挑战', 0x5aa6ff, 0x18243d, 0x5aa6ff, CANVAS_H * 0.54 + 288, () => {
+      SceneManager.goto('nobag-shop')
+    }))
+    panel.addChild(makeBtn('返回', '回到模式选择', 0xffd86b, 0x2b2740, 0xffd86b, CANVAS_H * 0.54 + 432, () => {
+      currentPage = 'root'
+      rebuildPanel()
+    }))
+    return
+  }
+
+  const towerBaseY = CANVAS_H * 0.58
+  panel.addChild(makeTowerDifficultySelector(towerBaseY))
+
+  panel.addChild(makeBtn('开始', '进入塔防战斗', 0x4caf50, 0x1a2e1c, 0x4caf50, towerBaseY + 148, () => {
+    enterTowerMode()
+  }))
+  panel.addChild(makeBtn('返回', '回到模式选择', 0xffd86b, 0x2b2740, 0xffd86b, towerBaseY + 286, () => {
+    currentPage = 'root'
+    rebuildPanel()
+  }))
+}
+
 // ----------------------------------------------------------------
 // 场景
 // ----------------------------------------------------------------
@@ -122,6 +275,8 @@ export const MenuScene: Scene = {
     root.sortableChildren = true
     fadeAlpha = 0
     fadeIn = true
+    currentPage = 'root'
+    selectedTowerDifficultyIndex = readTowerDifficultyIndex()
 
     // ── 背景 ──────────────────────────────────────────────
     const bg = new Graphics()
@@ -153,14 +308,14 @@ export const MenuScene: Scene = {
     titleCon.addChild(titleGlow)
 
     const titleText = new Text({
-      text: '大巴扎',
+      text: '合成冒险',
       style: { fill: 0xffd86b, fontSize: 80, fontWeight: 'bold', align: 'center' },
     })
     titleText.anchor.set(0.5, 0.5)
     titleCon.addChild(titleText)
 
     const subtitleText = new Text({
-      text: 'B I G  B A Z Z A R',
+      text: 'S Y N T H E S I S   A D V E N T U R E',
       style: { fill: 0x8899bb, fontSize: 20, align: 'center' },
     })
     subtitleText.anchor.set(0.5, 0)
@@ -174,52 +329,9 @@ export const MenuScene: Scene = {
     drawDecoLine(decoG, CANVAS_W / 2, CANVAS_H * 0.44, 200, 0xffd86b)
     root.addChild(decoG)
 
-    // ── 模式标签 ──────────────────────────────────────────
-    const modeLabel = new Text({
-      text: '选择游戏模式',
-      style: { fill: 0x6677aa, fontSize: 22, align: 'center' },
-    })
-    modeLabel.anchor.set(0.5, 0)
-    modeLabel.x = CANVAS_W / 2
-    modeLabel.y = CANVAS_H * 0.46
-    root.addChild(modeLabel)
-
-    // ── 按钮 ──────────────────────────────────────────────
-    const pveBtn = makeBtn(
-      '冒险模式',
-      '单人闯关  击败电脑  收集奖杯',
-      0x4caf50,
-      0x1a2e1c,
-      0x4caf50,
-      CANVAS_H * 0.54,
-      () => SceneManager.goto('shop'),
-    )
-    root.addChild(pveBtn)
-
-    const pvpBtn = makePvpBtn(CANVAS_H * 0.54 + 144)
-    root.addChild(pvpBtn)
-
-    const noBackpackBtn = makeBtn(
-      '无背包模式',
-      '独立玩法  零耦合  无背包挑战',
-      0x5aa6ff,
-      0x18243d,
-      0x5aa6ff,
-      CANVAS_H * 0.54 + 288,
-      () => SceneManager.goto('nobag-shop'),
-    )
-    root.addChild(noBackpackBtn)
-
-    const towerDefenseBtn = makeBtn(
-      '塔防模式',
-      '独立玩法  零耦合  规则源于冒险',
-      0xffa64d,
-      0x3a2413,
-      0xffa64d,
-      CANVAS_H * 0.54 + 432,
-      () => enterTowerMode(),
-    )
-    root.addChild(towerDefenseBtn)
+    panel = new Container()
+    root.addChild(panel)
+    rebuildPanel()
 
     // ── 底部 ──────────────────────────────────────────────
     const ver = new Text({
@@ -242,6 +354,7 @@ export const MenuScene: Scene = {
       getApp().stage.removeChild(root)
       root.destroy({ children: true })
       root = null
+      panel = null
     }
   },
 

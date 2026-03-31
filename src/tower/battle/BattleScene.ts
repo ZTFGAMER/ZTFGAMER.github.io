@@ -3763,6 +3763,12 @@ function ensureEditableBuildMode(stage: Container): void {
       if (transition.battleExitTransitionDurationMs > 0) return false
       return applyBattleSynthesis(sourceInstanceId, targetInstanceId, homeSystem, homeView)
     }
+    editableDrag.onSwapDrop = ({ sourceInstanceId, targetInstanceId, homeSystem, targetSystem }) => {
+      if (transition.battleExitTransitionDurationMs > 0) return false
+      if (homeSystem !== targetSystem) return false
+      if (canSynthesizePairInBattle(sourceInstanceId, targetInstanceId)) return false
+      return true
+    }
     editableDrag.onSpecialDrop = ({ instanceId, anchorGx, anchorGy, size, homeSystem, homeView }) => {
       if (transition.battleExitTransitionDurationMs > 0) return false
       const targetId = findSynthesisHoverTargetInBattle(instanceId, anchorGx, anchorGy, size)

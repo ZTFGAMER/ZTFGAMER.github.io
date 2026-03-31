@@ -10,6 +10,8 @@ import { toRunner } from '@/tower/battle/EnemyBuilder'
 import { findItemDef, itemArchetype, pickTierSeriesValue, skillLines, tierIndexFromRaw } from '@/tower/battle/CombatHelpers'
 import type { BattleEngineLike, BattleQueuePerfStats, BattleRuntimeCachePerfStats, TowerClassAttackDistanceView, TowerEnemyStatsView, TowerEnemyUnitView } from '@/tower/battle/BattleEngineTypes'
 
+const TOWER_DIFFICULTY_STORAGE_KEY = 'bigbazzar_tower_difficulty_scale'
+
 type EnemyDef = {
   id: string
   name: string
@@ -927,8 +929,9 @@ export class TowerDefenseEngine implements BattleEngineLike {
     const wave = ('wave' in picked ? picked.wave : picked)
     const hpMultiplier = ('hpMultiplier' in picked ? picked.hpMultiplier : 1)
     const attackMultiplier = ('attackMultiplier' in picked ? picked.attackMultiplier : 1)
-    this.waveHpMultiplier = Math.max(1, hpMultiplier)
-    this.waveAttackMultiplier = Math.max(1, attackMultiplier)
+    const difficultyMul = this.getTowerDifficultyScale()
+    this.waveHpMultiplier = Math.max(0.1, hpMultiplier * difficultyMul)
+    this.waveAttackMultiplier = Math.max(0.1, attackMultiplier * difficultyMul)
     const enemyById = new Map<string, EnemyDef>()
     for (const one of cfg.enemyDefs ?? []) {
       enemyById.set(one.id, one)
@@ -963,8 +966,9 @@ export class TowerDefenseEngine implements BattleEngineLike {
     const wave = ('wave' in picked ? picked.wave : picked)
     const hpMultiplier = ('hpMultiplier' in picked ? picked.hpMultiplier : 1)
     const attackMultiplier = ('attackMultiplier' in picked ? picked.attackMultiplier : 1)
-    this.waveHpMultiplier = Math.max(1, hpMultiplier)
-    this.waveAttackMultiplier = Math.max(1, attackMultiplier)
+    const difficultyMul = this.getTowerDifficultyScale()
+    this.waveHpMultiplier = Math.max(0.1, hpMultiplier * difficultyMul)
+    this.waveAttackMultiplier = Math.max(0.1, attackMultiplier * difficultyMul)
 
     const enemyById = new Map<string, EnemyDef>()
     for (const one of cfg.enemyDefs ?? []) enemyById.set(one.id, one)
@@ -2670,8 +2674,18 @@ export class TowerDefenseEngine implements BattleEngineLike {
     if (!hit) return null
     return {
       wave: hit,
-      hpMultiplier: Math.max(1, Number(hit.hpMultiplier) || 1),
-      attackMultiplier: Math.max(1, Number(hit.attackMultiplier) || 1),
+      hpMultiplier: Math.max(0.1, Number(hit.hpMultiplier) || 1),
+      attackMultiplier: Math.max(0.1, Number(hit.attackMultiplier) || 1),
+    }
+  }
+
+  private getTowerDifficultyScale(): number {
+    try {
+      const raw = Number(localStorage.getItem(TOWER_DIFFICULTY_STORAGE_KEY) || '')
+      if (!Number.isFinite(raw) || raw <= 0) return 1
+      return Math.max(0.1, Math.min(3, raw))
+    } catch {
+      return 1
     }
   }
 }
