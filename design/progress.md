@@ -1,5 +1,21 @@
 # 大巴扎 — 开发进度记录
 
+## 发布执行记录（2026-03-31，菜单难度微调后 Git + Vercel + TestFlight）
+
+- 用户指令：同步 Git 上传、上传 Vercel、打 TF 包上传。
+- 已完成：
+  - Git：
+    - 提交：`770b2fd`（`同步主菜单改版与塔防拖拽换位及难度流程`）；
+    - 推送：`main -> origin/main` 成功。
+  - Vercel：
+    - Production：`https://bigbazzar-6x3ckzhnv-zhengtengfeis-projects.vercel.app`；
+    - Alias：`https://bigbazzar.vercel.app`。
+  - iOS TestFlight：
+    - 上传结果：`UPLOAD SUCCEEDED with no errors`；
+    - Delivery UUID：`d73bf04a-4263-49e0-b3b5-d5760faa8f97`；
+    - 构建号：`CURRENT_PROJECT_VERSION=53`。
+- 当前阶段：线上与 TestFlight 已更新，等待用户验收菜单与难度交互。
+
 ## 验收追加微调（2026-03-31，难度文案与按钮间距）
 
 - 用户反馈：
