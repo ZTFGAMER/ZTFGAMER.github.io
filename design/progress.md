@@ -1,5 +1,30 @@
 # 大巴扎 — 开发进度记录
 
+## 发布执行记录（2026-03-31，Git 同步 + Vercel + TestFlight + Android）
+
+- 用户指令：同步 Git 上传、发布 Vercel、打 TF 包并上传、打 Android 包。
+- 已完成：
+  - Git：
+    - 提交：`3d70d02`（`同步塔防技能提示与武器数值调整并更新进度`）；
+    - 推送：`main -> origin/main` 成功。
+  - Vercel：
+    - Production：`https://bigbazzar-n3qb42xcu-zhengtengfeis-projects.vercel.app`；
+    - Alias：`https://bigbazzar.vercel.app`。
+  - iOS TestFlight：
+    - 上传结果：`UPLOAD SUCCEEDED with no errors`；
+    - Delivery UUID：`0ed0bdfe-7048-4f65-af0c-df217f397cb1`；
+    - 构建号：`CURRENT_PROJECT_VERSION=52`。
+  - Android：
+    - 先执行 `npm run build:android-web` + `npm run android:sync`；
+    - 首次 `compileReleaseJavaWithJavac` 因 `无效的源发行版：21` 失败；
+    - 临时将 `android/app/capacitor.build.gradle` 编译目标切到 `VERSION_17` 后重试成功；
+    - 产物：
+      - APK：`android/app/build/outputs/apk/release/app-release.apk`（约 `55M`）；
+      - AAB：`android/app/build/outputs/bundle/release/app-release.aab`（约 `53M`）；
+    - 已将 `capacitor.build.gradle` 回退到 `VERSION_21`，避免提交生成文件偏差。
+- 当前阶段：发布与双端打包已完成，等待用户验收线上与安装包表现。
+- 风险/待办：Android 环境仍存在 Java 21 编译口径依赖，后续建议统一本机 JDK21 或在打包链路固化 Java 版本策略。
+
 ## 验收追加调整（2026-03-30，长剑全系攻击距离统一为16）
 
 - 用户需求：长剑全系（含反击长剑）攻击距离统一为 `16`，护盾 `+1` 口径不变。
