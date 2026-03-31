@@ -1,5 +1,293 @@
 # 大巴扎 — 开发进度记录
 
+## 验收追加调整（2026-03-30，长剑全系攻击距离统一为16）
+
+- 用户需求：长剑全系（含反击长剑）攻击距离统一为 `16`，护盾 `+1` 口径不变。
+- 已完成：
+  - `data/tower_game_config.json`
+    - `towerDefenseRules.playerItemAttackDistanceByIcon` 中 `toweritem19~24` 由 `20` 调整为 `16`；
+  - `data/tower_items.json`
+    - `toweritem24` 技能文案里的“攻击距离:20，护盾+1”修正为“攻击距离:16，护盾+1”。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收长剑全系攻击距离展示与实战判定一致性。
+
+## 验收追加调整（2026-03-30，手里剑默认弹射衰减改为-20%）
+
+- 用户需求：手里剑默认弹射后伤害改为 `-20%`。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 默认弹射伤害系数由 `0.7` 调整为 `0.8`（每跳保留 80% 伤害）；
+  - `data/tower_items.json`
+    - `toweritem1` 文案更新为“默认弹射后伤害-20%”。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收手里剑弹射伤害体感与文案一致性。
+
+## 验收追加调整（2026-03-30，手里剑与冰锥 CD 档位更新）
+
+- 用户需求：更新手里剑与冰锥全系 CD 间隔档位。
+- 已完成：
+  - `data/tower_items.json`
+    - 手里剑系（`toweritem1~6`）：
+      - `cooldown` 由 `2500` 调整为 `2000`
+      - `cooldown_tiers` 由 `2500|2100|1700|1400|1200` 调整为 `2000|1700|1400|1200|1000`
+    - 冰锥系（`toweritem13~18`）：
+      - `cooldown` 由 `1900` 调整为 `2000`
+      - `cooldown_tiers` 由 `1900|1600|1300|1100|900` 调整为 `2000|1700|1400|1200|1000`
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收手里剑与冰锥攻速体感是否符合目标表。
+
+## 验收追加微调（2026-03-30，商店光球半径改为0.5px）
+
+- 用户要求：光球半径修正为 `0.5px`。
+- 已完成：
+  - `src/tower/shop/ui/ShopAnimationEffects.ts`
+    - 同类增益光球绘制由 `dot.circle(0, 0, 2)` 调整为 `dot.circle(0, 0, 0.5)`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户本地确认“0.5px 光球 + 直线 0.5s”最终观感。
+
+## 验收追加微调（2026-03-30，技能提示停留再+0.2s）
+
+- 用户要求：在现有基础上，技能提示再多停留 `+0.2s`。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 技能提示三条路径（批量提示、光球命中回调、源物品提示）的 `extraHoldMs` 由 `200` 调整为 `400`。
+- 结果：相对默认停留时长，当前技能提示总追加停留为 `+0.4s`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“提示总停留时长 +0.4s”的观感。
+
+## 验收追加微调（2026-03-30，技能提示与物品居中对齐 + 停留+0.2s）
+
+- 用户要求：技能提示文字与物品严格居中对齐（无左右随机偏移），并延长存在时间 `+0.2s`。
+- 已完成：
+  - `src/tower/battle/BattleFXPool.ts`
+    - `spawnFloatingNumber()` 新增可选参数：`alignCenter / randomX / extraHoldMs`；
+    - 支持按调用方关闭随机横向抖动，并按需追加停留时长。
+  - `src/tower/battle/BattleScene.ts`
+    - 技能相关物品提示统一改为：`alignCenter: true`、`randomX: 0`、`extraHoldMs: 200`；
+    - 覆盖批量提示、光球命中回调提示、源物品提示三处路径。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“提示居中无偏移 + 停留时间增加 0.2 秒”。
+
+## 验收追加微调（2026-03-30，光球轨迹与时长）
+
+- 用户要求：光球改为直线飞行，飞行时长改为 `0.5s`。
+- 已完成：
+  - `src/tower/shop/ui/ShopAnimationEffects.ts`
+    - 商店同类提示光球时长调整为 `500ms`；
+    - 轨迹保持直线插值。
+  - `src/tower/battle/BattleScene.ts`
+    - 战斗同类提示光效时长同步调整为 `500ms`。
+  - `src/tower/battle/BattleFXPool.ts`
+    - 修正 `projectileStyle: 'linear'` 在 dot 路径下也强制线性（取消抛物弧线）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户本地复测“单光球、单文本、直线、0.5s”四项观感。
+
+## 验收追加实现（2026-03-30，技能获得时相关物品弹出提示）
+
+- 用户需求：获得技能后，在所有相关物品位置弹出对应提示（如“伤害↑/攻击速度↑/攻击距离↑”等）。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增技能弹提示规则表 `TOWER_SKILL_GAIN_HINT_RULES`，覆盖四职业技能；
+    - 新增图标分组 `TOWER_SKILL_HINT_ICON_GROUPS` 与按图标收集实例 `collectTowerPlayerItemIdsByIcons()`；
+    - 新增 `emitTowerSkillGainHint()`，在技能选取成功后对相关物品批量触发浮字提示；
+    - 已接入技能购买回调：选中技能后立即弹出对应提示。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“技能获得提示是否覆盖所有相关物品且文案符合表格定义”。
+
+## 验收追加微调（2026-03-30，同类增益光球尺寸与时长）
+
+- 用户要求：光球半径固定 `5px`，飞行时间改为 `0.8s`。
+- 已完成：
+  - `src/tower/shop/ui/ShopAnimationEffects.ts`
+    - 商店同类增益光球半径由 `4` 调整为 `5`；
+    - 飞行时长由 `300ms` 调整为 `800ms`。
+  - `src/tower/battle/BattleScene.ts`
+    - 战斗同类增益光效飞行时长由 `300ms` 调整为 `800ms`；
+    - 光点视觉比例同步下调（`projectileScale: 0.6`）以贴近 `5px` 观感。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户本地复测光球尺寸与飞行节奏。
+
+## 验收追加修复（2026-03-30，合成链路提示未触发根因）
+
+- 用户补充：主要用“合成”路径测试（购买多数仅 Lv1）。
+- 根因确认：提示规则此前按 `toweritemXX` 匹配，但运行时传入的是物品 `defId(UUID)`，导致规则始终匹配失败。
+- 已完成修复：
+  - `src/tower/battle/BattleScene.ts` 与 `src/tower/shop/ui/ShopAnimationEffects.ts`
+    - 规则匹配改为：先尝试 `defId`，失败再读取物品 `icon`（`toweritemXX`）匹配；
+    - 因此合成链路（含 source/target/evolved 都是 UUID）也能正确命中规则。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在 localhost 继续走“合成出增益物品”验证特效与提示文案。
+
+## 验收追加修复（2026-03-30，商店同类提示层级可见性）
+
+- 用户反馈：本地仍“完全没有”提示。
+- 已完成修复：
+  - `src/tower/shop/ui/ShopAnimationEffects.ts`
+    - 为同类提示文本与飞行光点设置高层级（`zIndex`）并挂到专用 FX 层，避免被商店 UI 层遮挡；
+    - 光点完成后自动清理 FX 层，避免残留。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在 localhost 再次复测可见性（购买/合成/丢弃）。
+
+## 验收追加修复（2026-03-30，本地 localhost 商店阶段同类提示未触发）
+
+- 用户反馈：在 `http://localhost:5180/` 本地测试时，仍看不到同类增益提示。
+- 问题定位：之前仅在 `tower-battle` 战斗场景实现，商店阶段（`ShopScene`）购买/合成路径未接入该特效逻辑。
+- 已完成修复：
+  - `src/tower/shop/ui/ShopAnimationEffects.ts`
+    - 新增商店阶段同类提示规则与触发器：`triggerShopTowerAuraGainHint` / `triggerShopTowerAuraLoseHint`；
+    - 实现 0.3s 飞行光点（获得时）+ 目标物品浮字提示；
+    - 失去时对同类目标直接浮字提示。
+  - `src/tower/shop/systems/ShopGridInventory.ts`
+    - 购买放置到战斗区/背包后，接入获得提示触发；
+    - 删除物品（出售/丢弃）时，接入失去提示触发。
+  - `src/tower/shop/systems/ShopSynthesisController.ts`
+    - 合成完成后，先触发被消失增益物品的失去提示，再触发新物品获得提示。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在 localhost 的商店阶段复测（购买/合成/丢弃三路径）。
+
+## 验收追加修复（2026-03-30，同类增益提示改为业务事件直触发）
+
+- 用户反馈：提示仍未出现。
+- 已完成修复：
+  - `src/tower/battle/BattleScene.ts`
+    - 将同类增益提示从“仅依赖 diff 检测”改为“购买/合成业务事件直接触发”；
+    - 购买成功后：若买到的是增益物品，立即触发同类飞行光效与提示；
+    - 合成成功后：
+      - 先对被消失的增益物品触发同类“失去提示”；
+      - 再对新生成的增益物品触发同类“获得提示”；
+    - 保留同步逻辑用于状态一致性，但视觉提示不再受同步时序影响。
+- 验证：`npm run build` 通过。
+- 当前阶段：待发布后按“购买增益物品 / 合成增益物品 / 合成消失增益物品”三条链路复测。
+
+## 验收追加调整（2026-03-30，同类增益提示文案严格对齐）
+
+- 用户要求：提示文案严格按提供表格，不做语义替换。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - `toweritem17` 文案改为严格一致：`gainText="攻击范围↑"`、`loseText="攻击范围↑"`。
+- 当前阶段：等待用户复测文案显示是否与表格逐条一致。
+
+## 验收追加修复（2026-03-30，同类增益提示特效触发时序）
+
+- 用户反馈：同类增益提示“没生效”。
+- 已完成修正：
+  - `src/tower/battle/BattleScene.ts`
+    - 合成路径中，原先在新物品 `addItem` 完成前就触发提示，导致部分目标坐标未就绪；
+    - 调整为：先 `syncEngineWithEditable(..., false)` 保证逻辑同步，再在 `addItem.then(...)` 内二次 `syncEngineWithEditable(..., true)` 触发提示特效。
+- 验证：`npm run build` 通过。
+- 当前阶段：待发布后复测购买/合成触发的同类提示链路。
+
+## 验收追加实现（2026-03-30，同类增益物品获得/失去提示特效）
+
+- 用户需求：
+  - 获得（购买/合成）“对同类有额外加成”的物品时，从该物品向同类物品发出光效（约 `0.3s`），命中后在同类物品上弹提示；
+  - 失去（丢弃/合成消失）该类物品时，同类物品直接弹出“失去提示”。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 增加 `TOWER_AURA_HINT_RULES`（按你给的表配置 `toweritem2~24` 的获得/失去提示文案与流派）；
+    - 新增同类筛选与提示分发：按流派收集目标物品，获得时触发飞行光效（`fixedDurationMs=300`），失去时直接全体弹字；
+    - 在编辑态同步入口 `syncEngineWithEditable()` 增加差量检测（新增/消失实例），自动覆盖购买、合成与拖拽移除类变更；
+    - 初始化编辑态时建立基线快照，避免进场误触发全量提示。
+- 效果细节：获得提示为浅金色，失去提示为红色；同类目标为玩家战斗区内同流派物品。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待你实机验收“购买/合成/丢弃”三类路径的提示触发与文案一致性。
+
+## 验收追加修正（2026-03-30，伸缩长剑攻击距离显示口径）
+
+- 用户反馈：伸缩长剑详情里“攻击距离”显示成总距离（如 `550`），期望显示逻辑距离；并确认口径为“总距离除以 `25`”。
+- 已完成：
+  - `src/tower/common/ui/SellPopup.ts`
+    - 修复 runtime 文案替换范围：仅替换 `攻击距离:数字` 形态，不再误替换“所有长剑攻击距离+X”这类增量描述；
+    - 新增 `toLogicalRangeDistance()`，将 runtime 距离按 `moveDistancePerSecAtSpeed1`（当前为 `25`）换算为逻辑距离再展示；
+    - 头部红字统计与描述行里的 runtime 距离均统一使用逻辑距离。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“伸缩长剑显示为逻辑距离（如 550 -> 22）且增量描述保留 +X”。
+
+## 验收追加修复（2026-03-30，长剑攻击距离描述实时刷新）
+
+- 用户反馈：近战长剑攻击距离实际已提升，但所有长剑描述中的“攻击距离”未实时变化。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增 `resolveTowerItemAttackDistanceForInfo()`，按职业实时读取塔防引擎距离（剑士/弓手/忍者/冰法师）；
+    - 物品信息 `runtimeOverride` 增加 `attackDistance`，并写入 `selectedItemInfoKey`，保证数值变化时弹窗实时刷新。
+  - `src/tower/common/ui/SellPopup.ts`
+    - `ItemInfoRuntimeOverride` 增加 `attackDistance`；
+    - 简版与详版描述优先使用运行时 `attackDistance`，并覆盖“攻击距离”文案中的静态值。
+  - `src/tower/battle/CombatTypes.ts`
+    - 运行时结构补充可选字段 `attackDistance?`，统一类型口径。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在“长剑超级伸缩”生效后复测，确认描述与实战距离一致。
+
+## 验收追加调整（2026-03-30，手里剑默认弹射衰减 + 长剑全系 CD）
+
+- 用户需求：
+  - 默认弹射后伤害由 `-40%` 调整为 `-30%`；
+  - 长剑全系（`toweritem19~24`）CD 改为 `4000|3300|2800|2300|1900`。
+- 已完成：
+  - `src/tower/battle/TowerDefenseEngine.ts`
+    - 手里剑默认弹射伤害系数由 `0.6` 调整为 `0.7`（即每跳保留 `70%` 伤害）。
+  - `data/tower_items.json`
+    - `toweritem1` 文案改为“默认弹射后伤害-30%”；
+    - `toweritem19~24` 的 `cooldown` 统一改为 `4000`，`cooldown_tiers` 统一改为 `4000|3300|2800|2300|1900`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“手里剑弹射衰减与长剑全系 CD 新档位”是否符合目标表。
+
+## 发布执行记录（2026-03-30，Vercel 发布 + TestFlight 上传）
+
+- 用户指令：发布 Vercel，并同步上传最新 TestFlight 包供真机测试。
+- 已完成：
+  - Vercel 生产发布成功：
+    - Production：`https://bigbazzar-2m7x0fhsd-zhengtengfeis-projects.vercel.app`
+    - Alias：`https://bigbazzar.vercel.app`
+  - TestFlight 打包上传成功（`ios/scripts/release_testflight.py --config ios/packaging.config.local.json`）：
+    - 上传结果：`UPLOAD SUCCEEDED with no errors`
+    - Delivery UUID：`78e31a9e-4331-49f4-b89d-220528d0bdf3`
+    - 构建号：`CURRENT_PROJECT_VERSION=51`
+- 当前阶段：等待用户在 iOS 包内进行怪物/近战武器尺寸与切后台稳定性回归测试。
+
+## 验收追加修复（2026-03-30，降采样贴图尺寸补偿：敌人与近战武器）
+
+- 用户需求：保留统一 `mobileImageDownscale=0.5` 配置，但仅对“敌人本体 + 玩家近战武器”在使用时放大一倍，使网页与 iOS 包表现一致。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增 `getTowerBattleDownscaleCompensationMul()`：移动端且 `mobileImageDownscale.enabled=true` 时按 `1/scale` 计算补偿倍数（`scale=0.5` 时为 `2x`）；
+    - 敌人本体 `body/flash` 应用补偿：`enemyBodyScaleMul * compensation`；
+    - 玩家近战挥砍 `melee_sweep` 视觉缩放应用补偿：`sweepScale * compensation`。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在 iOS 包复测敌人与近战武器尺寸是否与网页一致。
+
+## 验收追加排查（2026-03-30，iOS 包内角色/武器缩小原因）
+
+- 用户反馈：网页表现正常，但 iOS 包内“怪物本体 + 玩家近战武器”约缩小一半。
+- 已完成排查：
+  - `src/main.ts`：移动端启动会启用全局图片降采样 `installMobileGlobalImageDownscale(scale)`；
+  - `data/tower_game_config.json`：`runRules.mobileImageDownscale.enabled=true` 且 `scale=0.5`；
+  - 该降采样对 `/resource/*.png` 生效，会直接改变贴图像素尺寸；矢量绘制的影子/血条不受影响。
+- 结论：问题由“移动端全局贴图降采样 0.5”触发，不是战斗区缩放参数本身。
+- 当前阶段：待按验收意见决定是否仅对 iOS 关闭降采样，或对白名单资源（towerbattle/近战武器）禁用降采样。
+
+## 验收追加排查（2026-03-30 14:19，用户复现时间窗日志核对）
+
+- 用户补充复现时间：`14:19`（CST）。
+- 已完成：
+  - 按时间窗拉取生产日志（`14:15~14:25`，`--no-branch --environment production`）并按 `sessionId` 聚合；
+  - 确认诊断链路持续上报：
+    - 塔防会话：`perf-mncsjqrf-8kepog`（`tower-battle`，`webgpu`）；
+    - 菜单会话：`perf-mncsw6h0-7f3bgk`（`menu`，`webgpu`）；
+  - 关键字检索 `window_error / unhandled_rejection / renderer_crash_guard_force_webgl` 在该时间窗未命中。
+- 当前结论：`/api/perf-ingest` 在复现时段接收正常，但未捕获到前端崩溃类异常事件，暂不支持直接定位崩溃堆栈。
+- 下一步计划：引导问题机再做一次“崩溃前 30 秒停留 + 崩溃后 10 秒重开”的双链接复测，并回传精确分钟，优先核对 `responseStatusCode=0` 前后事件序列。
+
+## 验收追加排查（2026-03-30，诊断链接崩溃后 Vercel 数据接收核对）
+
+- 用户反馈：使用诊断链接 `?diag=1&diagLevel=verbose&diagEndpoint=.../api/perf-ingest` 时发生崩溃，要求先接收并核对 Vercel 测试数据。
+- 已完成：
+  - 线上健康检查：`GET /api/perf-health` 返回 `ok:true`；
+  - 线上写入校验：`POST /api/perf-ingest` 发送样例 `diag_ping` 事件，返回 `ok:true`（`sessionId=opencode-test`）；
+  - Vercel CLI 日志核对：按最近 `10m~24h` 关键字检索运行日志（`perf-ingest/window_error`）未检索到可用记录。
+- 当前阶段：接口可用性正常，待用户复测并回传复现时间点（分钟级）或 `sessionId`，再按时间窗抓取并定位崩溃路径。
+- 下一步计划：优先让问题机做 WebGPU/WebGL 对照复测（增加 `renderer=webgl`），确认是否为 WebGPU 路径导致。
+
 ## 发布执行记录（2026-03-30，Vercel + Git + TestFlight 同步）
 
 - 用户指令：更新 Vercel、同步 Git 上传、打 TF 包并上传。

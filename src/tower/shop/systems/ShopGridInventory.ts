@@ -33,7 +33,7 @@ import {
 } from './ShopSynthesisLogic'
 import { clampLevel, getQualityLevelRange } from '../ui/PlayerStatusUI'
 import { levelToTierStar } from './QuickBuySystem'
-import { playTransformOrUpgradeFlashEffect } from '../ui/ShopAnimationEffects'
+import { playTransformOrUpgradeFlashEffect, triggerShopTowerAuraGainHint, triggerShopTowerAuraLoseHint } from '../ui/ShopAnimationEffects'
 import { pickCrossIdEvolveCandidates } from '../panels/SynthesisPanel'
 import { canPlaceInVisibleCols, toVisualTier } from '../ShopMathHelpers'
 import type { PoolCandidate } from './QuickBuySystem'
@@ -119,6 +119,8 @@ export function removePlacedItemById(instanceId: string, zone: 'battle' | 'backp
   const system = zone === 'battle' ? ctx.battleSystem : ctx.backpackSystem
   const view = zone === 'battle' ? ctx.battleView : ctx.backpackView
   if (!system || !view) return
+  const placed = system.getItem(instanceId)
+  if (placed) triggerShopTowerAuraLoseHint(ctx, placed.defId)
   system.remove(instanceId)
   view.removeItem(instanceId)
   removeInstanceMeta(instanceId)
@@ -148,6 +150,7 @@ export function placeItemToInventoryOrBattle(
       ctx.battleView!.setItemTier(id, visualTier)
       ctx.battleView!.setItemEnchantment(id, getInstanceEnchantment(id))
       ctx.drag?.refreshZone(ctx.battleView!)
+      triggerShopTowerAuraGainHint(ctx, def.id, id, 'battle')
     })
   } else if (backpackSlot) {
     ctx.backpackSystem.place(backpackSlot.col, backpackSlot.row, size, def.id, id)
@@ -155,6 +158,7 @@ export function placeItemToInventoryOrBattle(
       ctx.backpackView!.setItemTier(id, visualTier)
       ctx.backpackView!.setItemEnchantment(id, getInstanceEnchantment(id))
       ctx.drag?.refreshZone(ctx.backpackView!)
+      triggerShopTowerAuraGainHint(ctx, def.id, id, 'backpack')
     })
   }
   instanceToDefId.set(id, def.id)

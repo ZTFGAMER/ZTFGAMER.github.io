@@ -91,6 +91,82 @@ const TOWER_AUTO_START_ON_ENTER_FLAG_KEY = 'bigbazzar_tower_auto_start_on_enter_
 
 const IS_MOBILE_DEVICE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
 
+type TowerAuraHintRule = {
+  archetype: 'warrior' | 'archer' | 'assassin' | 'mage'
+  gainText: string
+  loseText: string
+}
+
+type TowerSkillGainHintRule = {
+  archetype: 'warrior' | 'archer' | 'assassin' | 'mage'
+  gainText: string
+  icons?: string[]
+}
+
+const TOWER_AURA_HINT_RULES: Record<string, TowerAuraHintRule> = {
+  toweritem2: { archetype: 'assassin', gainText: '弹射次数↑', loseText: '弹射次数↓' },
+  toweritem3: { archetype: 'assassin', gainText: '连发次数↑', loseText: '连发次数↓' },
+  toweritem4: { archetype: 'assassin', gainText: '减速额外伤害↑', loseText: '减速额外伤害↓' },
+  toweritem5: { archetype: 'assassin', gainText: '弹射不衰减↑', loseText: '弹射不衰减↓' },
+  toweritem6: { archetype: 'assassin', gainText: '弹射后分裂↑', loseText: '弹射后分裂↓' },
+  toweritem8: { archetype: 'archer', gainText: '伤害↑', loseText: '伤害↓' },
+  toweritem9: { archetype: 'archer', gainText: '连发次数↑', loseText: '连发次数↓' },
+  toweritem10: { archetype: 'archer', gainText: '附带中毒↑', loseText: '附带中毒↓' },
+  toweritem11: { archetype: 'archer', gainText: '远距伤害↑', loseText: '远距伤害↓' },
+  toweritem12: { archetype: 'archer', gainText: '叠加伤害↑', loseText: '叠加伤害↓' },
+  toweritem14: { archetype: 'mage', gainText: '减速额外伤害↑', loseText: '减速额外伤害↓' },
+  toweritem15: { archetype: 'mage', gainText: '同时发射↑', loseText: '同时发射↓' },
+  toweritem16: { archetype: 'mage', gainText: '冰冻几率↑', loseText: '冰冻几率↓' },
+  toweritem17: { archetype: 'mage', gainText: '攻击范围↑', loseText: '攻击范围↑' },
+  toweritem18: { archetype: 'mage', gainText: '受伤充能↑', loseText: '受伤充能↓' },
+  toweritem20: { archetype: 'warrior', gainText: '攻击距离↑', loseText: '攻击距离↓' },
+  toweritem21: { archetype: 'warrior', gainText: '流血效果↑', loseText: '流血效果↓' },
+  toweritem22: { archetype: 'warrior', gainText: '获得护盾↑', loseText: '获得护盾↓' },
+  toweritem23: { archetype: 'warrior', gainText: '同时施展↑', loseText: '同时施展↓' },
+  toweritem24: { archetype: 'warrior', gainText: '额外护盾伤害↑', loseText: '额外护盾伤害↓' },
+}
+
+const TOWER_SKILL_HINT_ICON_GROUPS = {
+  assassin: ['toweritem1', 'toweritem2', 'toweritem3', 'toweritem4', 'toweritem5', 'toweritem6'],
+  archer: ['toweritem7', 'toweritem8', 'toweritem9', 'toweritem10', 'toweritem11', 'toweritem12'],
+  mage: ['toweritem13', 'toweritem14', 'toweritem15', 'toweritem16', 'toweritem17', 'toweritem18'],
+  warrior: ['toweritem19', 'toweritem20', 'toweritem21', 'toweritem22', 'toweritem23', 'toweritem24'],
+} as const
+
+const TOWER_SKILL_GAIN_HINT_RULES: Record<string, TowerSkillGainHintRule> = {
+  td_skill_ninja_damage: { archetype: 'assassin', gainText: '伤害↑' },
+  td_skill_ninja_cd: { archetype: 'assassin', gainText: '攻击速度↑' },
+  td_skill_ninja_super_bounce: { archetype: 'assassin', gainText: '弹射次数↑' },
+  td_skill_ninja_super_multicast: { archetype: 'assassin', gainText: '连发次数↑' },
+  td_skill_ninja_super_heavy: { archetype: 'assassin', gainText: '造成减速↑' },
+  td_skill_ninja_super_crystal: { archetype: 'assassin', gainText: '弹射增伤↑', icons: ['toweritem5'] },
+  td_skill_ninja_super_split: { archetype: 'assassin', gainText: '弹射后分裂↑', icons: ['toweritem6'] },
+
+  td_skill_archer_damage: { archetype: 'archer', gainText: '伤害↑' },
+  td_skill_archer_cd: { archetype: 'archer', gainText: '攻击速度↑' },
+  td_skill_archer_super_poison: { archetype: 'archer', gainText: '中毒百分比↑' },
+  td_skill_archer_super_high_damage: { archetype: 'archer', gainText: '伤害↑' },
+  td_skill_archer_super_multicast: { archetype: 'archer', gainText: '连发次数↑' },
+  td_skill_archer_super_sniper: { archetype: 'archer', gainText: '远距伤害↑', icons: ['toweritem11'] },
+  td_skill_archer_super_blood: { archetype: 'archer', gainText: '叠加伤害↑', icons: ['toweritem12'] },
+
+  td_skill_mage_damage: { archetype: 'mage', gainText: '伤害↑' },
+  td_skill_mage_cd: { archetype: 'mage', gainText: '攻击速度↑' },
+  td_skill_mage_super_freeze: { archetype: 'mage', gainText: '冰冻时间↑' },
+  td_skill_mage_super_slow: { archetype: 'mage', gainText: '减速效果↑' },
+  td_skill_mage_super_multitarget: { archetype: 'mage', gainText: '同时发射↑' },
+  td_skill_mage_super_explode: { archetype: 'mage', gainText: '攻击范围↑', icons: ['toweritem17'] },
+  td_skill_mage_super_counter: { archetype: 'mage', gainText: '受伤充能↑', icons: ['toweritem18'] },
+
+  td_skill_warrior_damage: { archetype: 'warrior', gainText: '伤害↑' },
+  td_skill_warrior_cd: { archetype: 'warrior', gainText: '攻击速度↑' },
+  td_skill_warrior_super_range: { archetype: 'warrior', gainText: '攻击距离↑' },
+  td_skill_warrior_super_bleed: { archetype: 'warrior', gainText: '流血效果↑' },
+  td_skill_warrior_super_guard: { archetype: 'warrior', gainText: '护盾保存↑' },
+  td_skill_warrior_super_dual: { archetype: 'warrior', gainText: '获得护盾↑' },
+  td_skill_warrior_super_counter: { archetype: 'warrior', gainText: '额外护盾伤害↑' },
+}
+
 function randomHeroVisualId(): HeroVisualId {
   return ENEMY_HERO_VISUAL_IDS[Math.floor(nextBattleRandom('hero_visual_pick') * ENEMY_HERO_VISUAL_IDS.length)]!
 }
@@ -566,6 +642,7 @@ const editableMeta = new Map<string, {
   level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
   permanentDamageBonus: number
 }>()
+const towerAuraHintDefByInstanceId = new Map<string, string>()
 
 type TowerEnemySpritePack = {
   root: Container
@@ -897,6 +974,19 @@ const isMobileBattleRuntime = /Mobi|Android|iPhone|iPad/i.test(
   typeof navigator !== 'undefined' ? navigator.userAgent : '',
 )
 
+function getTowerBattleDownscaleCompensationMul(): number {
+  if (!isMobileBattleRuntime) return 1
+  const runRules = getGameCfg().runRules as {
+    mobileImageDownscale?: { enabled?: unknown; scale?: unknown }
+  } | undefined
+  const enabled = runRules?.mobileImageDownscale?.enabled === true
+  const scaleRaw = Number(runRules?.mobileImageDownscale?.scale)
+  if (!enabled || !Number.isFinite(scaleRaw)) return 1
+  const scale = Math.max(0.1, Math.min(1, scaleRaw))
+  if (scale >= 1) return 1
+  return Math.min(4, Math.max(1, 1 / scale))
+}
+
 function markVisualEventTick(): boolean {
   const tick = engine?.getDebugState().tickIndex ?? -1
   if (tick < 0) return visualFrameHasCatchUp
@@ -1170,6 +1260,7 @@ function syncTowerEnemyPresentation(activeCols: number): void {
   const meleeDashScaleMul = Math.max(0.2, Number.isFinite(meleeDashScaleMulRaw) ? meleeDashScaleMulRaw : 1.5)
   const meleeDashShadowFadeMsRaw = Number(dashVisualCfg.enemyMeleeDashShadowFadeMs)
   const meleeDashShadowFadeMs = Math.max(1, Number.isFinite(meleeDashShadowFadeMsRaw) ? meleeDashShadowFadeMsRaw : 200)
+  const downscaleCompensationMul = getTowerBattleDownscaleCompensationMul()
   const aliveIds = new Set<string>()
   towerEnemyPosById.clear()
 
@@ -1370,8 +1461,9 @@ function syncTowerEnemyPresentation(activeCols: number): void {
     spritePack.root.visible = true
     spritePack.body.anchor.set(0.5, 1)
     spritePack.flash.anchor.set(0.5, 1)
-    spritePack.body.scale.set(unitBodyScaleMul)
-    spritePack.flash.scale.set(unitBodyScaleMul)
+    const bodyVisualScaleMul = unitBodyScaleMul * downscaleCompensationMul
+    spritePack.body.scale.set(bodyVisualScaleMul)
+    spritePack.flash.scale.set(bodyVisualScaleMul)
     spritePack.body.y = -effectiveFlyingLift
     spritePack.flash.y = -effectiveFlyingLift
     spritePack.root.x = laneX + animXOff
@@ -2426,6 +2518,10 @@ function applyBattleSynthesis(sourceInstanceId: string, targetInstanceId: string
     showFatigueToast('可合成物品已达上限')
     return false
   }
+  const removedAuraDefIds = new Set<string>()
+  if (getTowerAuraHintRuleByDefId(sourceDef.id)) removedAuraDefIds.add(sourceDef.id)
+  if (getTowerAuraHintRuleByDefId(targetDef.id)) removedAuraDefIds.add(targetDef.id)
+  const evolvedAuraRule = getTowerAuraHintRuleByDefId(evolvedDef.id)
 
   homeSystem.remove(sourceInstanceId)
   homeView.removeItem(sourceInstanceId)
@@ -2437,6 +2533,13 @@ function applyBattleSynthesis(sourceInstanceId: string, targetInstanceId: string
   void homeView.addItem(targetInstanceId, evolvedDef.id, targetItem.size, targetItem.col, targetItem.row, `${upgradeTo.tier}#${upgradeTo.star}`).then(() => {
     homeView.setItemTier(targetInstanceId, `${upgradeTo.tier}#${upgradeTo.star}`)
     editableDrag?.refreshZone(homeView)
+    for (const oldDefId of removedAuraDefIds) {
+      if (oldDefId === evolvedDef.id) continue
+      const loseRule = getTowerAuraHintRuleByDefId(oldDefId)
+      if (loseRule) emitTowerAuraLoseHint(loseRule)
+    }
+    if (evolvedAuraRule) emitTowerAuraGainHint(evolvedAuraRule, targetInstanceId)
+    syncEngineWithEditable([targetInstanceId], true)
   })
 
   editableMeta.set(targetInstanceId, {
@@ -2448,7 +2551,7 @@ function applyBattleSynthesis(sourceInstanceId: string, targetInstanceId: string
     quality: parseTierName(evolvedDef.starting_tier) ?? targetMeta.quality,
   })
   clearItemRoundStatForPlayerIds([sourceInstanceId, targetInstanceId])
-  syncEngineWithEditable([targetInstanceId])
+  syncEngineWithEditable([targetInstanceId], false)
   pendingBattleBuyOffer = null
   return true
 }
@@ -2494,7 +2597,7 @@ function getDraggingPlayerSourcePoint(sourceItemId: string, side: 'player' | 'en
   return draggingPlayerItemFirePoint
 }
 
-function syncEngineWithEditable(resetChargeIds?: string[]): void {
+function syncEngineWithEditable(resetChargeIds?: string[], emitAuraHints = true): void {
   if (!engine || !editableSystem) return
   const snap = buildEditableSnapshotFromBoard(battleDay)
   if (!snap) return
@@ -2503,6 +2606,12 @@ function syncEngineWithEditable(resetChargeIds?: string[]): void {
   engine.syncPlayerEntities?.(snap.entities, { resetChargeIds })
   syncTowerBattleSkillPickCountsToEngine()
   fxPool.refreshSourceDefMap()
+  if (emitAuraHints) {
+    const preferred = Array.isArray(resetChargeIds) && resetChargeIds.length > 0
+      ? String(resetChargeIds[0] || '')
+      : ''
+    syncTowerAuraHintEffects(preferred || undefined)
+  }
 }
 
 function resetTowerEnemyPresentationForNextWave(): void {
@@ -3485,7 +3594,9 @@ function makeBuyButton(): Container {
     await playerZone.addItem(id, offer.item.id, size, slot.col, slot.row, `${offer.tier}#${offer.star}`)
     playerZone.setItemTier(id, `${offer.tier}#${offer.star}`)
     editableDrag?.refreshZone(playerZone)
-    syncEngineWithEditable([id])
+    const auraRule = getTowerAuraHintRuleByDefId(offer.item.id)
+    if (auraRule) emitTowerAuraGainHint(auraRule, id)
+    syncEngineWithEditable([id], false)
     pendingBattleBuyOffer = null
     void getTowerBattleBuyCost()
   })
@@ -3556,6 +3667,7 @@ function makeSkillBuyButton(): Container {
       const cur = Math.max(0, Math.round(towerBattleSkillPickCounts.get(picked.id) ?? 0))
       towerBattleSkillPickCounts.set(picked.id, cur + 1)
       syncTowerBattleSkillPickCountsToEngine()
+      emitTowerSkillGainHint(picked.id)
       const persistAfterPick = buildEditableSnapshotFromBoard(battleDay)
       if (persistAfterPick) {
         enteredSnapshot = persistAfterPick
@@ -3676,7 +3788,8 @@ function ensureEditableBuildMode(stage: Container): void {
   if (normalized) {
     enteredSnapshot = normalized
     setBattleSnapshot(normalized)
-    syncEngineWithEditable()
+    resetTowerAuraHintPresenceSnapshot()
+    syncEngineWithEditable(undefined, false)
   }
   refreshTowerBattleSkillDisplay(true)
 }
@@ -4148,8 +4261,10 @@ function addBattleTestItemAtLevel(def: ItemDef, level: 1 | 2 | 3 | 4 | 5): boole
     if (!playerZone || playerZone.destroyed) return
     playerZone.setItemTier(id, `${tierStar.tier}#${tierStar.star}`)
     editableDrag?.refreshZone(playerZone)
+    const auraRule = getTowerAuraHintRuleByDefId(def.id)
+    if (auraRule) emitTowerAuraGainHint(auraRule, id)
   }).catch(() => undefined)
-  syncEngineWithEditable([id])
+  syncEngineWithEditable([id], false)
   return true
 }
 
@@ -4985,6 +5100,188 @@ function resolveTowerRoleLabelAndColor(item: ItemDef): { label: '剑士' | '弓�
   return null
 }
 
+function getTowerAuraHintRuleByDefId(defId: string): TowerAuraHintRule | null {
+  const key = String(defId || '').trim()
+  if (!key) return null
+  if (TOWER_AURA_HINT_RULES[key]) return TOWER_AURA_HINT_RULES[key]
+  const def = getItemDefById(key)
+  const iconKey = String(def?.icon || '').trim()
+  if (iconKey && TOWER_AURA_HINT_RULES[iconKey]) return TOWER_AURA_HINT_RULES[iconKey]
+  return null
+}
+
+function collectTowerPlayerItemIdsByArchetype(archetype: 'warrior' | 'archer' | 'assassin' | 'mage'): string[] {
+  const out: string[] = []
+  for (const [instanceId, meta] of editableMeta.entries()) {
+    const def = getItemDefById(meta.defId)
+    if (!def) continue
+    const arch = toSkillArchetype(getPrimaryArchetype(def.tags))
+    if (arch === archetype) out.push(instanceId)
+  }
+  return out
+}
+
+function collectTowerPlayerItemIdsByIcons(icons: readonly string[]): string[] {
+  const iconSet = new Set(icons.map((one) => String(one || '').trim()).filter(Boolean))
+  if (iconSet.size <= 0) return []
+  const out: string[] = []
+  for (const [instanceId, meta] of editableMeta.entries()) {
+    const def = getItemDefById(meta.defId)
+    const icon = String(def?.icon || '').trim()
+    if (!iconSet.has(icon)) continue
+    out.push(instanceId)
+  }
+  return out
+}
+
+function showTowerAuraHintOnItems(
+  itemIds: string[],
+  text: string,
+  color: number,
+  fontSize = 26,
+): void {
+  const msg = String(text || '').trim()
+  if (!msg) return
+  for (const itemId of itemIds) {
+    const pos = fxPool.getItemCenterById(itemId, 'player')
+    if (!pos) continue
+    fxPool.spawnFloatingNumber({ x: pos.x, y: pos.y - 8 }, msg, color, fontSize, {
+      alignCenter: true,
+      randomX: 0,
+      extraHoldMs: 400,
+    })
+  }
+}
+
+function emitTowerAuraGainHint(rule: TowerAuraHintRule, sourceInstanceId?: string): void {
+  const targets = collectTowerPlayerItemIdsByArchetype(rule.archetype)
+  if (targets.length <= 0) return
+  const sourceId = sourceInstanceId && targets.includes(sourceInstanceId)
+    ? sourceInstanceId
+    : targets[0]
+  const sourcePos = sourceId ? fxPool.getItemCenterById(sourceId, 'player') : null
+  const flyDurationMs = 500
+  const fxColor = 0xffe08a
+  const popupColor = 0xfff0af
+  let hasFlight = false
+  if (sourcePos) {
+    for (const targetId of targets) {
+      if (targetId === sourceId) continue
+      const to = fxPool.getItemCenterById(targetId, 'player')
+      if (!to) continue
+      hasFlight = true
+      fxPool.spawnProjectile(sourcePos, to, fxColor, () => {
+        const latest = fxPool.getItemCenterById(targetId, 'player')
+        if (!latest) return
+        fxPool.spawnFloatingNumber({ x: latest.x, y: latest.y - 8 }, rule.gainText, popupColor, 26, {
+          alignCenter: true,
+          randomX: 0,
+          extraHoldMs: 400,
+        })
+      }, undefined, {
+        forceDot: true,
+        fixedDurationMs: flyDurationMs,
+        projectileStyle: 'linear',
+        projectileScale: 0.6,
+        fadeOutMs: 80,
+      })
+    }
+  }
+  if (!hasFlight) {
+    showTowerAuraHintOnItems(targets, rule.gainText, popupColor, 26)
+    return
+  }
+  if (sourceId) {
+    const src = fxPool.getItemCenterById(sourceId, 'player')
+    if (src) {
+      fxPool.spawnFloatingNumber({ x: src.x, y: src.y - 8 }, rule.gainText, popupColor, 26, {
+        alignCenter: true,
+        randomX: 0,
+        extraHoldMs: 400,
+      })
+    }
+  }
+}
+
+function emitTowerAuraLoseHint(rule: TowerAuraHintRule): void {
+  const targets = collectTowerPlayerItemIdsByArchetype(rule.archetype)
+  if (targets.length <= 0) return
+  showTowerAuraHintOnItems(targets, rule.loseText, 0xff8b8b, 26)
+}
+
+function emitTowerSkillGainHint(skillId: string): void {
+  const key = String(skillId || '').trim()
+  if (!key) return
+  const rule = TOWER_SKILL_GAIN_HINT_RULES[key]
+  if (!rule) return
+  const iconGroup = rule.icons && rule.icons.length > 0
+    ? rule.icons
+    : TOWER_SKILL_HINT_ICON_GROUPS[rule.archetype]
+  const targets = collectTowerPlayerItemIdsByIcons(iconGroup)
+  if (targets.length <= 0) return
+  showTowerAuraHintOnItems(targets, rule.gainText, 0xfff0af, 26)
+}
+
+function resetTowerAuraHintPresenceSnapshot(): void {
+  towerAuraHintDefByInstanceId.clear()
+  for (const [instanceId, meta] of editableMeta.entries()) {
+    if (!getTowerAuraHintRuleByDefId(meta.defId)) continue
+    towerAuraHintDefByInstanceId.set(instanceId, meta.defId)
+  }
+}
+
+function syncTowerAuraHintEffects(preferredSourceInstanceId?: string): void {
+  const current = new Map<string, string>()
+  for (const [instanceId, meta] of editableMeta.entries()) {
+    if (!getTowerAuraHintRuleByDefId(meta.defId)) continue
+    current.set(instanceId, meta.defId)
+  }
+
+  const removedDefIds = new Set<string>()
+  for (const [instanceId, oldDefId] of towerAuraHintDefByInstanceId.entries()) {
+    const nextDefId = current.get(instanceId)
+    if (nextDefId !== oldDefId) removedDefIds.add(oldDefId)
+  }
+
+  const addedEntries: Array<{ instanceId: string; defId: string }> = []
+  for (const [instanceId, newDefId] of current.entries()) {
+    const oldDefId = towerAuraHintDefByInstanceId.get(instanceId)
+    if (oldDefId !== newDefId) addedEntries.push({ instanceId, defId: newDefId })
+  }
+
+  for (const defId of removedDefIds) {
+    const rule = getTowerAuraHintRuleByDefId(defId)
+    if (!rule) continue
+    emitTowerAuraLoseHint(rule)
+  }
+
+  for (const one of addedEntries) {
+    const rule = getTowerAuraHintRuleByDefId(one.defId)
+    if (!rule) continue
+    const sourceId = preferredSourceInstanceId && one.defId === current.get(preferredSourceInstanceId)
+      ? preferredSourceInstanceId
+      : one.instanceId
+    emitTowerAuraGainHint(rule, sourceId)
+  }
+
+  towerAuraHintDefByInstanceId.clear()
+  for (const [instanceId, defId] of current.entries()) {
+    towerAuraHintDefByInstanceId.set(instanceId, defId)
+  }
+}
+
+function resolveTowerItemAttackDistanceForInfo(item: ItemDef): number | null {
+  if (!engine?.getTowerClassAttackDistances) return null
+  const distances = engine.getTowerClassAttackDistances()
+  if (!distances) return null
+  const tags = `${item.tags ?? ''}`
+  if (tags.includes('剑士') || tags.includes('战士')) return Math.max(0, Number(distances.swordsman) || 0)
+  if (tags.includes('弓手')) return Math.max(0, Number(distances.archer) || 0)
+  if (tags.includes('忍者') || tags.includes('刺客')) return Math.max(0, Number(distances.assassin) || 0)
+  if (tags.includes('冰法师')) return Math.max(0, Number(distances.mage) || 0)
+  return null
+}
+
 function clearBattleItemSelection(): void {
   selectedItemId = null
   selectedItemSide = null
@@ -5009,6 +5306,9 @@ function showBattleItemInfo(instanceId: string, side: 'player' | 'enemy', keepMo
   selectedItemId = instanceId
   selectedItemSide = side
   const runtimeState = engine.getRuntimeState().find((it) => it.id === instanceId)
+  const towerAttackDistance = isTowerDefenseBattle() && side === 'player'
+    ? resolveTowerItemAttackDistanceForInfo(item)
+    : null
   const runtimeOverride: ItemInfoRuntimeOverride | undefined = runtimeState
     ? {
       cooldownMs: Math.max(0, runtimeState.cooldownMs),
@@ -5019,11 +5319,12 @@ function showBattleItemInfo(instanceId: string, side: 'player' | 'enemy', keepMo
       poison: Math.max(0, runtimeState.poison),
       multicast: Math.max(1, runtimeState.multicast),
       bounceCount: Math.max(0, runtimeState.bounceCount ?? 0),
+      attackDistance: Math.max(0, Number(runtimeState.attackDistance) || Number(towerAttackDistance) || 0),
       ammoCurrent: Math.max(0, runtimeState.ammoCurrent),
       ammoMax: Math.max(0, runtimeState.ammoMax),
     }
     : undefined
-  const nextKey = `${side}:${instanceId}:${hit.tier}:${runtimeOverride?.cooldownMs ?? -1}:${runtimeOverride?.damage ?? -1}:${runtimeOverride?.shield ?? -1}:${runtimeOverride?.heal ?? -1}:${runtimeOverride?.multicast ?? -1}:${runtimeOverride?.bounceCount ?? -1}:${runtimeOverride?.ammoCurrent ?? -1}:${runtimeOverride?.ammoMax ?? -1}`
+  const nextKey = `${side}:${instanceId}:${hit.tier}:${runtimeOverride?.cooldownMs ?? -1}:${runtimeOverride?.damage ?? -1}:${runtimeOverride?.shield ?? -1}:${runtimeOverride?.heal ?? -1}:${runtimeOverride?.multicast ?? -1}:${runtimeOverride?.bounceCount ?? -1}:${runtimeOverride?.attackDistance ?? -1}:${runtimeOverride?.ammoCurrent ?? -1}:${runtimeOverride?.ammoMax ?? -1}`
   if (keepMode && selectedItemInfoKey === nextKey) return
   if (!shouldShowSimpleDescriptions()) {
     selectedItemInfoKey = nextKey
@@ -5794,6 +6095,7 @@ export const BattleScene: Scene = {
           const scaleMax = Number.isFinite(scaleMaxRaw) ? Math.max(scaleMin, scaleMaxRaw) : 2.6
           const weaponSizePx = Number.isFinite(weaponSizeRaw) ? Math.max(8, weaponSizeRaw) : 170
           const sweepScale = Math.max(scaleMin, Math.min(scaleMax, scaleBase + (attackDistance / scaleDistanceUnit) * scalePerDistance))
+          const sweepScaleFinal = sweepScale * getTowerBattleDownscaleCompensationMul()
           enqueueVisualFx({
             run: () => {
               fxPool.spawnMeleeSweep(
@@ -5809,7 +6111,7 @@ export const BattleScene: Scene = {
                   alphaMid,
                   alphaEnd,
                   sizePx: weaponSizePx,
-                  scale: sweepScale,
+                  scale: sweepScaleFinal,
                   flipX: isMirrorSweep,
                 },
               )

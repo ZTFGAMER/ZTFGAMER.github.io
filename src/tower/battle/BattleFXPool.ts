@@ -684,7 +684,8 @@ export class BattleFXPool {
     let spinRadPerSec = 0
     let spinDir = -1
     let lockFacingRad: number | null = null
-    let forceLinearFlight = false
+    const style = opts?.projectileStyle
+    let forceLinearFlight = style === 'linear'
     const travelDx = to.x - from.x
     const travelDy = to.y - from.y
     const sourceSide = sourceItemId ? this.resolveItemSide(sourceItemId) : null
@@ -703,7 +704,6 @@ export class BattleFXPool {
       const useId = this.projectileUseCursor++
       ;(sprite as Sprite & { __fxUseId?: number }).__fxUseId = useId
 
-      const style = opts?.projectileStyle
       const attackStyle = sourceDef?.attack_style ?? ''
       if (style === 'spin') {
         spinRadPerSec = Math.abs(getDebugCfg('battleProjectileSpinDegPerSec')) * Math.PI / 180
@@ -824,21 +824,30 @@ export class BattleFXPool {
     })
   }
 
-  spawnFloatingNumber(to: { x: number; y: number }, text: string, color: number, fontSize?: number): void {
+  spawnFloatingNumber(
+    to: { x: number; y: number },
+    text: string,
+    color: number,
+    fontSize?: number,
+    options?: { alignCenter?: boolean; randomX?: number; extraHoldMs?: number },
+  ): void {
     this.attemptedFloatingNumberCount += 1
     if (!this.fxLayer) return
     if (!this.canSpawnFloatingNumberFx()) return
     this.activeFloatingNumberCount += 1
     const actualFontSize = fontSize ?? getDebugCfg('battleHpTextFontSize')
     const t = this.acquireFloatingNumber(text, color, actualFontSize)
-    const randomX = getDebugCfg('battleDamageFloatRandomX')
-    t.x = to.x - t.width / 2 + (this.nextRandom() * 2 - 1) * randomX
+    const randomX = typeof options?.randomX === 'number'
+      ? Math.max(0, options.randomX)
+      : Math.max(0, getDebugCfg('battleDamageFloatRandomX'))
+    const jitterX = options?.alignCenter ? 0 : ((this.nextRandom() * 2 - 1) * randomX)
+    t.x = to.x - t.width / 2 + jitterX
     t.y = to.y - t.height / 2
     this.fxLayer.addChild(t)
 
     const riseMs = getDebugCfg('battleDamageFloatRiseMs')
     const riseY = getDebugCfg('battleDamageFloatRiseY')
-    const holdMs = getDebugCfg('battleDamageFloatHoldMs')
+    const holdMs = getDebugCfg('battleDamageFloatHoldMs') + Math.max(0, Number(options?.extraHoldMs) || 0)
     const fadeMs = getDebugCfg('battleDamageFloatFadeMs')
     let elapsed = 0
     this.activeFx.push((dtMs) => {

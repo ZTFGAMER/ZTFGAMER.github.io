@@ -87,6 +87,7 @@ export interface CombatItemRuntimeState {
   poison: number
   multicast: number
   bounceCount?: number
+  attackDistance?: number
   rangeBlocked?: boolean
 }
 

@@ -32,6 +32,7 @@ export interface ItemInfoRuntimeOverride {
   poison?: number
   multicast?: number
   bounceCount?: number
+  attackDistance?: number
   ammoCurrent?: number
   ammoMax?: number
 }
@@ -137,6 +138,13 @@ function normalizeRangeDistanceValue(distance: number): string {
   return `${Math.round(n * 10) / 10}`
 }
 
+function toLogicalRangeDistance(distance: number): number {
+  const n = Number(distance)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  const meterToDistance = Math.max(1, Number(getGameConfig().towerDefenseRules?.moveDistancePerSecAtSpeed1) || 25)
+  return n / meterToDistance
+}
+
 function formatDescByTier(raw: string, tierIndex: number): string {
   // 支持分档串：10/20/30、10|20|30、20%|30%
   return raw.replace(/[+\-]?\d+(?:\.\d+)?%?(?:[\/|][+\-]?\d+(?:\.\d+)?%?)+/g, (m) => pickTierValue(m, tierIndex))
@@ -213,6 +221,9 @@ function extractSimpleStatEntries(
 
   const damage = find(/(?:造成|攻击造成)\s*([+\-]?\d+(?:\.\d+)?)\s*伤害/)
   const rangeDistanceText = (() => {
+    if (typeof rt?.attackDistance === 'number' && Number.isFinite(rt.attackDistance) && rt.attackDistance > 0) {
+      return normalizeRangeDistanceValue(toLogicalRangeDistance(rt.attackDistance))
+    }
     const cfg = getGameConfig().towerDefenseRules
     const byIcon = cfg?.playerItemAttackDistanceByIcon
     const iconKey = String(item.icon || '').trim()
@@ -391,6 +402,7 @@ function applyRuntimeValueToLine(line: string, rt?: ItemInfoRuntimeOverride): st
   const poison = typeof rt.poison === 'number' ? Math.max(0, Math.round(rt.poison)) : null
   const multicast = typeof rt.multicast === 'number' ? Math.max(1, Math.round(rt.multicast)) : null
   const bounceCount = typeof rt.bounceCount === 'number' ? Math.max(0, Math.round(rt.bounceCount)) : null
+  const attackDistance = typeof rt.attackDistance === 'number' ? Math.max(0, rt.attackDistance) : null
   if (damage !== null) out = out.replace(/(?:攻击造成|造成)\s*\d+(?:\.\d+)?\s*伤害/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${damage}`))
   if (shield !== null) out = out.replace(/(?:获得|提供)\s*\d+(?:\.\d+)?\s*护盾/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${shield}`))
   if (heal !== null) out = out.replace(/(?:回复|恢复|治疗)\s*\d+(?:\.\d+)?(?:\s*点?)?\s*(?:生命值|生命)/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${heal}`))
@@ -401,6 +413,10 @@ function applyRuntimeValueToLine(line: string, rt?: ItemInfoRuntimeOverride): st
   }
   if (bounceCount !== null) {
     out = out.replace(/弹射次数[:：]?\s*\d+(?:\.\d+)?\s*次?/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${bounceCount}`))
+  }
+  if (attackDistance !== null && attackDistance > 0) {
+    const distText = normalizeRangeDistanceValue(toLogicalRangeDistance(attackDistance))
+    out = out.replace(/攻击距离\s*[:：]\s*\d+(?:\.\d+)?/g, (m) => m.replace(/\d+(?:\.\d+)?/, `${distText}`))
   }
   if (typeof rt.ammoMax === 'number') {
     const ammoText = typeof rt.ammoCurrent === 'number'

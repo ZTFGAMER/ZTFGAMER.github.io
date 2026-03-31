@@ -42,6 +42,7 @@ import { getConfig as getDebugCfg } from '@/tower/config/debugConfig'
 import { getShopUiColor } from '@/tower/config/colorPalette'
 import { pickQualityByPseudoRandomBag } from './QuickBuySystem'
 import { refreshUpgradeHints } from '../ui/ShopUpgradeHints'
+import { triggerShopTowerAuraGainHint, triggerShopTowerAuraLoseHint } from '../ui/ShopAnimationEffects'
 import type { SynthesisTarget } from '../panels/NeutralItemPanel'
 export type { SynthesisTarget }
 
@@ -521,6 +522,11 @@ export function synthesizeTarget(
     view.setItemTier(targetInstanceId, toVisualTier(upgradeTo.tier, upgradeTo.star))
     view.setItemEnchantment(targetInstanceId, getInstanceEnchantment(targetInstanceId))
     ctx.drag?.refreshZone(view)
+    const removedDefs = new Set<string>()
+    if (sourceDef.id !== evolvedDef.id) removedDefs.add(sourceDef.id)
+    if (targetDef.id !== evolvedDef.id) removedDefs.add(targetDef.id)
+    for (const oldDefId of removedDefs) triggerShopTowerAuraLoseHint(ctx, oldDefId)
+    triggerShopTowerAuraGainHint(ctx, evolvedDef.id, targetInstanceId, zone)
   })
 
   instanceToDefId.set(targetInstanceId, evolvedDef.id)

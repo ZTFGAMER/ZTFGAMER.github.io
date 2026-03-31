@@ -19,12 +19,229 @@ import type { ItemSizeNorm } from '@/tower/common/grid/GridSystem'
 import { Assets, Container, Graphics, Sprite, Text, Texture, Ticker } from 'pixi.js'
 import type { ShopSceneCtx } from '../ShopSceneContext'
 import { CANVAS_W, CANVAS_H, BTN_RADIUS } from '@/tower/config/layoutConstants'
+import { getItemDefById, getPrimaryArchetype, toSkillArchetype } from '@/tower/shop/systems/ShopSynthesisLogic'
 
 // ============================================================
 // 常量（CANVAS_W/H/BTN_RADIUS 来自 layoutConstants）
 // ============================================================
 
 const MINI_CELL  = 20
+
+type TowerAuraHintRule = {
+  archetype: 'warrior' | 'archer' | 'assassin' | 'mage'
+  gainText: string
+  loseText: string
+}
+
+const TOWER_AURA_HINT_RULES: Record<string, TowerAuraHintRule> = {
+  toweritem2: { archetype: 'assassin', gainText: '弹射次数↑', loseText: '弹射次数↓' },
+  toweritem3: { archetype: 'assassin', gainText: '连发次数↑', loseText: '连发次数↓' },
+  toweritem4: { archetype: 'assassin', gainText: '减速额外伤害↑', loseText: '减速额外伤害↓' },
+  toweritem5: { archetype: 'assassin', gainText: '弹射不衰减↑', loseText: '弹射不衰减↓' },
+  toweritem6: { archetype: 'assassin', gainText: '弹射后分裂↑', loseText: '弹射后分裂↓' },
+  toweritem8: { archetype: 'archer', gainText: '伤害↑', loseText: '伤害↓' },
+  toweritem9: { archetype: 'archer', gainText: '连发次数↑', loseText: '连发次数↓' },
+  toweritem10: { archetype: 'archer', gainText: '附带中毒↑', loseText: '附带中毒↓' },
+  toweritem11: { archetype: 'archer', gainText: '远距伤害↑', loseText: '远距伤害↓' },
+  toweritem12: { archetype: 'archer', gainText: '叠加伤害↑', loseText: '叠加伤害↓' },
+  toweritem14: { archetype: 'mage', gainText: '减速额外伤害↑', loseText: '减速额外伤害↓' },
+  toweritem15: { archetype: 'mage', gainText: '同时发射↑', loseText: '同时发射↓' },
+  toweritem16: { archetype: 'mage', gainText: '冰冻几率↑', loseText: '冰冻几率↓' },
+  toweritem17: { archetype: 'mage', gainText: '攻击范围↑', loseText: '攻击范围↑' },
+  toweritem18: { archetype: 'mage', gainText: '受伤充能↑', loseText: '受伤充能↓' },
+  toweritem20: { archetype: 'warrior', gainText: '攻击距离↑', loseText: '攻击距离↓' },
+  toweritem21: { archetype: 'warrior', gainText: '流血效果↑', loseText: '流血效果↓' },
+  toweritem22: { archetype: 'warrior', gainText: '获得护盾↑', loseText: '获得护盾↓' },
+  toweritem23: { archetype: 'warrior', gainText: '同时施展↑', loseText: '同时施展↓' },
+  toweritem24: { archetype: 'warrior', gainText: '额外护盾伤害↑', loseText: '额外护盾伤害↓' },
+}
+
+type ShopPlacedRef = {
+  zone: 'battle' | 'backpack'
+  instanceId: string
+  x: number
+  y: number
+}
+
+const shopAuraEffectLastAtMs = new Map<string, number>()
+
+function shouldSkipShopAuraDuplicate(key: string, dedupMs: number): boolean {
+  const now = Date.now()
+  const last = shopAuraEffectLastAtMs.get(key) ?? 0
+  if (now - last < dedupMs) return true
+  shopAuraEffectLastAtMs.set(key, now)
+  return false
+}
+
+function resolveTowerAuraHintRule(defId: string): TowerAuraHintRule | null {
+  const key = String(defId || '').trim()
+  if (!key) return null
+  if (TOWER_AURA_HINT_RULES[key]) return TOWER_AURA_HINT_RULES[key]
+  const def = getItemDefById(key)
+  const iconKey = String(def?.icon || '').trim()
+  if (iconKey && TOWER_AURA_HINT_RULES[iconKey]) return TOWER_AURA_HINT_RULES[iconKey]
+  return null
+}
+
+function getShopItemCenterGlobal(ctx: ShopSceneCtx, instanceId: string, zone: 'battle' | 'backpack'): { x: number; y: number } | null {
+  const system = zone === 'battle' ? ctx.battleSystem : ctx.backpackSystem
+  const view = zone === 'battle' ? ctx.battleView : ctx.backpackView
+  if (!system || !view) return null
+  const it = system.getItem(instanceId)
+  if (!it) return null
+  const cols = it.size === '1x1' ? 1 : (it.size === '2x1' ? 2 : 3)
+  const topLeft = view.cellToLocal(it.col, it.row)
+  const global = view.toGlobal({
+    x: topLeft.x + (cols * CELL_SIZE) / 2,
+    y: topLeft.y + CELL_HEIGHT / 2,
+  })
+  return global
+}
+
+function collectShopAuraTargets(ctx: ShopSceneCtx, archetype: TowerAuraHintRule['archetype']): ShopPlacedRef[] {
+  const out: ShopPlacedRef[] = []
+  const pushFromZone = (zone: 'battle' | 'backpack'): void => {
+    const system = zone === 'battle' ? ctx.battleSystem : ctx.backpackSystem
+    if (!system) return
+    for (const it of system.getAllItems()) {
+      const def = getItemDefById(it.defId)
+      const arch = toSkillArchetype(getPrimaryArchetype(def?.tags ?? ''))
+      if (arch !== archetype) continue
+      const pos = getShopItemCenterGlobal(ctx, it.instanceId, zone)
+      if (!pos) continue
+      out.push({ zone, instanceId: it.instanceId, x: pos.x, y: pos.y })
+    }
+  }
+  pushFromZone('battle')
+  pushFromZone('backpack')
+  return out
+}
+
+function spawnShopAuraHintText(stage: Container, globalPos: { x: number; y: number }, text: string, color: number): void {
+  const local = stage.toLocal(globalPos)
+  const tip = new Text({
+    text,
+    style: {
+      fontSize: 26,
+      fill: color,
+      fontFamily: 'Arial',
+      fontWeight: 'bold',
+      stroke: { color: 0x000000, width: 3 },
+    },
+  })
+  tip.anchor.set(0.5)
+  tip.x = local.x
+  tip.y = local.y - 8
+  tip.eventMode = 'none'
+  tip.zIndex = 12050
+  stage.addChild(tip)
+  const bornAt = Date.now()
+  const durationMs = 650
+  const tick = () => {
+    const t = Math.max(0, Math.min(1, (Date.now() - bornAt) / durationMs))
+    tip.y = local.y - 8 - t * 28
+    tip.alpha = 1 - t
+    if (t >= 1) {
+      Ticker.shared.remove(tick)
+      if (tip.parent) tip.parent.removeChild(tip)
+      tip.destroy()
+    }
+  }
+  Ticker.shared.add(tick)
+}
+
+export function triggerShopTowerAuraGainHint(
+  ctx: ShopSceneCtx,
+  defId: string,
+  sourceInstanceId: string,
+  sourceZone: 'battle' | 'backpack',
+): void {
+  if (shouldSkipShopAuraDuplicate(`gain:${defId}:${sourceZone}:${sourceInstanceId}`, 220)) return
+  const rule = resolveTowerAuraHintRule(defId)
+  if (!rule) return
+  const targets = collectShopAuraTargets(ctx, rule.archetype)
+  if (targets.length <= 0) return
+  const { stage } = getApp()
+  const fxLayer = new Container()
+  fxLayer.eventMode = 'none'
+  fxLayer.zIndex = 12040
+  stage.addChild(fxLayer)
+  const srcGlobal = getShopItemCenterGlobal(ctx, sourceInstanceId, sourceZone)
+  if (!srcGlobal) {
+    const first = targets[0]
+    if (first) spawnShopAuraHintText(stage, { x: first.x, y: first.y }, rule.gainText, 0xfff0af)
+    if (fxLayer.parent) fxLayer.parent.removeChild(fxLayer)
+    fxLayer.destroy()
+    return
+  }
+
+  const sourceTarget = targets.find((it) => it.instanceId === sourceInstanceId && it.zone === sourceZone)
+  const receiver = (() => {
+    const candidates = targets.filter((it) => !(it.instanceId === sourceInstanceId && it.zone === sourceZone))
+    if (candidates.length <= 0) return sourceTarget ?? targets[0] ?? null
+    const sx = srcGlobal.x
+    const sy = srcGlobal.y
+    let best = candidates[0]!
+    let bestDist = (best.x - sx) * (best.x - sx) + (best.y - sy) * (best.y - sy)
+    for (let i = 1; i < candidates.length; i++) {
+      const one = candidates[i]!
+      const d = (one.x - sx) * (one.x - sx) + (one.y - sy) * (one.y - sy)
+      if (d < bestDist) {
+        best = one
+        bestDist = d
+      }
+    }
+    return best
+  })()
+  if (!receiver) {
+    if (fxLayer.parent) fxLayer.parent.removeChild(fxLayer)
+    fxLayer.destroy()
+    return
+  }
+
+  const durationMs = 500
+  const dot = new Graphics()
+  dot.eventMode = 'none'
+  dot.zIndex = 12045
+  dot.circle(0, 0, 1)
+  dot.fill({ color: 0xffda67, alpha: 0.95 })
+  fxLayer.addChild(dot)
+  const from = stage.toLocal(srcGlobal)
+  const to = stage.toLocal({ x: receiver.x, y: receiver.y })
+  dot.x = from.x
+  dot.y = from.y
+  const startAt = Date.now()
+  const tick = () => {
+    const t = Math.max(0, Math.min(1, (Date.now() - startAt) / durationMs))
+    dot.x = from.x + (to.x - from.x) * t
+    dot.y = from.y + (to.y - from.y) * t
+    dot.alpha = 1 - t * 0.2
+    if (t >= 1) {
+      Ticker.shared.remove(tick)
+      if (dot.parent) dot.parent.removeChild(dot)
+      dot.destroy()
+      spawnShopAuraHintText(stage, { x: receiver.x, y: receiver.y }, rule.gainText, 0xfff0af)
+      if (fxLayer.parent) fxLayer.parent.removeChild(fxLayer)
+      fxLayer.destroy()
+    }
+  }
+  Ticker.shared.add(tick)
+  if (fxLayer.children.length <= 0) {
+    if (fxLayer.parent) fxLayer.parent.removeChild(fxLayer)
+    fxLayer.destroy()
+  }
+}
+
+export function triggerShopTowerAuraLoseHint(ctx: ShopSceneCtx, defId: string): void {
+  if (shouldSkipShopAuraDuplicate(`lose:${defId}`, 220)) return
+  const rule = resolveTowerAuraHintRule(defId)
+  if (!rule) return
+  const targets = collectShopAuraTargets(ctx, rule.archetype)
+  if (targets.length <= 0) return
+  const { stage } = getApp()
+  const first = targets[0]
+  if (first) spawnShopAuraHintText(stage, { x: first.x, y: first.y }, rule.loseText, 0xff8b8b)
+}
 
 // ============================================================
 // 合成闪光特效（需要传入 SynthesizeResult 类型）

@@ -1835,7 +1835,7 @@ export class TowerDefenseEngine implements BattleEngineLike {
       this.playerBounceDamageBonusPerHopByItemId.set(item.id, 0)
       const bounceFactor = hasNoDecayBounce
         ? (1 + Math.max(0, this.towerNinjaCrystalBounceBonusPct) / 100)
-        : 0.6
+        : 0.8
       this.playerBounceDamageFactorByItemId.set(item.id, isNinjaDamage ? bounceFactor : 1)
       void icon
     }

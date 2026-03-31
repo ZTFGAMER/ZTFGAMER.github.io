@@ -3571,12 +3571,12 @@
         "toweritem16": 40,
         "toweritem17": 40,
         "toweritem18": 40,
-        "toweritem19": 20,
-        "toweritem20": 20,
-        "toweritem21": 20,
-        "toweritem22": 20,
-        "toweritem23": 20,
-        "toweritem24": 20
+        "toweritem19": 16,
+        "toweritem20": 16,
+        "toweritem21": 16,
+        "toweritem22": 16,
+        "toweritem23": 16,
+        "toweritem24": 16
       },
       "playerItemBaseBounceByIcon": {},
       "playerBounceProjectileFlyMs": 200,
