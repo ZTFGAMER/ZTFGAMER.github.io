@@ -1,5 +1,28 @@
 # 大巴扎 — 开发进度记录
 
+## 发布执行记录（2026-04-01，Git同步 + TestFlight + Vercel + Android）
+
+- 用户指令：同步 git、打 TF 包上传、更新 Vercel、打 Android 包。
+- 已完成：
+  - Git：
+    - 提交：`720634f`（`同步三选一演出品质口径与闪动时长调整`）；
+    - 推送：`main -> origin/main` 成功。
+  - iOS TestFlight：
+    - 上传结果：`UPLOAD SUCCEEDED with no errors`；
+    - Delivery UUID：`c7ba9b06-4e15-4edb-985e-7f67b01eec9e`；
+    - 构建号：`CURRENT_PROJECT_VERSION=54`。
+  - Vercel：
+    - Production：`https://bigbazzar-9uofuf3om-zhengtengfeis-projects.vercel.app`；
+    - Alias：`https://bigbazzar.vercel.app`。
+  - Android：
+    - 执行：`npm run build:android-web` + `npm run android:sync` + `gradlew assembleRelease bundleRelease`；
+    - 首次失败原因：`无效的源发行版：21`；
+    - 处理：临时改 `android/app/capacitor.build.gradle` 为 `VERSION_17` 完成构建后已回退到 `VERSION_21`；
+    - 产物：
+      - APK：`android/app/build/outputs/apk/release/app-release.apk`（约 `55M`）；
+      - AAB：`android/app/build/outputs/bundle/release/app-release.aab`（约 `53M`）。
+- 当前阶段：线上与双端包已更新，等待用户验收。
+
 ## 验收追加调整（2026-03-31，三选一合成演出按候选最高品质）
 
 - 用户需求：三选一合成时，演出基准品质改为“候选结果里的最高起始品质”。
