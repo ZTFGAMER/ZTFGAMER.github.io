@@ -14,7 +14,7 @@ import {
   resetWinTrophyState,
   SHOP_STATE_STORAGE_KEY,
 } from '@/tower/core/RunState'
-import { Assets, Container, Graphics, Sprite, Texture, Text } from 'pixi.js'
+import { Assets, Container, Graphics, Sprite, Texture, Text, Ticker } from 'pixi.js'
 import { GridZone, CELL_SIZE, CELL_HEIGHT } from '@/tower/common/grid/GridZone'
 import { GridSystem, type ItemSizeNorm as GridItemSizeNorm } from '@/tower/common/grid/GridSystem'
 import { planAutoPack, type PackItem } from '@/tower/common/grid/AutoPack'
@@ -613,6 +613,9 @@ let skillBuyBtnPulseFrame: Graphics | null = null
 let skillBuyBtnLastCanAfford: boolean | null = null
 let skillBuyBtnAffordPulseStartAtMs: number | null = null
 let towerSkillDraftOverlay: Container | null = null
+let towerSynthesisChoiceOverlay: Container | null = null
+let towerSynthesisChoicePreviewZones: GridZone[] = []
+let towerSynthesisAnticipating = false
 let towerSkillDisplayCon: Container | null = null
 let towerSkillDisplayKey = ''
 type PlayerFourHeroPortraitUnit = {
@@ -2432,20 +2435,18 @@ function findSynthesisHoverTargetInBattle(sourceInstanceId: string, anchorGx: nu
   return null
 }
 
-function pickBattleSynthesisResultDef(
+function collectBattleSynthesisCandidateDefs(
   sourceDef: ItemDef,
   targetDef: ItemDef,
   targetSize: GridItemSizeNorm,
   resultTier: TierKey,
-  resultStar: 1 | 2,
   sourceInstanceId?: string,
   targetInstanceId?: string,
-): ItemDef | null {
+): ItemDef[] {
   const runPoolSet = new Set(getRunClassItemPoolIds())
   const isSameIdSynthesis = sourceDef.id === targetDef.id
   const sameItemRandomSynthesis = getDebugCfg('gameplaySameItemRandomSynthesis') >= 0.5
   const towerMode = isTowerDefenseBattle()
-  const minStartingTier = getCrossSynthesisMinStartingTier(sourceDef, targetDef)
   const excludedInstanceIds = new Set<string>()
   if (sourceInstanceId) excludedInstanceIds.add(sourceInstanceId)
   if (targetInstanceId) excludedInstanceIds.add(targetInstanceId)
@@ -2491,33 +2492,136 @@ function pickBattleSynthesisResultDef(
     candidates = filterCrossSynthesisPool(allByTier)
   }
   candidates = candidates.filter((it) => !reachesMaxActiveCount(it, currentCountByDefId))
-  const qualityBucketLevel = tierStarToTowerLevel(resultTier, resultStar)
-  const evolvedDef = pickCrossSynthesisResultWithCycle(candidates, resultTier, resultStar, minStartingTier, qualityBucketLevel)
-  return evolvedDef
+  return candidates
 }
 
-function applyBattleSynthesis(sourceInstanceId: string, targetInstanceId: string, homeSystem: GridSystem, homeView: GridZone): boolean {
-  if (!canSynthesizePairInBattle(sourceInstanceId, targetInstanceId)) return false
-  const sourceMeta = editableMeta.get(sourceInstanceId)
-  const targetMeta = editableMeta.get(targetInstanceId)
-  const targetItem = homeSystem.getItem(targetInstanceId)
-  if (!sourceMeta || !targetMeta || !targetItem) return false
-  const sourceDef = getItemDefById(sourceMeta.defId)
-  const targetDef = getItemDefById(targetMeta.defId)
-  if (!sourceDef || !targetDef) return false
-  const maxLevel = getTowerItemSynthesisMaxLevel()
-  const sourceLevel = Math.max(1, Math.min(maxLevel, Number(sourceMeta.level) || tierStarToTowerLevel(sourceMeta.tier, sourceMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
-  const targetLevel = Math.max(1, Math.min(maxLevel, Number(targetMeta.level) || tierStarToTowerLevel(targetMeta.tier, targetMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
-  if (sourceLevel !== targetLevel) return false
-  if (sourceLevel >= maxLevel) return false
-  const resultLevel = (sourceLevel + 1) as 1 | 2 | 3 | 4 | 5
-  const upgradeTo = levelToTowerTierStar(resultLevel)
-  if (!upgradeTo) return false
-  const evolvedDef = pickBattleSynthesisResultDef(sourceDef, targetDef, targetMeta.size, upgradeTo.tier, upgradeTo.star, sourceInstanceId, targetInstanceId)
-  if (!evolvedDef) {
-    showFatigueToast('可合成物品已达上限')
-    return false
+function pickBattleSynthesisResultDef(
+  sourceDef: ItemDef,
+  targetDef: ItemDef,
+  targetSize: GridItemSizeNorm,
+  resultTier: TierKey,
+  resultStar: 1 | 2,
+  sourceInstanceId?: string,
+  targetInstanceId?: string,
+): ItemDef | null {
+  const minStartingTier = getCrossSynthesisMinStartingTier(sourceDef, targetDef)
+  const qualityBucketLevel = tierStarToTowerLevel(resultTier, resultStar)
+  const candidates = collectBattleSynthesisCandidateDefs(
+    sourceDef,
+    targetDef,
+    targetSize,
+    resultTier,
+    sourceInstanceId,
+    targetInstanceId,
+  )
+  return pickCrossSynthesisResultWithCycle(candidates, resultTier, resultStar, minStartingTier, qualityBucketLevel)
+}
+
+function pickBattleSynthesisMinTierByResultLevel(
+  resultLevel: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
+  floorTier: TierKey,
+): TierKey {
+  const weightsByLevel: Record<number, Array<{ tier: TierKey; w: number }>> = {
+    1: [
+      { tier: 'Bronze', w: 1 },
+    ],
+    2: [
+      { tier: 'Bronze', w: 0.4 },
+      { tier: 'Silver', w: 0.6 },
+    ],
+    3: [
+      { tier: 'Bronze', w: 0.1 },
+      { tier: 'Silver', w: 0.3 },
+      { tier: 'Gold', w: 0.6 },
+    ],
+    4: [
+      { tier: 'Silver', w: 0.1 },
+      { tier: 'Gold', w: 0.3 },
+      { tier: 'Diamond', w: 0.6 },
+    ],
+    5: [
+      { tier: 'Gold', w: 0.2 },
+      { tier: 'Diamond', w: 0.8 },
+    ],
   }
+  const level = Math.max(1, Math.min(5, Math.round(resultLevel)))
+  const floorIdx = Math.max(0, TIER_ORDER.indexOf(floorTier))
+  const weighted = (weightsByLevel[level] ?? weightsByLevel[5]).filter((one) => {
+    const idx = Math.max(0, TIER_ORDER.indexOf(one.tier))
+    return idx >= floorIdx && one.w > 0
+  })
+  if (weighted.length <= 0) return floorTier
+  const total = weighted.reduce((sum, one) => sum + one.w, 0)
+  if (!(total > 0)) return weighted[0]!.tier
+  let r = nextBattleRandom('tower_synth_min_tier_roll') * total
+  for (const one of weighted) {
+    r -= one.w
+    if (r <= 0) return one.tier
+  }
+  return weighted[weighted.length - 1]!.tier
+}
+
+function pickBattleSynthesisChoiceDefsByTierProb(
+  candidates: ItemDef[],
+  count: number,
+  resultLevel: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
+  floorTier: TierKey,
+): ItemDef[] {
+  const pool = [...candidates]
+  const out: ItemDef[] = []
+  const take = Math.max(1, Math.min(pool.length, Math.round(count)))
+  const floorIdx = Math.max(0, TIER_ORDER.indexOf(floorTier))
+  for (let i = 0; i < take; i++) {
+    if (pool.length <= 0) break
+    const desiredTier = pickBattleSynthesisMinTierByResultLevel(resultLevel, floorTier)
+    const desiredIdx = Math.max(floorIdx, Math.max(0, TIER_ORDER.indexOf(desiredTier)))
+    let tierPool = pool.filter((one) => {
+      const t = parseTierName(one.starting_tier) ?? 'Bronze'
+      return Math.max(0, TIER_ORDER.indexOf(t)) === desiredIdx
+    })
+    if (tierPool.length <= 0) {
+      tierPool = pool.filter((one) => {
+        const t = parseTierName(one.starting_tier) ?? 'Bronze'
+        return Math.max(0, TIER_ORDER.indexOf(t)) >= desiredIdx
+      })
+    }
+    if (tierPool.length <= 0) tierPool = [...pool]
+    const pick = tierPool[Math.floor(nextBattleRandom('tower_synth_choice_tier_pick') * tierPool.length)]
+    if (!pick) break
+    out.push(pick)
+    const idx = pool.findIndex((one) => one.id === pick.id)
+    if (idx >= 0) pool.splice(idx, 1)
+  }
+  return out
+}
+
+function getHighestStartingTier(defs: ItemDef[]): TierKey {
+  let best: TierKey = 'Bronze'
+  let bestIdx = Math.max(0, TIER_ORDER.indexOf(best))
+  for (const def of defs) {
+    const tier = parseTierName(def.starting_tier) ?? 'Bronze'
+    const idx = Math.max(0, TIER_ORDER.indexOf(tier))
+    if (idx > bestIdx) {
+      best = tier
+      bestIdx = idx
+    }
+  }
+  return best
+}
+
+function finalizeBattleSynthesisWithDef(
+  sourceInstanceId: string,
+  targetInstanceId: string,
+  homeSystem: GridSystem,
+  homeView: GridZone,
+  evolvedDef: ItemDef,
+  sourceDef: ItemDef,
+  targetDef: ItemDef,
+  targetMeta: { size: GridItemSizeNorm; quality: TierKey; level: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8; permanentDamageBonus: number },
+  targetItem: { col: number; row: number; size: GridItemSizeNorm },
+  upgradeTo: { tier: TierKey; star: 1 | 2 },
+  resultLevel: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
+): void {
   const removedAuraDefIds = new Set<string>()
   if (getTowerAuraHintRuleByDefId(sourceDef.id)) removedAuraDefIds.add(sourceDef.id)
   if (getTowerAuraHintRuleByDefId(targetDef.id)) removedAuraDefIds.add(targetDef.id)
@@ -2528,7 +2632,7 @@ function applyBattleSynthesis(sourceInstanceId: string, targetInstanceId: string
   editableMeta.delete(sourceInstanceId)
 
   homeSystem.remove(targetInstanceId)
-  if (!homeSystem.place(targetItem.col, targetItem.row, targetItem.size, evolvedDef.id, targetInstanceId)) return false
+  if (!homeSystem.place(targetItem.col, targetItem.row, targetItem.size, evolvedDef.id, targetInstanceId)) return
   homeView.removeItem(targetInstanceId)
   void homeView.addItem(targetInstanceId, evolvedDef.id, targetItem.size, targetItem.col, targetItem.row, `${upgradeTo.tier}#${upgradeTo.star}`).then(() => {
     homeView.setItemTier(targetInstanceId, `${upgradeTo.tier}#${upgradeTo.star}`)
@@ -2553,6 +2657,82 @@ function applyBattleSynthesis(sourceInstanceId: string, targetInstanceId: string
   clearItemRoundStatForPlayerIds([sourceInstanceId, targetInstanceId])
   syncEngineWithEditable([targetInstanceId], false)
   pendingBattleBuyOffer = null
+}
+
+function applyBattleSynthesis(sourceInstanceId: string, targetInstanceId: string, homeSystem: GridSystem, homeView: GridZone): boolean {
+  if (!canSynthesizePairInBattle(sourceInstanceId, targetInstanceId)) return false
+  const sourceMeta = editableMeta.get(sourceInstanceId)
+  const targetMeta = editableMeta.get(targetInstanceId)
+  const targetItem = homeSystem.getItem(targetInstanceId)
+  if (!sourceMeta || !targetMeta || !targetItem) return false
+  const sourceDef = getItemDefById(sourceMeta.defId)
+  const targetDef = getItemDefById(targetMeta.defId)
+  if (!sourceDef || !targetDef) return false
+  const maxLevel = getTowerItemSynthesisMaxLevel()
+  const sourceLevel = Math.max(1, Math.min(maxLevel, Number(sourceMeta.level) || tierStarToTowerLevel(sourceMeta.tier, sourceMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
+  const targetLevel = Math.max(1, Math.min(maxLevel, Number(targetMeta.level) || tierStarToTowerLevel(targetMeta.tier, targetMeta.tierStar))) as 1 | 2 | 3 | 4 | 5
+  if (sourceLevel !== targetLevel) return false
+  if (sourceLevel >= maxLevel) return false
+  const resultLevel = (sourceLevel + 1) as 1 | 2 | 3 | 4 | 5
+  const upgradeTo = levelToTowerTierStar(resultLevel)
+  if (!upgradeTo) return false
+  const candidates = collectBattleSynthesisCandidateDefs(
+    sourceDef,
+    targetDef,
+    targetMeta.size,
+    upgradeTo.tier,
+    sourceInstanceId,
+    targetInstanceId,
+  )
+  const choiceCount = (resultLevel === 3 || resultLevel === 4) ? 3 : 1
+  const minStartingTier = getCrossSynthesisMinStartingTier(sourceDef, targetDef)
+  const options = choiceCount > 1
+    ? pickBattleSynthesisChoiceDefsByTierProb(candidates, choiceCount, resultLevel, minStartingTier)
+    : []
+  const evolvedDef = options.length > 0
+    ? options[0]
+    : pickBattleSynthesisResultDef(sourceDef, targetDef, targetMeta.size, upgradeTo.tier, upgradeTo.star, sourceInstanceId, targetInstanceId)
+  if (!evolvedDef) {
+    showFatigueToast('可合成物品已达上限')
+    return false
+  }
+  if (options.length > 1) {
+    const anticipationTier = getHighestStartingTier(options)
+    runTowerSynthesisAnticipation(targetInstanceId, anticipationTier, resultLevel, { tier: upgradeTo.tier, star: upgradeTo.star }, () => {
+      openTowerSynthesisChoiceOverlay(options, resultLevel, targetInstanceId, (picked: ItemDef) => {
+        finalizeBattleSynthesisWithDef(
+          sourceInstanceId,
+          targetInstanceId,
+          homeSystem,
+          homeView,
+          picked,
+          sourceDef,
+          targetDef,
+          { size: targetMeta.size, quality: targetMeta.quality, level: targetMeta.level, permanentDamageBonus: targetMeta.permanentDamageBonus },
+          { col: targetItem.col, row: targetItem.row, size: targetItem.size },
+          { tier: upgradeTo.tier, star: upgradeTo.star },
+          resultLevel,
+        )
+      })
+    })
+    return true
+  }
+  const evolvedStartTier = parseTierName(evolvedDef.starting_tier) ?? upgradeTo.tier
+  runTowerSynthesisAnticipation(targetInstanceId, evolvedStartTier, resultLevel, { tier: upgradeTo.tier, star: upgradeTo.star }, () => {
+    finalizeBattleSynthesisWithDef(
+      sourceInstanceId,
+      targetInstanceId,
+      homeSystem,
+      homeView,
+      evolvedDef,
+      sourceDef,
+      targetDef,
+      { size: targetMeta.size, quality: targetMeta.quality, level: targetMeta.level, permanentDamageBonus: targetMeta.permanentDamageBonus },
+      { col: targetItem.col, row: targetItem.row, size: targetItem.size },
+      { tier: upgradeTo.tier, star: upgradeTo.star },
+      resultLevel,
+    )
+  })
   return true
 }
 
@@ -2712,6 +2892,371 @@ function closeTowerSkillDraftOverlay(): void {
   if (towerSkillDraftOverlay?.parent) towerSkillDraftOverlay.parent.removeChild(towerSkillDraftOverlay)
   towerSkillDraftOverlay?.destroy({ children: true })
   towerSkillDraftOverlay = null
+}
+
+function closeTowerSynthesisChoiceOverlay(): void {
+  for (const one of towerSynthesisChoicePreviewZones) {
+    one.destroy({ children: true })
+  }
+  towerSynthesisChoicePreviewZones = []
+  if (towerSynthesisChoiceOverlay?.parent) towerSynthesisChoiceOverlay.parent.removeChild(towerSynthesisChoiceOverlay)
+  towerSynthesisChoiceOverlay?.destroy({ children: true })
+  towerSynthesisChoiceOverlay = null
+}
+
+function openTowerSynthesisChoiceOverlay(
+  choices: ItemDef[],
+  resultLevel: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
+  hiddenInstanceId: string | null,
+  onPick: (picked: ItemDef) => void,
+): void {
+  closeTowerSynthesisChoiceOverlay()
+  const overlay = new Container()
+  overlay.zIndex = 7608
+  overlay.eventMode = 'passive'
+
+  const inputBlocker = new Graphics()
+  inputBlocker.rect(0, 0, CANVAS_W, CANVAS_H)
+  inputBlocker.fill({ color: 0x000000, alpha: 0.62 })
+  inputBlocker.eventMode = 'static'
+  inputBlocker.on('pointerdown', (evt) => evt.stopPropagation())
+  inputBlocker.on('pointerup', (evt) => evt.stopPropagation())
+  inputBlocker.on('pointertap', (evt) => evt.stopPropagation())
+  overlay.addChild(inputBlocker)
+
+  if (hiddenInstanceId && playerZone && editableSystem) {
+    const hiddenItem = editableSystem.getItem(hiddenInstanceId)
+    if (hiddenItem) {
+      const dim = editableSystem.getSizeDim(hiddenItem.size)
+      const zx = playerZone.scale.x || 1
+      const zy = playerZone.scale.y || 1
+      const gx = playerZone.x + hiddenItem.col * CELL_SIZE * zx
+      const gy = playerZone.y + hiddenItem.row * CELL_HEIGHT * zy
+      const gw = dim.w * CELL_SIZE * zx
+      const gh = dim.h * CELL_HEIGHT * zy
+      const hideMask = new Graphics()
+      hideMask.roundRect(gx + 4, gy + 4, Math.max(4, gw - 8), Math.max(4, gh - 8), 14)
+      hideMask.fill({ color: 0x101b37, alpha: 0.98 })
+      hideMask.stroke({ color: 0x2d4d86, width: 2, alpha: 0.95 })
+      hideMask.eventMode = 'none'
+      overlay.addChild(hideMask)
+    }
+  }
+
+  playerZone?.setSelected(null)
+  playerZone?.clearHighlight()
+
+  const panelY = CANVAS_H / 2 - 100
+  const panelW = Math.min(CANVAS_W - 24, Math.max(520, 120 + choices.length * 170))
+  const panelH = 360
+
+  const panel = new Graphics()
+  panel.roundRect(-panelW / 2, -panelH / 2, panelW, panelH, 26)
+  panel.fill({ color: 0x0f1830, alpha: 0.88 })
+  panel.stroke({ color: 0x7fc0ff, width: 3, alpha: 0.62 })
+  panel.x = CANVAS_W / 2
+  panel.y = panelY
+  overlay.addChild(panel)
+
+  const title = new Text({
+    text: '请选择合成结果',
+    style: {
+      fontSize: getGameCfg().textSizes.phaseButtonLabel,
+      fill: 0xdff3ff,
+      fontFamily: 'Arial',
+      fontWeight: 'bold',
+      align: 'center',
+    },
+  })
+  title.anchor.set(0.5)
+  title.x = CANVAS_W / 2
+  title.y = panel.y - panelH / 2 + 30
+  overlay.addChild(title)
+
+  const hintY = title.y + 14
+
+  const cardGap = 22
+  const cardW = Math.min(182, Math.floor((panelW - 44 - (choices.length - 1) * cardGap) / Math.max(1, choices.length)))
+  const cardH = 238
+  const totalW = choices.length * cardW + (choices.length - 1) * cardGap
+  const startX = CANVAS_W / 2 - totalW / 2
+  const cardTopY = hintY + 20
+
+  choices.forEach((def, idx) => {
+    const card = new Container()
+    card.sortableChildren = true
+    card.eventMode = 'static'
+    card.cursor = 'pointer'
+    const x = startX + idx * (cardW + cardGap)
+    const y = cardTopY
+    card.x = x
+    card.y = y
+
+    const cardBg = new Graphics()
+    cardBg.roundRect(0, 0, cardW, cardH, 18)
+    const startTier = parseTierName(def.starting_tier) ?? 'Bronze'
+    cardBg.fill({ color: 0x1b2a4d, alpha: 0.96 })
+    cardBg.zIndex = 10
+    card.addChild(cardBg)
+
+    const cardFrame = new Graphics()
+    cardFrame.roundRect(0, 0, cardW, cardH, 18)
+    cardFrame.stroke({ color: 0x84b7ff, width: 2.2, alpha: 0.9 })
+    cardFrame.zIndex = 40
+    card.addChild(cardFrame)
+
+    const arch = toSkillArchetype(getPrimaryArchetype(def.tags))
+    const levelBadgeFill = arch === 'mage'
+      ? 0x7f6bff
+      : arch === 'assassin'
+        ? 0x5ba4ff
+        : arch === 'archer'
+          ? 0x3fbf75
+          : 0xc85f5f
+
+    const levelBadgeBg = new Graphics()
+    const levelBadgeSize = 42
+    levelBadgeBg.roundRect(0, 0, levelBadgeSize, levelBadgeSize, 10)
+    levelBadgeBg.fill({ color: levelBadgeFill, alpha: 0.98 })
+    levelBadgeBg.stroke({ color: 0x000000, width: 2.2, alpha: 0.9 })
+    levelBadgeBg.x = Math.round(cardW / 2 - levelBadgeSize / 2)
+    levelBadgeBg.y = -2
+    levelBadgeBg.zIndex = 60
+    card.addChild(levelBadgeBg)
+
+    const previewZone = new GridZone('', 1, 1, 1)
+    previewZone.setLabelVisible(false)
+    previewZone.setCellBackgroundVisible(false)
+    previewZone.setCellBorderWidth(0)
+    previewZone.setCornerRadius(16)
+    previewZone.setTierBorderWidth(7)
+    previewZone.setItemFrameUseArchetypeColor(true)
+    previewZone.setItemQualityMarkerEnabled(true)
+    previewZone.setTierBadgeVisible(false)
+    previewZone.setStatBadgeMode('archetype')
+    previewZone.setArchetypeBadgeShowClassPrefix(false)
+    ;(previewZone as unknown as { badgeLayer?: Container }).badgeLayer?.visible && ((previewZone as unknown as { badgeLayer?: Container }).badgeLayer!.visible = false)
+    const previewScale = 0.82
+    previewZone.x = Math.round((cardW - CELL_SIZE * previewScale) / 2)
+    previewZone.y = 24
+    previewZone.scale.set(0.82)
+    previewZone.eventMode = 'none'
+    previewZone.zIndex = 20
+    card.addChild(previewZone)
+    towerSynthesisChoicePreviewZones.push(previewZone)
+
+    const levelText = new Text({
+      text: `${resultLevel}`,
+      style: {
+        fontSize: getGameCfg().textSizes.gridZoneLabel + 4,
+        fill: 0xffffff,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        stroke: { color: 0x000000, width: 3 },
+      },
+    })
+    levelText.anchor.set(0.5)
+    levelText.x = cardW / 2
+    levelText.y = 18
+    levelText.zIndex = 61
+    card.addChild(levelText)
+
+    const previewId = `synth-choice-${idx}-${Date.now()}`
+    const visualTier = (() => {
+      const ts = levelToTowerTierStar(resultLevel as 1 | 2 | 3 | 4 | 5)
+      return ts ? `${ts.tier}#${ts.star}` : `${startTier}#1`
+    })()
+    void previewZone.addItem(previewId, def.id, '1x1', 0, 0, visualTier).then(() => {
+      previewZone.setItemTier(previewId, visualTier)
+      previewZone.setItemEnchantment(previewId, undefined)
+    })
+
+    const nameText = new Text({
+      text: String(def.name_cn || def.id),
+      style: {
+        fontSize: getGameCfg().textSizes.synthName,
+        fill: 0xf2fbff,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        align: 'center',
+        wordWrap: true,
+        wordWrapWidth: cardW - 20,
+      },
+    })
+    nameText.anchor.set(0.5)
+    nameText.x = cardW / 2
+    nameText.y = 174
+    nameText.zIndex = 70
+    card.addChild(nameText)
+
+    const auraRule = getTowerAuraHintRuleByDefId(def.id)
+    const hintText = new Text({
+      text: auraRule?.gainText ?? '',
+      style: {
+        fontSize: getGameCfg().textSizes.gridZoneLabel,
+        fill: 0xffe7a8,
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        align: 'center',
+        wordWrap: true,
+        wordWrapWidth: cardW - 16,
+        stroke: { color: 0x000000, width: 2 },
+      },
+    })
+    hintText.anchor.set(0.5)
+    hintText.x = cardW / 2
+    hintText.y = 210
+    hintText.zIndex = 71
+    card.addChild(hintText)
+
+    card.on('pointertap', () => {
+      closeTowerSynthesisChoiceOverlay()
+      onPick(def)
+    })
+
+    overlay.addChild(card)
+  })
+
+  if (!root) return
+  root.addChild(overlay)
+  towerSynthesisChoiceOverlay = overlay
+}
+
+function getTowerSynthesisShakeDurationMsByTier(tier: TierKey): number {
+  if (tier === 'Bronze') return 200
+  if (tier === 'Silver') return 500
+  if (tier === 'Gold') return 800
+  return 1200
+}
+
+function runTowerSynthesisAnticipation(
+  targetInstanceId: string,
+  minTier: TierKey,
+  _resultLevel: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8,
+  previewTier: { tier: TierKey; star: 1 | 2 },
+  onDone: () => void,
+): void {
+  if (!root || !playerZone || !editableSystem) {
+    onDone()
+    return
+  }
+  const item = editableSystem.getItem(targetInstanceId)
+  if (!item) {
+    onDone()
+    return
+  }
+  const dim = editableSystem.getSizeDim(item.size)
+  const zone = playerZone
+  towerSynthesisAnticipating = true
+  zone.setItemTier(targetInstanceId, `${previewTier.tier}#${previewTier.star}`)
+  const durationMs = getTowerSynthesisShakeDurationMsByTier(minTier)
+  const baseLeft = item.col * CELL_SIZE
+  const baseTop = item.row * CELL_HEIGHT
+  const baseW = dim.w * CELL_SIZE
+  const baseH = dim.h * CELL_HEIGHT
+  const centerLocal = {
+    x: baseLeft + baseW / 2,
+    y: baseTop + baseH / 2,
+  }
+  const fxCon = new Container()
+  fxCon.zIndex = 7690
+  fxCon.eventMode = 'none'
+  root.addChild(fxCon)
+
+  const glow = new Graphics()
+  glow.eventMode = 'none'
+  fxCon.addChild(glow)
+  const hideIconMask = new Graphics()
+  hideIconMask.eventMode = 'none'
+  fxCon.addChild(hideIconMask)
+  const cycleFrame = new Graphics()
+  cycleFrame.eventMode = 'none'
+  fxCon.addChild(cycleFrame)
+
+  const badge = new Container()
+  badge.eventMode = 'none'
+  fxCon.addChild(badge)
+  const badgeBg = new Graphics()
+  badge.addChild(badgeBg)
+  const badgeText = new Text({
+    text: '青铜',
+    style: {
+      fontSize: getGameCfg().textSizes.gridZoneLabel + 2,
+      fill: 0xffffff,
+      fontFamily: 'Arial',
+      fontWeight: 'bold',
+      stroke: { color: 0x000000, width: 3 },
+    },
+  })
+  badgeText.anchor.set(0.5)
+  badge.addChild(badgeText)
+
+  const setBadgeTier = (tier: TierKey): void => {
+    const color = tier === 'Bronze' ? 0xc99157 : tier === 'Silver' ? 0xc6d3ea : tier === 'Gold' ? 0xffd25a : 0x6fd5ff
+    const label = tier === 'Bronze' ? '青铜' : tier === 'Silver' ? '白银' : tier === 'Gold' ? '黄金' : '钻石'
+    badgeBg.clear()
+    badgeBg.roundRect(-46, -18, 92, 36, 10)
+    badgeBg.fill({ color, alpha: 0.94 })
+    badgeBg.stroke({ color: 0x000000, width: 2, alpha: 0.9 })
+    badgeText.text = label
+  }
+  const cycleColors = [0x6fd5ff, 0x9f7bff, 0x4ed28a, 0xffc85a]
+  let lastColorTick = -1
+  let currentColor = cycleColors[0]
+
+  const startAt = Date.now()
+  const tick = () => {
+    const elapsed = Date.now() - startAt
+    const p = Math.max(0, Math.min(1, elapsed / durationMs))
+    const zoneScaleX = zone.scale.x || 1
+    const zoneScaleY = zone.scale.y || 1
+    const cx = zone.x + centerLocal.x * zoneScaleX
+    const cy = zone.y + centerLocal.y * zoneScaleY
+    const jitterX = (Math.sin(elapsed * 0.08) + Math.sin(elapsed * 0.19) * 0.6) * (2 + 6 * p)
+    zone.setItemOffsetX(targetInstanceId, jitterX)
+
+    const frameTick = Math.floor(elapsed / 100)
+    if (frameTick !== lastColorTick) {
+      lastColorTick = frameTick
+      currentColor = cycleColors[Math.floor(Math.random() * cycleColors.length)] ?? cycleColors[0]
+    }
+
+    const gx = zone.x + (baseLeft + jitterX) * zoneScaleX
+    const gy = zone.y + baseTop * zoneScaleY
+    const gw = baseW * zoneScaleX
+    const gh = baseH * zoneScaleY
+
+    hideIconMask.clear()
+    hideIconMask.roundRect(gx + 6, gy + 6, Math.max(4, gw - 12), Math.max(4, gh - 12), 14)
+    hideIconMask.fill({ color: 0x101b37, alpha: 0.94 })
+
+    cycleFrame.clear()
+    cycleFrame.roundRect(gx + 2, gy + 2, Math.max(4, gw - 4), Math.max(4, gh - 4), 18)
+    cycleFrame.stroke({ color: currentColor, width: 6, alpha: 0.98 })
+
+    glow.clear()
+    glow.circle(0, 0, 38 + Math.sin(elapsed * 0.02) * 5)
+    glow.fill({ color: 0xfff2a8, alpha: 0.22 + 0.2 * Math.sin(elapsed * 0.03 + 1) })
+    glow.x = cx
+    glow.y = cy
+
+    const sec = elapsed / 1000
+    const stageTier: TierKey = sec >= 0.9 ? 'Diamond' : sec >= 0.6 ? 'Gold' : sec >= 0.3 ? 'Silver' : 'Bronze'
+    setBadgeTier(stageTier)
+    badge.x = cx
+    badge.y = gy - 16
+    badge.alpha = 0.75 + 0.25 * Math.sin(elapsed * 0.025 + 0.4)
+
+    if (elapsed >= durationMs) {
+      zone.setItemOffsetX(targetInstanceId, 0)
+      Ticker.shared.remove(tick)
+      if (fxCon.parent) fxCon.parent.removeChild(fxCon)
+      fxCon.destroy({ children: true })
+      towerSynthesisAnticipating = false
+      onDone()
+    }
+  }
+  Ticker.shared.add(tick)
 }
 
 function mountTowerItemIconSprite(
@@ -3639,7 +4184,7 @@ function makeSkillBuyButton(): Container {
   con.eventMode = 'static'
   con.cursor = 'pointer'
   con.on('pointerdown', () => {
-    if (!engine || !editableSystem || !playerZone || towerSkillDraftOverlay) return
+    if (!engine || !editableSystem || !playerZone || towerSkillDraftOverlay || towerSynthesisChoiceOverlay || towerSynthesisAnticipating) return
     if (transition.battleExitTransitionDurationMs > 0) return
     const unlockCount = getTowerBattleSkillBuyUnlockItemCount()
     if (towerBattleBuyCount < unlockCount) {
@@ -6709,6 +7254,8 @@ export const BattleScene: Scene = {
     towerWaveTriggerConsumed = false
     towerForceAutoStartOnEnter = false
     closeTowerSkillDraftOverlay()
+    closeTowerSynthesisChoiceOverlay()
+    towerSynthesisAnticipating = false
     editableDrag?.destroy()
     editableDrag = null
     editableSystem = null
@@ -6735,18 +7282,18 @@ export const BattleScene: Scene = {
     const speed = isPvpSpeedupDisabled() ? 1 : Math.max(1, battleSpeed)
     const simDt = dt * speed
     const dtMs = simDt * 1000
-    const pauseVisualBySkillDraft = !!towerSkillDraftOverlay
-    const visualDtMs = pauseVisualBySkillDraft ? 0 : dtMs
+    const pauseVisualByOverlay = !!towerSkillDraftOverlay || !!towerSynthesisChoiceOverlay || towerSynthesisAnticipating
+    const visualDtMs = pauseVisualByOverlay ? 0 : dtMs
     visualFrameSeenTicks.clear()
     visualFrameHasCatchUp = false
     battlePresentationMs += visualDtMs
-    if (!pauseVisualBySkillDraft) {
+    if (!pauseVisualByOverlay) {
       tickTowerEnemyGoldDropFx()
       tickAutoFxDegrade(visualDtMs)
     }
     skillUI?.tickIntro(visualDtMs, playerZone)
     const introDone = transition.tickIntro(simDt * 1000, root)
-    const allowSimUpdate = introDone && syncAStarted && !towerSkillDraftOverlay
+    const allowSimUpdate = introDone && syncAStarted && !towerSkillDraftOverlay && !towerSynthesisChoiceOverlay && !towerSynthesisAnticipating
     let engineUpdateCostMs = 0
     if (allowSimUpdate) {
       const t0 = performance.now()
@@ -6754,7 +7301,7 @@ export const BattleScene: Scene = {
       engineUpdateCostMs = performance.now() - t0
     }
     const queueConsumeStartMs = performance.now()
-    if (!pauseVisualBySkillDraft) consumeVisualFxQueue(visualDtMs)
+    if (!pauseVisualByOverlay) consumeVisualFxQueue(visualDtMs)
     const queueConsumeCostMs = performance.now() - queueConsumeStartMs
     const pendingDamageImpactFx = fxPool.hasPendingDamageImpactPresentation()
     const towerMode = isTowerDefenseBattle()
@@ -7152,14 +7699,14 @@ export const BattleScene: Scene = {
     if (skillTestBtn) {
       skillTestBtn.x = getTowerTopLeftActionBtnX()
       skillTestBtn.y = getTowerTopLeftActionBtnY(1)
-      const canEditInBattle = isTowerDefenseBattle() && !replayMode && !towerWaveAdvanceInProgress && transition.battleExitTransitionDurationMs <= 0 && !settlement.isGameOver() && !towerSkillDraftOverlay
+      const canEditInBattle = isTowerDefenseBattle() && !replayMode && !towerWaveAdvanceInProgress && transition.battleExitTransitionDurationMs <= 0 && !settlement.isGameOver() && !towerSkillDraftOverlay && !towerSynthesisChoiceOverlay && !towerSynthesisAnticipating
       skillTestBtn.visible = canEditInBattle && topLeftButtonsExpanded
     }
 
     if (itemTestBtn) {
       itemTestBtn.x = getTowerTopLeftActionBtnX()
       itemTestBtn.y = getTowerTopLeftActionBtnY(2)
-      const canEditInBattle = isTowerDefenseBattle() && !replayMode && !towerWaveAdvanceInProgress && transition.battleExitTransitionDurationMs <= 0 && !settlement.isGameOver() && !towerSkillDraftOverlay
+      const canEditInBattle = isTowerDefenseBattle() && !replayMode && !towerWaveAdvanceInProgress && transition.battleExitTransitionDurationMs <= 0 && !settlement.isGameOver() && !towerSkillDraftOverlay && !towerSynthesisChoiceOverlay && !towerSynthesisAnticipating
       itemTestBtn.visible = canEditInBattle && topLeftButtonsExpanded
     }
 
@@ -7254,7 +7801,7 @@ export const BattleScene: Scene = {
       }
     }
 
-    const canEditInBattle = isTowerDefenseBattle() && !replayMode && !towerWaveAdvanceInProgress && transition.battleExitTransitionDurationMs <= 0 && !settlement.isGameOver() && !towerSkillDraftOverlay
+    const canEditInBattle = isTowerDefenseBattle() && !replayMode && !towerWaveAdvanceInProgress && transition.battleExitTransitionDurationMs <= 0 && !settlement.isGameOver() && !towerSkillDraftOverlay && !towerSynthesisChoiceOverlay && !towerSynthesisAnticipating
     if (buyBtn) {
       buyBtn.x = CANVAS_W / 2
       buyBtn.y = getTowerBattleBuyButtonY()

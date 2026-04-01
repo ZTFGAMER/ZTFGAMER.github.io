@@ -1,5 +1,217 @@
 # 大巴扎 — 开发进度记录
 
+## 验收追加调整（2026-03-31，三选一合成演出按候选最高品质）
+
+- 用户需求：三选一合成时，演出基准品质改为“候选结果里的最高起始品质”。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增 `getHighestStartingTier(defs)`；
+    - 三选一路径中 `runTowerSynthesisAnticipation(...)` 的 `anticipationTier` 由最低品质改为最高品质；
+    - 清理不再使用的 `getLowestStartingTier(defs)`。
+- 影响范围：仅三选一合成演出；非三选一路径仍按最终结果物品起始品质计算。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收“三选一演出时长/品质节奏”是否符合预期。
+
+## 验收追加调整（2026-03-31，合成/品质闪动时长 +50%）
+
+- 用户需求：合成和品质的闪动表演时间延长 50%。
+- 已完成：
+  - `data/debug_defaults.json`：`synthFlashDurationMs` `220 -> 330`；
+  - `data/tower_debug_defaults.json`：`synthFlashDurationMs` `220 -> 330`；
+  - `data/nobag_debug_defaults.json`：`synthFlashDurationMs` `220 -> 330`。
+- 说明：`synthFlashDurationMs` 同时用于“合成闪光”和“变形/升级（品质相关）闪光”，本次已统一放大 1.5 倍。
+- 验证：执行 `npm run build` 时命中现有 TS 阻断（`src/tower/battle/BattleScene.ts:2577` 未使用函数），本次数值调整未引入额外报错。
+- 当前阶段：等待用户验收闪动节奏；如需我可继续处理该 TS 阻断并重新全量构建。
+
+## 验收追加修复（2026-03-31，三选一阶段隐藏被合成素材）
+
+- 用户反馈：进入三选一后，被合成素材图标仍可见，不符合“演出后应隐藏素材”的预期。
+- 已完成修复：
+  - `src/tower/battle/BattleScene.ts`
+    - `openTowerSynthesisChoiceOverlay()` 新增 `hiddenInstanceId` 参数；
+    - 在三选一弹窗打开时，按目标格子位置覆盖高不透明遮罩，隐藏被合成素材图标；
+    - 同时清理选中态与高亮（`setSelected(null)` + `clearHighlight()`），避免蓝框残留。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“三选一时素材隐藏是否彻底”。
+
+## 验收追加修复（2026-03-31，合成演出品质超前显示）
+
+- 用户反馈：最终结果是青铜时，演出阶段却显示到白银。
+- 根因：演出品质上限之前按“目标升级档位”推导，而不是按“真实候选/最终结果最低品质”限制。
+- 已完成修复：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增 `getLowestStartingTier(defs)`；
+    - 三选一路径：演出品质上限改为“本次候选中的最低起始品质”；
+    - 非三选一路径：演出品质上限改为“最终结果物品的起始品质”。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“青铜结果不再出现白银阶段”。
+
+## 验收追加修复（2026-03-31，合成演出品质阶段恢复）
+
+- 用户反馈：合成演出中“品质”提示消失。
+- 已完成修复：
+  - `src/tower/battle/BattleScene.ts`
+    - 演出阶段徽章从“等级数字”改回“品质文字”（青铜/白银/黄金/钻石）；
+    - 保持按 0.3/0.6/0.9s 阶段切换颜色与文案；
+    - 徽章尺寸与字号同步放大，增强可见性。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户确认品质阶段演出是否恢复且清晰可见。
+
+## 验收追加实现（2026-03-31，塔防合成期待感演出）
+
+- 用户需求：
+  - 合成时先播放闪光抖动，再变成结果物品；
+  - 抖动时长按最低品质：青铜 0.2s、白银 0.5s、黄金 0.8s、钻石 1.2s；
+  - 中间闪动品质图标（0.3/0.6/0.9s 阶段切换）；
+  - 三选一需在表演结束后出现，且候选尽量使用目标最低品质池。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 新增 `runTowerSynthesisAnticipation()`，在合成前执行：
+      - 目标物品横向抖动；
+      - 原图标遮蔽（显示为“消失”状态）；
+      - 6px 彩色轮播描边（每 0.1s 随机换色）；
+      - 顶部等级数字提前切到目标等级；
+      - 中央品质闪动按 0.3/0.6/0.9s 阶段切换。
+    - 合成流程改为“演出结束 -> 三选一弹窗/最终落地”；
+    - 三选一候选优先从 `starting_tier == 目标 tier` 的池子抽取。
+    - 演出期间加入输入/更新阻塞标志 `towerSynthesisAnticipating`，避免状态穿插。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收演出节奏与品质阶段闪动观感。
+
+## 验收追加修复（2026-03-31，三选一卡片文本层级）
+
+- 用户反馈：物品名称/提示文本被背景框压暗，层级应高于背景框。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 卡片名称文本 `nameText` 提升到 `zIndex=70`；
+    - 卡片提示文本 `hintText` 提升到 `zIndex=71`；
+    - 保持 `card.sortableChildren = true`，确保文本稳定渲染在背景与边框之上。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户做最终像素验收。
+
+## 验收追加微调（2026-03-31，等级角标层级与物品框描边）
+
+- 用户反馈：
+  - 等级角标与数字层级应高于物品框；
+  - 物品框描边需加粗到约 6px 观感。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 候选卡改为 `sortableChildren` 并显式设置层级：`previewZone(20) < cardFrame(40) < levelBadge(60) < levelText(61)`；
+    - 卡片外框拆分为独立 `cardFrame`，保证始终压在物品渲染之上；
+    - 物品框描边宽度按缩放补偿提升（`setTierBorderWidth(7)`，在 `scale=0.82` 下接近 6px 视觉宽度）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户继续做像素级最终验收。
+
+## 验收追加微调（2026-03-31，三选一标题与等级角标细节）
+
+- 用户反馈：
+  - 不显示“本次3选1”副标题；
+  - 顶部等级数字整体下移约 10px；
+  - 冰冻冰锥等级角标边框应为紫色。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 移除副标题文本，仅保留“请选择合成结果”；
+    - 卡片起始 Y 自动回补，避免副标题移除后布局塌陷；
+    - 等级角标与数字整体下移（`badgeY: -8`, `textY: 11`）；
+    - 等级角标边框按职业着色（冰法师=紫色）。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户继续按截图做最终像素对齐验收。
+
+## 验收追加修复（2026-03-31，三选一卡片细节二次对齐）
+
+- 用户反馈：
+  - 等级不显示 `Lv.`，仅显示数字；
+  - 物品需保持职业颜色框；
+  - 右下角需显示与上阵区一致的最低品质标记；
+  - 名称下方增加“获得提示”文本（如“获得护盾↑”）；
+  - 每个选项高度增加约 `50px` 以容纳提示文本。
+- 已完成修复：
+  - `src/tower/battle/BattleScene.ts`
+    - 选项卡高度由 `188` 提升至 `238`，弹窗高度同步增加；
+    - 顶部等级改为仅数字，并加顶部等级徽章底板；
+    - 候选物品继续使用 `GridZone` 渲染，保持职业颜色框；
+    - 恢复最低品质角标显示（`setItemQualityMarkerEnabled(true)`）；
+    - 名称下方新增增益提示文本，文案来自 `TOWER_AURA_HINT_RULES.gainText`；
+    - 名称位置下移，避免与图标拥挤。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户按截图继续验收像素细节。
+
+## 验收追加修复（2026-03-31，三选一全屏遮罩与卡片样式对齐）
+
+- 用户反馈：
+  - 需要全屏黑色遮罩（怪物区也要遮住）；
+  - 物品需在框内居中；
+  - 等级要显示在物品框上方（白字）；
+  - 需要职业颜色框；
+  - 名称要下移；
+  - 外框与角标不要显示品质信息。
+- 已完成修复：
+  - `src/tower/battle/BattleScene.ts`
+    - 合成选择层改为全屏黑色输入遮罩（alpha 0.62），统一阻断底层点击；
+    - 候选卡物品渲染改用 `GridZone`，并开启职业颜色框 `setItemFrameUseArchetypeColor(true)`；
+    - 关闭品质角标/品质星标/额外徽章（`setItemQualityMarkerEnabled(false)`、`setTierBadgeVisible(false)`，并隐藏 badgeLayer）；
+    - 等级改为卡片顶部白字 `Lv.${resultLevel}`；
+    - 物品区按缩放后尺寸重新计算居中；
+    - 名称文本向下移动，避免与图标拥挤；
+    - 外卡描边统一中性蓝色，不再按品质变色。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“全屏遮罩 + 样式像素级一致 + 点击阻断”。
+
+## 验收追加修复（2026-03-31，三选一遮罩与卡片还原）
+
+- 用户反馈：
+  - 仍可点击背包/查看详情；
+  - 三选一卡片样式与上阵区物品不一致；
+  - 中间候选等级显示错误。
+- 已完成修复：
+  - `src/tower/battle/BattleScene.ts`
+    - 选择层新增全屏透明输入拦截 + 下半区黑色遮罩（从弹窗底部起），统一阻断底层点击穿透；
+    - 候选卡片改为内嵌 `GridZone` 实例渲染单格物品，复用上阵区同一套边框/角标/等级视觉；
+    - 卡片额外保留名称文本（按你的要求“样式一致 + 额外展示名称”）；
+    - 候选等级统一按本次目标合成等级 `resultLevel` 显示，修复中间项等级不一致问题。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户在本地复测“卡片可点击、底层不可点击、样式像素级一致”。
+
+## 验收追加修复（2026-03-31，三选一交互穿透与不可点击）
+
+- 用户反馈：三选一卡片仍不可点击，且可点击下方背包查看详情。
+- 已完成修复：
+  - `src/tower/battle/BattleScene.ts`
+    - 选择层改为 `overlay.eventMode='passive'`，允许子卡片正常命中；
+    - 新增全屏透明输入拦截层 `inputBlocker`，统一吞掉背景点击，杜绝点击穿透到底层背包/上阵物品；
+    - 保留底部黑色遮罩，仅负责视觉压暗下方区域。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“可点选卡片 + 背景不可点穿”。
+
+## 验收追加实现（2026-03-31，塔防合成3/4级结果多选）
+
+- 用户需求：塔防模式下，合成到 Lv3 / Lv4 均为 3 选 1；选择界面上移、尽量不遮挡上阵区，并按物品卡样式展示（描边、等级、右下最低品质角标，无“最低品质”文字）。
+- 已完成：
+  - `src/tower/battle/BattleScene.ts`
+    - 合成候选池拆分为 `collectBattleSynthesisCandidateDefs()`；
+    - 新增候选抽样 `pickBattleSynthesisChoiceDefs()`：Lv3 / Lv4 均抽 3 个；
+    - 新增选择弹窗 `openTowerSynthesisChoiceOverlay()`（点击卡片即确认），位置上移约 `100px`，无整屏遮罩；
+    - 候选卡视觉调整为接近物品卡：品质描边、左上等级、右下品质角标；移除最低品质文字行；
+    - 合成落地逻辑抽离到 `finalizeBattleSynthesisWithDef()`，支持“先选后落地”；
+    - 战斗更新与编辑可用条件加入 `towerSynthesisChoiceOverlay` 阻塞，避免选取期间状态漂移；
+    - 场景退出时补充 `closeTowerSynthesisChoiceOverlay()` 清理。
+- 行为说明：
+  - Lv1->Lv2、Lv4->Lv5 维持原随机；
+  - Lv2->Lv3、Lv3->Lv4 均启用 3 选 1。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户验收 Lv3/Lv4 合成弹窗与选择结果一致性。
+
+## 验收追加修复（2026-03-31，三选一卡片不可点击）
+
+- 用户反馈：三选一卡片无法点击。
+- 已完成修复：
+  - `src/tower/battle/BattleScene.ts`
+    - 合成选择弹窗改为 `overlay.eventMode = 'none'`，避免父层吞掉卡片点击；
+    - 底部黑色遮罩独立为 `bottomBlocker(eventMode='static')`，仅拦截背包区域点击；
+    - 补齐 `openTowerSynthesisChoiceOverlay(options, resultLevel, onPick)` 参数传递，确保等级与回调都正确。
+- 验证：`npm run build` 通过。
+- 当前阶段：等待用户复测“可点击 + 底部拦截 + 等级显示”。
+
 ## 发布执行记录（2026-03-31，菜单难度微调后 Git + Vercel + TestFlight）
 
 - 用户指令：同步 Git 上传、上传 Vercel、打 TF 包上传。

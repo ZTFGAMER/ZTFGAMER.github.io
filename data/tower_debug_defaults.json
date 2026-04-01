@@ -278,7 +278,7 @@
   "toastShowFatigueStart": 1,
   "toastOffsetY": -650,
   "rewardFlyDurationMs": 440,
-  "synthFlashDurationMs": 220,
+  "synthFlashDurationMs": 330,
   "guideHandDurationMs": 720,
   "gridItemAnimDurationMs": 240,
   "shopToastBg": 989743,
