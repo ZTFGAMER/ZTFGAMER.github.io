@@ -76,7 +76,6 @@ export function setBattleSnapshot(snapshot: BattleSnapshotBundle): void {
     ownerLevel: typeof snapshot.ownerLevel === 'number' ? Math.max(1, Math.round(snapshot.ownerLevel)) : undefined,
     pvpEnemyHeroId: snapshot.pvpEnemyHeroId,
   }
-  console.log('[Snapshot] setBattleSnapshot day=' + snapshot.day + ' entities=' + snapshot.entities.length + ' pvpEnemyEntities=' + (snapshot.pvpEnemyEntities?.length ?? 'none'))
 }
 
 export function getBattleSnapshot(): BattleSnapshotBundle | null {

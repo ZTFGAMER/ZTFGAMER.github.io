@@ -44,6 +44,7 @@ import { getItemDefById, getPrimaryArchetype, parseTierName, tierStarLevelIndex,
 import { getCrossSynthesisMinStartingTier, pickCrossIdEvolveCandidates } from '@/tower/shop/panels/SynthesisPanel'
 import { pickCrossSynthesisResultWithCycle } from '@/tower/shop/systems/ShopSynthesisController'
 import { getArchetypeSortOrder } from '@/tower/shop/systems/ShopAutoPackManager'
+import { hapticNotification } from '@/core/Haptics'
 import {
   TOWER_BATTLE_SKILL_DEFS,
   getTopArchetypesByTotalItemLevel,
@@ -4318,7 +4319,9 @@ function ensureEditableBuildMode(stage: Container): void {
       if (transition.battleExitTransitionDurationMs > 0) return false
       const targetId = findSynthesisHoverTargetInBattle(instanceId, anchorGx, anchorGy, size)
       if (!targetId) return false
-      return applyBattleSynthesis(instanceId, targetId, homeSystem, homeView)
+      const merged = applyBattleSynthesis(instanceId, targetId, homeSystem, homeView)
+      if (merged) hapticNotification('success')
+      return merged
     }
     editableDrag.onDragEnd = () => {
       draggingPlayerItemId = null

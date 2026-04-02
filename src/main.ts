@@ -34,10 +34,13 @@ import { setBattleSnapshot, type BattleSnapshotBundle } from '@/battle/BattleSna
 import { normalizeSize } from '@/common/items/ItemDef'
 import { CANVAS_W as BASE_W, CANVAS_H as BASE_H } from '@/config/layoutConstants'
 import { EventBus, type SceneName } from '@/core/EventBus'
+import { EventBus as NobagEventBus } from '@/nobag/core/NobagEventBus'
+import { EventBus as TowerEventBus } from '@/tower/core/EventBus'
 import { PerfReporter, resolvePerfReporterConfig } from '@/perf/PerfReporter'
 import { getDiagEventName, getDiagLevel, isDiagEnabled } from '@/perf/DiagRuntime'
 import { markAssetUrlLoaded } from '@/core/AssetRuntimeTracker'
 import { hapticSelection, initHaptics } from '@/core/Haptics'
+import { audioUiClick, initAudioManager, unlockAudioFromGesture } from '@/core/AudioManager'
 import {
   isMobileImageDownscaleBypassed,
   loadImageTextureDownscaled,
@@ -814,8 +817,11 @@ async function bootstrap(): Promise<void> {
   const canvas = app.canvas as HTMLCanvasElement
   container.appendChild(canvas)
   installMobileLongPressGuards(container, canvas)
+  initAudioManager([EventBus, NobagEventBus, TowerEventBus])
   void initHaptics()
   canvas.addEventListener('pointerdown', () => {
+    unlockAudioFromGesture()
+    audioUiClick()
     hapticSelection()
   }, { passive: true })
 

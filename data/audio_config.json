@@ -1,0 +1,251 @@
+{
+  "version": 1,
+  "mute_sfx": true,
+  "music": {
+    "url": "/audio/bgm_main.wav",
+    "bus": "bgm",
+    "gain": 0.72,
+    "loop": true
+  },
+  "storage_keys": {
+    "enabled": "bb_audio_enabled",
+    "master_volume": "bb_audio_master_volume",
+    "bgm_volume": "bb_audio_bgm_volume",
+    "sfx_volume": "bb_audio_sfx_volume",
+    "ui_volume": "bb_audio_ui_volume"
+  },
+  "buses": {
+    "master": { "default_volume": 0.9 },
+    "bgm": { "default_volume": 0.2 },
+    "sfx": { "default_volume": 0.8 },
+    "ui": { "default_volume": 0.7 }
+  },
+  "cues": {
+    "ui_click": {
+      "bus": "ui",
+      "wave": "triangle",
+      "frequency": 900,
+      "duration_ms": 35,
+      "gain": 0.08,
+      "attack_ms": 3,
+      "release_ms": 22,
+      "min_interval_ms": 40
+    },
+    "shop_buy": {
+      "bus": "ui",
+      "wave": "sine",
+      "frequency": 660,
+      "duration_ms": 85,
+      "gain": 0.1,
+      "attack_ms": 4,
+      "release_ms": 40,
+      "min_interval_ms": 60
+    },
+    "shop_sell": {
+      "bus": "ui",
+      "wave": "sine",
+      "frequency": 480,
+      "duration_ms": 75,
+      "gain": 0.08,
+      "attack_ms": 4,
+      "release_ms": 35,
+      "min_interval_ms": 60
+    },
+    "shop_refresh": {
+      "bus": "ui",
+      "wave": "square",
+      "frequency": 720,
+      "duration_ms": 55,
+      "gain": 0.07,
+      "attack_ms": 2,
+      "release_ms": 25,
+      "min_interval_ms": 50
+    },
+    "battle_hit": {
+      "bus": "sfx",
+      "wave": "square",
+      "frequency": 210,
+      "duration_ms": 70,
+      "gain": 0.1,
+      "attack_ms": 2,
+      "release_ms": 45,
+      "min_interval_ms": 30
+    },
+    "tower_ninja_attack": {
+      "bus": "sfx",
+      "sample_url": "/audio/tower/ninja_attack.wav",
+      "detune_cents": 8,
+      "wave": "triangle",
+      "frequency": 760,
+      "duration_ms": 45,
+      "gain": 0.1,
+      "attack_ms": 1,
+      "release_ms": 22,
+      "min_interval_ms": 20
+    },
+    "tower_ninja_hit": {
+      "bus": "sfx",
+      "sample_url": "/audio/tower/ninja_hit.wav",
+      "detune_cents": 10,
+      "wave": "square",
+      "frequency": 520,
+      "duration_ms": 55,
+      "gain": 0.11,
+      "attack_ms": 1,
+      "release_ms": 28,
+      "min_interval_ms": 25
+    },
+    "tower_archer_attack": {
+      "bus": "sfx",
+      "sample_url": "/audio/tower/archer_attack.wav",
+      "detune_cents": 6,
+      "wave": "sine",
+      "frequency": 680,
+      "duration_ms": 60,
+      "gain": 0.09,
+      "attack_ms": 2,
+      "release_ms": 35,
+      "min_interval_ms": 28
+    },
+    "tower_archer_hit": {
+      "bus": "sfx",
+      "sample_url": "/audio/tower/archer_hit.wav",
+      "detune_cents": 8,
+      "wave": "triangle",
+      "frequency": 460,
+      "duration_ms": 70,
+      "gain": 0.1,
+      "attack_ms": 2,
+      "release_ms": 36,
+      "min_interval_ms": 30
+    },
+    "tower_mage_attack": {
+      "bus": "sfx",
+      "sample_url": "/audio/tower/mage_attack.wav",
+      "detune_cents": 5,
+      "wave": "sine",
+      "frequency": 340,
+      "duration_ms": 88,
+      "gain": 0.1,
+      "attack_ms": 4,
+      "release_ms": 45,
+      "min_interval_ms": 30
+    },
+    "tower_mage_hit": {
+      "bus": "sfx",
+      "sample_url": "/audio/tower/mage_hit.wav",
+      "detune_cents": 6,
+      "wave": "sawtooth",
+      "frequency": 300,
+      "duration_ms": 96,
+      "gain": 0.1,
+      "attack_ms": 3,
+      "release_ms": 46,
+      "min_interval_ms": 35
+    },
+    "tower_warrior_attack": {
+      "bus": "sfx",
+      "sample_url": "/audio/tower/warrior_attack.wav",
+      "detune_cents": 4,
+      "wave": "square",
+      "frequency": 220,
+      "duration_ms": 95,
+      "gain": 0.12,
+      "attack_ms": 2,
+      "release_ms": 45,
+      "min_interval_ms": 38
+    },
+    "tower_warrior_hit": {
+      "bus": "sfx",
+      "sample_url": "/audio/tower/warrior_hit.wav",
+      "detune_cents": 5,
+      "wave": "sawtooth",
+      "frequency": 170,
+      "duration_ms": 110,
+      "gain": 0.12,
+      "attack_ms": 2,
+      "release_ms": 55,
+      "min_interval_ms": 40
+    },
+    "battle_crit": {
+      "bus": "sfx",
+      "wave": "sawtooth",
+      "frequency": 340,
+      "duration_ms": 120,
+      "gain": 0.12,
+      "attack_ms": 2,
+      "release_ms": 75,
+      "min_interval_ms": 45
+    },
+    "battle_heal": {
+      "bus": "sfx",
+      "wave": "sine",
+      "frequency": 540,
+      "duration_ms": 110,
+      "gain": 0.1,
+      "attack_ms": 5,
+      "release_ms": 55,
+      "min_interval_ms": 55
+    },
+    "battle_shield": {
+      "bus": "sfx",
+      "wave": "triangle",
+      "frequency": 420,
+      "duration_ms": 95,
+      "gain": 0.09,
+      "attack_ms": 3,
+      "release_ms": 45,
+      "min_interval_ms": 55
+    },
+    "battle_unit_die": {
+      "bus": "sfx",
+      "wave": "sawtooth",
+      "frequency": 180,
+      "duration_ms": 140,
+      "gain": 0.13,
+      "attack_ms": 2,
+      "release_ms": 80,
+      "min_interval_ms": 70
+    },
+    "battle_win": {
+      "bus": "ui",
+      "wave": "triangle",
+      "frequency": 760,
+      "duration_ms": 160,
+      "gain": 0.13,
+      "attack_ms": 4,
+      "release_ms": 90,
+      "min_interval_ms": 120
+    },
+    "battle_lose": {
+      "bus": "ui",
+      "wave": "square",
+      "frequency": 160,
+      "duration_ms": 180,
+      "gain": 0.12,
+      "attack_ms": 4,
+      "release_ms": 100,
+      "min_interval_ms": 120
+    },
+    "scene_shop": {
+      "bus": "ui",
+      "wave": "sine",
+      "frequency": 500,
+      "duration_ms": 60,
+      "gain": 0.06,
+      "attack_ms": 2,
+      "release_ms": 24,
+      "min_interval_ms": 120
+    },
+    "scene_battle": {
+      "bus": "ui",
+      "wave": "square",
+      "frequency": 300,
+      "duration_ms": 65,
+      "gain": 0.07,
+      "attack_ms": 2,
+      "release_ms": 28,
+      "min_interval_ms": 120
+    }
+  }
+}

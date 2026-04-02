@@ -113,7 +113,6 @@ function loadSnapshotFromStorage(): BattleSnapshotBundle | null {
 export function setBattleSnapshot(snapshot: BattleSnapshotBundle): void {
   currentSnapshot = cloneSnapshot(snapshot)
   saveSnapshotToStorage(currentSnapshot)
-  console.log('[Snapshot] setBattleSnapshot day=' + snapshot.day + ' entities=' + snapshot.entities.length + ' pvpEnemyEntities=' + (snapshot.pvpEnemyEntities?.length ?? 'none'))
 }
 
 export function getBattleSnapshot(): BattleSnapshotBundle | null {

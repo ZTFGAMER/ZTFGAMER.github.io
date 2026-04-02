@@ -1,5 +1,208 @@
 # 大巴扎 — 开发进度记录
 
+## 会话更新（2026-04-02，shooting 项目补齐“全部可迁移框架能力”）
+
+- 用户追加需求：把“可直接迁移 + 轻改后可迁移”的框架能力都继续迁到 `~/Documents/web_ai_game/shooting`。
+- 已完成（在 shooting 项目内）：
+  - 迁移并接入性能采集：
+    - `src/perf/PerfReporter.ts`
+    - `data/game_config.json`（`run_rules.perf_reporter`）
+    - `main.ts` 中接入 `PerfReporter.tick/flushByBeacon`。
+  - 迁移并接入移动端资源能力：
+    - `src/core/AssetRuntimeTracker.ts`
+    - `src/core/MobileImageDownscaleCache.ts`
+    - `src/core/MobileGlobalAssetDownscale.ts`
+    - `main.ts` 中按配置启用移动端图片全局降采样。
+  - 迁移 perf 后端脚本：
+    - `scripts/perf_ingest_server.mjs`
+    - `scripts/generate_perf_token.mjs`
+    - `scripts/perf_server.README.md`
+    - 新增 npm scripts：`perf:token`、`perf:server`。
+  - 迁移与整理 iOS 打包模板能力：
+    - `ios/scripts/release_testflight.py`
+    - `ios/packaging.config.local.example.json`
+    - `ios/ExportOptions_TestFlight.plist`
+    - `package.json` 增加 `ios:init/ios:add/ios:sync/release:tf`。
+  - 文档更新：`~/Documents/web_ai_game/shooting/README.md` 补充迁移能力清单与使用步骤。
+- 验证结果：在 shooting 项目执行 `npm run build` 通过（迁移后再次构建成功）。
+- 当前阶段：shooting 已具备完整可复用“框架层”能力，可作为新 WebGPU 项目母版。
+- 下一步计划：按新玩法替换 `DemoScene`，并做一轮 iOS 真机触觉 + 音频 + 性能上报联调。
+
+## 会话更新（2026-04-02，开始迁移到新 WebGPU 项目 shooting）
+
+- 用户需求：在 `~/Documents/web_ai_game/shooting` 下创建新项目，并迁移“可直接迁移 + 轻改后可迁移”的框架能力。
+- 已完成（新项目路径：`~/Documents/web_ai_game/shooting`）：
+  - 新建 Vite + TypeScript + Pixi + Capacitor 基础工程；
+  - 迁移核心框架模块：
+    - `src/core/AppContext.ts`
+    - `src/core/EventBus.ts`
+    - `src/core/SceneManager.ts`
+    - `src/core/GameLoop.ts`
+  - 迁移触觉框架（轻改）：
+    - `src/core/Haptics.ts`（Capacitor 原生优先 + Web `navigator.vibrate` fallback）；
+  - 迁移音频框架（轻改）：
+    - `src/core/AudioConfig.ts`
+    - `src/core/AudioManager.ts`
+    - `data/audio_config.json`
+  - 迁移 WebGPU 启动骨架（轻改）：
+    - `src/main.ts`（WebGPU 优先、WebGL crash guard、device lost 记录）；
+  - 迁移 iOS 打包能力模板：
+    - `ios/scripts/release_testflight.py`
+    - `ios/packaging.config.local.example.json`
+    - `ios/ExportOptions_TestFlight.plist`
+  - 新增迁移说明：`~/Documents/web_ai_game/shooting/README.md`。
+- 验证结果：在 shooting 项目执行 `npm run build` 通过。
+- 当前阶段：新项目已具备“可启动 + 可演示 swap/merge 音震反馈 + 可扩展 TF 打包”的框架基础。
+- 下一步计划：按新项目业务替换 DemoScene 与事件映射，并补真实音频资源与 iOS 本地配置。
+
+## 会话更新（2026-04-02，屏蔽全部音效并接入背景音乐）
+
+- 用户需求：先屏蔽所有音效，改为仅保留合适背景音乐。
+- 已完成：
+  - 音效全局屏蔽：`data/audio_config.json`
+    - 新增 `mute_sfx: true`，运行时对非 BGM cue 全部静音。
+  - 新增背景音乐资源：`public/audio/bgm_main.wav`
+    - 生成 28s 轻氛围循环曲目（适配塔防常驻播放）。
+  - 扩展音频配置：`data/audio_config.json`
+    - 新增 `music` 字段：`url/bus/gain/loop`。
+  - 扩展配置解析：`src/core/AudioConfig.ts`
+    - 支持 `muteSfx` 与 `music` 结构化读取。
+  - 扩展播放逻辑：`src/core/AudioManager.ts`
+    - 启动预加载并解码 BGM；
+    - 首次手势解锁后自动启动循环 BGM；
+    - 保持样本优先、失败回退机制；
+    - 关闭音频时停止 BGM。
+- 构建验证：`npm run build` 通过。
+- 当前阶段：项目当前为“仅背景音乐”模式，所有攻击/命中/UI 等音效已统一屏蔽。
+- 下一步计划：用户验收 BGM 风格后，再做曲风替换（更紧张/更轻松）与音量微调。
+
+## 会话更新（2026-04-02，塔防武器音效替换为采样音）
+
+- 用户反馈：当前塔防武器音色难听，要求换成更合适声音。
+- 已完成：
+  - 新增 8 个塔防武器采样音（wav）：`public/audio/tower/*.wav`
+    - `ninja/archer/mage/warrior` 各自 `attack/hit` 两类。
+  - 扩展音频配置：`data/audio_config.json`
+    - 为 8 组 `tower_*` cue 增加 `sample_url` 与 `detune_cents`（轻微随机变调避免重复感）。
+  - 扩展配置解析：`src/core/AudioConfig.ts`
+    - 新增 `sampleUrl` 与 `detuneCents` 字段解析。
+  - 扩展播放策略：`src/core/AudioManager.ts`
+    - 初始化时预加载样本并 decode；
+    - 播放时优先走 sample buffer，失败时回退振荡器合成音。
+- 构建验证：`npm run build` 通过。
+- 当前阶段：塔防四武器攻击/命中已使用采样音，听感显著优于纯振荡器版本。
+- 下一步计划：根据验收结果继续调每类音量、长度、随机变调范围，并补“暴击/击杀强化层”。
+
+## 会话更新（2026-04-02，塔防四武器攻击/命中音效分型）
+
+- 用户需求：塔防模式下 4 种武器攻击和命中都要有不同声音。
+- 已完成：
+  - 新增塔防武器分型映射：`src/core/TowerWeaponAudioProfile.ts`
+    - 从 `data/tower_items.json` 自动解析 `tags`，映射为 `ninja/archer/mage/warrior` 四类。
+  - 扩展音频配置：`data/audio_config.json`
+    - 新增 8 组 cue：`tower_*_attack` 与 `tower_*_hit`（四武器各 2 组）。
+  - 扩展音频路由：`src/core/AudioManager.ts`
+    - 监听 `battle:item_fire`（玩家侧）时按武器类触发攻击音，并记录 `sourceItemId -> 武器类`；
+    - 监听 `battle:take_damage`（玩家打敌人）时按武器类触发命中音；
+    - 若未识别到塔防武器，则回退通用 `battle_hit/battle_crit`。
+- 构建验证：`npm run build` 通过。
+- 当前阶段：塔防四武器“攻击/命中差异音效”已可运行（当前为参数化合成音）。
+- 下一步计划：如需更强风格化，替换为真实音频资源并做轻量随机变调，减少重复听感。
+
+## 会话更新（2026-04-02，落地游戏音效系统第一版）
+
+- 用户指令：直接落地游戏音效和声音方案。
+- 已完成：
+  - 新增音频配置：`data/audio_config.json`
+    - 包含主总线与 `bgm/sfx/ui` 默认音量、存储键、以及事件到音效 cue 参数（频率/包络/限频间隔）。
+  - 新增音频配置加载器：`src/core/AudioConfig.ts`
+    - 统一解析与校验配置（含 JSON 字段映射与兜底）。
+  - 新增音频管理器：`src/core/AudioManager.ts`
+    - 基于 Web Audio API 搭建 `master/bgm/sfx/ui` 总线；
+    - 首次手势解锁 `AudioContext`；
+    - 接入 `shop/battle/scene_change` 事件驱动播放；
+    - 支持本地开关 `bb_audio_enabled` 与分组音量读取。
+  - 入口接入：`src/main.ts`
+    - 初始化时绑定三套事件总线（普通/nobag/tower）；
+    - `canvas pointerdown` 同时执行音频解锁、UI 点击音、触觉反馈。
+- 构建验证：`npm run build` 通过。
+- 当前阶段：项目已具备可运行的“事件驱动 + 总线化”音频骨架，当前为合成音（procedural tones）版本。
+- 下一步计划：替换关键 cue 为真实资源音频（BGM/SFX），并增加设置页音量滑条与静音开关联动。
+- 问题/待处理：当前尚未接入真实音频资源文件与按资源生命周期加载/释放策略。
+
+## 会话更新（2026-04-02，按指令执行 iOS 打包并上传 TF）
+
+- 用户指令：打 iOS 包。
+- 已完成：执行 `npm run release:tf` 全流程（build + cap sync + archive + export + upload）。
+- 结果：
+  - `ARCHIVE SUCCEEDED`
+  - `EXPORT SUCCEEDED`
+  - `UPLOAD SUCCEEDED with no errors`
+  - Delivery UUID：`dc57e523-4e12-49a8-9cf4-c19c42537843`
+  - Build Number：`56 -> 57`
+  - 当前版本：`CURRENT_PROJECT_VERSION=57`
+- 当前阶段：TF 包已上传并进入 Apple processing，等待在 TestFlight 后台可测试。
+
+## 会话更新（2026-04-02，修复塔防合成震动未触发 + 关闭 battle snapshot 日志）
+
+- 用户反馈：换位震动正常，但合成震动未触发；同时要求关闭 battle snapshot 日志。
+- 已完成：
+  - 塔防合成震动补点：`src/tower/battle/BattleScene.ts`
+    - `editableDrag.onSpecialDrop` 的合成成功路径补发 `hapticNotification('success')`；
+    - 解决“特殊落点触发合成时未走 DragController onMergeDrop 成功分支”的漏振动问题。
+  - 关闭快照日志：
+    - `src/tower/battle/BattleSnapshotStore.ts`
+    - `src/battle/BattleSnapshotStore.ts`
+    - `src/nobag/battle/BattleSnapshotStore.ts`
+    - 移除 `setBattleSnapshot` 中的 `console.log('[Snapshot] ...')`。
+  - 构建验证：`npm run build` 通过。
+- 当前阶段：塔防换位与合成均应触发触觉；控制台不再刷 snapshot 日志。
+- 下一步计划：请在 PC 先看 `[Haptics] notification trigger { type: 'success' ... }`，再在 iOS 包内复测体感。
+
+## 会话更新（2026-04-02，增加 PC 网页端触觉触发日志）
+
+- 用户需求：先在 PC 网页看日志，确认是否触发到振动调用链。
+- 已完成：
+  - 在 `src/core/Haptics.ts` 增加关键日志：
+    - 初始化日志：`[Haptics] init start / init ready`（含 `enabled`、`nativeMode`）；
+    - 触发日志：`[Haptics] selection trigger`、`[Haptics] impact trigger`、`[Haptics] notification trigger`。
+  - 构建验证：`npm run build` 通过。
+- 当前阶段：可在 PC 浏览器控制台直接观察触觉调用是否命中。
+- 下一步计划：根据日志判断是否仅触发 web fallback，再决定是否做 iOS 原生链路进一步埋点。
+
+## 会话更新（2026-04-02，修复 iOS 包内无振动：接入 Capacitor 原生 Haptics）
+
+- 用户反馈：TestFlight 包内仍无振动效果。
+- 根因定位：此前仅接入 `haptic-module` Web 侧逻辑，iOS App 壳内缺少原生触觉插件，`CustomHaptics` 路径未命中。
+- 已完成：
+  - 新增依赖：`@capacitor/haptics`（`package.json` / `package-lock.json`）；
+  - 重构 `src/core/Haptics.ts`：
+    - 原生环境（Capacitor）优先走 `@capacitor/haptics`：
+      - `hapticSelection` -> `Haptics.impact(Light)`
+      - `hapticImpact` -> `Haptics.impact(...)`
+      - `hapticNotification` -> `Haptics.notification(...)`
+    - 非原生环境继续走 `haptic-module`（web/vibration fallback）；
+    - 保留本地开关 `bb_haptics_enabled`。
+  - 构建验证：`npm run build` 通过；
+  - 已重新执行 TestFlight 上传，日志确认 iOS 插件已纳入：
+    - `Found 1 Capacitor plugin for ios: @capacitor/haptics@8.0.2`
+    - 上传成功，Delivery UUID：`ad87a42b-0d69-4c70-9fb8-ed2ff6ab36fb`
+    - Build Number：`55 -> 56`。
+- 当前阶段：新 TF 构建（56）包含原生 Haptics，等待处理完成后真机复测。
+- 下一步计划：若仍无感知，增加调试开关（首触发弹出 backend/platform 信息）并改为更强预设验证（heavy/error）。
+
+## 会话更新（2026-04-02，Vercel 手机振动说明 + TestFlight 上传）
+
+- 用户反馈：手机访问网页无振动效果，确认是否网页限制，并要求重新打 TestFlight 包上传。
+- 已完成：
+  - 执行 `npm run release:tf` 全流程；
+  - 归档与导出成功：`** ARCHIVE SUCCEEDED **` / `** EXPORT SUCCEEDED **`；
+  - App Store Connect 上传成功：`UPLOAD SUCCEEDED with no errors`；
+  - Delivery UUID：`4b7b7e89-1cec-4c1a-b22b-87bbd74b7572`；
+  - Build Number 自动递增：`54 -> 55`。
+- 当前阶段：TF 包已提交并进入 Apple 侧 processing，可在 TestFlight 后台等待可测试状态。
+- 说明：移动网页振动在 iOS Safari 常受系统策略限制，Capacitor/iOS App 壳内 CoreHaptics 触发更稳定。
+
 ## 会话更新（2026-04-02，塔防模式接入合成/换位触觉反馈）
 
 - 用户需求：塔防模式中，成功合成播放 `success` 触觉，物品换位播放 `warning` 触觉。
