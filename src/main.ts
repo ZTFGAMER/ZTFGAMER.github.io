@@ -37,6 +37,7 @@ import { EventBus, type SceneName } from '@/core/EventBus'
 import { PerfReporter, resolvePerfReporterConfig } from '@/perf/PerfReporter'
 import { getDiagEventName, getDiagLevel, isDiagEnabled } from '@/perf/DiagRuntime'
 import { markAssetUrlLoaded } from '@/core/AssetRuntimeTracker'
+import { hapticSelection, initHaptics } from '@/core/Haptics'
 import {
   isMobileImageDownscaleBypassed,
   loadImageTextureDownscaled,
@@ -813,6 +814,10 @@ async function bootstrap(): Promise<void> {
   const canvas = app.canvas as HTMLCanvasElement
   container.appendChild(canvas)
   installMobileLongPressGuards(container, canvas)
+  void initHaptics()
+  canvas.addEventListener('pointerdown', () => {
+    hapticSelection()
+  }, { passive: true })
 
   // 4. 适配（Canvas 全屏，stage 等比缩放并居中）
   function resize(): void {

@@ -1,5 +1,269 @@
 # 大巴扎 — 开发进度记录
 
+## 会话更新（2026-04-02，塔防模式接入合成/换位触觉反馈）
+
+- 用户需求：塔防模式中，成功合成播放 `success` 触觉，物品换位播放 `warning` 触觉。
+- 已完成：
+  - 扩展触觉封装：`src/core/Haptics.ts`
+    - 新增 `hapticNotification(type)`，支持 `success|warning|error`。
+  - 塔防拖拽逻辑接入：`src/tower/common/grid/DragController.ts`
+    - 合成成功（`onMergeDrop` 返回 true）时触发 `hapticNotification('success')`；
+    - 同区即时换位成功时触发 `hapticNotification('warning')`；
+    - 规划换位（`swapTransfers`）执行成功后触发 `hapticNotification('warning')`。
+  - 构建验证：`npm run build` 通过。
+- 当前阶段：功能已落地，等待塔防模式真机体验验收。
+- 下一步计划：如反馈过频，可按动作类型增加最小触发间隔与强度分层。
+
+## 会话更新（2026-04-02，将 iOS 触觉能力接入当前 Web 项目）
+
+- 用户澄清：不是 Unity 项目，要求把 iOS 振动能力接入当前 Web 项目（本仓库）。
+- 已完成：
+  - 引入并内置 `haptic-module` 到项目：`src/vendor/haptic-module.js`（基于 HabbyHapticForWeb 的 Web 触觉模块）；
+  - 新增触觉封装：`src/core/Haptics.ts`
+    - 初始化 `initHaptics()`；
+    - 轻触反馈 `hapticSelection()`（含 60ms 节流）；
+    - 强度反馈 `hapticImpact()`；
+    - 本地开关持久化键：`bb_haptics_enabled`。
+  - 在入口接入：`src/main.ts`
+    - 启动时异步初始化触觉模块；
+    - 绑定全局 `canvas pointerdown` 触发轻触觉反馈。
+  - 类型声明：`src/types/haptic-module.d.ts`。
+  - 构建验证：`npm run build` 通过。
+- 当前阶段：Web 项目已具备 iOS CoreHaptics 路径（Capacitor/iOS 环境）与跨平台降级能力。
+- 下一步计划：如需更精细体验，可把触觉从“全局 pointerdown”细化到关键事件（购买成功、合成成功、受击等）并区分强度。
+
+## 会话更新（2026-04-02，使用 Skills Hub 安装并执行 Unity iOS 振动库接入）
+
+- 用户需求：使用 `skills-hub-client` 安装 `gamedev-haptics-for-ios`，并帮忙接入 iOS 振动库。
+- 已完成：
+  - 通过 Skills Hub 搜索并安装：`gamedev-haptics-for-ios`；
+  - 在 Unity 项目 `~/Documents/git/wasteland-tank/WastelandTank` 执行接入：
+    - 添加依赖 `com.unity.nuget.newtonsoft-json: 3.2.1`（`Packages/manifest.json`）；
+    - 复制库到 `Assets/HabbyHaptics/`；
+    - 复制示例 `Assets/HabbyHaptics/Examples/HapticDemoScript.cs`；
+    - 复制欢迎窗口 `Assets/HabbyHaptics/Editor/HapticWelcomeWindow.cs`；
+    - 按用户选择“保留完整功能”，未做可选组件裁剪。
+  - 验证通过：关键文件与依赖项存在检查通过。
+  - 新增集成说明：`~/Documents/git/wasteland-tank/WastelandTank/HAPTICS_INTEGRATION_GUIDE.md`。
+- 当前阶段：代码接入已完成，等待用户在 Unity 中编译与真机验证。
+- 下一步计划：在 Unity 打开项目后检查 Console 报错，若出现版本/API不兼容再做针对性修复。
+- 风险提示：目标 Unity 版本为 `2022.3.62f3`，而该 skill 文档推荐 `6000.0+`，需重点关注兼容性。
+
+## 会话更新（2026-04-02，默认字号修改后未生效排查与修复）
+
+- 用户反馈：已把默认字体改为 24，但游戏内文字仍偏小。
+- 已完成：
+  - 修复字号键识别规则：`src/config/debugConfig.ts`、`src/nobag/config/debugConfig.ts`、`src/tower/config/debugConfig.ts`
+    - 将字号判断从 `endsWith('FontSize')` 改为 `includes('FontSize')`，覆盖 `battleTextFontSizeDamage/Crit` 等中缀命名键；
+  - 新增字体默认值迁移：三个 debugConfig 均加入 `migrateStoredFontDefaults()`
+    - 首次加载新版本时自动清理本地 `localStorage` 中所有 `*FontSize*` 历史覆盖值；
+    - 让最新 `data/*_debug_defaults.json` 的字号默认值重新生效，避免“改了默认值但被旧本地缓存覆盖”。
+- 当前阶段：默认字号可被正确应用；历史会话残留字号不会继续压住新默认值。
+- 下一步计划：用户验收实际观感；若仍偏小，再整体上调 `data/debug_defaults.json` / `data/nobag_debug_defaults.json` / `data/tower_debug_defaults.json` 中字体组。
+- 问题/待处理：若用户曾手动精调个别字号，本次迁移会重置其字体项（仅字体项，非布局/动画项）。
+- 重要技术决策：保留“localStorage 优先”机制，但对字体项引入一次性迁移，优先保证默认值调整可见性与一致性。
+
+## 会话更新（2026-04-02，拉取并解读 HabbyHapticForWeb 工程）
+
+- 用户需求：将 `https://habby.ghe.com/habby-labs/HabbyHapticForWeb.git` 下载到 `~/Documents/git` 并说明工程用途。
+- 已完成：
+  - 拉取路径：`/Users/zhengtengfei/Documents/git/HabbyHapticForWeb`；
+  - 阅读核心文档与包定义：
+    - `HapticForWeb/README.md`
+    - `HapticForWeb/haptic-module/README.md`
+    - `HapticForWeb/capacitor-haptic-plugin/README.md`
+    - `HapticForWeb/haptic-module/package.json`
+    - `HapticForWeb/capacitor-haptic-plugin/package.json`
+    - `Test/Build/package.json`
+- 结论：该仓库是“Web/Capacitor 统一触觉反馈方案”示例与实现，核心是 iOS CoreHaptics + AHAP/HAHAP，跨平台有 Android vibration 与桌面静默降级。
+- 当前阶段：代码已就位，可按包选择接入（纯 Web 用 `haptic-module`；Capacitor iOS 用 `capacitor-haptic-plugin`；两者可并用）。
+
+## 会话更新（2026-04-02，按用户要求重新保存 `.skill`）
+
+- 用户需求：重新保存最新版本 `clipboard-video-analyzer.skill`。
+- 已完成：重新打包并覆盖 `~/.claude/skills/clipboard-video-analyzer.skill`。
+- 当前阶段：分发包已是最新内容（含 `/video` 命令、Gemini 识图链路、每日硬删除清理）。
+
+## 会话更新（2026-04-02，`/video` 命令化 + 参数提示与功能描述）
+
+- 用户需求：把 `-video` 改为 `/video` 形式，并提供参数提示和功能描述。
+- 已完成：
+  - 更新运行中插件：`~/.config/opencode/plugins/auto_video_command.ts`
+    - 支持命令匹配：`/video` 与 `-video`（兼容保留）；
+    - 新增 command 配置注入：
+      - `description`: `Analyze clipboard/pasted video. Usage: /video [interval_ms] [out_dir]`
+      - `template`: `-video $ARGUMENTS`（将 `/video` 映射到既有视频流程）。
+  - 同步更新可分发模板：`~/.claude/skills/clipboard-video-analyzer/templates/auto_video_command.ts`。
+  - 更新 Skill 文档：`~/.claude/skills/clipboard-video-analyzer/SKILL.md`
+    - 用法改为 `/video ...`；
+    - 新增“参数说明”和“功能描述”章节。
+  - 重新生成分发包：`~/.claude/skills/clipboard-video-analyzer.skill`。
+- 当前阶段：`/video` 可作为主命令使用，`-video` 继续兼容。
+- 下一步计划：重启 OpenCode 后即可看到 `/video` 命令描述并生效。
+
+## 会话更新（2026-04-02，接入 `/fast` Gemini 快速命令插件）
+
+- 用户反馈：`-fast` 工具应来自 `fast_gemini_export`，需要核对并接入。
+- 已完成：
+  - 核实目录：`~/Downloads/fast_gemini_export/` 存在 `fast-gemini.ts` 与 `README.md`；
+  - 核心结论：该插件命令是 **`/fast`**（不是 `-fast`）；
+  - 已安装插件文件：`~/.config/opencode/plugins/fast-gemini.ts`；
+  - 已加入配置：`~/.config/opencode/opencode.json` 的 `plugin` 列表新增该插件路径；
+  - 配置校验：`opencode.json` JSON 语法校验通过。
+- 当前阶段：等待重启 OpenCode 后生效 `/fast` 命令。
+- 下一步计划：如需可追加 `-fast` 到 `/fast` 的别名桥接插件。
+
+## 会话更新（2026-04-02，重新生成含 Gemini 识图链路的 `.skill`）
+
+- 用户需求：将“`-video` 抽帧后使用 Gemini 识图”完整打进 skill，并重新生成可上传 `.skill` 文件。
+- 已完成：
+  - 重新打包：`~/.claude/skills/clipboard-video-analyzer.skill`；
+  - 包内确认包含 Gemini 相关实现：
+    - `templates/auto_video_command.ts`（明确以 vision-captioner(Gemini) captions 作为主要视觉证据）；
+    - `scripts/install.sh`（自动启用 `plugin-data/vision-captioner.json` 的 `auto=true`，并对缺失 `vision-captioner.ts` 给出告警）；
+    - `SKILL.md`（补充 Gemini 依赖说明）。
+- 当前阶段：可直接上传该 `.skill` 文件供他人安装。
+- 下一步计划：如需上架/更新管理，可继续补 `.skill-meta.json` 与版本号策略。
+
+## 会话更新（2026-04-02，`-video 500` 怪物移动顺滑性快检）
+
+- 用户需求：通过 `-video 500` 判断当前怪物移动是否顺滑。
+- 已完成：
+  - 对剪贴板视频 `20260402111839.mp4` 执行 `500ms` 抽帧（约 `8.73s`，共 `17` 帧）；
+  - 检查关键帧序列：怪物队列位置变化连续，未出现明显瞬移/回跳；
+  - 识别到一次受击/变色与扣血阶段，属于战斗反馈表现，非移动卡顿特征。
+- 当前结论：宏观移动节奏看起来基本顺滑；但 `500ms` 采样无法判断微抖动。
+- 下一步计划：如需严谨验收，建议追加 `100ms`（或原视频逐帧）再复核。
+
+## 会话更新（2026-04-02，`-video` 接入 Gemini 读图链路）
+
+- 用户需求：`-video` 抽帧后读取图片时，优先走 opencode-gemini-plugin（vision-captioner）能力，再结合上下文回答。
+- 已完成：
+  - 更新 `~/.config/opencode/plugins/auto_video_command.ts`：
+    - 在自动注入指令中明确要求“读取帧图时以 vision-captioner(Gemini) caption 为主证据”；
+    - 输出包含“视频主题 + 关键时间线”摘要要求。
+  - 同步更新可分发模板：`~/.claude/skills/clipboard-video-analyzer/templates/auto_video_command.ts`。
+  - 更新安装脚本：`~/.claude/skills/clipboard-video-analyzer/scripts/install.sh`：
+    - 自动写入/修正 `~/.config/opencode/plugin-data/vision-captioner.json`，确保 `auto=true`；
+    - 若缺少 `~/.config/opencode/plugins/vision-captioner.ts`，安装后给出明确告警与安装指引。
+  - 更新文档：`~/.claude/skills/clipboard-video-analyzer/SKILL.md`，增加 Gemini 依赖说明。
+  - 已重打包：`~/.claude/skills/clipboard-video-analyzer.skill`（包含以上更新）。
+- 当前阶段：`-video` 语义链路已对齐 Gemini 读图，等待用户重启 OpenCode 后验收。
+- 下一步计划：如用户需要，可继续加“全帧批量 caption -> 结构化 JSON 时间线”。
+- 问题/待处理：OpenCode 输入层若不传 `video/*` part，仍依赖文件路径/系统剪贴板回退（已保留）。
+
+## 会话更新（2026-04-02，生成可上传 `.skill` 包）
+
+- 用户需求：生成可直接上传的 `.skill` 文件。
+- 已完成：
+  - 打包产物：`~/.claude/skills/clipboard-video-analyzer.skill`；
+  - 归档内容验证通过（含 `SKILL.md`、`scripts/`、`templates/`）；
+  - 已清理打包中的 `.DS_Store`，确保包体干净可分发。
+- 当前阶段：可直接上传 `.skill` 包。
+- 下一步计划：如需发布到 Skills Hub，可补 `.skill-meta.json`（版本号、来源 ID）。
+- 问题/待处理：无。
+
+## 会话更新（2026-04-02，封装可分发 Skill：clipboard-video-analyzer）
+
+- 用户需求：把当前视频抽帧 + 分析 + 自动清理能力整合成他人可直接复用的 Skill 文件。
+- 已完成：
+  - 新建 Skill 包目录：`~/.claude/skills/clipboard-video-analyzer/`。
+  - 新增说明：`~/.claude/skills/clipboard-video-analyzer/SKILL.md`，包含安装、使用、卸载。
+  - 新增可复用模板：
+    - `templates/clipboard_video_extract.ts`
+    - `templates/auto_video_command.ts`
+    - `templates/cleanup_video_runs.py`
+    - `templates/com.opencode.clipboard-video-cleanup.plist.template`
+  - 新增安装/卸载脚本：
+    - `scripts/install.sh`
+    - `scripts/uninstall.sh`
+    - `scripts/update_opencode_json.py`（自动增删 `opencode.json` 中 plugin 条目，避免重复）
+  - 已本机实测安装脚本：
+    - 自动拷贝 tool/plugin 到 `~/.config/opencode/`；
+    - 自动生成并加载 LaunchAgent（每日 1 次硬删除，24h）；
+    - 自动更新 `opencode.json`。
+- 当前阶段：Skill 已可对外分发使用。
+- 下一步计划：如需上架 skills hub，可补 `.skill-meta.json` 与版本化发布说明。
+- 问题/待处理：无。
+
+## 会话更新（2026-04-02，视频抽帧目录每日自动硬删除）
+
+- 用户需求：`-video` 生成的截图目录定期清理，设置为 1 天清理一次，且必须完全删除（不进废纸篓）。
+- 已完成：
+  - 新增清理脚本：`~/.config/opencode/tools/cleanup_video_runs.py`
+    - 清理范围：`~/.cache/opencode/video-runs/` 下所有超过 24 小时的文件/目录；
+    - 删除方式：`shutil.rmtree` / `unlink`，直接硬删除，不走 Trash；
+    - 日志输出：`[cleanup-video-runs] deleted=... failed=...`。
+  - 新增并启用 launchd 任务：`~/Library/LaunchAgents/com.zhengtengfei.opencode.video-cleanup.plist`
+    - 调度频率：`StartInterval=86400`（每 24 小时）；
+    - `RunAtLoad=true`，加载时先执行一次；
+    - 日志文件：`~/.cache/opencode/video-runs-cleanup.log` 与 `~/.cache/opencode/video-runs-cleanup.err.log`。
+  - 已执行 `launchctl` 加载并 kickstart，状态检查 `last exit code = 0`，首轮执行正常。
+- 当前阶段：自动清理已生效。
+- 下一步计划：按需增加“最大总容量上限”策略（例如超过 2GB 立即触发一次清理）。
+- 问题/待处理：无。
+
+## 会话更新（2026-04-02，`Cmd+V mp4` + `-video` 默认 200ms）
+
+- 用户需求：希望在 OpenCode 中粘贴 mp4（`Cmd+V`）后直接执行视频分析，默认按 `200ms` 抽帧。
+- 已完成：
+  - 更新插件：`~/.config/opencode/plugins/auto_video_command.ts`
+    - 命令正则扩展为 `-video [interval_ms] [out_dir]`；
+    - 默认间隔改为 `200ms`；
+    - 当消息里包含粘贴的 `video/*` 文件时，自动把该文件 URL 作为 `source` 注入到 `clipboard_video_extract` 工具调用指令；
+    - 支持“只粘贴视频 + 不写文本”场景自动进入视频处理流程。
+  - 更新工具：`~/.config/opencode/tools/clipboard_video_extract.ts`
+    - 新增 macOS `class furl`（文件 URL）读取回退，兼容飞书/系统复制视频后的剪贴板格式。
+  - 更新文档：`~/.claude/skills/clipboard-video-command/SKILL.md`
+    - 增加 `-video` 默认 `200ms` 用法及 `Cmd+V` 粘贴视频说明。
+- 当前阶段：功能已落地，等待用户在重启 OpenCode 后按新交互验收。
+- 下一步计划：如用户需要，补充“抽帧后全时序事件总结（JSON）”用于自动流程识别。
+- 问题/待处理：该能力依赖客户端消息里能携带 `video/*` 文件 part；若终端环境只给出文本，则回退剪贴板路径识别。
+
+### 验收补充（2026-04-02，`Cmd+V` 视频不可见问题收敛）
+
+- 用户问题：为何 `Cmd+V` 直接粘贴视频仍可能无效，是否能解决。
+- 已处理：
+  - `~/.config/opencode/plugins/auto_video_command.ts` 增加“文本路径兜底”
+    - 当粘贴内容是 `file://...mp4` 或绝对路径 `.../xxx.mp4` 时，也会自动进入视频抽帧流程（默认 `200ms`）；
+    - 无 `source` 时继续走系统剪贴板 `furl` 读取兜底。
+  - `~/.claude/skills/clipboard-video-command/SKILL.md` 补充限制说明与两种 fallback 用法。
+- 结论：OpenCode 当前输入层若不把二进制视频作为 `video/*` part 透出，插件无法“强制接管”原始粘贴；已通过“路径粘贴 + 系统剪贴板 furl”最大化规避。
+
+## 会话更新（2026-04-02，OpenCode 新增 `-video` 剪贴板视频抽帧命令）
+
+- 用户需求：在 OpenCode 里通过 `-video 500` 直接把剪贴板视频按固定毫秒抽帧，并可继续做过程识别。
+- 已完成：
+  - 新增工具：`~/.config/opencode/tools/clipboard_video_extract.ts`
+    - 参数：`interval_ms`、`source`、`out_dir`、`max_frames`；
+    - 支持 macOS 剪贴板视频文件路径读取（Finder 复制文件 / 文本路径回退）；
+    - 使用 ffmpeg 抽帧并输出 `meta.json` + `frames/`；
+    - 返回首/中/尾示例帧路径，便于后续自动理解流程。
+  - 新增插件：`~/.config/opencode/plugins/auto_video_command.ts`
+    - 识别 `-video <interval_ms> [out_dir]` 指令并强制先调用抽帧工具；
+    - 抽帧成功后引导读取首/中/尾帧做过程理解。
+  - 配置接入：更新 `~/.config/opencode/opencode.json` 的 `plugin` 列表，加载上述 tool + plugin。
+  - 新增 Skill 文档：`~/.claude/skills/clipboard-video-command/SKILL.md`。
+- 当前阶段：命令已接入，等待用户在本机重启 OpenCode 后验收。
+- 下一步计划：如需更强识别，可补充“全帧批量视觉总结 + 时序事件输出（JSON/Markdown）”。
+- 问题/待处理：
+  - 当前剪贴板视频读取优先覆盖 macOS；Windows/Linux 建议先用文件路径输入。
+  - 依赖本机 ffmpeg，未安装时会在命令结果里给出安装提示。
+- 重要技术决策：优先实现“可稳定抽帧 + 可追溯目录产物”，过程识别先用首/中/尾帧总结，后续迭代全序列分析。
+
+### 验收补充（2026-04-02，同会话）
+
+- 已执行：安装 `ffmpeg`（`brew install ffmpeg`）并确认 `ffmpeg -version` 可用。
+- 当前阻塞：执行 `-video 500` 时系统剪贴板未检测到视频文件（当前剪贴板文本为 `brew install ffmpeg`）。
+- 下一步：用户在 Finder 复制一个本地 mp4/mov 文件后，重新执行 `-video 500` 即可进入抽帧与过程识别。
+
+### 验收补充（2026-04-02，`-video 500` 实测）
+
+- 输入来源：剪贴板文件 `.../LarkShell/screenshot/20260402104741.mp4`。
+- 实测结果：按 `500ms` 抽帧成功，视频时长约 `5.8s`，共输出 `12` 帧。
+- 输出目录：`~/.cache/opencode/video-runs/manual-20260402-clip-500/frames/`。
+- 识别结论（基于首/中/尾与关键帧）：内容为厨房油烟机/蒸汽净化类宣传演示，展示灶台蒸汽被设备吸排、内部结构与净化效率数据（可见 `99.1`、`99.99` 等）以及烹饪场景对比。
+
 ## 发布执行记录（2026-04-01，Git同步 + TestFlight + Vercel + Android）
 
 - 用户指令：同步 git、打 TF 包上传、更新 Vercel、打 Android 包。

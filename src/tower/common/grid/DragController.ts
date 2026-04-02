@@ -23,6 +23,7 @@ import type { GridZone }       from './GridZone'
 import { CELL_HEIGHT } from './GridZone'
 import type { ItemSizeNorm }   from './GridSystem'
 import { getConfig } from '@/tower/config/debugConfig'
+import { hapticNotification } from '@/core/Haptics'
 import { trySqueezePlace, planUnifiedSqueeze, planCrossZoneSwap } from './SqueezeLogic'
 import type { SqueezePlan } from './VirtualGrid'
 import { BackpackLogic } from './BackpackLogic'
@@ -438,6 +439,7 @@ export class DragController {
         targetView: targetPair.view,
       })
       if (merged) {
+        hapticNotification('success')
         this.clearSqueezePreview()
         const dragged = this.dragContainer
         if (dragged && !(dragged as { destroyed?: boolean }).destroyed) {
@@ -474,6 +476,7 @@ export class DragController {
             ? targetPair.system.place(this.dragOrigItem.col, this.dragOrigItem.row, targetItem.size, targetItem.defId, hitInstanceId)
             : false
           if (placedSource && placedTarget) {
+            hapticNotification('warning')
             this.clearSqueezePreview()
             this.dragContainer = null
             const squeezeMs = getConfig('squeezeMs')
@@ -694,6 +697,7 @@ export class DragController {
           })
         }
       }
+      hapticNotification('warning')
     }
 
     // 3. 放置 DRAG 到目标位置

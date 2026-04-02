@@ -11,6 +11,11 @@ import projectDebugDefaults from '../../data/debug_defaults.json'
 
 const STORAGE_PREFIX = 'bigbazzar_cfg_'
 const BC_NAME        = 'bigbazzar_debug'
+const FONT_DEFAULTS_VERSION = 1
+
+function isFontSizeKey(key: string): boolean {
+  return key.includes('FontSize')
+}
 
 function normalizeConfigNumber(key: string, value: number, def?: ConfigDef): number {
   const d = def ?? CONFIG_DEFS[key]
@@ -18,7 +23,7 @@ function normalizeConfigNumber(key: string, value: number, def?: ConfigDef): num
   if (d) v = Math.max(d.min, Math.min(d.max, v))
 
   // 约定：所有字号统一为 4 的倍数
-  if (key.endsWith('FontSize')) {
+  if (isFontSizeKey(key)) {
     v = Math.round(v / 4) * 4
     if (d) v = Math.max(d.min, Math.min(d.max, v))
   }
@@ -2645,6 +2650,19 @@ for (const [key, val] of Object.entries(_projectDefaults)) {
   if (!Number.isFinite(val)) continue
   def.defaultValue = normalizeConfigNumber(key, Number(val), def)
 }
+
+function migrateStoredFontDefaults(): void {
+  const markerKey = `${STORAGE_PREFIX}font_defaults_version`
+  const savedVersion = Number(localStorage.getItem(markerKey) || 0)
+  if (savedVersion >= FONT_DEFAULTS_VERSION) return
+  for (const key of Object.keys(CONFIG_DEFS)) {
+    if (!isFontSizeKey(key)) continue
+    localStorage.removeItem(STORAGE_PREFIX + key)
+  }
+  localStorage.setItem(markerKey, String(FONT_DEFAULTS_VERSION))
+}
+
+migrateStoredFontDefaults()
 
 // ---- 读写 ----
 
