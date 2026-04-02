@@ -1,5 +1,24 @@
 # 大巴扎 — 开发进度记录
 
+## 会话更新（2026-04-02，Git 同步推送 + TestFlight 上传）
+
+- 用户指令：同步 Git 上传，并打 TF 包上传。
+- 已完成：
+  - Git 提交并推送：
+    - Commit：`38333dc`
+    - Message：`同步音频系统改造并新增塔防背景音乐`
+    - Push：`main -> main`（远端 `https://github.com/ZTFGAMER/ZTFGAMER.github.io.git`）
+  - 执行 `npm run release:tf` 全流程（build + cap sync + archive + export + upload）。
+  - 结果：
+    - `ARCHIVE SUCCEEDED`
+    - `EXPORT SUCCEEDED`
+    - `UPLOAD SUCCEEDED with no errors`
+    - Delivery UUID：`418e052a-b294-4430-b8b8-80275fd0716d`
+    - Build Number：`57 -> 58`
+    - 当前版本：`CURRENT_PROJECT_VERSION=58`
+- 当前阶段：TF 构建已提交，等待 App Store Connect processing 后可在 TestFlight 分发测试。
+- 下一步计划：待 processing 完成后进行真机验收（仅 BGM 播放、音效静音、触觉链路）。
+
 ## 会话更新（2026-04-02，shooting 项目补齐“全部可迁移框架能力”）
 
 - 用户追加需求：把“可直接迁移 + 轻改后可迁移”的框架能力都继续迁到 `~/Documents/web_ai_game/shooting`。
